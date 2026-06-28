@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
+import logo from "../app/pokepatch_icon.png";
 
 const links = [
   { href: "/", label: "Home" },
@@ -14,7 +16,12 @@ export default function Navbar() {
           href="/"
           className="flex min-w-0 items-center gap-2 font-display text-base font-bold text-ink sm:text-lg"
         >
-          <span className="h-7 w-7 shrink-0 rounded-full bg-pink-300 shadow-cozy-sm sm:h-8 sm:w-8" />
+          <Image
+            src={logo}
+            alt="PokePatch logo"
+            priority
+            className="h-8 w-auto shrink-0 sm:h-9"
+          />
           PokePatch
         </Link>
         <ul className="flex shrink-0 gap-1 sm:gap-4">

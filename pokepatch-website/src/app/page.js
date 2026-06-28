@@ -1,5 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import SectionHeading from "@/components/SectionHeading";
+import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
 import FaqItem from "@/components/FaqItem";
 
@@ -94,8 +96,13 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
       <section className="mb-16 animate-fade-up text-center">
-        <div className="mb-6 flex justify-center">
-          <div className="h-20 w-20 animate-pop-in rounded-full bg-pink-300 shadow-cozy" />
+        <div className="mb-3 flex justify-center">
+          <Image
+            src={logo}
+            alt="PokePatch logo"
+            priority
+            className="h-24 w-auto animate-pop-in md:h-28"
+          />
         </div>
         <h1 className="font-display text-5xl font-bold tracking-tight text-ink md:text-6xl">
           {"PokePatch \u00A0\u00A0!".split("").map((letter, i) => (
