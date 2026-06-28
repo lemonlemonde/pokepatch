@@ -118,6 +118,9 @@ export default function Home() {
         <p className="mt-2 font-secondary text-lg text-ink/70 md:text-xl">
           Card Restorations
         </p>
+        <p className="mt-2 font-secondary text-sm text-ink/50 md:text-base">
+          Serving Collectors Across the Bay Area and Beyond
+        </p>
         <p className="mt-3 font-secondary text-base italic text-berry">
           Where every card gets a Max Revive
         </p>

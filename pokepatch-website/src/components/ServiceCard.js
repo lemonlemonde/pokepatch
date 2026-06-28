@@ -29,7 +29,7 @@ export default function ServiceCard({
                 : "items-baseline gap-1"
             }`}
           >
-            <span className="font-display text-2xl font-bold leading-none text-berry">
+            <span className="font-secondary text-2xl font-bold leading-none text-berry">
               {price}
             </span>
             {unit && (
