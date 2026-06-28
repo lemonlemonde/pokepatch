@@ -64,6 +64,8 @@ Deno.serve(async (req) => {
 async function notifyDiscord({
   id,
   delivery,
+  contact,
+  details,
   photoCount,
 }: {
   id: number | string;
@@ -78,18 +80,31 @@ async function notifyDiscord({
 
   const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
 
+  // Discord's content field maxes out at 2000 chars. Keep details bounded so a
+  // long entry can't push the whole message over the limit and fail to send.
+  const safeDetails = details
+    ? details.length > 1200
+      ? `${details.slice(0, 1200)}… (see spreadsheet)`
+      : details
+    : "—";
+
   const lines = [
-    `New Quote Request #${id}:`,
-    `${delivery}, ${photoCount} image${photoCount === 1 ? "" : "s"}.`,
+    `<<--<<-- **New Quote Request #${id}:** -->>-->>`,
+    `- **Delivery Method:** ${delivery}`,
+    `- **Photo Count:** ${photoCount} image${photoCount === 1 ? "" : "s"}`,
+    `- **Contact:** ${contact || "—"}`,
+    `- **Details:** ${safeDetails}`,
   ];
   if (sheetUrl) {
-    lines.push(`Spreadsheet link: ${sheetUrl}`);
+    lines.push(`**Spreadsheet link:** ${sheetUrl}`);
   }
+
+  const content = lines.join("\n").slice(0, 2000);
 
   const res = await fetch(webhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: lines.join("\n") }),
+    body: JSON.stringify({ content }),
   });
 
   if (!res.ok) {
