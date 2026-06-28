@@ -116,7 +116,7 @@ export default function Home() {
         </p>
         <Link
           href="/contact"
-          className="mt-6 inline-block rounded-full bg-blush px-6 py-3 font-bold text-ink shadow-cozy transition-all duration-200 ease-out hover:-translate-y-1 hover:bg-blush/80 hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)] active:translate-y-0.5 active:shadow-cozy-sm"
+          className="mt-6 inline-block rounded-full bg-blush px-6 py-3 font-bold text-ink shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-blush/80 sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)]"
         >
           Get a Quote
         </Link>

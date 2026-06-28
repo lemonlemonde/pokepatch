@@ -1,7 +1,3 @@
-"use client";
-
-import useCenterActive from "@/hooks/useCenterActive";
-
 export default function ServiceCard({
   title,
   price,
@@ -12,8 +8,6 @@ export default function ServiceCard({
   bulkLabel = "Bulk Pricing",
   accent,
 }) {
-  const { ref, active } = useCenterActive();
-
   const accents = {
     blush: "bg-blush/40 border-blush",
     mint: "bg-mint/40 border-mint",
@@ -23,12 +17,7 @@ export default function ServiceCard({
 
   return (
     <div
-      ref={ref}
-      className={`pixel-border flex flex-col rounded-2xl p-6 transition-all duration-200 ease-out hover:-translate-y-1 hover:rotate-[-1deg] hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)] ${
-        active
-          ? "-translate-y-1 rotate-[-1deg] shadow-[0_10px_0_0_rgba(74,63,85,0.2)]"
-          : ""
-      } ${accents[accent] ?? accents.blush}`}
+      className={`pixel-border flex flex-col rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)] ${accents[accent] ?? accents.blush}`}
     >
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-display text-xl font-bold text-ink">{title}</h3>
