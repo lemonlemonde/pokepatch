@@ -1,2 +1,2 @@
-:HL["/pokepatch/_next/static/chunks/1sh_fyr865fzm.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"uVFCiQuCjcBPMih8WHYca"}
+:HL["/pokepatch/_next/static/chunks/3ginlz9acfp41.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"Ok216WOcXkvtbwz97J0RW"}
