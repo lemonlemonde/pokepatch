@@ -1,6 +1,7 @@
 {
   "name": "pokepatch",
   "version": "0.1.0",
+  "homepage": "https://lemonlemonde.github.io/pokepatch",
   "private": true,
   "scripts": {
     "deploy": "npm run build && gh-pages -d out",
