@@ -7,10 +7,10 @@ export default function Footer() {
       <p className="mt-1">
         Questions?{" "}
         <a
-          href="mailto:rayli0224@gmail.com"
+          href="/pokepatch/contact/"
           className="font-semibold text-ink underline decoration-blush decoration-2 underline-offset-2 hover:text-ink/80"
         >
-          rayli0224@gmail.com
+          Get in touch
         </a>
       </p>
       <p className="mt-3 text-xs text-ink/50">
