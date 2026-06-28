@@ -7,7 +7,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
 	// GitHub Pages project site: lemonlemonde.github.io/pokepatch
 	basePath: "/pokepatch",
-	assetPrefix: "/pokepatch/",
 	trailingSlash: true,
 	images: {
 	    unoptimized: true, // Disable default image optimization
