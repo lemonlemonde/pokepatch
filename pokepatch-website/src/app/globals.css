@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fff8f0;
+  --foreground: #4a3f55;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: var(--font-nunito), system-ui, sans-serif;
+}
+
+@layer components {
+  .pixel-border {
+    border: 3px solid #4a3f55;
+    box-shadow: 0 4px 0 0 rgba(74, 63, 85, 0.15);
+  }
+}
