@@ -43,11 +43,15 @@ Deno.serve(async (req) => {
     }
 
     const photoCount = paths.length;
-    const headline = `New Quote Request #${id}: ${delivery}, ${photoCount} image${
-      photoCount === 1 ? "" : "s"
-    }, ${contact || "no contact"}`;
 
-    await notifyDiscord({ headline, details, photoUrls });
+    await notifyDiscord({
+      id,
+      delivery,
+      contact,
+      details,
+      photoCount,
+      photoUrls,
+    });
     await notifySheet({ record, delivery, photoUrls });
 
     return new Response("ok");
@@ -58,37 +62,39 @@ Deno.serve(async (req) => {
 });
 
 async function notifyDiscord({
-  headline,
-  details,
-  photoUrls,
+  id,
+  delivery,
+  photoCount,
 }: {
-  headline: string;
+  id: number | string;
+  delivery: string;
+  contact: string;
   details: string;
+  photoCount: number;
   photoUrls: string[];
 }) {
   const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
   if (!webhook) return;
 
-  const links =
-    photoUrls.length > 0
-      ? photoUrls.map((url, i) => `[Photo ${i + 1}](${url})`).join(" · ")
-      : "No photos";
+  const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
 
-  const description = [
-    details ? `**Details:** ${details.slice(0, 1500)}` : null,
-    `**Photos:** ${links}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const lines = [
+    `New Quote Request #${id}:`,
+    `${delivery}, ${photoCount} image${photoCount === 1 ? "" : "s"}.`,
+  ];
+  if (sheetUrl) {
+    lines.push(`Spreadsheet link: ${sheetUrl}`);
+  }
 
   const res = await fetch(webhook, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      embeds: [{ title: headline, description }],
-    }),
+    body: JSON.stringify({ content: lines.join("\n") }),
   });
-  if (!res.ok) console.error("Discord error", await res.text());
+
+  if (!res.ok) {
+    console.error("Discord error", res.status, await res.text());
+  }
 }
 
 async function notifySheet({

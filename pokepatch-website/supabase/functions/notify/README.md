@@ -23,6 +23,9 @@ supabase secrets set DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
 supabase secrets set SHEETS_WEBHOOK_URL="https://script.google.com/macros/s/XXXX/exec"
 supabase secrets set SHEETS_SECRET="same-long-random-string-as-SHARED_SECRET-in-the-gs-file"
 
+# Spreadsheet link shown in every Discord message
+supabase secrets set SHEET_VIEW_URL="https://docs.google.com/spreadsheets/d/XXXX/edit"
+
 supabase functions deploy notify --no-verify-jwt
 ```
 
