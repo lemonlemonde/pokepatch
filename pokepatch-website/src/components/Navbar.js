@@ -8,7 +8,7 @@ const links = [
 
 export default function Navbar() {
   return (
-    <header className="sticky top-0 z-50 border-b-2 border-ink/20 bg-blush/60 backdrop-blur-sm">
+    <header className="sticky top-0 z-50 border-b-2 border-ink/20 bg-[#fbdce5]">
       <nav className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-4 sm:px-6">
         <Link
           href="/"
