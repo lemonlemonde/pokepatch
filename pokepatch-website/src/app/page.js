@@ -98,7 +98,15 @@ export default function Home() {
           <div className="h-20 w-20 animate-pop-in rounded-full bg-pink-300 shadow-cozy" />
         </div>
         <h1 className="font-display text-5xl font-bold tracking-tight text-ink md:text-6xl">
-          PokePatch
+          {"PokePatch".split("").map((letter, i) => (
+            <span
+              key={i}
+              className="inline-block animate-pixel-bob"
+              style={{ animationDelay: `${i * 0.12}s` }}
+            >
+              {letter}
+            </span>
+          ))}
         </h1>
         <p className="mt-2 font-secondary text-lg text-ink/70 md:text-xl">
           PokePatch: Card Restorations
@@ -108,7 +116,7 @@ export default function Home() {
         </p>
         <Link
           href="/contact"
-          className="mt-6 inline-block rounded-full bg-blush px-6 py-3 font-bold text-ink shadow-cozy transition hover:bg-blush/80 active:translate-y-0.5 active:shadow-cozy-sm"
+          className="mt-6 inline-block rounded-full bg-blush px-6 py-3 font-bold text-ink shadow-cozy transition-all duration-200 ease-out hover:-translate-y-1 hover:bg-blush/80 hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)] active:translate-y-0.5 active:shadow-cozy-sm"
         >
           Get a Quote
         </Link>

@@ -40,11 +40,21 @@ export default {
           "0%": { opacity: "0", transform: "scale(0.8)" },
           "100%": { opacity: "1", transform: "scale(1)" },
         },
+        pixelBob: {
+          "0%, 16%, 100%": { transform: "translateY(0)" },
+          "8%": { transform: "translateY(-10px)" },
+        },
+        pixelWobble: {
+          "0%, 100%": { transform: "rotate(-2deg)" },
+          "50%": { transform: "rotate(2deg)" },
+        },
       },
       animation: {
         "fade-in": "fadeIn 0.5s ease-out both",
         "fade-up": "fadeUp 0.6s ease-out both",
         "pop-in": "popIn 0.5s ease-out both",
+        "pixel-bob": "pixelBob 2s ease-in-out infinite",
+        "pixel-wobble": "pixelWobble 1s steps(6, end) infinite",
       },
     },
   },
