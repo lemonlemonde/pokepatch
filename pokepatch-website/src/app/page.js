@@ -98,7 +98,7 @@ export default function Home() {
           <div className="h-20 w-20 animate-pop-in rounded-full bg-pink-300 shadow-cozy" />
         </div>
         <h1 className="font-display text-5xl font-bold tracking-tight text-ink md:text-6xl">
-          {"PokePatch".split("").map((letter, i) => (
+          {"PokePatch \u00A0\u00A0!".split("").map((letter, i) => (
             <span
               key={i}
               className="inline-block animate-pixel-bob"
@@ -109,7 +109,7 @@ export default function Home() {
           ))}
         </h1>
         <p className="mt-2 font-secondary text-lg text-ink/70 md:text-xl">
-          PokePatch: Card Restorations
+          Card Restorations
         </p>
         <p className="mt-3 font-secondary text-base italic text-berry">
           Where every card gets a Max Revive
