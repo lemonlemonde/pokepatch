@@ -36,6 +36,12 @@ export default function RootLayout({ children }) {
       <body
         className={`${nunito.variable} ${pixelify.variable} ${gugi.variable} flex min-h-screen flex-col font-sans antialiased`}
       >
+        <div className="gradient-bg" aria-hidden="true">
+          <span className="blob blob-pink" />
+          <span className="blob blob-green" />
+          <span className="blob blob-purple" />
+          <span className="blob blob-orange" />
+        </div>
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />
