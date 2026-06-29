@@ -1,6 +1,6 @@
 export default function FaqItem({ question, answer, items }) {
   return (
-    <details className="pixel-border group rounded-2xl border-blush bg-white/60 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)]">
+    <details className="pixel-border group rounded-2xl border-blush/10 bg-cream/60 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]">
       <summary className="cursor-pointer list-none px-5 py-4 font-semibold text-ink marker:content-none [&::-webkit-details-marker]:hidden">
         <span className="flex items-center justify-between gap-4">
           {question}

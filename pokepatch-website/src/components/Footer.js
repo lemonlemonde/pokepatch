@@ -1,17 +1,8 @@
 export default function Footer() {
   return (
-    <footer className="mt-auto border-t-2 border-ink/10 bg-lavender/30 px-6 py-8 text-center font-secondary text-sm text-ink/70">
+    <footer className="mt-auto bg-gradient-to-b from-night/90 to-night/60 px-6 py-8 text-center font-secondary text-sm text-blush/80">
       <p className="font-display text-base text-ink">
         PokePatch: Card Restorations
-      </p>
-      <p className="mt-1">
-        Questions?{" "}
-        <a
-          href="/pokepatch/contact/"
-          className="font-semibold text-ink underline decoration-blush decoration-2 underline-offset-2 hover:text-ink/80"
-        >
-          Get in touch
-        </a>
       </p>
       <p className="mt-3 text-xs text-ink/50">
         &copy; {new Date().getFullYear()} PokePatch. All rights reserved.

@@ -61,29 +61,23 @@ const faqs = [
       "Trading cards of all kinds — Pokémon, sports cards, TCG, and more. If you're unsure, send a photo through the contact form and we'll let you know!",
   },
   {
+    question: "[ ⏳ ]\u00A0 How soon can I get a quote?",
+    answer: "Turnaround time is less than 2 hours.",
+  },
+  
+  {
     question: "[ ⏳ ]\u00A0 How long does restoration take?",
-    items: [
-      { label: "Quote", text: "Turnaround time is 1 day." },
-      {
-        label: "Restoration",
-        text: "Anywhere from a few hours to 2 weeks, depending on the number of cards, restoration type, and any pickup or shipping logistics.",
-      },
-    ],
+    answer: "Anywhere from a few hours to 2 weeks, depending on the number of cards, restoration type, and any pickup or shipping logistics.",
   },
   {
     question: "[ 🎨 ]\u00A0 Can whitening on cards be fixed?",
     answer:
-      "No — whitening cannot be truly fixed. It can only be addressed by painting the colors back in, but this alters the original card.",
-  },
-  {
-    question: "[ 💎 ]\u00A0 Will restoration affect my card's value?",
-    answer:
-      "Any restoration can affect grading and resale value. We always discuss options with you first so you can decide what's best for your card.",
+      "No — whitening cannot be truly fixed. It can only be addressed by painting the colors back in, and the card will be assessed as altered if it's graded.",
   },
   {
     question: "[ 📦 ]\u00A0 Is shipping covered?",
     answer:
-      "Any shipping costs are not covered. Cards will be carefully be re-packaged and sent back in the same packaging they were sent in, whether that's top loaders, bubble wrap, or more. Feel free to reach out for any questions or to discuss options!",
+      "Any shipping costs are not covered. Cards will be carefully be re-packaged and sent back in the same packaging they were sent in, whether that's top loaders, bubble wrap, or more.",
   },
   {
     question: "[ 📸 ]\u00A0 Do you offer before-and-after photos?",
@@ -115,18 +109,21 @@ export default function Home() {
             </span>
           ))}
         </h1>
-        <p className="mt-2 font-secondary text-lg text-ink/70 md:text-xl">
+        <p className="mt-2 font-secondary text-lg text-berry md:text-xl">
           Card Restorations
         </p>
-        <p className="mt-2 font-secondary text-sm text-ink/50 md:text-base">
-          Serving Collectors Across the Bay Area and Beyond
+        {/* <p className="mt-2 font-secondary text-sm text-ink/50 md:text-base">
+          where every card gets a Max Revive
+        </p> */}
+        <p className="mt-2 font-secondary text-sm text-ink/70 md:text-base">
+        Bay Area Drop-Off • Nationwide Mail-In
         </p>
         <p className="mt-3 font-secondary text-base italic text-berry">
-          Where every card gets a Max Revive
+          
         </p>
         <Link
           href="/contact"
-          className="mt-6 inline-block rounded-full bg-blush px-6 py-3 font-bold text-ink shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-blush/80 sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)]"
+          className="mt-6 inline-block rounded-full bg-gradient-to-b from-[#441937] to-[#1A0F2E] px-6 py-3 font-secondary font-bold text-[#FFE3EE] shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:from-[#581f47] sm:hover:to-[#22143C] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
         >
           Get a Quote
         </Link>

@@ -3,8 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --background: #fff8f0;
-  --foreground: #4a3f55;
+  --background: #120c1f;
+  --foreground: #f3e9f2;
 }
 
 body {
@@ -15,8 +15,8 @@ body {
 
 @layer components {
   .pixel-border {
-    border: 3px solid #4a3f55;
-    box-shadow: 0 4px 0 0 rgba(74, 63, 85, 0.15);
+    border: 3px solid rgba(243, 233, 242, 0.25);
+    box-shadow: 0 4px 0 0 rgba(0, 0, 0, 0.35);
   }
 }
 
@@ -27,12 +27,12 @@ body {
   pointer-events: none;
   /* Four soft pastel blobs baked into a single static background. One element,
      painted once, then just composited on scroll. */
-  background-color: #fff8f0;
+  background-color: #120c1f;
   background-image:
-    radial-gradient(40vw 40vw at 12% 18%, #fad2e1 0%, rgba(250, 210, 225, 0) 70%),
-    radial-gradient(38vw 38vw at 85% 12%, #c7f0d8 0%, rgba(199, 240, 216, 0) 70%),
-    radial-gradient(44vw 44vw at 78% 82%, #e0d3fa 0%, rgba(224, 211, 250, 0) 70%),
-    radial-gradient(36vw 36vw at 18% 88%, #ffe0c2 0%, rgba(255, 224, 194, 0) 70%);
+    radial-gradient(95vw 95vw at 12% 18%, rgba(121, 52, 77, 0.22) 0%, rgba(125, 45, 74, 0) 70%),
+    radial-gradient(90vw 90vw at 85% 12%, rgba(61, 98, 76, 0.18) 0%, rgba(30, 69, 46, 0) 70%),
+    radial-gradient(100vw 100vw at 78% 82%, rgba(50, 37, 77, 0.2) 0%, rgba(44, 28, 75, 0) 70%),
+    radial-gradient(88vw 88vw at 18% 88%, rgba(120, 80, 41, 0.16) 0%, rgba(77, 53, 29, 0) 70%);
 }
 
 @media (prefers-reduced-motion: reduce) {

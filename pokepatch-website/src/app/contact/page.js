@@ -6,7 +6,7 @@ export default function ContactPage() {
     <div className="mx-auto max-w-2xl px-6 py-12">
       <div className="animate-fade-up">
         <SectionHeading subtitle="Fill out the form below and we'll get back to you!">
-          Contact
+          Get a Quote
         </SectionHeading>
       </div>
 

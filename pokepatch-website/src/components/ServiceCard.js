@@ -9,21 +9,21 @@ export default function ServiceCard({
   accent,
 }) {
   const accents = {
-    blush: "bg-blush/40 border-blush",
-    mint: "bg-mint/40 border-mint",
-    lavender: "bg-lavender/40 border-lavender",
-    peach: "bg-peach/40 border-peach",
+    blush: "bg-blush/30 border-blush/10",
+    mint: "bg-mint/30 border-mint/10",
+    lavender: "bg-lavender/30 border-lavender/10",
+    peach: "bg-peach/30 border-peach/10",
   };
 
   return (
     <div
-      className={`pixel-border flex flex-col rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)] ${accents[accent] ?? accents.blush}`}
+      className={`pixel-border flex flex-col rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.blush}`}
     >
       <div className="flex items-start justify-between gap-3">
         <h3 className="font-display text-xl font-bold text-ink">{title}</h3>
         {price && (
           <div
-            className={`flex shrink-0 rounded-xl bg-white/70 px-3 py-2 text-right ${
+            className={`flex shrink-0 rounded-xl bg-night/50 px-3 py-2 text-right ${
               priceStacked
                 ? "flex-col items-end gap-0.5"
                 : "items-baseline gap-1"

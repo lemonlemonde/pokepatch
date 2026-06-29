@@ -172,17 +172,17 @@ export default function QuoteForm() {
     <form
       ref={formRef}
       onSubmit={handleSubmit}
-      className="pixel-border animate-fade-up space-y-10 rounded-2xl bg-white/60 p-6 [animation-delay:150ms]"
+      className="pixel-border animate-fade-up space-y-10 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]"
     >
       {!isSupabaseConfigured && (
         <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">
           Form setup needed: add{" "}
-          <code className="rounded bg-white/60 px-1">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
+          <code className="rounded bg-night/50 px-1">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
           and{" "}
-          <code className="rounded bg-white/60 px-1">
+          <code className="rounded bg-night/50 px-1">
             NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
           </code>{" "}
-          to <code className="rounded bg-white/60 px-1">.env.local</code>.
+          to <code className="rounded bg-night/50 px-1">.env.local</code>.
         </p>
       )}
 
@@ -236,7 +236,7 @@ export default function QuoteForm() {
         </label>
       </fieldset>
 
-      <div>
+      <div className="border-t border-ink/10 pt-10">
         <p className="mb-1 text-lg font-bold text-ink">
           Upload photos of your cards <span className="text-berry">*</span>
         </p>
@@ -245,6 +245,10 @@ export default function QuoteForm() {
           you&apos;d like restored. For the most accurate quote, use good
           lighting so that any damaged areas are clear to see.
         </p>
+        <p className="mb-2 font-secondary text-sm text-ink/70">
+          If you run into file size limits or any errors, please just upload 1 photo of all your cards together, and we will reach out to you.
+        </p>
+
         <input
           ref={fileInputRef}
           id="photos"
@@ -262,7 +266,7 @@ export default function QuoteForm() {
         )}
         <label
           htmlFor="photos"
-          className="inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 sm:hover:bg-blush/80"
+          className="inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
         >
           Browse files
         </label>
@@ -311,7 +315,7 @@ export default function QuoteForm() {
         )}
       </div>
 
-      <div>
+      <div className="border-t border-ink/10 pt-10">
         <label
           htmlFor="restoration_details"
           className="mb-1 block text-lg font-bold text-ink"
@@ -321,26 +325,25 @@ export default function QuoteForm() {
         <div className="mb-2 space-y-2 font-secondary text-sm text-ink/70">
           <p>
             For each card, please list the card name and describe the
-            restoration you&apos;d like. You can describe:
+            restoration you&apos;d like. <br /><br /> You can describe:
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>What looks damaged (creases, scratches, whitening, bends)</li>
             <li>Where the damage is (corners, edges, front/back, holo area)</li>
-            <li>How noticeable it is (light / moderate / heavy)</li>
             <li>Any priorities (what matters most to you)</li>
           </ul>
           <p>For example:</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
               Charizard (Base Set, Holo) – slight surface scratching on holo
-              area, minor whitening on bottom corners.
+              area.
             </li>
             <li>
-              Pikachu (Jungle Set) – crease along left edge and light bend
+              Pikachu (Jungle) – crease along left edge and light bend
               through center of card.
             </li>
             <li>
-              Gengar (Fossil Set) – corner wear on top right and small dent near
+              Gengar (Fossil) – corner wear on top right and small dent near
               border.
             </li>
           </ul>
@@ -357,13 +360,13 @@ export default function QuoteForm() {
         />
       </div>
 
-      <div>
+      <div className="border-t border-ink/10 pt-10">
         <label htmlFor="contact" className="mb-1 block text-lg font-bold text-ink">
           Contact information <span className="text-berry">*</span>
         </label>
         <p className="mb-2 font-secondary text-sm text-ink/70">
-          How can we reach you regarding your quote? Enter your phone number or
-          email address.
+          How can we reach you regarding your quote? Enter your phone number, 
+          email address, or Discord username.
         </p>
         <input
           id="contact"
@@ -391,7 +394,7 @@ export default function QuoteForm() {
       <button
         type="submit"
         disabled={isBusy || !isSupabaseConfigured || !isFormComplete}
-        className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-ink shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(74,63,85,0.2)]"
+        className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
       >
         {status === "uploading"
           ? "Uploading photos..."

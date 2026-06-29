@@ -28,7 +28,7 @@ function PlaceholderCard({ label, colorClass }) {
     <div
       className={`flex aspect-[3/4] flex-col items-center justify-center rounded-xl ${colorClass} pixel-border`}
     >
-      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-bold uppercase tracking-wide text-ink/60">
+      <span className="rounded-full bg-night/50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-ink/60">
         {label}
       </span>
     </div>

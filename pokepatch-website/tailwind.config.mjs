@@ -10,13 +10,15 @@ export default {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        cream: "#FFF8F0",
+        cream: "#221A36",
         blush: "#F9C5D5",
         mint: "#B8E8D0",
         lavender: "#D4C5F9",
         peach: "#FFDAB9",
-        ink: "#4A3F55",
+        ink: "#F3E9F2",
         berry: "#E0518A",
+        night: "#0B1020",
+        plum: "#1A1230",
       },
       fontFamily: {
         sans: ["var(--font-nunito)", "system-ui", "sans-serif"],
@@ -24,8 +26,8 @@ export default {
         secondary: ["var(--font-gugi)", "var(--font-nunito)", "sans-serif"],
       },
       boxShadow: {
-        cozy: "0 4px 0 0 rgba(74, 63, 85, 0.15)",
-        "cozy-sm": "0 2px 0 0 rgba(74, 63, 85, 0.12)",
+        cozy: "0 4px 0 0 rgba(0, 0, 0, 0.35)",
+        "cozy-sm": "0 2px 0 0 rgba(0, 0, 0, 0.3)",
       },
       keyframes: {
         fadeIn: {
