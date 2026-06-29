@@ -1,5 +1,5 @@
-:HL["/pokepatch/_next/static/chunks/1q2nxop8e7gz3.css","style"]
+:HL["/pokepatch/_next/static/chunks/43x6ork9pbiiv.css","style"]
 :HL["/pokepatch/_next/static/media/07454f8ad8aaac57-s.p.2kjei9psvcorz.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/pokepatch/_next/static/media/Gugi_Regular-s.p.117bn0nrkwdg7.ttf","font",{"crossOrigin":"","type":"font/ttf"}]
 :HL["/pokepatch/_next/static/media/PixelifySans_VariableFont_wght-s.p.3fakp-zo870hn.ttf","font",{"crossOrigin":"","type":"font/ttf"}]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"5OBudaLYv27fHIek0kCI_"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"KSILQWKhYzGYdqM6ooZn-"}
