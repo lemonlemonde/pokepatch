@@ -242,11 +242,11 @@ export default function QuoteForm() {
         </p>
         <p className="mb-2 font-secondary text-sm text-ink/70">
           Please upload clear photos of the front and back of each card
-          you&apos;d like restored. For the most accurate quote, use good
-          lighting so that any damaged areas are clear to see.
+          you&apos;d like restored.
         </p>
         <p className="mb-2 font-secondary text-sm text-ink/70">
-          If you run into file size limits or any errors, please just upload 1 photo of all your cards together, and we will reach out to you.
+          If you run into file size limits, upload 1 photo and note this in
+          the description. We will reach out to you.
         </p>
 
         <input
@@ -270,10 +270,6 @@ export default function QuoteForm() {
         >
           Browse files
         </label>
-        <p className="mt-2 font-secondary text-xs text-ink/60">
-          You can select multiple images at once. Click Browse again to add
-          more.
-        </p>
         {files.length > 0 && (
           <div className="mt-3 space-y-2">
             <p className="font-secondary text-sm text-ink/60">
@@ -322,29 +318,18 @@ export default function QuoteForm() {
         >
           Describe the restoration needed <span className="text-berry">*</span>
         </label>
-        <div className="mb-2 space-y-2 font-secondary text-sm text-ink/70">
+        <div className="mb-2 font-secondary text-sm text-ink/70">
           <p>
-            For each card, please list the card name and describe the
-            restoration you&apos;d like. <br /><br /> You can describe:
+            List each card by name and briefly note the damage and where it is.
           </p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>What looks damaged (creases, scratches, whitening, bends)</li>
-            <li>Where the damage is (corners, edges, front/back, holo area)</li>
-            <li>Any priorities (what matters most to you)</li>
-          </ul>
           <p>For example:</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
-              Charizard (Base Set, Holo) – slight surface scratching on holo
-              area.
+              Charizard (Base Set, Holo) – scratches on holo.
             </li>
             <li>
-              Pikachu (Jungle) – crease along left edge and light bend
-              through center of card.
-            </li>
-            <li>
-              Gengar (Fossil) – corner wear on top right and small dent near
-              border.
+              Pikachu (Jungle) – crease on left edge and bend
+              through center.
             </li>
           </ul>
         </div>
@@ -365,8 +350,7 @@ export default function QuoteForm() {
           Contact information <span className="text-berry">*</span>
         </label>
         <p className="mb-2 font-secondary text-sm text-ink/70">
-          How can we reach you regarding your quote? Enter your phone number, 
-          email address, or Discord username.
+          How can we reach you regarding your quote? (phone number, email address, or Discord username)
         </p>
         <input
           id="contact"

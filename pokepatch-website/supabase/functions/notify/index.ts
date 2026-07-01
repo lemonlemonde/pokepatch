@@ -9,6 +9,13 @@ const deliveryLabels: Record<string, string> = {
   shipping: "Shipping",
 };
 
+function extractFolderId(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const first = paths[0];
+  const slash = first.indexOf("/");
+  return slash > 0 ? first.slice(0, slash) : "";
+}
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
@@ -43,6 +50,7 @@ Deno.serve(async (req) => {
     }
 
     const photoCount = paths.length;
+    const folderId = extractFolderId(paths);
 
     await notifyDiscord({
       id,
@@ -50,9 +58,9 @@ Deno.serve(async (req) => {
       contact,
       details,
       photoCount,
-      photoUrls,
+      folderId,
     });
-    await notifySheet({ record, delivery, photoUrls });
+    await notifySheet({ record, delivery, photoUrls, folderId });
 
     return new Response("ok");
   } catch (err) {
@@ -67,21 +75,20 @@ async function notifyDiscord({
   contact,
   details,
   photoCount,
+  folderId,
 }: {
   id: number | string;
   delivery: string;
   contact: string;
   details: string;
   photoCount: number;
-  photoUrls: string[];
+  folderId: string;
 }) {
   const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
   if (!webhook) return;
 
   const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
 
-  // Discord's content field maxes out at 2000 chars. Keep details bounded so a
-  // long entry can't push the whole message over the limit and fail to send.
   const safeDetails = details
     ? details.length > 1200
       ? `${details.slice(0, 1200)}… (see spreadsheet)`
@@ -95,6 +102,9 @@ async function notifyDiscord({
     `- **Contact:** ${contact || "—"}`,
     `- **Details:** ${safeDetails}`,
   ];
+  if (folderId) {
+    lines.push(`- **Storage folder:** \`${BUCKET}/${folderId}\``);
+  }
   if (sheetUrl) {
     lines.push(`**Spreadsheet link:** ${sheetUrl}`);
   }
@@ -116,28 +126,58 @@ async function notifySheet({
   record,
   delivery,
   photoUrls,
+  folderId,
 }: {
   record: Record<string, unknown>;
   delivery: string;
   photoUrls: string[];
+  folderId: string;
 }) {
   const url = Deno.env.get("SHEETS_WEBHOOK_URL");
   if (!url) return;
 
+  const secret = Deno.env.get("SHEETS_SECRET") ?? "";
+  const baseRecord = {
+    id: record.id,
+    created_at: record.created_at,
+    delivery,
+    contact: record.contact,
+    restoration_details: record.restoration_details,
+    folder_id: folderId,
+  };
+
+  const ok = await postToSheet(url, { secret, record: baseRecord, photos: photoUrls });
+  if (!ok && photoUrls.length > 0) {
+    console.error("Sheets error with photo URLs, retrying without URLs");
+    await postToSheet(url, { secret, record: baseRecord, photos: [] });
+  }
+}
+
+async function postToSheet(
+  url: string,
+  body: { secret: string; record: Record<string, unknown>; photos: string[] }
+): Promise<boolean> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      secret: Deno.env.get("SHEETS_SECRET") ?? "",
-      record: {
-        id: record.id,
-        created_at: record.created_at,
-        delivery,
-        contact: record.contact,
-        restoration_details: record.restoration_details,
-      },
-      photos: photoUrls,
-    }),
+    body: JSON.stringify(body),
   });
-  if (!res.ok) console.error("Sheets error", await res.text());
+
+  const text = await res.text();
+  if (!res.ok || text.includes("<!DOCTYPE html>")) {
+    console.error("Sheets error", res.status, text.slice(0, 500));
+    return false;
+  }
+
+  try {
+    const data = JSON.parse(text);
+    if (!data.ok) {
+      console.error("Sheets error", data);
+      return false;
+    }
+    return true;
+  } catch {
+    console.error("Sheets error: non-JSON response", text.slice(0, 500));
+    return false;
+  }
 }

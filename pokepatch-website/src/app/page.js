@@ -22,16 +22,6 @@ const services = [
     accent: "blush",
   },
   {
-    title: "High-Value Handling",
-    features: ["Added on top of restoration service"],
-    bulk: [
-      { label: "$200–$500", value: "+4%" },
-      { label: "$500+", value: "+8%" },
-    ],
-    bulkLabel: "Surcharge Tiers",
-    accent: "mint",
-  },
-  {
     title: "Precision Pressing & Flattening",
     price: "$28",
     unit: "/ card",
@@ -47,6 +37,16 @@ const services = [
     bulk: [{ label: "25+ cards", value: "$10 off / card" }],
     accent: "peach",
   },
+  {
+    title: "High-Value Handling",
+    features: ["Added on top of restoration service"],
+    bulk: [
+      { label: "$200–$500", value: "+4%" },
+      { label: "$500+", value: "+8%" },
+    ],
+    bulkLabel: "Surcharge Tiers",
+    accent: "mint",
+  },
 ];
 
 const faqs = [
@@ -58,7 +58,7 @@ const faqs = [
   {
     question: "[ 🃏 ]\u00A0 What kinds of cards do you restore?",
     answer:
-      "Trading cards of all kinds — Pokémon, sports cards, TCG, and more. If you're unsure, send a photo through the contact form and we'll let you know!",
+      "Trading cards of all kinds — Pokémon, One Piece, Sports, Magic, Yugioh, and more. If you're unsure, send a photo through the contact form and we'll let you know!",
   },
   {
     question: "[ ⏳ ]\u00A0 How soon can I get a quote?",
@@ -72,7 +72,7 @@ const faqs = [
   {
     question: "[ 🎨 ]\u00A0 Can whitening on cards be fixed?",
     answer:
-      "No — whitening cannot be truly fixed. It can only be addressed by painting the colors back in, and the card will be assessed as altered if it's graded.",
+      "No — whitening cannot be fixed, and the card will be marked as altered if graded.",
   },
   {
     question: "[ 📦 ]\u00A0 Is shipping covered?",
