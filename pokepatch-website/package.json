@@ -4,7 +4,8 @@
   "homepage": "https://lemonlemonde.github.io/pokepatch",
   "private": true,
   "scripts": {
-    "deploy": "npm run build && touch out/.nojekyll && gh-pages -d out --dotfiles",
+    "add-domain": "echo pokepatch.cards > build/CNAME",
+    "deploy": "npm run build && npm run add-domain && touch out/.nojekyll && gh-pages -d out --dotfiles",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",

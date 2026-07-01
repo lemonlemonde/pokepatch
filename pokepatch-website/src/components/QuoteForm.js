@@ -245,8 +245,7 @@ export default function QuoteForm() {
           you&apos;d like restored.
         </p>
         <p className="mb-2 font-secondary text-sm text-ink/70">
-          If you run into file size limits, upload 1 photo and note this in
-          the description. We will reach out to you.
+          For bulk inquiries, upload 1 photo of the lot, and we will reach out to you.
         </p>
 
         <input
@@ -340,7 +339,7 @@ export default function QuoteForm() {
           required
           value={restorationDetails}
           onChange={(e) => setRestorationDetails(e.target.value)}
-          placeholder="Type the card name and restoration details here..."
+          placeholder="Enter the card name and details here..."
           className={fieldClassName()}
         />
       </div>

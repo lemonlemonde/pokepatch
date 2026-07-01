@@ -4,7 +4,7 @@ import GalleryContent from "@/components/GalleryContent";
 const galleryItems = [
   {
     title: "Mewtwo",
-    description: "Major creases and surface scratching were fixed.",
+    description: "Major creases and surface scratches.",
     beforeFront: "/gallery/mewtwo-before-front.webp",
     beforeFrontVideo: "/gallery/mewtwo-before-front.mp4",
     beforeBack: "/gallery/mewtwo-before-back.webp",
@@ -16,7 +16,7 @@ const galleryItems = [
   },
   {
     title: "Scizor",
-    description: "Edge lift and creases were fixed.",
+    description: "Edge lift and creases.",
     beforeFront: "/gallery/scizor-before-front.webp",
     beforeFrontVideo: "/gallery/scizor-before-front.mp4",
     beforeBack: "/gallery/scizor-before-back.webp",

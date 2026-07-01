@@ -77,7 +77,7 @@ const faqs = [
   {
     question: "[ 📦 ]\u00A0 Is shipping covered?",
     answer:
-      "Any shipping costs are not covered. Cards will be carefully be re-packaged and sent back in the same packaging they were sent in, whether that's top loaders, bubble wrap, or more.",
+      "Any shipping costs are not covered. Cards will be carefully be re-packaged and sent back in the same packaging they were sent in.",
   },
   {
     question: "[ 📸 ]\u00A0 Do you offer before-and-after photos?",
