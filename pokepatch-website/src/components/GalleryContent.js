@@ -68,48 +68,57 @@ function GalleryLightbox({ media, onClose }) {
     };
   }, [onClose]);
 
+  const mediaClassName =
+    "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
+
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-night/90 p-4"
+      className="fixed inset-0 z-50 flex flex-col bg-night/90"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={media.label}
     >
-      <div className="flex min-h-full items-center justify-center">
-        <button
-          type="button"
-          onClick={onClose}
-          className="fixed right-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink transition hover:bg-ink/20"
-          aria-label="Close"
-        >
-          Close
-        </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink transition hover:bg-ink/20"
+        aria-label="Close"
+      >
+        Close
+      </button>
 
+      <div className="flex-1" aria-hidden="true" />
+
+      <div className="flex w-full flex-shrink-0 items-center">
+        <div className="flex-1 self-stretch" aria-hidden="true" />
         <div
-          className="flex max-w-[90vw] flex-col items-center py-8"
+          className="flex flex-shrink-0 flex-col items-center"
           onClick={(event) => event.stopPropagation()}
         >
-        {media.type === "image" ? (
-          <img
-            src={media.src}
-            alt={media.alt}
-            className="max-h-[80vh] w-auto max-w-[90vw] rounded-xl object-contain pixel-border"
-          />
-        ) : (
-          <MutedVideo
-            src={media.src}
-            poster={media.poster}
-            loop
-            controls
-            className="max-h-[80vh] w-auto max-w-[90vw] rounded-xl object-contain pixel-border"
-          />
-        )}
-        <p className="mt-3 text-center text-sm font-bold uppercase tracking-wide text-ink/80">
-          {media.label}
-        </p>
+          {media.type === "image" ? (
+            <img
+              src={media.src}
+              alt={media.alt}
+              className={mediaClassName}
+            />
+          ) : (
+            <MutedVideo
+              src={media.src}
+              poster={media.poster}
+              loop
+              controls
+              className={mediaClassName}
+            />
+          )}
+          <p className="mt-3 text-center text-sm font-bold uppercase tracking-wide text-ink/80">
+            {media.label}
+          </p>
         </div>
+        <div className="flex-1 self-stretch" aria-hidden="true" />
       </div>
+
+      <div className="flex-1" aria-hidden="true" />
     </div>
   );
 }
