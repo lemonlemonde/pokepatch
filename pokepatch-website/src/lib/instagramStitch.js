@@ -7,7 +7,6 @@ const COLUMN_GAP = 18;
 const SLOT_WIDTH = (INSTAGRAM_WIDTH - 2 * EDGE_PADDING - COLUMN_GAP) / 2;
 const LEFT_COLUMN_X = EDGE_PADDING;
 const RIGHT_COLUMN_X = EDGE_PADDING + SLOT_WIDTH + COLUMN_GAP;
-const DIVIDER_X = EDGE_PADDING + SLOT_WIDTH + COLUMN_GAP / 2;
 const BACKGROUND = "#000000";
 const LABEL_FONT_SIZE = 34;
 const LABEL_FONT_FAMILY = 'Nunito, "Helvetica Neue", Helvetica, Arial, sans-serif';
@@ -172,16 +171,6 @@ function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
   ctx.stroke();
 }
 
-function drawCenterDivider(ctx, imageTop, imageHeight) {
-  const crop = getVerticalCrop(imageHeight);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(DIVIDER_X + 0.5, imageTop + crop + 16);
-  ctx.lineTo(DIVIDER_X + 0.5, imageTop + imageHeight - crop - 16);
-  ctx.stroke();
-}
-
 function drawColumn(
   ctx,
   resized,
@@ -328,7 +317,6 @@ async function stitchComparison(leftFile, rightFile, leftLabel, rightLabel) {
     targetSh,
     imageTop,
   );
-  drawCenterDivider(ctx, imageTop, targetSh);
   drawBranding(ctx, logoImg);
 
   return canvas;
