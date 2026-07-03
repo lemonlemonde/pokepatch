@@ -349,7 +349,7 @@ export default function QuoteForm() {
           Contact information <span className="text-berry">*</span>
         </label>
         <p className="mb-2 font-secondary text-sm text-ink/70">
-          How can we reach you regarding your quote? (phone number, email address, or Discord username)
+          How can we reach you regarding your quote? (phone number, Discord, or Instagram username)
         </p>
         <input
           id="contact"
@@ -358,7 +358,7 @@ export default function QuoteForm() {
           required
           value={contact}
           onChange={(e) => setContact(e.target.value)}
-          placeholder="your@email.com or (555) 555-5555"
+          placeholder="(555) 555-5555 or @yourusername"
           className={fieldClassName()}
         />
       </div>
