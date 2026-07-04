@@ -1,4 +1,5 @@
 import SectionHeading from "@/components/SectionHeading";
+import SocialLinks from "@/components/SocialLinks";
 import QuoteForm from "@/components/QuoteForm";
 
 export default function ContactPage() {
@@ -9,6 +10,8 @@ export default function ContactPage() {
           Get a Quote
         </SectionHeading>
       </div>
+
+      <SocialLinks className="mb-8 animate-fade-up [animation-delay:75ms]" />
 
       <QuoteForm />
     </div>
