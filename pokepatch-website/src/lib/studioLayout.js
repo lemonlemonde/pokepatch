@@ -93,11 +93,19 @@ export function getSlightCropMetrics(source, width, maxHeight) {
   return { newW, newH, sw, sh, sx, sy };
 }
 
-export function getSharedTargetSize(leftMetrics, rightMetrics) {
+export function getSharedTargetSize(leftMetrics, rightMetrics, maxSlotWidth) {
   const targetSh = Math.max(leftMetrics.sh, rightMetrics.sh);
   const leftW = Math.round(leftMetrics.sw * (targetSh / leftMetrics.sh));
   const rightW = Math.round(rightMetrics.sw * (targetSh / rightMetrics.sh));
-  const targetSw = Math.max(leftW, rightW);
+  let targetSw = Math.max(leftW, rightW);
+
+  if (targetSw > maxSlotWidth) {
+    const fitScale = maxSlotWidth / targetSw;
+    return {
+      targetSw: maxSlotWidth,
+      targetSh: Math.round(targetSh * fitScale),
+    };
+  }
 
   return { targetSw, targetSh };
 }
@@ -282,7 +290,11 @@ export function drawComparisonFrame(
     SLOT_WIDTH,
     maxImageHeight,
   );
-  const { targetSw, targetSh } = getSharedTargetSize(leftMetrics, rightMetrics);
+  const { targetSw, targetSh } = getSharedTargetSize(
+    leftMetrics,
+    rightMetrics,
+    SLOT_WIDTH,
+  );
   const imageTop =
     EDGE_PADDING +
     Math.floor((INSTAGRAM_HEIGHT - 2 * EDGE_PADDING - targetSh) / 2);
