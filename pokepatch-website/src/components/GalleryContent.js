@@ -159,6 +159,47 @@ function buildMediaList(items) {
   return items.flatMap(getItemMediaEntries);
 }
 
+function getSeeMorePreviews(item) {
+  const previews = [];
+
+  if (item.beforeBack) {
+    previews.push({ src: item.beforeBack, alt: `${item.title} before — back` });
+  }
+  if (item.afterBack) {
+    previews.push({ src: item.afterBack, alt: `${item.title} after — back` });
+  }
+  if (item.beforeFrontVideo) {
+    previews.push({
+      src: item.beforeFront,
+      alt: `${item.title} before — front video`,
+      isVideo: true,
+    });
+  }
+  if (item.beforeBackVideo) {
+    previews.push({
+      src: item.beforeBack,
+      alt: `${item.title} before — back video`,
+      isVideo: true,
+    });
+  }
+  if (item.afterFrontVideo) {
+    previews.push({
+      src: item.afterFront,
+      alt: `${item.title} after — front video`,
+      isVideo: true,
+    });
+  }
+  if (item.afterBackVideo) {
+    previews.push({
+      src: item.afterBack,
+      alt: `${item.title} after — back video`,
+      isVideo: true,
+    });
+  }
+
+  return previews;
+}
+
 function GalleryLightbox({ media, onClose, onPrevious, onNext, hasPrevious, hasNext }) {
   useEffect(() => {
     const handleKey = (event) => {
@@ -396,103 +437,147 @@ export default function GalleryContent({ items }) {
 
             <div className="space-y-3">
               {item.beforeFront && (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryImageCard
-                      src={item.beforeFront}
-                      alt={`${item.title} before — front`}
-                      label="Before — Front"
-                      priority={index <= 1}
-                      onOpen={openMedia}
-                    />
-                    <GalleryImageCard
-                      src={item.afterFront}
-                      alt={`${item.title} after — front`}
-                      label="After — Front"
-                      priority={index <= 1}
-                      onOpen={openMedia}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryImageCard
-                      src={item.beforeBack}
-                      alt={`${item.title} before — back`}
-                      label="Before — Back"
-                      onOpen={openMedia}
-                    />
-                    <GalleryImageCard
-                      src={item.afterBack}
-                      alt={`${item.title} after — back`}
-                      label="After — Back"
-                      onOpen={openMedia}
-                    />
-                  </div>
-                </>
-              )}
-              {item.beforeFrontVideo && item.afterFrontVideo && (
-                item.pairedVideoLayout ? (
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryVideoCard
-                      src={item.beforeFrontVideo}
-                      poster={item.beforeFront}
-                      label="Before — Front (Video)"
-                      onOpen={openMedia}
-                    />
-                    <GalleryVideoCard
-                      src={item.beforeBackVideo}
-                      poster={item.beforeBack}
-                      label="Before — Back (Video)"
-                      onOpen={openMedia}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryVideoCard
-                      src={item.afterFrontVideo}
-                      poster={item.afterFront}
-                      label="After — Front (Video)"
-                      onOpen={openMedia}
-                    />
-                    <GalleryVideoCard
-                      src={item.afterBackVideo}
-                      poster={item.afterBack}
-                      label="After — Back (Video)"
-                      onOpen={openMedia}
-                    />
-                  </div>
+                  <GalleryImageCard
+                    src={item.beforeFront}
+                    alt={`${item.title} before — front`}
+                    label="Before — Front"
+                    priority={index <= 1}
+                    onOpen={openMedia}
+                  />
+                  <GalleryImageCard
+                    src={item.afterFront}
+                    alt={`${item.title} after — front`}
+                    label="After — Front"
+                    priority={index <= 1}
+                    onOpen={openMedia}
+                  />
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryVideoCard
-                      src={item.beforeFrontVideo}
-                      poster={item.beforeFront}
-                      label="Before — Front (Video)"
-                      onOpen={openMedia}
-                    />
-                    <GalleryVideoCard
-                      src={item.afterFrontVideo}
-                      poster={item.afterFront}
-                      label="After — Front (Video)"
-                      onOpen={openMedia}
-                    />
+              )}
+
+              {(item.beforeBack || (item.beforeFrontVideo && item.afterFrontVideo)) && (
+                <details className="pixel-border group rounded-2xl border-blush/10 bg-cream/60">
+                  <summary className="cursor-pointer list-none px-5 py-3 font-semibold text-ink marker:content-none [&::-webkit-details-marker]:hidden">
+                    <span className="flex items-center gap-3">
+                      <span className="group-open:hidden">See more</span>
+                      <span className="hidden group-open:inline">See less</span>
+                      <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
+                        {getSeeMorePreviews(item).map((preview, previewIndex) => (
+                          <span
+                            key={`${item.title}-preview-${previewIndex}`}
+                            className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
+                          >
+                            <Image
+                              src={preview.src}
+                              alt={preview.alt}
+                              fill
+                              className="object-cover"
+                              sizes="32px"
+                            />
+                            {preview.isVideo && (
+                              <span className="absolute inset-0 flex items-center justify-center bg-night/25">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  className="h-3 w-3 text-ink"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </span>
+                            )}
+                          </span>
+                        ))}
+                      </span>
+                      <span className="ml-auto text-blush transition group-open:rotate-45">
+                        +
+                      </span>
+                    </span>
+                  </summary>
+                  <div className="space-y-3 border-t border-ink/10 px-3 py-3">
+                    {item.beforeBack && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <GalleryImageCard
+                          src={item.beforeBack}
+                          alt={`${item.title} before — back`}
+                          label="Before — Back"
+                          onOpen={openMedia}
+                        />
+                        <GalleryImageCard
+                          src={item.afterBack}
+                          alt={`${item.title} after — back`}
+                          label="After — Back"
+                          onOpen={openMedia}
+                        />
+                      </div>
+                    )}
+                    {item.beforeFrontVideo && item.afterFrontVideo && (
+                      item.pairedVideoLayout ? (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <GalleryVideoCard
+                              src={item.beforeFrontVideo}
+                              poster={item.beforeFront}
+                              label="Before — Front (Video)"
+                              onOpen={openMedia}
+                            />
+                            <GalleryVideoCard
+                              src={item.beforeBackVideo}
+                              poster={item.beforeBack}
+                              label="Before — Back (Video)"
+                              onOpen={openMedia}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <GalleryVideoCard
+                              src={item.afterFrontVideo}
+                              poster={item.afterFront}
+                              label="After — Front (Video)"
+                              onOpen={openMedia}
+                            />
+                            <GalleryVideoCard
+                              src={item.afterBackVideo}
+                              poster={item.afterBack}
+                              label="After — Back (Video)"
+                              onOpen={openMedia}
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-2 gap-3">
+                            <GalleryVideoCard
+                              src={item.beforeFrontVideo}
+                              poster={item.beforeFront}
+                              label="Before — Front (Video)"
+                              onOpen={openMedia}
+                            />
+                            <GalleryVideoCard
+                              src={item.afterFrontVideo}
+                              poster={item.afterFront}
+                              label="After — Front (Video)"
+                              onOpen={openMedia}
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <GalleryVideoCard
+                              src={item.beforeBackVideo}
+                              poster={item.beforeBack}
+                              label="Before — Back (Video)"
+                              onOpen={openMedia}
+                            />
+                            <GalleryVideoCard
+                              src={item.afterBackVideo}
+                              poster={item.afterBack}
+                              label="After — Back (Video)"
+                              onOpen={openMedia}
+                            />
+                          </div>
+                        </>
+                      )
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <GalleryVideoCard
-                      src={item.beforeBackVideo}
-                      poster={item.beforeBack}
-                      label="Before — Back (Video)"
-                      onOpen={openMedia}
-                    />
-                    <GalleryVideoCard
-                      src={item.afterBackVideo}
-                      poster={item.afterBack}
-                      label="After — Back (Video)"
-                      onOpen={openMedia}
-                    />
-                  </div>
-                </>
-              )
+                </details>
               )}
             </div>
           </div>
