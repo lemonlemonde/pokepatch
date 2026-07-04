@@ -459,8 +459,10 @@ export default function GalleryContent({ items }) {
                 <details className="pixel-border group rounded-2xl border-blush/10 bg-cream/60">
                   <summary className="cursor-pointer list-none px-5 py-3 font-semibold text-ink marker:content-none [&::-webkit-details-marker]:hidden">
                     <span className="flex items-center gap-3">
-                      <span className="group-open:hidden">See more</span>
-                      <span className="hidden group-open:inline">See less</span>
+                      <span className="w-20 shrink-0">
+                        <span className="group-open:hidden">See more</span>
+                        <span className="hidden group-open:inline">See less</span>
+                      </span>
                       <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
                         {getSeeMorePreviews(item).map((preview, previewIndex) => (
                           <span
@@ -489,7 +491,7 @@ export default function GalleryContent({ items }) {
                           </span>
                         ))}
                       </span>
-                      <span className="ml-auto text-blush transition group-open:rotate-45">
+                      <span className="flex w-20 shrink-0 justify-end text-blush transition group-open:rotate-45">
                         +
                       </span>
                     </span>
