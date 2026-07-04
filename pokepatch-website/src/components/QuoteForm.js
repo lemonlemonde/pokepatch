@@ -28,8 +28,16 @@ function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-function fieldClassName() {
-  return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
+function fieldClassName(invalid = false) {
+  return invalid
+    ? "w-full rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
+    : "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
+}
+
+function optionClassName(invalid = false) {
+  return invalid
+    ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-berry bg-cream/80 px-4 py-3"
+    : "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3";
 }
 
 function emptyContact() {
@@ -63,45 +71,48 @@ function isCardEmpty(card) {
   );
 }
 
-function firstMissingOnCard(card, index) {
-  if (card.cardName.trim() === "") {
-    return `Card name in Card ${index} is required`;
-  }
-  if (card.description.trim() === "") {
-    return `Description in Card ${index} is required`;
-  }
-  if (card.files.length === 0) {
-    return `Photos in Card ${index} are required`;
-  }
-  return null;
+function cardFieldErrors(card) {
+  return {
+    cardName: card.cardName.trim() === "",
+    description: card.description.trim() === "",
+    files: card.files.length === 0,
+  };
 }
 
-function getFirstMissingFieldMessage({
-  customerName,
-  deliveryMethod,
-  contacts,
-  cards,
-}) {
-  if (customerName.trim() === "") return "Name is required";
-  if (deliveryMethod === "") return "Delivery method is required";
-  if (!contacts.some((c) => c.value.trim() !== "")) {
-    return "At least one contact method is required";
-  }
-  if (cards.length === 0) return "At least one card is required";
+function getFieldErrors({ customerName, deliveryMethod, contacts, cards }) {
+  const errors = {
+    customerName: customerName.trim() === "",
+    deliveryMethod: deliveryMethod === "",
+    contacts: !contacts.some((c) => c.value.trim() !== ""),
+    cards: {},
+    noCards: cards.length === 0,
+  };
 
-  const hasCompleteCard = cards.some(isCardComplete);
-  if (!hasCompleteCard) {
-    return firstMissingOnCard(cards[0], 1);
+  const incompleteCards = cards.filter(
+    (card) => !isCardEmpty(card) && !isCardComplete(card)
+  );
+
+  for (const card of incompleteCards) {
+    errors.cards[card.id] = cardFieldErrors(card);
   }
 
-  for (let i = 0; i < cards.length; i += 1) {
-    const card = cards[i];
-    if (!isCardEmpty(card) && !isCardComplete(card)) {
-      return firstMissingOnCard(card, i + 1);
+  if (!cards.some(isCardComplete) && incompleteCards.length === 0) {
+    const firstEmpty = cards.find(isCardEmpty);
+    if (firstEmpty) {
+      errors.cards[firstEmpty.id] = cardFieldErrors(firstEmpty);
     }
   }
 
-  return null;
+  return errors;
+}
+
+function hasFieldErrors(errors) {
+  if (!errors) return false;
+  if (errors.customerName || errors.deliveryMethod || errors.contacts) {
+    return true;
+  }
+  if (errors.noCards) return true;
+  return Object.keys(errors.cards).length > 0;
 }
 
 function CardPhotoPreviews({ files, onRemove }) {
@@ -170,9 +181,32 @@ export default function QuoteForm() {
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [fieldErrors, setFieldErrors] = useState(null);
   const [cardFileErrors, setCardFileErrors] = useState({});
 
+  function clearFieldError(key) {
+    setFieldErrors((prev) => {
+      if (!prev || !prev[key]) return prev;
+      return { ...prev, [key]: false };
+    });
+  }
+
+  function clearCardFieldError(cardId, key) {
+    setFieldErrors((prev) => {
+      if (!prev?.cards?.[cardId]?.[key]) return prev;
+      const card = { ...prev.cards[cardId], [key]: false };
+      const cards = { ...prev.cards };
+      if (!card.cardName && !card.description && !card.files) {
+        delete cards[cardId];
+      } else {
+        cards[cardId] = card;
+      }
+      return { ...prev, cards, noCards: false };
+    });
+  }
+
   function updateContact(id, patch) {
+    if (patch.value !== undefined) clearFieldError("contacts");
     setContacts((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
     );
@@ -192,12 +226,19 @@ export default function QuoteForm() {
   }
 
   function updateCard(id, patch) {
+    if (patch.cardName !== undefined) clearCardFieldError(id, "cardName");
+    if (patch.description !== undefined) {
+      clearCardFieldError(id, "description");
+    }
     setCards((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
     );
   }
 
   function addCard() {
+    setFieldErrors((prev) =>
+      prev ? { ...prev, noCards: false } : prev
+    );
     setCards((prev) => {
       if (prev.length >= MAX_CARDS) return prev;
       return [...prev, emptyCard()];
@@ -206,6 +247,12 @@ export default function QuoteForm() {
 
   function removeCard(id) {
     setCards((prev) => prev.filter((c) => c.id !== id));
+    setFieldErrors((prev) => {
+      if (!prev?.cards?.[id]) return prev;
+      const cards = { ...prev.cards };
+      delete cards[id];
+      return { ...prev, cards };
+    });
     setCardFileErrors((prev) => {
       const next = { ...prev };
       delete next[id];
@@ -231,6 +278,8 @@ export default function QuoteForm() {
     }
 
     let trimmed = false;
+
+    clearCardFieldError(cardId, "files");
 
     setCards((prev) =>
       prev.map((card) => {
@@ -285,23 +334,6 @@ export default function QuoteForm() {
 
   const filledContacts = contacts.filter((c) => c.value.trim() !== "");
   const completeCards = cards.filter(isCardComplete);
-  const hasIncompleteCard = cards.some(
-    (card) => !isCardEmpty(card) && !isCardComplete(card)
-  );
-
-  const isFormComplete =
-    customerName.trim() !== "" &&
-    deliveryMethod !== "" &&
-    filledContacts.length >= 1 &&
-    completeCards.length >= 1 &&
-    !hasIncompleteCard;
-
-  const validationMessage = getFirstMissingFieldMessage({
-    customerName,
-    deliveryMethod,
-    contacts,
-    cards,
-  });
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -315,12 +347,21 @@ export default function QuoteForm() {
       return;
     }
 
-    if (!isFormComplete) {
-      setStatus("error");
-      setErrorMessage("Please complete all required fields before submitting.");
+    const errors = getFieldErrors({
+      customerName,
+      deliveryMethod,
+      contacts,
+      cards,
+    });
+
+    if (hasFieldErrors(errors)) {
+      setFieldErrors(errors);
+      setStatus("idle");
+      setErrorMessage("");
       return;
     }
 
+    setFieldErrors(null);
     setStatus("uploading");
     setErrorMessage("");
 
@@ -376,6 +417,7 @@ export default function QuoteForm() {
       setDeliveryMethod("");
       setContacts([emptyContact()]);
       setCards([emptyCard()]);
+      setFieldErrors(null);
       setCardFileErrors({});
       formRef.current?.reset();
       router.push("/thank-you");
@@ -389,10 +431,13 @@ export default function QuoteForm() {
 
   const isBusy = status === "uploading" || status === "submitting";
 
+  const showValidationError = hasFieldErrors(fieldErrors);
+
   return (
     <form
       ref={formRef}
       onSubmit={handleSubmit}
+      noValidate
       className="pixel-border animate-fade-up space-y-10 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]"
     >
       {!isSupabaseConfigured && (
@@ -414,6 +459,15 @@ export default function QuoteForm() {
         </p>
       )}
 
+      {showValidationError && (
+        <p
+          className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink"
+          role="alert"
+        >
+          Please fill out all required fields
+        </p>
+      )}
+
       {status === "error" && errorMessage && (
         <p className="rounded-2xl border-2 border-blush bg-blush/40 px-4 py-3 text-sm font-semibold text-ink">
           {errorMessage}
@@ -431,11 +485,14 @@ export default function QuoteForm() {
             id="customer_name"
             name="customer_name"
             type="text"
-            required
             value={customerName}
-            onChange={(e) => setCustomerName(e.target.value)}
+            onChange={(e) => {
+              clearFieldError("customerName");
+              setCustomerName(e.target.value);
+            }}
             placeholder="Your preferred name"
-            className={fieldClassName()}
+            className={fieldClassName(fieldErrors?.customerName)}
+            aria-invalid={fieldErrors?.customerName || undefined}
           />
         </div>
 
@@ -447,29 +504,33 @@ export default function QuoteForm() {
             If you choose local drop-off, we&apos;ll provide the address after we
             review your submission.
           </p>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3">
+          <label className={optionClassName(fieldErrors?.deliveryMethod)}>
             <input
               type="radio"
               name="delivery_method"
               value="local_dropoff"
               checked={deliveryMethod === "local_dropoff"}
-              onChange={(e) => setDeliveryMethod(e.target.value)}
+              onChange={(e) => {
+                clearFieldError("deliveryMethod");
+                setDeliveryMethod(e.target.value);
+              }}
               className="mt-1"
-              required
             />
             <span className="font-secondary text-sm text-ink">
               📍 Local Drop-Off (North San Jose)
             </span>
           </label>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3">
+          <label className={optionClassName(fieldErrors?.deliveryMethod)}>
             <input
               type="radio"
               name="delivery_method"
               value="shipping"
               checked={deliveryMethod === "shipping"}
-              onChange={(e) => setDeliveryMethod(e.target.value)}
+              onChange={(e) => {
+                clearFieldError("deliveryMethod");
+                setDeliveryMethod(e.target.value);
+              }}
               className="mt-1"
-              required
             />
             <span className="font-secondary text-sm text-ink">📦 Shipping</span>
           </label>
@@ -528,7 +589,8 @@ export default function QuoteForm() {
                       ? "(555) 555-5555"
                       : "@yourusername"
                   }
-                  className={fieldClassName()}
+                  className={fieldClassName(fieldErrors?.contacts)}
+                  aria-invalid={fieldErrors?.contacts || undefined}
                 />
               </div>
               <button
@@ -560,13 +622,20 @@ export default function QuoteForm() {
         </div>
 
         {cards.length === 0 && (
-          <p className="font-secondary text-sm text-ink/60">
+          <p
+            className={
+              fieldErrors?.noCards
+                ? "rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 font-secondary text-sm text-ink"
+                : "font-secondary text-sm text-ink/60"
+            }
+          >
             No cards yet. Add a card to continue.
           </p>
         )}
 
         {cards.map((card, index) => {
           const inputId = `card_photos_${card.id}`;
+          const cardErrors = fieldErrors?.cards?.[card.id];
           return (
             <div
               key={card.id}
@@ -598,7 +667,8 @@ export default function QuoteForm() {
                     updateCard(card.id, { cardName: e.target.value })
                   }
                   placeholder="e.g. Charizard"
-                  className={fieldClassName()}
+                  className={fieldClassName(cardErrors?.cardName)}
+                  aria-invalid={cardErrors?.cardName || undefined}
                 />
               </div>
 
@@ -635,13 +705,13 @@ export default function QuoteForm() {
                 <textarea
                   id={`description_${card.id}`}
                   rows={4}
-                  required
                   value={card.description}
                   onChange={(e) =>
                     updateCard(card.id, { description: e.target.value })
                   }
                   placeholder="Describe the repair needed..."
-                  className={fieldClassName()}
+                  className={fieldClassName(cardErrors?.description)}
+                  aria-invalid={cardErrors?.description || undefined}
                 />
               </div>
 
@@ -668,7 +738,11 @@ export default function QuoteForm() {
                 )}
                 <label
                   htmlFor={inputId}
-                  className="inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
+                  className={
+                    cardErrors?.files
+                      ? "inline-flex cursor-pointer items-center rounded-full border-2 border-berry bg-berry/20 px-4 py-2 text-sm font-semibold text-ink"
+                      : "inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
+                  }
                 >
                   Browse files
                 </label>
@@ -711,15 +785,18 @@ export default function QuoteForm() {
       />
 
       <div className="space-y-2">
-        {!isBusy && !isFormComplete && validationMessage && (
-          <p className="text-center text-sm font-semibold text-berry" role="status">
-            {validationMessage}
+        {showValidationError && (
+          <p
+            className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink"
+            role="alert"
+          >
+            Please fill out all required fields
           </p>
         )}
 
         <button
           type="submit"
-          disabled={isBusy || !isSupabaseConfigured || !isFormComplete}
+          disabled={isBusy || !isSupabaseConfigured}
           className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
         >
           {isBusy ? (
