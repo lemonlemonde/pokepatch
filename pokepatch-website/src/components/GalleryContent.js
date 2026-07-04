@@ -491,12 +491,12 @@ export default function GalleryContent({ items }) {
                           </span>
                         ))}
                       </span>
-                      <span className="flex w-20 shrink-0 justify-end text-blush transition group-open:rotate-45">
+                      <span className="flex w-20 shrink-0 justify-end text-blush group-open:invisible">
                         +
                       </span>
                     </span>
                   </summary>
-                  <div className="space-y-3 border-t border-ink/10 px-3 py-3">
+                  <div className="space-y-3 px-3 py-3">
                     {item.beforeBack && (
                       <div className="grid grid-cols-2 gap-3">
                         <GalleryImageCard
