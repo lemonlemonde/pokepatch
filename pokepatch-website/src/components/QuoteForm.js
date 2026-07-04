@@ -30,8 +30,8 @@ function sanitizeFilename(name) {
 
 function fieldClassName(invalid = false) {
   return invalid
-    ? "w-full rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
-    : "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
+    ? "w-full scroll-mt-24 rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
+    : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
 function optionClassName(invalid = false) {
@@ -113,6 +113,58 @@ function hasFieldErrors(errors) {
   }
   if (errors.noCards) return true;
   return Object.keys(errors.cards).length > 0;
+}
+
+function getFirstErrorElement(errors, contacts, cards) {
+  if (!errors) return null;
+
+  if (errors.customerName) {
+    return document.getElementById("customer_name");
+  }
+  if (errors.deliveryMethod) {
+    return document.getElementById("delivery_method");
+  }
+  if (errors.contacts && contacts[0]) {
+    return document.getElementById(`contact_value_${contacts[0].id}`);
+  }
+  if (errors.noCards) {
+    return document.getElementById("cards_empty");
+  }
+
+  for (const card of cards) {
+    const cardErrors = errors.cards[card.id];
+    if (!cardErrors) continue;
+    if (cardErrors.cardName) {
+      return document.getElementById(`card_name_${card.id}`);
+    }
+    if (cardErrors.description) {
+      return document.getElementById(`description_${card.id}`);
+    }
+    if (cardErrors.files) {
+      return (
+        document.querySelector(`label[for="card_photos_${card.id}"]`) ??
+        document.getElementById(`card_photos_${card.id}`)
+      );
+    }
+  }
+
+  return null;
+}
+
+function scrollToFirstError(errors, contacts, cards) {
+  const element = getFirstErrorElement(errors, contacts, cards);
+  if (!element) return;
+
+  element.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const focusTarget =
+    element.matches("input, textarea, select, button")
+      ? element
+      : element.querySelector("input, textarea, select, button");
+
+  if (focusTarget && typeof focusTarget.focus === "function") {
+    focusTarget.focus({ preventScroll: true });
+  }
 }
 
 function CardPhotoPreviews({ files, onRemove }) {
@@ -358,6 +410,9 @@ export default function QuoteForm() {
       setFieldErrors(errors);
       setStatus("idle");
       setErrorMessage("");
+      requestAnimationFrame(() => {
+        scrollToFirstError(errors, contacts, cards);
+      });
       return;
     }
 
@@ -496,7 +551,7 @@ export default function QuoteForm() {
           />
         </div>
 
-        <fieldset className="space-y-3">
+        <fieldset id="delivery_method" className="space-y-3 scroll-mt-24">
           <legend className="text-lg font-bold text-ink">
             Delivery method <span className="text-berry">*</span>
           </legend>
@@ -623,10 +678,11 @@ export default function QuoteForm() {
 
         {cards.length === 0 && (
           <p
+            id="cards_empty"
             className={
               fieldErrors?.noCards
-                ? "rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 font-secondary text-sm text-ink"
-                : "font-secondary text-sm text-ink/60"
+                ? "scroll-mt-24 rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 font-secondary text-sm text-ink"
+                : "scroll-mt-24 font-secondary text-sm text-ink/60"
             }
           >
             No cards yet. Add a card to continue.
@@ -740,8 +796,8 @@ export default function QuoteForm() {
                   htmlFor={inputId}
                   className={
                     cardErrors?.files
-                      ? "inline-flex cursor-pointer items-center rounded-full border-2 border-berry bg-berry/20 px-4 py-2 text-sm font-semibold text-ink"
-                      : "inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
+                      ? "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border-2 border-berry bg-berry/20 px-4 py-2 text-sm font-semibold text-ink"
+                      : "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
                   }
                 >
                   Browse files
