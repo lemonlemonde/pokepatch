@@ -1,25 +1,62 @@
--- PokePatch: quote_requests schema
--- Run in Supabase: SQL Editor -> New query -> paste -> Run.
+-- PokePatch database schema (reference documentation)
 --
--- WARNING: the DROP recreates the table and deletes existing rows.
--- Remove the DROP line if you want to keep existing data (then alter manually).
+-- Apply changes via migrations in supabase/migrations/, or paste a migration
+-- into the Supabase SQL Editor.
+--
+-- SAFETY: migrations must be additive only. Never DROP/ALTER/TRUNCATE
+-- quote_requests — it holds historical submissions and the legacy notify path.
 
-drop table if exists public.quote_requests;
+-- ---------------------------------------------------------------------------
+-- Legacy: quote_requests (kept for historical data + legacy notify webhook)
+-- ---------------------------------------------------------------------------
+--
+-- create table public.quote_requests (
+--   id bigint generated always as identity primary key,
+--   created_at timestamptz not null default now(),
+--   delivery_method text not null check (delivery_method in ('local_dropoff', 'shipping')),
+--   restoration_details text not null,
+--   contact text not null,
+--   image_paths text[] not null default '{}'
+-- );
+--
+-- RLS: anon INSERT only.
+-- Webhook: INSERT → notify edge function (legacy path).
 
-create table public.quote_requests (
-  id bigint generated always as identity primary key,
-  created_at timestamptz not null default now(),
-  delivery_method text not null check (delivery_method in ('local_dropoff', 'shipping')),
-  restoration_details text not null,
-  contact text not null,
-  image_paths text[] not null default '{}'
-);
+-- ---------------------------------------------------------------------------
+-- Orders (working + original backup)
+-- ---------------------------------------------------------------------------
+--
+-- See: supabase/migrations/20260704000000_orders_schema.sql
+--
+-- Working tables (admin edits these):
+--   orders, contacts, cards, card_images
+--
+-- Original backup (written once by create_order, never updated):
+--   orders_original, contacts_original, cards_original, card_images_original
+--
+-- RPCs:
+--   create_order(p_payload jsonb)  — public form; EXECUTE granted to anon
+--   update_order(...)              — admin only; EXECUTE granted to service_role
+--
+-- Webhook: orders INSERT → notify edge function (new path).
+--
+-- Storage paths: card-photos/order-{orderUuid}/card-{cardUuid}/customer-{n}-...
 
-alter table public.quote_requests enable row level security;
-
--- Anonymous (publishable key) visitors may only INSERT; never read.
-create policy "anon can insert quote requests"
-  on public.quote_requests
-  for insert
-  to anon
-  with check (true);
+-- ---------------------------------------------------------------------------
+-- Storage policies (run in SQL Editor if not already configured)
+-- ---------------------------------------------------------------------------
+--
+-- Bucket: card-photos (create in Dashboard if missing; public or private is fine
+-- because notify uses signed URLs via the service role).
+--
+-- Allow anon to upload under order-* paths (new form) and legacy uuid folders:
+--
+-- insert into storage.buckets (id, name, public)
+-- values ('card-photos', 'card-photos', false)
+-- on conflict (id) do nothing;
+--
+-- create policy "anon can upload card photos"
+--   on storage.objects for insert to anon
+--   with check (bucket_id = 'card-photos');
+--
+-- (Tighten to path prefixes if desired, e.g. name like 'order-%' or legacy uuid.)
