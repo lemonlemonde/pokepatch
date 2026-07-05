@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000/pokepatch/](http://localhost:3000/pokepatch/) — the app uses `basePath: /pokepatch` for GitHub Pages.
+Open [http://localhost:3000](http://localhost:3000).
 
 Copy `.env.local.example` to `.env.local` and set:
 
@@ -40,13 +40,25 @@ In the repo **Settings → Pages**, set source to the `gh-pages` branch (root).
 
 ---
 
-## Quote form architecture
+## Architecture overview
 
-The public contact form (`/contact/`) creates a structured **order** with contacts, cards, and photos. Notifications go to Discord and a Google Sheets **Orders** tab.
+The site is a **static frontend** on GitHub Pages. All backend logic runs in **Supabase** (Postgres, Storage, Edge Functions).
 
-Legacy submissions still live in `quote_requests` and keep their own notify path. New submissions never write to that table.
+| Surface | Route | Backend |
+|---------|-------|---------|
+| Public quote form | `/contact/` | `create_order` RPC + Storage + `notify` |
+| Admin orders | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
+| Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
 
-### High-level flow
+New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history and still have their own notify path.
+
+---
+
+## Public quote form
+
+The contact form creates a structured **order** with contacts, cards, and photos. On submit, Discord and the Google Sheets **Orders** tab are notified.
+
+### Flow
 
 ```
 Browser (QuoteForm)
@@ -58,9 +70,18 @@ Browser (QuoteForm)
   → Edge Function: notify
       → Discord (summary + ORDERS_SHEET_VIEW_URL)
       → Google Sheets Orders tab (via Apps Script)
+  → redirect to /thank-you
 ```
 
-Admin edits later use `update_order` on **working** tables only. Originals are never updated, and admin edits do **not** notify Discord/Sheets.
+There is no intermediate save. The public form only calls `create_order` (never `update_order`).
+
+### Form behavior
+
+- Customer name, delivery method (`local_dropoff` / `shipping`)
+- One or more contact methods (phone / Discord / Instagram)
+- Up to **10** cards (name, set, description, up to **4** photos each)
+- Bulk lots: one card entry with a lot photo and a combined description
+- Client generates order + card UUIDs, uploads photos, then calls `create_order` once
 
 ### Frontend
 
@@ -68,32 +89,24 @@ Admin edits later use `update_order` on **working** tables only. Originals are n
 |-------|------|
 | Contact page | `pokepatch-website/src/app/contact/page.js` |
 | Quote form | `pokepatch-website/src/components/QuoteForm.js` |
+| Card photo previews | `pokepatch-website/src/components/CardPhotoPreviews.js` |
 | Supabase client | `pokepatch-website/src/lib/supabaseClient.js` |
 
-Form fields:
+---
 
-- Customer name, delivery method (`local_dropoff` / `shipping`)
-- One or more contact methods (phone / Discord / Instagram)
-- Up to **10** cards (name, set, description, up to **4** photos each)
-- Bulk lots: one card with a lot photo and a combined description
+## Database
 
-Submit flow (single user action):
+Postgres holds two parallel data paths: **legacy quotes** and **orders**.
 
-1. Generate order + card UUIDs client-side
-2. Upload images to `card-photos/order-{orderId}/card-{cardId}/customer-{n}-...`
-3. Call `create_order` with the full payload
-4. Redirect to `/thank-you`
+### Legacy (read-only for new features)
 
-There is no intermediate save and no `pending` / `submitted` status. The public form only calls `create_order` (never `update_order`).
+| Table | Role |
+|-------|------|
+| `quote_requests` | Flat submissions from the old form; historical data + legacy notify webhook |
 
-### Database
+### Orders (current)
 
-Schema lives in:
-
-- [`pokepatch-website/supabase/migrations/20260704000000_orders_schema.sql`](pokepatch-website/supabase/migrations/20260704000000_orders_schema.sql) (apply in SQL Editor)
-- [`pokepatch-website/supabase/schema.sql`](pokepatch-website/supabase/schema.sql) (reference docs)
-
-Migration is **additive only**: it does not drop or alter `quote_requests` or historical data.
+Each submission creates **working** rows (admin can edit) and matching **original** backup rows (written once, never updated).
 
 | Working (admin edits) | Original (immutable backup) |
 |-----------------------|----------------------------|
@@ -102,83 +115,157 @@ Migration is **additive only**: it does not drop or alter `quote_requests` or hi
 | `cards` | `cards_original` |
 | `card_images` | `card_images_original` |
 
-- `orders.id` / `cards.id`: client-generated UUIDs (needed for storage paths before insert)
-- `orders.display_id`: bigint identity used in Discord/Sheets (`#42`)
-- `orders.general_notes`: admin-only column (not on the public form)
-- Same primary keys on original rows as working rows for easy correlation
-- Storage files are not duplicated; both working and original image rows share submission-time paths
+**`orders`**
 
-**RPCs**
+| Column | Notes |
+|--------|-------|
+| `id` | Client-generated UUID |
+| `display_id` | Bigint identity — shown in Discord/Sheets as `#42` |
+| `customer_name`, `delivery_method` | From public form |
+| `general_notes` | Admin-only (not on public form) |
+| `status` | Admin kanban: `new`, `in_progress`, `completed`, `delivered` |
 
-| Function | Who | Role |
-|----------|-----|------|
+**`cards` / `card_images`**
+
+- Card IDs are client-generated UUIDs (storage paths exist before insert)
+- `card_images.image_type`: `customer` (form), plus admin types `progress_front`, `progress_back`, `final_front`, `final_back`
+- Storage files are not duplicated; working and original image rows share the same paths
+
+**`admin_sessions`**
+
+- Short-lived tokens for `/admin/` login (service role only)
+
+### RPCs
+
+| Function | Caller | Role |
+|----------|--------|------|
 | `create_order(p_payload jsonb)` | `anon` | Public form; writes working + original in one transaction |
-| `update_order(...)` | `service_role` only | Admin patches to working tables; no notify |
+| `update_order(...)` | `service_role` only | Admin edits to working tables; no notify |
 
-RLS: no direct anon INSERT/SELECT/UPDATE on order tables. Writes go through the RPCs (`SECURITY DEFINER`).
+RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
 
-### Storage
+Schema reference: [`pokepatch-website/supabase/schema.sql`](pokepatch-website/supabase/schema.sql)
 
-- Bucket: `card-photos`
-- New paths: `order-{orderUuid}/card-{cardUuid}/customer-{n}-{filename}`
-- Legacy paths: `{uuid}/...` (old `quote_requests` photos; left in place)
-- Optional policy script: [`pokepatch-website/supabase/storage_policies.sql`](pokepatch-website/supabase/storage_policies.sql) (additive; does not remove existing policies)
+---
 
-### Notifications (`notify` edge function)
+## Storage
 
-Code: [`pokepatch-website/supabase/functions/notify/`](pokepatch-website/supabase/functions/notify/)
+- **Bucket:** `card-photos`
+- **New order paths:** `order-{orderUuid}/card-{cardUuid}/customer-{n}-{filename}`
+- **Admin photo paths:** `order-{orderUuid}/card-{cardUuid}/{image_type}-{n}-{filename}`
+- **Legacy paths:** `{uuid}/...` (old `quote_requests` photos; left in place)
 
-Setup details: [`pokepatch-website/supabase/functions/notify/README.md`](pokepatch-website/supabase/functions/notify/README.md)
+---
 
-Dual-mode handler:
+## Notifications
 
-| Trigger | Path | Discord | Sheets |
-|---------|------|---------|--------|
-| `orders` **INSERT** | New orders | `New Order #N` + `ORDERS_SHEET_VIEW_URL` | **Orders** tab via `ORDERS_SHEETS_*` |
-| `quote_requests` **INSERT** | Legacy | `New Quote Request #N` + `SHEET_VIEW_URL` | **Requests** tab via `SHEETS_*` |
+Edge function: [`pokepatch-website/supabase/functions/notify/`](pokepatch-website/supabase/functions/notify/)
+
+Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pokepatch-website/supabase/functions/notify/README.md)
+
+| Trigger | Discord | Sheets |
+|---------|---------|--------|
+| `orders` INSERT | `New Order #N` + link to Orders tab | **Orders** tab via `ORDERS_SHEETS_*` |
+| `quote_requests` INSERT | `New Quote Request #N` + link to Requests tab | **Requests** tab via `SHEETS_*` |
 
 Contacts formatting: semicolons in Discord, newlines in Sheets.
 
+**Important:** only **INSERT** webhooks are configured. Admin `update_order` must stay silent (no `orders` UPDATE webhook).
+
 ### Google Sheets / Apps Script
 
-| Artifact | Purpose |
-|----------|---------|
-| [`scripts/google-sheets-webhook.gs`](pokepatch-website/scripts/google-sheets-webhook.gs) | Legacy **Requests** tab (bound script; leave alone) |
-| [`scripts/google-sheets-webhook-orders.gs`](pokepatch-website/scripts/google-sheets-webhook-orders.gs) | **Orders** tab (standalone project + `SPREADSHEET_ID`) |
+| Script | Tab |
+|--------|-----|
+| [`scripts/google-sheets-webhook.gs`](pokepatch-website/scripts/google-sheets-webhook.gs) | Legacy **Requests** (bound to sheet) |
+| [`scripts/google-sheets-webhook-orders.gs`](pokepatch-website/scripts/google-sheets-webhook-orders.gs) | **Orders** (standalone Apps Script + `SPREADSHEET_ID`) |
 
-Google allows only one Apps Script project bound per spreadsheet, so Orders is a **standalone** project at [script.google.com](https://script.google.com) that opens the workbook with `SpreadsheetApp.openById(SPREADSHEET_ID)`.
+Google allows only one bound script per spreadsheet, so Orders uses a standalone project at [script.google.com](https://script.google.com).
 
 ### Supabase secrets
 
 | Secret | Purpose |
 |--------|---------|
 | `DISCORD_WEBHOOK_URL` | Shared Discord webhook |
-| `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` / `SHEET_VIEW_URL` | Legacy Requests path — **do not change** |
-| `ORDERS_SHEETS_WEBHOOK_URL` | Orders Apps Script `/exec` URL |
-| `ORDERS_SHEETS_SECRET` | Must match Orders script `SHARED_SECRET` |
-| `ORDERS_SHEET_VIEW_URL` | Discord link to the Orders tab |
+| `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` / `SHEET_VIEW_URL` | Legacy Requests path |
+| `ORDERS_SHEETS_WEBHOOK_URL` / `ORDERS_SHEETS_SECRET` / `ORDERS_SHEET_VIEW_URL` | Orders path |
+| `ADMIN_PASSWORD` | Admin login (server-side only) |
 
-### Database webhooks
+---
 
-| Table | Event | Target |
-|-------|-------|--------|
-| `quote_requests` | Insert | `notify` (keep) |
-| `orders` | Insert | `notify` (required for new form) |
+## Admin orders view
 
-Do **not** webhook `orders` UPDATE — admin `update_order` must stay silent.
+Password-gated UI at **`/admin/`** (URL-only — not in the public navbar).
 
-### Key file map
+### Flow
+
+```
+Browser (/admin)
+  → admin-auth (password → session token in sessionStorage)
+  → admin-api (X-Admin-Token + service role)
+      → read/write working tables only
+      → Storage uploads for admin photo types
+  → no notify / Discord / Sheets
+```
+
+### UI behavior
+
+- **Kanban** columns: New → In progress → Completed → Delivered
+- Drag between columns updates `status` immediately
+- Click a card to open the editor; field changes require **Save**
+- Staged admin photos upload on Save
+- Kanban list loads summaries only; full order detail (with signed photo URLs) loads when a card is opened
+
+### Status values
+
+| DB value | Column |
+|----------|--------|
+| `new` | New |
+| `in_progress` | In progress |
+| `completed` | Completed |
+| `delivered` | Delivered |
+
+### Edge functions
+
+| Function | Role |
+|----------|------|
+| [`admin-auth`](pokepatch-website/supabase/functions/admin-auth/) | Login, logout, validate session |
+| [`admin-api`](pokepatch-website/supabase/functions/admin-api/) | List, get, save, set_status, upload |
+
+Details: [`pokepatch-website/supabase/functions/admin/README.md`](pokepatch-website/supabase/functions/admin/README.md)
+
+### Frontend
+
+| Piece | Path |
+|-------|------|
+| Admin page | `pokepatch-website/src/app/admin/` |
+| Admin UI | `pokepatch-website/src/components/admin/AdminApp.js` |
+| API client | `pokepatch-website/src/lib/adminApi.js` |
+
+Admin edits use `update_order` on **working** tables only. Original backups and `quote_requests` are never modified.
+
+---
+
+## File map
 
 ```
 pokepatch-website/
-  src/components/QuoteForm.js          # Public quote form
-  src/lib/supabaseClient.js
+  src/
+    app/contact/                 # Public quote page
+    app/admin/                   # Admin page (noindex)
+    components/
+      QuoteForm.js               # Public quote form
+      CardPhotoPreviews.js       # Shared card photo thumbnails
+      admin/AdminApp.js          # Kanban + order editor
+    lib/
+      supabaseClient.js          # Public Supabase client
+      adminApi.js                # Admin edge function client
   supabase/
-    migrations/…_orders_schema.sql     # Tables + RPCs
-    schema.sql                         # Reference docs
-    storage_policies.sql               # Optional storage policies
-    functions/notify/                  # Discord + Sheets
+    schema.sql                   # Schema reference
+    functions/
+      notify/                    # Discord + Sheets on INSERT
+      admin-auth/
+      admin-api/
   scripts/
-    google-sheets-webhook.gs           # Legacy Requests
-    google-sheets-webhook-orders.gs    # Orders tab
+    google-sheets-webhook.gs     # Legacy Requests tab
+    google-sheets-webhook-orders.gs  # Orders tab
 ```

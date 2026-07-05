@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const MAX_CARDS = 10;
@@ -165,62 +166,6 @@ function scrollToFirstError(errors, contacts, cards) {
   if (focusTarget && typeof focusTarget.focus === "function") {
     focusTarget.focus({ preventScroll: true });
   }
-}
-
-function CardPhotoPreviews({ files, onRemove }) {
-  const [previews, setPreviews] = useState([]);
-
-  useEffect(() => {
-    const urls = files.map((item) => URL.createObjectURL(item.file));
-    setPreviews(urls);
-    return () => {
-      for (const url of urls) URL.revokeObjectURL(url);
-    };
-  }, [files]);
-
-  if (files.length === 0) return null;
-
-  return (
-    <div className="mt-3 space-y-2">
-      <p className="font-secondary text-sm text-ink/60">
-        {files.length} file{files.length === 1 ? "" : "s"} selected
-        {files.length >= MAX_PHOTOS_PER_CARD
-          ? ` (max ${MAX_PHOTOS_PER_CARD})`
-          : ""}
-      </p>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {files.map((item, index) => (
-          <li
-            key={item.id}
-            className="group relative overflow-hidden rounded-xl border-2 border-ink/10 bg-cream/80"
-          >
-            {previews[index] ? (
-              <img
-                src={previews[index]}
-                alt={item.file.name}
-                className="h-28 w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-28 w-full items-center justify-center text-xs text-ink/50">
-                Loading...
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => onRemove(item.id)}
-              aria-label={`Remove ${item.file.name}`}
-              className="absolute right-1.5 top-1.5 rounded-full bg-ink/70 px-2 py-0.5 text-xs font-bold text-cream transition-colors duration-150 sm:hover:bg-ink"
-            >
-              ✕
-            </button>
-            <span className="block truncate px-2 py-1 font-secondary text-xs text-ink">
-              {item.file.name}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 export default function QuoteForm() {
@@ -802,9 +747,16 @@ export default function QuoteForm() {
                 >
                   Browse files
                 </label>
-                <CardPhotoPreviews
+                <StagedCardPhotoPreviews
                   files={card.files}
                   onRemove={(fileId) => removeCardFile(card.id, fileId)}
+                  caption={`${card.files.length} file${
+                    card.files.length === 1 ? "" : "s"
+                  } selected${
+                    card.files.length >= MAX_PHOTOS_PER_CARD
+                      ? ` (max ${MAX_PHOTOS_PER_CARD})`
+                      : ""
+                  }`}
                 />
               </div>
             </div>
