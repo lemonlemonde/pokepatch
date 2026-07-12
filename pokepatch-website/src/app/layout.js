@@ -2,6 +2,7 @@ import { Nunito } from "next/font/google";
 import localFont from "next/font/local";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import PostHogProvider from "@/components/PostHogProvider";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -37,9 +38,11 @@ export default function RootLayout({ children }) {
         className={`${nunito.variable} ${pixelify.variable} ${gugi.variable} flex min-h-screen flex-col font-sans antialiased`}
       >
         <div className="gradient-bg" aria-hidden="true" />
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <PostHogProvider>
+          <Navbar />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </PostHogProvider>
       </body>
     </html>
   );

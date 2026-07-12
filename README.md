@@ -16,6 +16,7 @@ Copy `.env.local.example` to `.env.local` and set:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_POSTHOG_KEY` (optional — analytics disabled if unset)
 
 ## Deploy (GitHub Pages)
 
@@ -30,13 +31,55 @@ In the repo **Settings → Pages**, set source to the `gh-pages` branch (root).
 
 **Note:** GitHub Pages runs Jekyll by default, which ignores folders starting with `_` (like `_next`). This project includes a `.nojekyll` file so CSS/JS assets are served correctly.
 
+**Analytics:** `NEXT_PUBLIC_*` vars (including PostHog) are inlined at build time. Set them in `.env.local` before running `npm run deploy`.
+
 ## Tech Stack
 
 - React / Next.js (static export)
 - Tailwind CSS
 - Supabase (Postgres, Storage, Edge Functions, Database Webhooks)
 - Discord webhooks + Google Sheets (via Apps Script)
+- PostHog (page analytics + quote form funnel)
 - gh-pages
+
+---
+
+## Analytics (PostHog)
+
+[PostHog](https://posthog.com/) tracks page visits, session duration, and quote form conversion. Session replay is disabled.
+
+### Setup
+
+1. Create a PostHog project (US region: `https://us.i.posthog.com`).
+2. Add to `.env.local`:
+   - `NEXT_PUBLIC_POSTHOG_KEY` — project API key
+   - `NEXT_PUBLIC_POSTHOG_HOST` — defaults to `https://us.i.posthog.com` if unset
+3. Rebuild and deploy (`npm run deploy`).
+
+Tracking is skipped on `/admin/` and `/studio/`. If `NEXT_PUBLIC_POSTHOG_KEY` is unset, analytics are a no-op (safe for local dev).
+
+### Form events
+
+| Event | When |
+|-------|------|
+| `quote_form_started` | First interaction with any form field |
+| `quote_form_step_completed` | `step: customer_info` or `step: card_details` |
+| `quote_form_submit_attempted` | Validation passed, upload starting |
+| `quote_form_submitted` | `create_order` RPC succeeded |
+| `quote_form_error` | Failure (`validation_failed`, `storage_upload_failed`, `supabase_insert_failed`, etc.) |
+
+No PII is sent in event properties.
+
+### Funnel (PostHog dashboard)
+
+Create a funnel under **Product analytics → Funnels**:
+
+1. Pageview where `$current_url` contains `/contact/`
+2. `quote_form_started`
+3. `quote_form_submit_attempted`
+4. `quote_form_submitted`
+
+Optional: **Trends** chart for `quote_form_error` by `error_type`; **Paths** from `/contact/`.
 
 ---
 
@@ -254,10 +297,12 @@ pokepatch-website/
     app/admin/                   # Admin page (noindex)
     components/
       QuoteForm.js               # Public quote form
+      PostHogProvider.jsx        # PostHog init + pageviews
       CardPhotoPreviews.js       # Shared card photo thumbnails
       admin/AdminApp.js          # Kanban + order editor
     lib/
       supabaseClient.js          # Public Supabase client
+      posthog.js                 # PostHog init + capture helper
       adminApi.js                # Admin edge function client
   supabase/
     schema.sql                   # Schema reference

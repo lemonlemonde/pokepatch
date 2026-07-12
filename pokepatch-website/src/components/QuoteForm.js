@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { capture } from "@/lib/posthog";
 
 const MAX_CARDS = 10;
 const MAX_PHOTOS_PER_CARD = 4;
@@ -171,6 +172,9 @@ function scrollToFirstError(errors, contacts, cards) {
 export default function QuoteForm() {
   const router = useRouter();
   const formRef = useRef(null);
+  const formStartedRef = useRef(false);
+  const customerInfoCompletedRef = useRef(false);
+  const cardDetailsCompletedRef = useRef(false);
   const [customerName, setCustomerName] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [contacts, setContacts] = useState([emptyContact()]);
@@ -180,6 +184,29 @@ export default function QuoteForm() {
   const [errorMessage, setErrorMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState(null);
   const [cardFileErrors, setCardFileErrors] = useState({});
+
+  function onFormInteraction() {
+    if (formStartedRef.current) return;
+    formStartedRef.current = true;
+    capture("quote_form_started");
+  }
+
+  useEffect(() => {
+    if (customerInfoCompletedRef.current) return;
+    const hasContact = contacts.some((c) => c.value.trim() !== "");
+    if (customerName.trim() && deliveryMethod && hasContact) {
+      customerInfoCompletedRef.current = true;
+      capture("quote_form_step_completed", { step: "customer_info" });
+    }
+  }, [customerName, deliveryMethod, contacts]);
+
+  useEffect(() => {
+    if (cardDetailsCompletedRef.current) return;
+    if (cards.some(isCardComplete)) {
+      cardDetailsCompletedRef.current = true;
+      capture("quote_form_step_completed", { step: "card_details" });
+    }
+  }, [cards]);
 
   function clearFieldError(key) {
     setFieldErrors((prev) => {
@@ -203,6 +230,7 @@ export default function QuoteForm() {
   }
 
   function updateContact(id, patch) {
+    onFormInteraction();
     if (patch.value !== undefined) clearFieldError("contacts");
     setContacts((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
@@ -223,6 +251,7 @@ export default function QuoteForm() {
   }
 
   function updateCard(id, patch) {
+    onFormInteraction();
     if (patch.cardName !== undefined) clearCardFieldError(id, "cardName");
     if (patch.description !== undefined) {
       clearCardFieldError(id, "description");
@@ -258,6 +287,7 @@ export default function QuoteForm() {
   }
 
   function handleCardFilesChange(cardId, e) {
+    onFormInteraction();
     const input = e.target;
     const selected = copyFileList(input.files);
     if (selected.length === 0) return;
@@ -337,6 +367,7 @@ export default function QuoteForm() {
     if (honeypot) return;
 
     if (!isSupabaseConfigured) {
+      capture("quote_form_error", { error_type: "config_missing" });
       setStatus("error");
       setErrorMessage(
         "Form is not configured. Missing Supabase environment variables."
@@ -352,6 +383,7 @@ export default function QuoteForm() {
     });
 
     if (hasFieldErrors(errors)) {
+      capture("quote_form_error", { error_type: "validation_failed" });
       setFieldErrors(errors);
       setStatus("idle");
       setErrorMessage("");
@@ -365,8 +397,15 @@ export default function QuoteForm() {
     setStatus("uploading");
     setErrorMessage("");
 
+    capture("quote_form_submit_attempted", {
+      card_count: completeCards.length,
+      delivery_method: deliveryMethod,
+      contact_method_count: filledContacts.length,
+    });
+
     const orderId = crypto.randomUUID();
     const cardsPayload = [];
+    let phase = "upload";
 
     try {
       for (const card of completeCards) {
@@ -394,6 +433,7 @@ export default function QuoteForm() {
       }
 
       setStatus("submitting");
+      phase = "insert";
 
       const payload = {
         id: orderId,
@@ -412,6 +452,12 @@ export default function QuoteForm() {
 
       if (rpcError) throw rpcError;
 
+      capture("quote_form_submitted", {
+        card_count: completeCards.length,
+        delivery_method: deliveryMethod,
+        contact_method_count: filledContacts.length,
+      });
+
       setStatus("success");
       setCustomerName("");
       setDeliveryMethod("");
@@ -422,6 +468,12 @@ export default function QuoteForm() {
       formRef.current?.reset();
       router.push("/thank-you");
     } catch (err) {
+      capture("quote_form_error", {
+        error_type:
+          phase === "upload"
+            ? "storage_upload_failed"
+            : "supabase_insert_failed",
+      });
       setStatus("error");
       setErrorMessage(
         err?.message ?? "Something went wrong. Please try again in a moment."
@@ -487,6 +539,7 @@ export default function QuoteForm() {
             type="text"
             value={customerName}
             onChange={(e) => {
+              onFormInteraction();
               clearFieldError("customerName");
               setCustomerName(e.target.value);
             }}
@@ -511,6 +564,7 @@ export default function QuoteForm() {
               value="local_dropoff"
               checked={deliveryMethod === "local_dropoff"}
               onChange={(e) => {
+                onFormInteraction();
                 clearFieldError("deliveryMethod");
                 setDeliveryMethod(e.target.value);
               }}
@@ -527,6 +581,7 @@ export default function QuoteForm() {
               value="shipping"
               checked={deliveryMethod === "shipping"}
               onChange={(e) => {
+                onFormInteraction();
                 clearFieldError("deliveryMethod");
                 setDeliveryMethod(e.target.value);
               }}
