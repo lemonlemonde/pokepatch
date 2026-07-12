@@ -15,11 +15,9 @@ export const LABEL_FONT_FAMILY =
 export const LABEL_COLOR = "rgba(255, 255, 255, 0.9)";
 export const LABEL_TRACKING = 14;
 export const LABEL_GAP = 28;
-export const CROP_TIGHTNESS = 0.28;
 export const BRAND_HANDLE = "@pokepatch.cards";
 export const LABEL_BLOCK_HEIGHT = LABEL_GAP + LABEL_FONT_SIZE;
 export const CARD_RADIUS = 8;
-export const VERTICAL_CROP = 20;
 
 let labelFontReady;
 let logoReady;
@@ -76,38 +74,26 @@ export function fillBackground(ctx) {
   ctx.fillRect(0, 0, INSTAGRAM_WIDTH, INSTAGRAM_HEIGHT);
 }
 
-export function getSlightCropMetrics(source, width, maxHeight) {
+/** Fit the full image inside the slot (contain) — no cropping. */
+export function getContainMetrics(source, width, maxHeight) {
   const { width: sourceWidth, height: sourceHeight } =
     getSourceDimensions(source);
-  const containScale = Math.min(width / sourceWidth, maxHeight / sourceHeight);
-  const coverScale = Math.max(width / sourceWidth, maxHeight / sourceHeight);
-  const scale = containScale + (coverScale - containScale) * CROP_TIGHTNESS;
-
+  const scale = Math.min(width / sourceWidth, maxHeight / sourceHeight);
   const newW = Math.round(sourceWidth * scale);
   const newH = Math.round(sourceHeight * scale);
-  const sw = Math.min(width, newW);
-  const sh = Math.min(maxHeight, newH);
-  const sx = Math.max(0, Math.floor((newW - width) / 2));
-  const sy = Math.max(0, Math.floor((newH - maxHeight) / 2));
 
-  return { newW, newH, sw, sh, sx, sy };
+  return { newW, newH, sw: newW, sh: newH, sx: 0, sy: 0 };
 }
 
+/** Shared frame: same width for both; height matches the taller scaled card. */
 export function getSharedTargetSize(leftMetrics, rightMetrics, maxSlotWidth) {
-  const targetSh = Math.max(leftMetrics.sh, rightMetrics.sh);
-  const leftW = Math.round(leftMetrics.sw * (targetSh / leftMetrics.sh));
-  const rightW = Math.round(rightMetrics.sw * (targetSh / rightMetrics.sh));
-  let targetSw = Math.max(leftW, rightW);
-
-  if (targetSw > maxSlotWidth) {
-    const fitScale = maxSlotWidth / targetSw;
-    return {
-      targetSw: maxSlotWidth,
-      targetSh: Math.round(targetSh * fitScale),
-    };
-  }
-
-  return { targetSw, targetSh };
+  const targetSw = Math.min(
+    maxSlotWidth,
+    Math.max(leftMetrics.sw, rightMetrics.sw),
+  );
+  const leftH = Math.round(leftMetrics.sh * (targetSw / leftMetrics.sw));
+  const rightH = Math.round(rightMetrics.sh * (targetSw / rightMetrics.sw));
+  return { targetSw, targetSh: Math.max(leftH, rightH) };
 }
 
 export function prepareResized(source, metrics) {
@@ -120,54 +106,55 @@ export function prepareResized(source, metrics) {
   return resized;
 }
 
-function getVerticalCrop(targetSh) {
-  return Math.min(VERTICAL_CROP, Math.floor(targetSh / 4));
-}
-
 function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
-  const crop = getVerticalCrop(targetSh);
-  const frameY = drawY + crop;
-  const frameH = targetSh - 2 * crop;
-  const cropRatio = crop / targetSh;
-  const srcY = metrics.sy + metrics.sh * cropRatio;
-  const srcH = metrics.sh * (1 - 2 * cropRatio);
+  // Same width as the taller card's frame; preserve aspect (no crop).
+  let drawW = targetSw;
+  let drawH = Math.round(metrics.sh * (targetSw / metrics.sw));
+  if (drawH > targetSh) {
+    const fit = targetSh / drawH;
+    drawW = Math.round(drawW * fit);
+    drawH = targetSh;
+  }
+  // Equal white extension above and below when this card is shorter.
+  const imageX = drawX + Math.floor((targetSw - drawW) / 2);
+  const imageY = drawY + Math.floor((targetSh - drawH) / 2);
 
   ctx.save();
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
   ctx.shadowBlur = 28;
   ctx.shadowOffsetY = 10;
-  ctx.fillStyle = "#0d0d0d";
+  ctx.fillStyle = "#ffffff";
   ctx.beginPath();
-  ctx.roundRect(drawX, frameY, targetSw, frameH, CARD_RADIUS);
+  ctx.roundRect(drawX, drawY, targetSw, targetSh, CARD_RADIUS);
   ctx.fill();
   ctx.restore();
 
   ctx.save();
   enableHighQuality(ctx);
   ctx.beginPath();
-  ctx.roundRect(drawX, frameY, targetSw, frameH, CARD_RADIUS);
+  ctx.roundRect(drawX, drawY, targetSw, targetSh, CARD_RADIUS);
   ctx.clip();
   ctx.drawImage(
     resized,
     metrics.sx,
-    srcY,
+    metrics.sy,
     metrics.sw,
-    srcH,
-    drawX,
-    frameY,
-    targetSw,
-    frameH,
+    metrics.sh,
+    imageX,
+    imageY,
+    drawW,
+    drawH,
   );
   ctx.restore();
 
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(
     drawX + 0.5,
-    frameY + 0.5,
+    drawY + 0.5,
     targetSw - 1,
-    frameH - 1,
+    targetSh - 1,
     CARD_RADIUS,
   );
   ctx.stroke();
@@ -201,15 +188,13 @@ function drawColumn(
   imageTop,
 ) {
   const drawX = columnX + Math.floor((slotWidth - targetSw) / 2);
-  const crop = getVerticalCrop(targetSh);
   drawCard(ctx, resized, metrics, drawX, imageTop, targetSw, targetSh);
 
   ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.fillStyle = LABEL_COLOR;
 
-  const labelY =
-    imageTop + targetSh - crop + LABEL_GAP + LABEL_FONT_SIZE / 2;
+  const labelY = imageTop + targetSh + LABEL_GAP + LABEL_FONT_SIZE / 2;
   drawTrackedText(
     ctx,
     label.toUpperCase(),
@@ -280,12 +265,12 @@ export function drawComparisonFrame(
 ) {
   const maxImageHeight =
     INSTAGRAM_HEIGHT - 2 * EDGE_PADDING - 2 * LABEL_BLOCK_HEIGHT;
-  const leftMetrics = getSlightCropMetrics(
+  const leftMetrics = getContainMetrics(
     leftSource,
     SLOT_WIDTH,
     maxImageHeight,
   );
-  const rightMetrics = getSlightCropMetrics(
+  const rightMetrics = getContainMetrics(
     rightSource,
     SLOT_WIDTH,
     maxImageHeight,
