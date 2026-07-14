@@ -9,67 +9,12 @@ import {
   stitchBothVideos,
 } from "@/lib/instagramVideoStitch";
 
-const STORAGE_KEY = "pokepatch-studio-unlocked";
-const PASSPHRASE =
-  process.env.NEXT_PUBLIC_STUDIO_PASSPHRASE?.trim() ||
-  "mrpokepatchpokemeapatch";
-
 const FORMATTER_SUBTITLE =
   "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
-
-function StudioGate({ onUnlock }) {
-  const [value, setValue] = useState("");
-  const [error, setError] = useState("");
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (value === PASSPHRASE) {
-      sessionStorage.setItem(STORAGE_KEY, "1");
-      onUnlock();
-      return;
-    }
-    setError("Wrong passphrase.");
-  }
-
-  return (
-    <div className="mx-auto max-w-sm animate-fade-up">
-      <SectionHeading subtitle="Studio tools are for PokePatch use only.">
-        Enter passphrase
-      </SectionHeading>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="password"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            setError("");
-          }}
-          placeholder="Passphrase"
-          autoComplete="off"
-          className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 text-ink placeholder:text-ink/40 focus:border-berry/50 focus:outline-none focus:ring-2 focus:ring-berry/30"
-        />
-        {error && (
-          <p className="text-center text-sm text-berry" role="alert">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110"
-        >
-          Unlock
-        </button>
-      </form>
-    </div>
-  );
-}
 
 function StudioSelector({ onSelect }) {
   return (
     <div className="mx-auto max-w-3xl animate-fade-up">
-      <SectionHeading subtitle="Choose a formatter for your before & after card content.">
-        Studio
-      </SectionHeading>
       <div className="grid gap-4 sm:grid-cols-2">
         <button
           type="button"
@@ -296,16 +241,7 @@ function VideoFormatter({ onBack }) {
 }
 
 export default function StudioTool() {
-  const [unlocked, setUnlocked] = useState(false);
   const [mode, setMode] = useState(null);
-
-  useEffect(() => {
-    setUnlocked(sessionStorage.getItem(STORAGE_KEY) === "1");
-  }, []);
-
-  if (!unlocked) {
-    return <StudioGate onUnlock={() => setUnlocked(true)} />;
-  }
 
   if (mode === "photo") {
     return <PhotoFormatter onBack={() => setMode(null)} />;

@@ -18,6 +18,31 @@ import {
   isAdminApiConfigured,
 } from "@/lib/adminApi";
 import GalleryManager from "@/components/admin/GalleryManager";
+import StudioTool from "@/components/StudioTool";
+
+const ADMIN_TABS = [
+  {
+    id: "orders",
+    label: "Orders",
+    title: "Orders admin",
+    subtitle:
+      "Drag cards between columns to update status. Click a card to edit.",
+  },
+  {
+    id: "gallery",
+    label: "Gallery",
+    title: "Gallery admin",
+    subtitle:
+      "Upload and manage restorations shown on the public Gallery page.",
+  },
+  {
+    id: "studio",
+    label: "Studio",
+    title: "Studio",
+    subtitle:
+      "Photo and video before & after formatters for Instagram posts.",
+  },
+];
 
 const STATUSES = [
   { id: "new", label: "New" },
@@ -690,6 +715,8 @@ export default function AdminApp() {
     return payload !== savedSnapshot || staged;
   }, [draft, savedSnapshot]);
 
+  const activeTab = ADMIN_TABS.find((entry) => entry.id === tab) ?? ADMIN_TABS[0];
+
   const refreshOrders = useCallback(async () => {
     setLoadingOrders(true);
     setListError("");
@@ -867,14 +894,8 @@ export default function AdminApp() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <SectionHeading
-          subtitle={
-            tab === "orders"
-              ? "Drag cards between columns to update status. Click a card to edit."
-              : "Upload and manage restorations shown on the public Gallery page."
-          }
-        >
-          {tab === "orders" ? "Orders admin" : "Gallery admin"}
+        <SectionHeading subtitle={activeTab.subtitle}>
+          {activeTab.title}
         </SectionHeading>
         <div className="flex flex-wrap items-center gap-3">
           {tab === "orders" && loadingOrders && orders.length > 0 && (
@@ -891,10 +912,7 @@ export default function AdminApp() {
       </div>
 
       <div className="mb-6 flex gap-2">
-        {[
-          { id: "orders", label: "Orders" },
-          { id: "gallery", label: "Gallery" },
-        ].map((entry) => (
+        {ADMIN_TABS.map((entry) => (
           <button
             key={entry.id}
             type="button"
@@ -910,9 +928,9 @@ export default function AdminApp() {
         ))}
       </div>
 
-      {tab === "gallery" ? (
-        <GalleryManager />
-      ) : (
+      {tab === "gallery" && <GalleryManager />}
+      {tab === "studio" && <StudioTool />}
+      {tab === "orders" && (
         <>
           {listError && (
             <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">

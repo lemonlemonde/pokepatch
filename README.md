@@ -56,7 +56,7 @@ In the repo **Settings → Pages**, set source to the `gh-pages` branch (root).
    - `NEXT_PUBLIC_POSTHOG_HOST` — defaults to `https://us.i.posthog.com` if unset
 3. Rebuild and deploy (`npm run deploy`).
 
-Tracking is skipped on `/admin/` and `/studio/`. If `NEXT_PUBLIC_POSTHOG_KEY` is unset, analytics are a no-op (safe for local dev).
+Tracking is skipped on `/admin/`. If `NEXT_PUBLIC_POSTHOG_KEY` is unset, analytics are a no-op (safe for local dev).
 
 ### Form events
 
@@ -91,7 +91,7 @@ The site is a **static frontend** on GitHub Pages. All backend logic runs in **S
 |---------|-------|---------|
 | Public quote form | `/contact/` | `create_order` RPC + Storage + `notify` |
 | Public gallery | `/gallery/` | `gallery_items` SELECT (anon) + public `gallery` bucket |
-| Admin orders + gallery | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
+| Admin orders + gallery + studio | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
 | Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
 
 New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history and still have their own notify path.
@@ -273,14 +273,15 @@ Google allows only one bound script per spreadsheet, so Orders uses a standalone
 
 ---
 
-## Admin orders + gallery view
+## Admin orders, gallery & studio
 
 Password-gated UI at **`/admin/`** (URL-only — not in the public navbar).
 
 Tabs:
 
-- **Orders** — kanban + order editor (unchanged)
+- **Orders** — kanban + order editor
 - **Gallery** — create/edit/delete public gallery restorations + media uploads (newest first)
+- **Studio** — photo and video before & after formatters for Instagram posts
 
 ### Flow
 
@@ -328,6 +329,7 @@ Details: [`pokepatch-website/supabase/functions/admin/README.md`](pokepatch-webs
 | Admin page | `pokepatch-website/src/app/admin/` |
 | Admin UI | `pokepatch-website/src/components/admin/AdminApp.js` |
 | Gallery admin | `pokepatch-website/src/components/admin/GalleryManager.js` |
+| Studio tools | `pokepatch-website/src/components/StudioTool.js` |
 | API client | `pokepatch-website/src/lib/adminApi.js` |
 | Public gallery fetch | `pokepatch-website/src/lib/gallery.js` |
 
@@ -348,8 +350,9 @@ pokepatch-website/
       GalleryContent.js          # Gallery lightbox + cards
       PostHogProvider.jsx        # PostHog init + pageviews
       CardPhotoPreviews.js       # Shared card photo thumbnails
-      admin/AdminApp.js          # Kanban + order editor + tabs
+      admin/AdminApp.js          # Kanban + order editor + gallery + studio tabs
       admin/GalleryManager.js    # Gallery CMS
+      StudioTool.js              # Before/after photo & video formatters
     lib/
       supabaseClient.js          # Public Supabase client
       gallery.js                 # Public gallery fetch + fallbacks
