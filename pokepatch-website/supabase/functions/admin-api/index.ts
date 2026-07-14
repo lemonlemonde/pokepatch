@@ -326,9 +326,8 @@ async function handleOrderUpload(
 async function listGalleryItems(supabase: ReturnType<typeof getServiceClient>) {
   const { data, error } = await supabase
     .from("gallery_items")
-    .select("id, created_at, updated_at, title, set_name, damage_tags, sort_order, published")
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
+    .select("id, created_at, updated_at, title, set_name, damage_tags, published")
+    .order("created_at", { ascending: false });
   if (error) throw error;
   const items = data ?? [];
   const pairsByItem = await fetchPairsForItems(
@@ -346,7 +345,7 @@ async function getGalleryItem(
 ) {
   const { data, error } = await supabase
     .from("gallery_items")
-    .select("id, created_at, updated_at, title, set_name, damage_tags, sort_order, published")
+    .select("id, created_at, updated_at, title, set_name, damage_tags, published")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -432,9 +431,6 @@ function normalizeGalleryPatch(body: Record<string, unknown>) {
   }
   if (typeof body.published === "boolean") {
     patch.published = body.published;
-  }
-  if (typeof body.sort_order === "number" && Number.isFinite(body.sort_order)) {
-    patch.sort_order = Math.trunc(body.sort_order);
   }
 
   return patch;
@@ -541,31 +537,17 @@ Deno.serve(async (req) => {
         return jsonResponse(req, { ok: false, error: "title required" }, 400);
       }
 
-      const { data: maxRow, error: maxError } = await supabase
-        .from("gallery_items")
-        .select("sort_order")
-        .order("sort_order", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (maxError) throw maxError;
-
-      const sortOrder =
-        typeof body.sort_order === "number" && Number.isFinite(body.sort_order)
-          ? Math.trunc(body.sort_order)
-          : (maxRow?.sort_order ?? -1) + 1;
-
       const insertRow = {
         title,
         set_name: typeof body.set_name === "string" ? body.set_name.trim() : "",
         damage_tags: sanitizeDamageTags(body.damage_tags),
         published: body.published !== false,
-        sort_order: sortOrder,
       };
 
       const { data, error } = await supabase
         .from("gallery_items")
         .insert(insertRow)
-        .select("id, created_at, updated_at, title, set_name, damage_tags, sort_order, published")
+        .select("id, created_at, updated_at, title, set_name, damage_tags, published")
         .single();
       if (error) throw error;
 
@@ -633,27 +615,6 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(req, { ok: true });
-    }
-
-    if (action === "gallery_reorder") {
-      const orderedIds = Array.isArray(body.ordered_ids) ? body.ordered_ids : null;
-      if (!orderedIds || orderedIds.length === 0) {
-        return jsonResponse(req, { ok: false, error: "ordered_ids required" }, 400);
-      }
-
-      const now = new Date().toISOString();
-      for (let index = 0; index < orderedIds.length; index += 1) {
-        const id = String(orderedIds[index] ?? "");
-        if (!id) continue;
-        const { error } = await supabase
-          .from("gallery_items")
-          .update({ sort_order: index, updated_at: now })
-          .eq("id", id);
-        if (error) throw error;
-      }
-
-      const items = await listGalleryItems(supabase);
-      return jsonResponse(req, { ok: true, items });
     }
 
     if (action === "gallery_pair_create") {

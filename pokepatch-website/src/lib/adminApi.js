@@ -205,14 +205,6 @@ export async function adminDeleteGalleryItem(id) {
   });
 }
 
-export async function adminReorderGallery(orderedIds) {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: { action: "gallery_reorder", ordered_ids: orderedIds },
-  });
-  return payload.items ?? [];
-}
-
 export async function adminCreateGalleryPair(itemId, mediaKind = "image") {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

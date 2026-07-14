@@ -89,86 +89,36 @@ export function mapGalleryRowToItem(row) {
   };
 }
 
-/** Hardcoded gallery used until Supabase has published rows. */
+/** Hardcoded gallery used until Supabase has published rows (newest first). */
 export const FALLBACK_GALLERY_ITEMS = [
   {
-    title: "Rocket's Mewtwo",
-    set_name: "Gym Challenge",
-    damage_tags: ["crease", "scratching"],
+    title: "Team Japan's Pikachu",
+    set_name: "XY Promos",
+    damage_tags: ["dent"],
     pairs: [
       {
-        id: "mewtwo-1",
+        id: "pikachu-1",
         type: "image",
-        before: "/gallery/mewtwo-before-front.webp",
-        after: "/gallery/mewtwo-after-front.webp",
+        before: "/gallery/pikachu-before-front.webp",
+        after: "/gallery/pikachu-after-front.webp",
       },
       {
-        id: "mewtwo-2",
+        id: "pikachu-2",
         type: "image",
-        before: "/gallery/mewtwo-before-back.webp",
-        after: "/gallery/mewtwo-after-back.webp",
+        before: "/gallery/pikachu-before-back.webp",
+        after: "/gallery/pikachu-after-back.webp",
       },
       {
-        id: "mewtwo-3",
+        id: "pikachu-3",
         type: "video",
-        before: "/gallery/mewtwo-before-front.mp4",
-        after: "/gallery/mewtwo-after-front.mp4",
+        before: "/gallery/pikachu-before-front.mp4",
+        after: "/gallery/pikachu-after-front.mp4",
       },
       {
-        id: "mewtwo-4",
+        id: "pikachu-4",
         type: "video",
-        before: "/gallery/mewtwo-before-back.mp4",
-        after: "/gallery/mewtwo-after-back.mp4",
-      },
-    ],
-  },
-  {
-    title: "Scizor ex",
-    set_name: "Unseen Forces",
-    damage_tags: ["edge_lift", "crease"],
-    pairs: [
-      {
-        id: "scizor-1",
-        type: "image",
-        before: "/gallery/scizor-before-front.webp",
-        after: "/gallery/scizor-after-front.webp",
-      },
-      {
-        id: "scizor-2",
-        type: "image",
-        before: "/gallery/scizor-before-back.webp",
-        after: "/gallery/scizor-after-back.webp",
-      },
-      {
-        id: "scizor-3",
-        type: "video",
-        before: "/gallery/scizor-before-front.mp4",
-        after: "/gallery/scizor-after-front.mp4",
-      },
-      {
-        id: "scizor-4",
-        type: "video",
-        before: "/gallery/scizor-before-back.mp4",
-        after: "/gallery/scizor-after-back.mp4",
-      },
-    ],
-  },
-  {
-    title: "Reshiram Full Art",
-    set_name: "Black and White",
-    damage_tags: ["edge_lift", "dirt"],
-    pairs: [
-      {
-        id: "reshiram-1",
-        type: "image",
-        before: "/gallery/reshiram-before-front.webp",
-        after: "/gallery/reshiram-after-front.webp",
-      },
-      {
-        id: "reshiram-2",
-        type: "image",
-        before: "/gallery/reshiram-before-back.webp",
-        after: "/gallery/reshiram-after-back.webp",
+        before: "/gallery/pikachu-before-back.mp4",
+        after: "/gallery/pikachu-after-back.mp4",
       },
     ],
   },
@@ -204,33 +154,83 @@ export const FALLBACK_GALLERY_ITEMS = [
     ],
   },
   {
-    title: "Team Japan's Pikachu",
-    set_name: "XY Promos",
-    damage_tags: ["dent"],
+    title: "Reshiram Full Art",
+    set_name: "Black and White",
+    damage_tags: ["edge_lift", "dirt"],
     pairs: [
       {
-        id: "pikachu-1",
+        id: "reshiram-1",
         type: "image",
-        before: "/gallery/pikachu-before-front.webp",
-        after: "/gallery/pikachu-after-front.webp",
+        before: "/gallery/reshiram-before-front.webp",
+        after: "/gallery/reshiram-after-front.webp",
       },
       {
-        id: "pikachu-2",
+        id: "reshiram-2",
         type: "image",
-        before: "/gallery/pikachu-before-back.webp",
-        after: "/gallery/pikachu-after-back.webp",
+        before: "/gallery/reshiram-before-back.webp",
+        after: "/gallery/reshiram-after-back.webp",
+      },
+    ],
+  },
+  {
+    title: "Scizor ex",
+    set_name: "Unseen Forces",
+    damage_tags: ["edge_lift", "crease"],
+    pairs: [
+      {
+        id: "scizor-1",
+        type: "image",
+        before: "/gallery/scizor-before-front.webp",
+        after: "/gallery/scizor-after-front.webp",
       },
       {
-        id: "pikachu-3",
-        type: "video",
-        before: "/gallery/pikachu-before-front.mp4",
-        after: "/gallery/pikachu-after-front.mp4",
+        id: "scizor-2",
+        type: "image",
+        before: "/gallery/scizor-before-back.webp",
+        after: "/gallery/scizor-after-back.webp",
       },
       {
-        id: "pikachu-4",
+        id: "scizor-3",
         type: "video",
-        before: "/gallery/pikachu-before-back.mp4",
-        after: "/gallery/pikachu-after-back.mp4",
+        before: "/gallery/scizor-before-front.mp4",
+        after: "/gallery/scizor-after-front.mp4",
+      },
+      {
+        id: "scizor-4",
+        type: "video",
+        before: "/gallery/scizor-before-back.mp4",
+        after: "/gallery/scizor-after-back.mp4",
+      },
+    ],
+  },
+  {
+    title: "Rocket's Mewtwo",
+    set_name: "Gym Challenge",
+    damage_tags: ["crease", "scratching"],
+    pairs: [
+      {
+        id: "mewtwo-1",
+        type: "image",
+        before: "/gallery/mewtwo-before-front.webp",
+        after: "/gallery/mewtwo-after-front.webp",
+      },
+      {
+        id: "mewtwo-2",
+        type: "image",
+        before: "/gallery/mewtwo-before-back.webp",
+        after: "/gallery/mewtwo-after-back.webp",
+      },
+      {
+        id: "mewtwo-3",
+        type: "video",
+        before: "/gallery/mewtwo-before-front.mp4",
+        after: "/gallery/mewtwo-after-front.mp4",
+      },
+      {
+        id: "mewtwo-4",
+        type: "video",
+        before: "/gallery/mewtwo-before-back.mp4",
+        after: "/gallery/mewtwo-after-back.mp4",
       },
     ],
   },
@@ -252,7 +252,7 @@ export async function fetchPublishedGalleryItems() {
       title,
       set_name,
       damage_tags,
-      sort_order,
+      created_at,
       gallery_pairs (
         id,
         sort_order,
@@ -263,8 +263,7 @@ export async function fetchPublishedGalleryItems() {
     `
     )
     .eq("published", true)
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false });
 
   if (error) {
     console.error("gallery_items fetch failed", error);

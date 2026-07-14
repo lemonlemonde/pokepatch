@@ -203,7 +203,6 @@ async function main() {
 
   await readdir(galleryDir);
 
-  let sortOrder = 0;
   for (const entry of SEED) {
     const itemId = randomUUID();
     const { error: insertError } = await supabase.from("gallery_items").insert({
@@ -212,7 +211,6 @@ async function main() {
       set_name: entry.set_name,
       damage_tags: entry.damage_tags,
       published: true,
-      sort_order: sortOrder,
     });
     if (insertError) throw insertError;
 
@@ -234,7 +232,6 @@ async function main() {
     }
 
     console.log(`Seeded ${entry.title}`);
-    sortOrder += 1;
   }
 
   console.log("Done. Public /gallery will now load from Supabase.");

@@ -27,7 +27,7 @@ Auto-injected by Supabase (do not set manually):
 Run migrations before deploying:
 
 - [`supabase/migrations/20260704120000_admin_orders.sql`](../migrations/20260704120000_admin_orders.sql) — orders status, sessions, image types
-- Gallery migrations under [`supabase/migrations/`](../migrations/) (`20260714000000` … `20260714030000`) — gallery CMS table, pairs, set, damage tags, `gallery` bucket
+- Gallery migrations under [`supabase/migrations/`](../migrations/) (`20260714000000` … `20260714040000`) — gallery CMS table, pairs, set, damage tags, `gallery` bucket; items ordered by `created_at`
 
 Admin orders migration adds:
 
@@ -38,7 +38,7 @@ Admin orders migration adds:
 
 Gallery migration adds:
 
-- `gallery_items` table (anon can SELECT published rows)
+- `gallery_items` table (anon can SELECT published rows; ordered by `created_at` desc)
 - `gallery_pairs` before/after media rows
 - Public `gallery` storage bucket + read policy
 - `set_name` and `damage_tags` on `gallery_items`
@@ -56,6 +56,7 @@ Migrations (run in order in the SQL Editor):
 - [`20260714010000_gallery_pairs.sql`](../migrations/20260714010000_gallery_pairs.sql)
 - [`20260714020000_gallery_set_name.sql`](../migrations/20260714020000_gallery_set_name.sql)
 - [`20260714030000_gallery_damage_tags.sql`](../migrations/20260714030000_gallery_damage_tags.sql)
+- [`20260714040000_gallery_drop_item_sort_order.sql`](../migrations/20260714040000_gallery_drop_item_sort_order.sql)
 
 ## Deploy (manual)
 
@@ -107,10 +108,9 @@ JSON POST (requires `X-Admin-Token`):
 | `save` | `order_id`, `order`, `contacts`, `cards` |
 | `gallery_list` | — |
 | `gallery_get` | `id` |
-| `gallery_create` | `title`, optional `set_name`, `damage_tags`, `published`, `sort_order` |
+| `gallery_create` | `title`, optional `set_name`, `damage_tags`, `published` |
 | `gallery_save` | `id` + fields to update |
 | `gallery_delete` | `id` |
-| `gallery_reorder` | `ordered_ids` (array of gallery item UUIDs) |
 | `gallery_pair_create` | `item_id`, optional `media_kind` (`image` \| `video`) |
 | `gallery_pair_delete` | `pair_id` |
 | `gallery_pair_reorder` | `item_id`, `ordered_ids` |

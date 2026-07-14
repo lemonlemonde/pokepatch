@@ -8,7 +8,6 @@ import {
   adminDeleteGalleryItem,
   adminDeleteGalleryPair,
   adminListGallery,
-  adminReorderGallery,
   adminReorderGalleryPairs,
   adminSaveGalleryItem,
   adminUploadGalleryPairSide,
@@ -348,32 +347,11 @@ export default function GalleryManager() {
     }
   }
 
-  async function moveItem(index, direction) {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= items.length) return;
-
-    const next = [...items];
-    const [row] = next.splice(index, 1);
-    next.splice(nextIndex, 0, row);
-    setItems(next);
-    setReordering(true);
-    setListError("");
-    try {
-      const refreshed = await adminReorderGallery(next.map((item) => item.id));
-      setItems(refreshed);
-    } catch (err) {
-      setListError(err.message || "Could not reorder.");
-      await refresh();
-    } finally {
-      setReordering(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink/70">
-          Each card is a list of before/after pairs. First pair shows on the gallery;
+          Newest restorations appear first. Each card’s first pair shows on the gallery;
           the rest open under Show more.
         </p>
         <button
@@ -399,7 +377,7 @@ export default function GalleryManager() {
         </p>
       ) : (
         <ul className="space-y-2">
-          {items.map((item, index) => (
+          {items.map((item) => (
             <li
               key={item.id}
               className={`flex flex-wrap items-center gap-3 rounded-xl border-2 px-3 py-3 ${
@@ -408,27 +386,6 @@ export default function GalleryManager() {
                   : "border-ink/10 bg-cream"
               }`}
             >
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  disabled={reordering || index === 0}
-                  onClick={() => moveItem(index, -1)}
-                  className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
-                  aria-label="Move up"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  disabled={reordering || index === items.length - 1}
-                  onClick={() => moveItem(index, 1)}
-                  className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
-                  aria-label="Move down"
-                >
-                  ↓
-                </button>
-              </div>
-
               <button
                 type="button"
                 onClick={() => openItem(item)}

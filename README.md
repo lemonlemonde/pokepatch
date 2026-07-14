@@ -211,7 +211,7 @@ Each card has a title, set name, damage-tag checklist (`crease`, `scratching`, `
 
 ### Setup
 
-1. Run gallery migrations in order under [`pokepatch-website/supabase/migrations/`](pokepatch-website/supabase/migrations/) (`20260714000000` … `20260714030000`) in the Supabase SQL Editor.
+1. Run gallery migrations in order under [`pokepatch-website/supabase/migrations/`](pokepatch-website/supabase/migrations/) (`20260714000000` … `20260714040000`) in the Supabase SQL Editor.
 2. Redeploy `admin-api`:
    ```bash
    cd pokepatch-website
@@ -230,10 +230,9 @@ Until published rows exist in `gallery_items`, `/gallery` still shows the built-
 
 | action | Purpose |
 |--------|---------|
-| `gallery_list` / `gallery_get` | Read items (all, including unpublished) |
+| `gallery_list` / `gallery_get` | Read items (newest first by `created_at`) |
 | `gallery_create` / `gallery_save` | Create / update metadata (title, set, damage tags) |
 | `gallery_delete` | Delete item + pairs + storage files |
-| `gallery_reorder` | Persist item sort order |
 | `gallery_pair_*` | Create / delete / reorder / clear pair sides |
 | multipart `kind=gallery` | Upload before/after media for a pair |
 
@@ -281,7 +280,7 @@ Password-gated UI at **`/admin/`** (URL-only — not in the public navbar).
 Tabs:
 
 - **Orders** — kanban + order editor (unchanged)
-- **Gallery** — create/edit/reorder/delete public gallery restorations + media uploads
+- **Gallery** — create/edit/delete public gallery restorations + media uploads (newest first)
 
 ### Flow
 
@@ -318,7 +317,7 @@ Browser (/admin)
 | Function | Role |
 |----------|------|
 | [`admin-auth`](pokepatch-website/supabase/functions/admin-auth/) | Login, logout, validate session |
-| [`admin-api`](pokepatch-website/supabase/functions/admin-api/) | Orders + gallery list/get/save/delete/reorder/upload |
+| [`admin-api`](pokepatch-website/supabase/functions/admin-api/) | Orders + gallery list/get/save/delete/upload |
 
 Details: [`pokepatch-website/supabase/functions/admin/README.md`](pokepatch-website/supabase/functions/admin/README.md)
 

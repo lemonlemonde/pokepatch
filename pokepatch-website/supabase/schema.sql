@@ -47,9 +47,9 @@
 -- ---------------------------------------------------------------------------
 --
 -- See: supabase/migrations/20260714000000_gallery_items.sql
---      (+ 20260714010000 pairs, 20260714020000 set_name, 20260714030000 damage_tags)
+--      (+ pairs, set_name, damage_tags, drop item sort_order through 20260714040000)
 --
--- Table: gallery_items (title, set_name, damage_tags, sort_order, published)
+-- Table: gallery_items (title, set_name, damage_tags, published; ordered by created_at desc)
 -- Table: gallery_pairs (before/after storage paths per item; ordered list)
 -- Bucket: gallery (public)
 -- RLS: anon SELECT published items + their pairs
