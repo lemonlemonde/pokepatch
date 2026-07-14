@@ -146,6 +146,7 @@ export async function adminSetStatus(orderId, status) {
 
 export async function adminUploadPhoto(orderId, cardId, imageType, file) {
   const formData = new FormData();
+  formData.append("kind", "order");
   formData.append("order_id", orderId);
   formData.append("card_id", cardId);
   formData.append("image_type", imageType);
@@ -156,4 +157,108 @@ export async function adminUploadPhoto(orderId, cardId, imageType, file) {
     formData,
   });
   return payload.image;
+}
+
+export async function adminListGallery() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "gallery_list" },
+  });
+  return payload.items ?? [];
+}
+
+export async function adminCreateGalleryItem({
+  title,
+  set_name = "",
+  damage_tags = [],
+  published = true,
+} = {}) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_create",
+      title,
+      set_name,
+      damage_tags,
+      published,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminSaveGalleryItem(id, fields) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_save",
+      id,
+      ...fields,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminDeleteGalleryItem(id) {
+  await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "gallery_delete", id },
+  });
+}
+
+export async function adminCreateGalleryPair(itemId, mediaKind = "image") {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_pair_create",
+      item_id: itemId,
+      media_kind: mediaKind,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminDeleteGalleryPair(pairId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "gallery_pair_delete", pair_id: pairId },
+  });
+  return payload.item;
+}
+
+export async function adminReorderGalleryPairs(itemId, orderedIds) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_pair_reorder",
+      item_id: itemId,
+      ordered_ids: orderedIds,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminClearGalleryPairSide(pairId, side) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_pair_clear_side",
+      pair_id: pairId,
+      side,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminUploadGalleryPairSide(pairId, side, file) {
+  const formData = new FormData();
+  formData.append("kind", "gallery");
+  formData.append("pair_id", pairId);
+  formData.append("side", side);
+  formData.append("file", file);
+
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    formData,
+  });
+  return payload.item;
 }

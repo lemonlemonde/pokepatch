@@ -90,7 +90,8 @@ The site is a **static frontend** on GitHub Pages. All backend logic runs in **S
 | Surface | Route | Backend |
 |---------|-------|---------|
 | Public quote form | `/contact/` | `create_order` RPC + Storage + `notify` |
-| Admin orders | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
+| Public gallery | `/gallery/` | `gallery_items` SELECT (anon) + public `gallery` bucket |
+| Admin orders + gallery | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
 | Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
 
 New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history and still have their own notify path.
@@ -193,10 +194,47 @@ Schema reference: [`pokepatch-website/supabase/schema.sql`](pokepatch-website/su
 
 ## Storage
 
-- **Bucket:** `card-photos`
+- **Bucket:** `card-photos` (private order photos)
 - **New order paths:** `order-{orderUuid}/card-{cardUuid}/customer-{n}-{filename}`
 - **Admin photo paths:** `order-{orderUuid}/card-{cardUuid}/{image_type}-{n}-{filename}`
 - **Legacy paths:** `{uuid}/...` (old `quote_requests` photos; left in place)
+- **Bucket:** `gallery` (public marketing media for `/gallery`)
+- **Gallery paths:** `item-{uuid}/pair-{uuid}/{before|after}-{filename}`
+
+---
+
+## Public gallery CMS
+
+Gallery restorations are managed from **`/admin/` → Gallery** (no GitHub image commits).
+
+Each card has a title, set name, damage-tag checklist (`crease`, `scratching`, `dent`, `edge_lift`, `dirt`), and an ordered list of before/after media pairs (images or videos).
+
+### Setup
+
+1. Run gallery migrations in order under [`pokepatch-website/supabase/migrations/`](pokepatch-website/supabase/migrations/) (`20260714000000` … `20260714040000`) in the Supabase SQL Editor.
+2. Redeploy `admin-api`:
+   ```bash
+   cd pokepatch-website
+   supabase functions deploy admin-api --no-verify-jwt --project-ref <ref>
+   ```
+3. (Optional) One-time seed of existing `public/gallery` assets into Supabase:
+   ```bash
+   # needs SUPABASE_SERVICE_ROLE_KEY in .env.local (service role — never commit)
+   node --env-file=.env.local scripts/seed-gallery.mjs
+   ```
+4. Deploy the static site so the admin Gallery tab and client fetch are live.
+
+Until published rows exist in `gallery_items`, `/gallery` still shows the built-in static assets. Once any published DB row exists, the page uses Supabase only.
+
+### Admin actions (`admin-api`)
+
+| action | Purpose |
+|--------|---------|
+| `gallery_list` / `gallery_get` | Read items (newest first by `created_at`) |
+| `gallery_create` / `gallery_save` | Create / update metadata (title, set, damage tags) |
+| `gallery_delete` | Delete item + pairs + storage files |
+| `gallery_pair_*` | Create / delete / reorder / clear pair sides |
+| multipart `kind=gallery` | Upload before/after media for a pair |
 
 ---
 
@@ -235,9 +273,14 @@ Google allows only one bound script per spreadsheet, so Orders uses a standalone
 
 ---
 
-## Admin orders view
+## Admin orders + gallery view
 
 Password-gated UI at **`/admin/`** (URL-only — not in the public navbar).
+
+Tabs:
+
+- **Orders** — kanban + order editor (unchanged)
+- **Gallery** — create/edit/delete public gallery restorations + media uploads (newest first)
 
 ### Flow
 
@@ -245,8 +288,9 @@ Password-gated UI at **`/admin/`** (URL-only — not in the public navbar).
 Browser (/admin)
   → admin-auth (password → session token in sessionStorage)
   → admin-api (X-Admin-Token + service role)
-      → read/write working tables only
+      → read/write working order tables
       → Storage uploads for admin photo types
+      → gallery_items CRUD + gallery bucket uploads
   → no notify / Discord / Sheets
 ```
 
@@ -257,6 +301,7 @@ Browser (/admin)
 - Click a card to open the editor; field changes require **Save**
 - Staged admin photos upload on Save
 - Kanban list loads summaries only; full order detail (with signed photo URLs) loads when a card is opened
+- **Gallery** tab lists restorations; Save uploads chosen before/after images and videos to the public `gallery` bucket
 
 ### Status values
 
@@ -272,7 +317,7 @@ Browser (/admin)
 | Function | Role |
 |----------|------|
 | [`admin-auth`](pokepatch-website/supabase/functions/admin-auth/) | Login, logout, validate session |
-| [`admin-api`](pokepatch-website/supabase/functions/admin-api/) | List, get, save, set_status, upload |
+| [`admin-api`](pokepatch-website/supabase/functions/admin-api/) | Orders + gallery list/get/save/delete/upload |
 
 Details: [`pokepatch-website/supabase/functions/admin/README.md`](pokepatch-website/supabase/functions/admin/README.md)
 
@@ -282,7 +327,9 @@ Details: [`pokepatch-website/supabase/functions/admin/README.md`](pokepatch-webs
 |-------|------|
 | Admin page | `pokepatch-website/src/app/admin/` |
 | Admin UI | `pokepatch-website/src/components/admin/AdminApp.js` |
+| Gallery admin | `pokepatch-website/src/components/admin/GalleryManager.js` |
 | API client | `pokepatch-website/src/lib/adminApi.js` |
+| Public gallery fetch | `pokepatch-website/src/lib/gallery.js` |
 
 Admin edits use `update_order` on **working** tables only. Original backups and `quote_requests` are never modified.
 
@@ -294,23 +341,30 @@ Admin edits use `update_order` on **working** tables only. Original backups and 
 pokepatch-website/
   src/
     app/contact/                 # Public quote page
+    app/gallery/                 # Public gallery (loads from Supabase)
     app/admin/                   # Admin page (noindex)
     components/
       QuoteForm.js               # Public quote form
+      GalleryContent.js          # Gallery lightbox + cards
       PostHogProvider.jsx        # PostHog init + pageviews
       CardPhotoPreviews.js       # Shared card photo thumbnails
-      admin/AdminApp.js          # Kanban + order editor
+      admin/AdminApp.js          # Kanban + order editor + tabs
+      admin/GalleryManager.js    # Gallery CMS
     lib/
       supabaseClient.js          # Public Supabase client
+      gallery.js                 # Public gallery fetch + fallbacks
       posthog.js                 # PostHog init + capture helper
       adminApi.js                # Admin edge function client
   supabase/
     schema.sql                   # Schema reference
+    migrations/
+      20260714000000_gallery_items.sql
     functions/
       notify/                    # Discord + Sheets on INSERT
       admin-auth/
       admin-api/
   scripts/
+    seed-gallery.mjs             # One-time upload of public/gallery → Supabase
     google-sheets-webhook.gs     # Legacy Requests tab
     google-sheets-webhook-orders.gs  # Orders tab
 ```

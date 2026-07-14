@@ -17,6 +17,7 @@ import {
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
+import GalleryManager from "@/components/admin/GalleryManager";
 
 const STATUSES = [
   { id: "new", label: "New" },
@@ -670,6 +671,7 @@ function OrderEditor({
 export default function AdminApp() {
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [tab, setTab] = useState("orders");
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingOrderId, setLoadingOrderId] = useState(null);
@@ -865,11 +867,17 @@ export default function AdminApp() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <SectionHeading subtitle="Drag cards between columns to update status. Click a card to edit.">
-          Orders admin
+        <SectionHeading
+          subtitle={
+            tab === "orders"
+              ? "Drag cards between columns to update status. Click a card to edit."
+              : "Upload and manage restorations shown on the public Gallery page."
+          }
+        >
+          {tab === "orders" ? "Orders admin" : "Gallery admin"}
         </SectionHeading>
         <div className="flex flex-wrap items-center gap-3">
-          {loadingOrders && orders.length > 0 && (
+          {tab === "orders" && loadingOrders && orders.length > 0 && (
             <LoadingIndicator compact label="Refreshing…" />
           )}
           <button
@@ -882,50 +890,76 @@ export default function AdminApp() {
         </div>
       </div>
 
-      {listError && (
-        <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
-          {listError}
-        </p>
-      )}
+      <div className="mb-6 flex gap-2">
+        {[
+          { id: "orders", label: "Orders" },
+          { id: "gallery", label: "Gallery" },
+        ].map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            onClick={() => setTab(entry.id)}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              tab === entry.id
+                ? "bg-berry text-night shadow-cozy"
+                : "border-2 border-ink/15 text-ink hover:border-blush"
+            }`}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
 
-      {loadingOrders && orders.length === 0 ? (
-        <LoadingIndicator label="Loading orders…" />
+      {tab === "gallery" ? (
+        <GalleryManager />
       ) : (
-        <KanbanBoard
-          orders={orders}
-          onOpenOrder={openOrder}
-          onStatusChange={handleStatusChange}
-          selectedOrderId={selectedOrderId}
-          loadingOrderId={loadingOrderId}
-        />
-      )}
+        <>
+          {listError && (
+            <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+              {listError}
+            </p>
+          )}
 
-      {loadingOrderId && !draft && (
-        <LoadingIndicator label="Loading order…" className="mt-8" />
-      )}
+          {loadingOrders && orders.length === 0 ? (
+            <LoadingIndicator label="Loading orders…" />
+          ) : (
+            <KanbanBoard
+              orders={orders}
+              onOpenOrder={openOrder}
+              onStatusChange={handleStatusChange}
+              selectedOrderId={selectedOrderId}
+              loadingOrderId={loadingOrderId}
+            />
+          )}
 
-      {editorError && !draft && !loadingOrderId && (
-        <p className="mt-8 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
-          {editorError}
-        </p>
-      )}
+          {loadingOrderId && !draft && (
+            <LoadingIndicator label="Loading order…" className="mt-8" />
+          )}
 
-      {saving && selectedOrderId && draft && (
-        <LoadingIndicator label="Saving order…" className="mt-8 py-6" />
-      )}
+          {editorError && !draft && !loadingOrderId && (
+            <p className="mt-8 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+              {editorError}
+            </p>
+          )}
 
-      {selectedOrderId && draft && (
-        <OrderEditor
-          orderId={selectedOrderId}
-          displayId={selectedDisplayId}
-          draft={draft}
-          dirty={dirty}
-          saving={saving}
-          error={editorError}
-          onChange={setDraft}
-          onCancel={handleCancel}
-          onSave={handleSave}
-        />
+          {saving && selectedOrderId && draft && (
+            <LoadingIndicator label="Saving order…" className="mt-8 py-6" />
+          )}
+
+          {selectedOrderId && draft && (
+            <OrderEditor
+              orderId={selectedOrderId}
+              displayId={selectedDisplayId}
+              draft={draft}
+              dirty={dirty}
+              saving={saving}
+              error={editorError}
+              onChange={setDraft}
+              onCancel={handleCancel}
+              onSave={handleSave}
+            />
+          )}
+        </>
       )}
     </div>
   );

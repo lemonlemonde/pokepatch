@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import Image from "next/image";
+import { DAMAGE_TAGS } from "@/lib/gallery";
 
 const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) {
   const videoRef = useRef(null);
@@ -50,113 +51,36 @@ const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) 
   );
 });
 
-function getItemMediaEntries(item) {
-  const entries = [];
-
-  if (item.beforeFront) {
-    entries.push(
-      {
-        type: "image",
-        src: item.beforeFront,
-        alt: `${item.title} before — front`,
-        label: "Before — Front",
-        sectionTitle: item.title,
-      },
-      {
-        type: "image",
-        src: item.afterFront,
-        alt: `${item.title} after — front`,
-        label: "After — Front",
-        sectionTitle: item.title,
-      },
-      {
-        type: "image",
-        src: item.beforeBack,
-        alt: `${item.title} before — back`,
-        label: "Before — Back",
-        sectionTitle: item.title,
-      },
-      {
-        type: "image",
-        src: item.afterBack,
-        alt: `${item.title} after — back`,
-        label: "After — Back",
-        sectionTitle: item.title,
-      },
-    );
-  }
-
-  if (item.beforeFrontVideo && item.afterFrontVideo) {
-    if (item.pairedVideoLayout) {
-      entries.push(
-        {
-          type: "video",
-          src: item.beforeFrontVideo,
-          poster: item.beforeFront,
-          label: "Before — Front (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.beforeBackVideo,
-          poster: item.beforeBack,
-          label: "Before — Back (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.afterFrontVideo,
-          poster: item.afterFront,
-          label: "After — Front (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.afterBackVideo,
-          poster: item.afterBack,
-          label: "After — Back (Video)",
-          sectionTitle: item.title,
-        },
-      );
-    } else {
-      entries.push(
-        {
-          type: "video",
-          src: item.beforeFrontVideo,
-          poster: item.beforeFront,
-          label: "Before — Front (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.afterFrontVideo,
-          poster: item.afterFront,
-          label: "After — Front (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.beforeBackVideo,
-          poster: item.beforeBack,
-          label: "Before — Back (Video)",
-          sectionTitle: item.title,
-        },
-        {
-          type: "video",
-          src: item.afterBackVideo,
-          poster: item.afterBack,
-          label: "After — Back (Video)",
-          sectionTitle: item.title,
-        },
-      );
-    }
-  }
-
-  return entries;
+function pairMediaKind(pair) {
+  return pair.type === "video" || pair.mediaKind === "video" ? "video" : "image";
 }
 
 function buildMediaList(items) {
-  return items.flatMap(getItemMediaEntries);
+  return items.flatMap((item) =>
+    (item.pairs ?? []).flatMap((pair) => {
+      const kind = pairMediaKind(pair);
+      const entries = [];
+      if (pair.before) {
+        entries.push({
+          type: kind,
+          src: pair.before,
+          alt: `${item.title} before`,
+          label: "Before",
+          sectionTitle: item.title,
+        });
+      }
+      if (pair.after) {
+        entries.push({
+          type: kind,
+          src: pair.after,
+          alt: `${item.title} after`,
+          label: "After",
+          sectionTitle: item.title,
+        });
+      }
+      return entries;
+    }),
+  );
 }
 
 function GalleryLightbox({ media, onClose, onPrevious, onNext, hasPrevious, hasNext }) {
@@ -266,7 +190,6 @@ function GalleryLightbox({ media, onClose, onPrevious, onNext, hasPrevious, hasN
             <MutedVideo
               key={media.src}
               src={media.src}
-              poster={media.poster}
               loop
               controls
               className={mediaClassName}
@@ -284,194 +207,112 @@ function GalleryLightbox({ media, onClose, onPrevious, onNext, hasPrevious, hasN
   );
 }
 
-function GalleryImageCard({ src, alt, label, onOpen, priority = false }) {
+function PlayBadge({ className = "" }) {
   return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() =>
-          onOpen({ type: "image", src, alt, label })
-        }
-        className="group relative block aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-xl pixel-border"
-        aria-label={`Enlarge ${label}`}
-      >
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          priority={priority}
-          className="object-cover transition duration-200 group-hover:scale-105"
-          sizes="(max-width: 768px) 50vw, 400px"
-        />
-        <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/20" />
-      </button>
-      <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/60">
-        {label}
-      </p>
-    </div>
+    <span
+      className={`pointer-events-none absolute inset-0 z-10 flex items-center justify-center ${className}`}
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-ink/90 shadow-lg transition duration-200 group-hover:scale-110">
+        <svg
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="-ml-0.5 h-9 w-9 text-night"
+          aria-hidden="true"
+        >
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      </span>
+    </span>
   );
 }
 
-function GalleryVideoCard({ src, poster, label, onOpen }) {
-  const handleOpen = () => {
-    onOpen({ type: "video", src, poster, label });
-  };
-
-  return (
-    <div className="space-y-2">
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="group relative block aspect-[3/4] w-full overflow-hidden rounded-xl bg-night/10 pixel-border"
-        aria-label={`Play ${label}`}
-      >
-        <Image
-          src={poster}
-          alt={label}
-          fill
-          className="object-cover transition duration-200 group-hover:scale-105"
-          sizes="(max-width: 768px) 50vw, 400px"
-        />
-        <span className="pointer-events-none absolute inset-0 bg-night/20 transition group-hover:bg-night/30" />
-        <span className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-ink/90 shadow-lg transition duration-200 group-hover:scale-110">
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="-ml-0.5 h-9 w-9 text-night"
-              aria-hidden="true"
-            >
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          </span>
-        </span>
-      </button>
-      <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/60">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function getSeeMorePreviews(item) {
-  const previews = [];
-
-  if (item.beforeBack) {
-    previews.push({ src: item.beforeBack, alt: `${item.title} before — back` });
-  }
-  if (item.afterBack) {
-    previews.push({ src: item.afterBack, alt: `${item.title} after — back` });
-  }
-  if (item.beforeFrontVideo) {
-    previews.push({
-      src: item.beforeFront,
-      alt: `${item.title} before — front video`,
-      isVideo: true,
-    });
-  }
-  if (item.beforeBackVideo) {
-    previews.push({
-      src: item.beforeBack,
-      alt: `${item.title} before — back video`,
-      isVideo: true,
-    });
-  }
-  if (item.afterFrontVideo) {
-    previews.push({
-      src: item.afterFront,
-      alt: `${item.title} after — front video`,
-      isVideo: true,
-    });
-  }
-  if (item.afterBackVideo) {
-    previews.push({
-      src: item.afterBack,
-      alt: `${item.title} after — back video`,
-      isVideo: true,
-    });
-  }
-
-  return previews;
-}
-
-function GalleryItemVideos({ item, onOpen }) {
-  if (!item.beforeFrontVideo || !item.afterFrontVideo) {
-    return null;
-  }
-
-  if (item.pairedVideoLayout) {
+function PairSideCard({ src, type, label, onOpen, priority = false }) {
+  if (!src) {
     return (
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <GalleryVideoCard
-            src={item.beforeFrontVideo}
-            poster={item.beforeFront}
-            label="Before — Front (Video)"
-            onOpen={onOpen}
-          />
-          <GalleryVideoCard
-            src={item.beforeBackVideo}
-            poster={item.beforeBack}
-            label="Before — Back (Video)"
-            onOpen={onOpen}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <GalleryVideoCard
-            src={item.afterFrontVideo}
-            poster={item.afterFront}
-            label="After — Front (Video)"
-            onOpen={onOpen}
-          />
-          <GalleryVideoCard
-            src={item.afterBackVideo}
-            poster={item.afterBack}
-            label="After — Back (Video)"
-            onOpen={onOpen}
-          />
-        </div>
+      <div className="space-y-2">
+        <div className="aspect-[3/4] w-full rounded-xl bg-night/10 pixel-border" />
+        <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/60">
+          {label}
+        </p>
       </div>
     );
   }
 
+  const isVideo = type === "video";
+
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3">
-        <GalleryVideoCard
-          src={item.beforeFrontVideo}
-          poster={item.beforeFront}
-          label="Before — Front (Video)"
-          onOpen={onOpen}
-        />
-        <GalleryVideoCard
-          src={item.afterFrontVideo}
-          poster={item.afterFront}
-          label="After — Front (Video)"
-          onOpen={onOpen}
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <GalleryVideoCard
-          src={item.beforeBackVideo}
-          poster={item.beforeBack}
-          label="Before — Back (Video)"
-          onOpen={onOpen}
-        />
-        <GalleryVideoCard
-          src={item.afterBackVideo}
-          poster={item.afterBack}
-          label="After — Back (Video)"
-          onOpen={onOpen}
-        />
-      </div>
-    </>
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => onOpen({ type: isVideo ? "video" : "image", src, label })}
+        className="group relative block aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-xl bg-night/10 pixel-border"
+        aria-label={`Enlarge ${label}`}
+      >
+        {isVideo ? (
+          <>
+            <video
+              src={src}
+              muted
+              playsInline
+              preload="metadata"
+              className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
+            />
+            <span className="pointer-events-none absolute inset-0 bg-night/20 transition group-hover:bg-night/30" />
+            <PlayBadge />
+          </>
+        ) : (
+          <>
+            <Image
+              src={src}
+              alt={label}
+              fill
+              priority={priority}
+              className="object-cover transition duration-200 group-hover:scale-105"
+              sizes="(max-width: 768px) 50vw, 400px"
+            />
+            <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/20" />
+          </>
+        )}
+      </button>
+      <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/60">
+        {label}
+      </p>
+    </div>
   );
 }
 
+function BeforeAfterPair({ pair, onOpen, priority = false }) {
+  const kind = pairMediaKind(pair);
+
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <PairSideCard
+        src={pair.before}
+        type={kind}
+        label="Before"
+        priority={priority}
+        onOpen={onOpen}
+      />
+      <PairSideCard
+        src={pair.after}
+        type={kind}
+        label="After"
+        priority={priority}
+        onOpen={onOpen}
+      />
+    </div>
+  );
+}
+
+function previewSrc(pair) {
+  return pair.before || pair.after || null;
+}
+
 function GalleryItemCard({ item, index, onOpen }) {
-  const hasExtra =
-    item.beforeBack || (item.beforeFrontVideo && item.afterFrontVideo);
-  const previews = hasExtra ? getSeeMorePreviews(item) : [];
+  const pairs = (item.pairs ?? []).filter((pair) => pair.before || pair.after);
+  const featured = pairs[0] ?? null;
+  const extra = pairs.slice(1);
+  const hasExtra = extra.length > 0;
 
   return (
     <div
@@ -479,28 +320,54 @@ function GalleryItemCard({ item, index, onOpen }) {
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
       <div className="space-y-4 p-5">
-        <div className="text-center">
-          <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
-          <p className="mt-1 text-sm text-ink/70">{item.description}</p>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 text-left">
+            <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
+            {item.setName ? (
+              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
+                {item.setName}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="shrink-0 rounded-xl border border-ink/15 bg-night/10 px-3 py-2">
+            <ul
+              className="grid grid-flow-col grid-rows-2 gap-x-4 gap-y-1.5"
+              aria-label="Damage checklist"
+            >
+              {DAMAGE_TAGS.map((tag) => {
+                const applicable = (item.damageTags ?? []).includes(tag.id);
+                return (
+                  <li
+                    key={tag.id}
+                    className={`flex items-center gap-2 ${
+                      applicable ? "text-ink/80" : "opacity-35"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={applicable}
+                      readOnly
+                      tabIndex={-1}
+                      className="pointer-events-none h-3.5 w-3.5 accent-berry"
+                      aria-hidden="true"
+                    />
+                    <span className="whitespace-nowrap text-xs font-semibold">
+                      {tag.label}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
 
-        {item.beforeFront && (
-          <div className="grid grid-cols-2 gap-3">
-            <GalleryImageCard
-              src={item.beforeFront}
-              alt={`${item.title} before — front`}
-              label="Before — Front"
-              priority={index <= 1}
-              onOpen={onOpen}
-            />
-            <GalleryImageCard
-              src={item.afterFront}
-              alt={`${item.title} after — front`}
-              label="After — Front"
-              priority={index <= 1}
-              onOpen={onOpen}
-            />
-          </div>
+        {featured && (
+          <BeforeAfterPair
+            pair={featured}
+            onOpen={onOpen}
+            priority={index <= 1}
+          />
         )}
 
         {hasExtra && (
@@ -512,32 +379,47 @@ function GalleryItemCard({ item, index, onOpen }) {
                   <span className="hidden group-open:inline">Show less</span>
                 </span>
                 <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
-                  {previews.map((preview, previewIndex) => (
-                    <span
-                      key={`${item.title}-preview-${previewIndex}`}
-                      className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
-                    >
-                      <Image
-                        src={preview.src}
-                        alt={preview.alt}
-                        fill
-                        className="object-cover"
-                        sizes="32px"
-                      />
-                      {preview.isVideo && (
-                        <span className="absolute inset-0 flex items-center justify-center bg-night/25">
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            className="h-3 w-3 text-ink"
-                            aria-hidden="true"
-                          >
-                            <path d="M8 5v14l11-7z" />
-                          </svg>
-                        </span>
-                      )}
-                    </span>
-                  ))}
+                  {extra.map((pair, previewIndex) => {
+                    const src = previewSrc(pair);
+                    if (!src) return null;
+                    const isVideo = pairMediaKind(pair) === "video";
+                    return (
+                      <span
+                        key={pair.id ?? `${item.title}-preview-${previewIndex}`}
+                        className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
+                      >
+                        {isVideo ? (
+                          <video
+                            src={src}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        ) : (
+                          <Image
+                            src={src}
+                            alt=""
+                            fill
+                            className="object-cover"
+                            sizes="32px"
+                          />
+                        )}
+                        {isVideo && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-night/25">
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              className="h-3 w-3 text-ink"
+                              aria-hidden="true"
+                            >
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
                 </span>
                 <span className="flex w-20 shrink-0 justify-end text-blush group-open:invisible">
                   +
@@ -545,23 +427,13 @@ function GalleryItemCard({ item, index, onOpen }) {
               </span>
             </summary>
             <div className="space-y-3 pt-4">
-              {item.beforeBack && (
-                <div className="grid grid-cols-2 gap-3">
-                  <GalleryImageCard
-                    src={item.beforeBack}
-                    alt={`${item.title} before — back`}
-                    label="Before — Back"
-                    onOpen={onOpen}
-                  />
-                  <GalleryImageCard
-                    src={item.afterBack}
-                    alt={`${item.title} after — back`}
-                    label="After — Back"
-                    onOpen={onOpen}
-                  />
-                </div>
-              )}
-              <GalleryItemVideos item={item} onOpen={onOpen} />
+              {extra.map((pair, pairIndex) => (
+                <BeforeAfterPair
+                  key={pair.id ?? `${item.title}-extra-${pairIndex}`}
+                  pair={pair}
+                  onOpen={onOpen}
+                />
+              ))}
             </div>
           </details>
         )}
@@ -602,7 +474,7 @@ export default function GalleryContent({ items }) {
       <div className="space-y-8">
         {items.map((item, index) => (
           <GalleryItemCard
-            key={item.title}
+            key={item.id ?? item.title}
             item={item}
             index={index}
             onOpen={openMedia}
