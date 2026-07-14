@@ -43,6 +43,20 @@
 -- Storage paths: card-photos/order-{orderUuid}/card-{cardUuid}/customer-{n}-...
 
 -- ---------------------------------------------------------------------------
+-- Gallery (public marketing restorations, managed via /admin/)
+-- ---------------------------------------------------------------------------
+--
+-- See: supabase/migrations/20260714000000_gallery_items.sql
+--      (+ 20260714010000 pairs, 20260714020000 set_name, 20260714030000 damage_tags)
+--
+-- Table: gallery_items (title, set_name, damage_tags, sort_order, published)
+-- Table: gallery_pairs (before/after storage paths per item; ordered list)
+-- Bucket: gallery (public)
+-- RLS: anon SELECT published items + their pairs
+-- Writes: admin-api edge function (service role)
+-- Seed existing public/gallery assets:
+--   node --env-file=.env.local scripts/seed-gallery.mjs
+-- ---------------------------------------------------------------------------
 -- Storage policies (run in SQL Editor if not already configured)
 -- ---------------------------------------------------------------------------
 --
@@ -60,3 +74,8 @@
 --   with check (bucket_id = 'card-photos');
 --
 -- (Tighten to path prefixes if desired, e.g. name like 'order-%' or legacy uuid.)
+--
+-- Bucket: gallery (public marketing media for /gallery page)
+-- insert into storage.buckets (id, name, public)
+-- values ('gallery', 'gallery', true)
+-- on conflict (id) do nothing;

@@ -7,7 +7,7 @@ Password-gated admin UI for PokePatch orders. The browser never sees `ADMIN_PASS
 | Function | Path | Role |
 |----------|------|------|
 | `admin-auth` | `/functions/v1/admin-auth` | Login, logout, validate session |
-| `admin-api` | `/functions/v1/admin-api` | List/get/save orders, set status, upload admin photos |
+| `admin-api` | `/functions/v1/admin-api` | List/get/save orders, set status, upload admin photos, gallery CMS |
 
 Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests still send the Supabase anon `apikey` header; admin actions also send `X-Admin-Token`.
 
@@ -24,16 +24,38 @@ Auto-injected by Supabase (do not set manually):
 
 ## Database prerequisites
 
-Run the admin migration before deploying:
+Run migrations before deploying:
 
-[`supabase/migrations/20260704120000_admin_orders.sql`](../migrations/20260704120000_admin_orders.sql)
+- [`supabase/migrations/20260704120000_admin_orders.sql`](../migrations/20260704120000_admin_orders.sql) — orders status, sessions, image types
+- Gallery migrations under [`supabase/migrations/`](../migrations/) (`20260714000000` … `20260714030000`) — gallery CMS table, pairs, set, damage tags, `gallery` bucket
 
-Adds:
+Admin orders migration adds:
 
 - `orders.status` (`new`, `in_progress`, `completed`, `delivered`)
 - Expanded `card_images.image_type` values for admin uploads
 - `admin_sessions` table
 - `update_order` status support
+
+Gallery migration adds:
+
+- `gallery_items` table (anon can SELECT published rows)
+- `gallery_pairs` before/after media rows
+- Public `gallery` storage bucket + read policy
+- `set_name` and `damage_tags` on `gallery_items`
+
+Optional one-time seed of existing `public/gallery` files:
+
+```bash
+# from pokepatch-website/; requires SUPABASE_SERVICE_ROLE_KEY in .env.local
+node --env-file=.env.local scripts/seed-gallery.mjs
+```
+
+Migrations (run in order in the SQL Editor):
+
+- [`20260714000000_gallery_items.sql`](../migrations/20260714000000_gallery_items.sql)
+- [`20260714010000_gallery_pairs.sql`](../migrations/20260714010000_gallery_pairs.sql)
+- [`20260714020000_gallery_set_name.sql`](../migrations/20260714020000_gallery_set_name.sql)
+- [`20260714030000_gallery_damage_tags.sql`](../migrations/20260714030000_gallery_damage_tags.sql)
 
 ## Deploy (manual)
 
@@ -56,9 +78,10 @@ Then deploy the static site so `/admin/` is available.
 
 ## Frontend
 
-- Route: `/admin/` (not linked in public nav)
+- Route: `/admin/` (not linked in public nav) — Orders + Gallery tabs
 - Client: [`src/lib/adminApi.js`](../../src/lib/adminApi.js)
 - UI: [`src/components/admin/AdminApp.js`](../../src/components/admin/AdminApp.js)
+- Gallery UI: [`src/components/admin/GalleryManager.js`](../../src/components/admin/GalleryManager.js)
 
 Session token is stored in `sessionStorage` under `pokepatch-admin-token`.
 
@@ -82,13 +105,27 @@ JSON POST (requires `X-Admin-Token`):
 | `get` | `order_id` |
 | `set_status` | `order_id`, `status` |
 | `save` | `order_id`, `order`, `contacts`, `cards` |
+| `gallery_list` | — |
+| `gallery_get` | `id` |
+| `gallery_create` | `title`, optional `set_name`, `damage_tags`, `published`, `sort_order` |
+| `gallery_save` | `id` + fields to update |
+| `gallery_delete` | `id` |
+| `gallery_reorder` | `ordered_ids` (array of gallery item UUIDs) |
+| `gallery_pair_create` | `item_id`, optional `media_kind` (`image` \| `video`) |
+| `gallery_pair_delete` | `pair_id` |
+| `gallery_pair_reorder` | `item_id`, `ordered_ids` |
+| `gallery_pair_clear_side` | `pair_id`, `side` (`before` \| `after`) |
 
 Multipart POST (requires `X-Admin-Token`):
 
-- `order_id`, `card_id`, `image_type` (`progress_front`, `progress_back`, `final_front`, `final_back`, `admin`), `file`
+Order photos:
 
-Admin photo storage path:
+- `kind=order` (default), `order_id`, `card_id`, `image_type` (`progress_front`, `progress_back`, `final_front`, `final_back`, `admin`), `file`
+- Path: `order-{orderId}/card-{cardId}/{image_type}-{n}-{filename}`
 
-`order-{orderId}/card-{cardId}/{image_type}-{n}-{filename}`
+Gallery media:
 
-Signed URLs (1 year) are returned in list/get payloads.
+- `kind=gallery`, `pair_id`, `side` (`before` \| `after`), `file`
+- Path: `item-{itemId}/pair-{pairId}/{side}-{filename}` in the public `gallery` bucket
+
+Signed URLs (1 year) are returned for order photo list/get payloads. Gallery responses include public `urls` for each pair side.
