@@ -57,6 +57,14 @@ function ObjectPreview({ file, kind, className }) {
   return <img src={url} alt="" className={className} />;
 }
 
+function sortItemsNewestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 function emptyDraft() {
   return {
     title: "",
@@ -167,7 +175,7 @@ export default function GalleryManager() {
     setLoading(true);
     setListError("");
     try {
-      const rows = await adminListGallery();
+      const rows = sortItemsNewestFirst(await adminListGallery());
       setItems(rows);
       return rows;
     } catch (err) {
