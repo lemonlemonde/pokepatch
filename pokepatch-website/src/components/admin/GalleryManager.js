@@ -14,6 +14,7 @@ import {
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { compressImageForUpload } from "@/lib/imageCompression";
 
 function fieldClassName() {
   return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
@@ -255,7 +256,8 @@ export default function GalleryManager() {
         if (!file) continue;
         const [pairId, side] = key.split(":");
         if (!pairId || (side !== "before" && side !== "after")) continue;
-        item = await adminUploadGalleryPairSide(pairId, side, file);
+        const uploadFile = await compressImageForUpload(file);
+        item = await adminUploadGalleryPairSide(pairId, side, uploadFile);
       }
 
       // Persist any edited pair captions for still-existing pairs.
