@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, { EMPTY_SLOTS } from "@/components/StudioMediaBank";
-import StudioPairBoard, { createPair } from "@/components/StudioPairBoard";
+import StudioFolderBoard, { pairFolders } from "@/components/StudioFolderBoard";
 import { canvasToBlob, stitchBothPosts } from "@/lib/instagramStitch";
 import { stitchGridPosts } from "@/lib/instagramGridStitch";
 import {
@@ -14,7 +14,7 @@ import {
 const COMPARISON_SUBTITLE =
   "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
 const GRID_SUBTITLE =
-  "Pair any number of before & afters, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
+  "Upload a before folder and an after folder — images auto-pair, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
 
 const STUDIO_OPTIONS = [
   {
@@ -27,7 +27,7 @@ const STUDIO_OPTIONS = [
     id: "grid",
     title: "2×2 grid formatter",
     description:
-      "Drag in any number of before & afters, pair them up, and export one or more 2×2 grid posts.",
+      "Upload a before folder and an after folder, then export one or more 2×2 grid posts.",
   },
   {
     id: "video",
@@ -270,11 +270,16 @@ function VideoFormatter({ onBack }) {
 }
 
 function GridFormatter({ onBack }) {
-  const [bank, setBank] = useState([]);
-  const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
+  const [beforeItems, setBeforeItems] = useState([]);
+  const [afterItems, setAfterItems] = useState([]);
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const { pairs, unpairedBefore, unpairedAfter } = useMemo(
+    () => pairFolders(beforeItems, afterItems),
+    [beforeItems, afterItems],
+  );
 
   useEffect(() => {
     return () => {
@@ -286,30 +291,18 @@ function GridFormatter({ onBack }) {
     event.preventDefault();
     setError("");
 
-    const partial = pairs.some(
-      (pair) => Boolean(pair.before) !== Boolean(pair.after),
-    );
-    if (partial) {
-      setError("Each pair needs both a before and an after (or remove it).");
-      return;
-    }
-
-    const completePairs = pairs
-      .filter((pair) => pair.before && pair.after)
-      .map((pair) => ({
-        before: bank.find((item) => item.id === pair.before)?.file,
-        after: bank.find((item) => item.id === pair.after)?.file,
-      }))
-      .filter((pair) => pair.before && pair.after);
-
-    if (completePairs.length === 0) {
-      setError("Add at least one complete before & after pair.");
+    if (pairs.length === 0) {
+      setError("Upload a before folder and an after folder to build pairs.");
       return;
     }
 
     setBusy(true);
     try {
-      const canvases = await stitchGridPosts(completePairs);
+      const files = pairs.map((pair) => ({
+        before: pair.before.file,
+        after: pair.after.file,
+      }));
+      const canvases = await stitchGridPosts(files);
       const next = await Promise.all(
         canvases.map(async (canvas, index) => {
           const blob = await canvasToBlob(canvas);
@@ -338,11 +331,14 @@ function GridFormatter({ onBack }) {
       <SectionHeading subtitle={GRID_SUBTITLE}>2×2 grid formatter</SectionHeading>
 
       <form onSubmit={handleGenerate} className="space-y-6">
-        <StudioPairBoard
-          bank={bank}
-          setBank={setBank}
+        <StudioFolderBoard
+          beforeItems={beforeItems}
+          afterItems={afterItems}
+          setBeforeItems={setBeforeItems}
+          setAfterItems={setAfterItems}
           pairs={pairs}
-          setPairs={setPairs}
+          unpairedBefore={unpairedBefore}
+          unpairedAfter={unpairedAfter}
           onError={setError}
         />
 
