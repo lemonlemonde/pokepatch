@@ -7,6 +7,7 @@ export const DAMAGE_TAGS = [
   { id: "dent", label: "Dent" },
   { id: "edge_lift", label: "Edge lift" },
   { id: "dirt", label: "Dirt" },
+  { id: "water_damage", label: "Water damage" },
 ];
 
 export const DAMAGE_TAG_IDS = new Set(DAMAGE_TAGS.map((tag) => tag.id));

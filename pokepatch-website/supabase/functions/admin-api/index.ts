@@ -25,6 +25,7 @@ const GALLERY_DAMAGE_TAGS = new Set([
   "dent",
   "edge_lift",
   "dirt",
+  "water_damage",
 ]);
 
 function sanitizeDamageTags(raw: unknown): string[] {
