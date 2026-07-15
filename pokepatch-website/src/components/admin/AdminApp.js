@@ -40,7 +40,7 @@ const ADMIN_TABS = [
     label: "Studio",
     title: "Studio",
     subtitle:
-      "Photo and video before & after formatters for Instagram posts.",
+      "Front & back, 2×2 grid, and video before & after formatters for Instagram posts.",
   },
 ];
 

@@ -18,6 +18,7 @@ export const LABEL_GAP = 28;
 export const BRAND_HANDLE = "@pokepatch.cards";
 export const LABEL_BLOCK_HEIGHT = LABEL_GAP + LABEL_FONT_SIZE;
 export const CARD_RADIUS = 8;
+export const ROW_GAP = 48;
 
 let labelFontReady;
 let logoReady;
@@ -311,5 +312,79 @@ export function drawComparisonFrame(
     targetSh,
     imageTop,
   );
+  drawBranding(ctx, logoImg);
+}
+
+/**
+ * Draw a 2×2 before/after grid. Each row is one before/after pair (before in
+ * the left column, after in the right). Up to 2 rows are supported; a single
+ * row is centered so it reads like the side-by-side comparison frame. Same
+ * background, labels, and branding as drawComparisonFrame.
+ */
+export function drawGridFrame(ctx, rows, logoImg) {
+  enableHighQuality(ctx);
+  fillBackground(ctx);
+
+  const rowCount = rows.length;
+  const totalVertical = INSTAGRAM_HEIGHT - 2 * EDGE_PADDING;
+  const rowMaxImageHeight = Math.max(
+    1,
+    (totalVertical - (rowCount - 1) * ROW_GAP - rowCount * LABEL_BLOCK_HEIGHT) /
+      rowCount,
+  );
+
+  const rowData = rows.map((row) => {
+    const leftMetrics = getContainMetrics(
+      row.before,
+      SLOT_WIDTH,
+      rowMaxImageHeight,
+    );
+    const rightMetrics = getContainMetrics(
+      row.after,
+      SLOT_WIDTH,
+      rowMaxImageHeight,
+    );
+    const shared = getSharedTargetSize(leftMetrics, rightMetrics, SLOT_WIDTH);
+    return {
+      leftMetrics,
+      rightMetrics,
+      leftResized: prepareResized(row.before, leftMetrics),
+      rightResized: prepareResized(row.after, rightMetrics),
+      targetSw: shared.targetSw,
+      targetSh: Math.min(shared.targetSh, Math.floor(rowMaxImageHeight)),
+    };
+  });
+
+  const contentHeight =
+    rowData.reduce((sum, row) => sum + row.targetSh + LABEL_BLOCK_HEIGHT, 0) +
+    Math.max(rowCount - 1, 0) * ROW_GAP;
+  let rowTop = EDGE_PADDING + Math.floor((totalVertical - contentHeight) / 2);
+
+  for (const row of rowData) {
+    drawColumn(
+      ctx,
+      row.leftResized,
+      row.leftMetrics,
+      LEFT_COLUMN_X,
+      SLOT_WIDTH,
+      "before",
+      row.targetSw,
+      row.targetSh,
+      rowTop,
+    );
+    drawColumn(
+      ctx,
+      row.rightResized,
+      row.rightMetrics,
+      RIGHT_COLUMN_X,
+      SLOT_WIDTH,
+      "after",
+      row.targetSw,
+      row.targetSh,
+      rowTop,
+    );
+    rowTop += row.targetSh + LABEL_BLOCK_HEIGHT + ROW_GAP;
+  }
+
   drawBranding(ctx, logoImg);
 }
