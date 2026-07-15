@@ -226,9 +226,36 @@ function PlayBadge({ className = "" }) {
   );
 }
 
-function PairSideCard({ src, type, label, onOpen, priority = false }) {
+// Renders a Supabase gallery image resized via the transform endpoint, falling
+// back to the original URL if the transform fails (e.g. source too large to
+// process). Fades in once loaded to smooth the lazy-load pop-in.
+function GalleryImage({ src, width, alt, sizes, priority = false, className = "" }) {
   const [loaded, setLoaded] = useState(false);
+  const [useOriginal, setUseOriginal] = useState(false);
+  const displaySrc = useOriginal ? src : galleryImageUrl(src, { width });
 
+  return (
+    <Image
+      src={displaySrc}
+      alt={alt}
+      fill
+      priority={priority}
+      sizes={sizes}
+      onLoad={() => setLoaded(true)}
+      onError={() => {
+        if (!useOriginal) {
+          setLoaded(false);
+          setUseOriginal(true);
+        }
+      }}
+      className={`${className} transition-opacity duration-300 ${
+        loaded ? "opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+}
+
+function PairSideCard({ src, type, label, onOpen, priority = false }) {
   if (!src) {
     return (
       <div className="space-y-2">
@@ -241,7 +268,6 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
   }
 
   const isVideo = type === "video";
-  const displaySrc = isVideo ? src : galleryImageUrl(src, { width: 640 });
 
   return (
     <div className="space-y-2">
@@ -265,15 +291,12 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
           </>
         ) : (
           <>
-            <Image
-              src={displaySrc}
+            <GalleryImage
+              src={src}
+              width={640}
               alt={label}
-              fill
               priority={priority}
-              onLoad={() => setLoaded(true)}
-              className={`object-cover transition duration-300 group-hover:scale-105 ${
-                loaded ? "opacity-100" : "opacity-0"
-              }`}
+              className="object-cover transition duration-200 group-hover:scale-105"
               sizes="(max-width: 768px) 50vw, 400px"
             />
             <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/20" />
@@ -411,12 +434,12 @@ function GalleryItemCard({ item, index, onOpen }) {
                             className="absolute inset-0 h-full w-full object-cover"
                           />
                         ) : (
-                          <Image
-                            src={galleryImageUrl(src, { width: 128 })}
+                          <GalleryImage
+                            src={src}
+                            width={128}
                             alt=""
-                            fill
-                            className="object-cover"
                             sizes="32px"
+                            className="object-cover"
                           />
                         )}
                         {isVideo && (
