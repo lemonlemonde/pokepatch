@@ -893,11 +893,11 @@ export default function AdminApp() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="relative mb-6">
         <SectionHeading subtitle={activeTab.subtitle}>
           {activeTab.title}
         </SectionHeading>
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:justify-end">
           {tab === "orders" && loadingOrders && orders.length > 0 && (
             <LoadingIndicator compact label="Refreshing…" />
           )}
