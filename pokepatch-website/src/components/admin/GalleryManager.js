@@ -531,7 +531,7 @@ export default function GalleryManager() {
                   </div>
                   <label className="mb-3 block space-y-1">
                     <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
-                      Caption
+                      Caption <span className="font-normal normal-case">(optional)</span>
                     </span>
                     <input
                       value={captionDrafts[pair.id] ?? pair.caption ?? ""}
