@@ -356,7 +356,7 @@ export default function GalleryManager() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink/70">
           Newest restorations appear first. Each card’s first pair shows on the gallery;
@@ -377,6 +377,7 @@ export default function GalleryManager() {
         </p>
       )}
 
+      <div className="order-last space-y-2">
       {loading ? (
         <LoadingIndicator label="Loading gallery…" />
       ) : items.length === 0 && !draft ? (
@@ -427,6 +428,7 @@ export default function GalleryManager() {
           ))}
         </ul>
       )}
+      </div>
 
       {draft && (
         <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
