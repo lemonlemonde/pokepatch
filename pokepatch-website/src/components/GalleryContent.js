@@ -495,9 +495,193 @@ function GalleryItemCard({ item, index, onOpen }) {
   );
 }
 
+const PAGE_SIZE = 10;
+
+// Build a compact list of page numbers with ellipsis gaps for larger sets so
+// the control never grows unbounded. Small sets show every page.
+function getPageList(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages = new Set([
+    1,
+    2,
+    total - 1,
+    total,
+    current - 1,
+    current,
+    current + 1,
+  ]);
+  const visible = [...pages]
+    .filter((page) => page >= 1 && page <= total)
+    .sort((a, b) => a - b);
+  const result = [];
+  let previous = 0;
+  for (const page of visible) {
+    if (page - previous > 1) result.push(`gap-${page}`);
+    result.push(page);
+    previous = page;
+  }
+  return result;
+}
+
+function FilterButton({ active, disabled, count, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-bold transition ${
+        active
+          ? "border-berry bg-berry text-night shadow-cozy-sm"
+          : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
+      } ${
+        disabled
+          ? "cursor-not-allowed opacity-30 hover:border-ink/15 hover:bg-night/10"
+          : ""
+      }`}
+    >
+      <span>{children}</span>
+      {typeof count === "number" && (
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold leading-none ${
+            active ? "bg-night/20 text-night" : "bg-ink/10 text-ink/60"
+          }`}
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function GalleryFilters({ activeFilter, counts, totalCount, onSelect }) {
+  return (
+    <div className="rounded-2xl border border-ink/10 bg-cream/40 p-4 sm:p-5">
+      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink/50">
+        Filter by damage
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <FilterButton
+          active={activeFilter === "all"}
+          count={totalCount}
+          onClick={() => onSelect("all")}
+        >
+          All
+        </FilterButton>
+        {DAMAGE_TAGS.map((tag) => (
+          <FilterButton
+            key={tag.id}
+            active={activeFilter === tag.id}
+            count={counts[tag.id] ?? 0}
+            disabled={(counts[tag.id] ?? 0) === 0}
+            onClick={() => onSelect(tag.id)}
+          >
+            {tag.label}
+          </FilterButton>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Pagination({ currentPage, totalPages, onChange }) {
+  if (totalPages <= 1) return null;
+
+  const pageList = getPageList(currentPage, totalPages);
+  const arrowClass =
+    "flex h-9 items-center rounded-xl border border-ink/15 bg-night/10 px-3 text-sm font-bold text-ink/80 transition hover:border-ink/30 hover:bg-night/20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-ink/15 disabled:hover:bg-night/10";
+
+  return (
+    <nav
+      className="flex flex-wrap items-center justify-center gap-1.5"
+      aria-label="Gallery pagination"
+    >
+      <button
+        type="button"
+        onClick={() => onChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+        className={arrowClass}
+        aria-label="Previous page"
+      >
+        Prev
+      </button>
+
+      {pageList.map((entry) =>
+        typeof entry === "number" ? (
+          <button
+            key={entry}
+            type="button"
+            onClick={() => onChange(entry)}
+            aria-current={entry === currentPage ? "page" : undefined}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold transition ${
+              entry === currentPage
+                ? "border-berry bg-berry text-night shadow-cozy-sm"
+                : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
+            }`}
+          >
+            {entry}
+          </button>
+        ) : (
+          <span
+            key={entry}
+            className="flex h-9 w-6 items-center justify-center text-sm font-bold text-ink/40"
+            aria-hidden="true"
+          >
+            …
+          </span>
+        ),
+      )}
+
+      <button
+        type="button"
+        onClick={() => onChange(currentPage + 1)}
+        disabled={currentPage >= totalPages}
+        className={arrowClass}
+        aria-label="Next page"
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+
 export default function GalleryContent({ items }) {
-  const mediaList = useMemo(() => buildMediaList(items), [items]);
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [page, setPage] = useState(1);
   const [activeIndex, setActiveIndex] = useState(null);
+  const topRef = useRef(null);
+
+  const damageCounts = useMemo(() => {
+    const counts = {};
+    for (const tag of DAMAGE_TAGS) counts[tag.id] = 0;
+    for (const item of items) {
+      for (const id of item.damageTags ?? []) {
+        if (id in counts) counts[id] += 1;
+      }
+    }
+    return counts;
+  }, [items]);
+
+  const filteredItems = useMemo(() => {
+    if (activeFilter === "all") return items;
+    return items.filter((item) =>
+      (item.damageTags ?? []).includes(activeFilter),
+    );
+  }, [items, activeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+
+  const pageItems = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return filteredItems.slice(start, start + PAGE_SIZE);
+  }, [filteredItems, currentPage]);
+
+  // Lightbox navigation stays within the currently visible (filtered +
+  // paginated) media so Prev/Next never jumps to a hidden card.
+  const mediaList = useMemo(() => buildMediaList(pageItems), [pageItems]);
   const closeLightbox = useCallback(() => setActiveIndex(null), []);
 
   const openMedia = useCallback(
@@ -522,17 +706,65 @@ export default function GalleryContent({ items }) {
 
   const activeMedia = activeIndex === null ? null : mediaList[activeIndex];
 
+  const selectFilter = useCallback((filterId) => {
+    setActiveFilter(filterId);
+    setPage(1);
+    setActiveIndex(null);
+  }, []);
+
+  const changePage = useCallback((next) => {
+    setPage(next);
+    setActiveIndex(null);
+    if (topRef.current) {
+      topRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
+
+  const rangeStart =
+    filteredItems.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredItems.length);
+
   return (
     <>
-      <div className="space-y-8">
-        {items.map((item, index) => (
-          <GalleryItemCard
-            key={item.id ?? item.title}
-            item={item}
-            index={index}
-            onOpen={openMedia}
-          />
-        ))}
+      <div ref={topRef} className="scroll-mt-24 space-y-6">
+        <GalleryFilters
+          activeFilter={activeFilter}
+          counts={damageCounts}
+          totalCount={items.length}
+          onSelect={selectFilter}
+        />
+
+        {filteredItems.length > 0 ? (
+          <>
+            <p className="text-sm font-semibold text-ink/60">
+              Showing {rangeStart}–{rangeEnd} of {filteredItems.length}{" "}
+              {filteredItems.length === 1 ? "restoration" : "restorations"}
+            </p>
+
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {pageItems.map((item, index) => (
+                <GalleryItemCard
+                  key={item.id ?? item.title}
+                  item={item}
+                  index={index}
+                  onOpen={openMedia}
+                />
+              ))}
+            </div>
+
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onChange={changePage}
+            />
+          </>
+        ) : (
+          <div className="rounded-2xl border border-ink/10 bg-cream/40 py-16 text-center">
+            <p className="text-sm font-semibold text-ink/70">
+              No restorations match this filter yet.
+            </p>
+          </div>
+        )}
       </div>
 
       {activeMedia && (

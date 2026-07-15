@@ -36,7 +36,7 @@ export default function GalleryPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="mx-auto max-w-6xl px-6 py-12">
       <div className="animate-fade-up">
         <SectionHeading subtitle="Real restorations from our workshop.">
           Gallery
