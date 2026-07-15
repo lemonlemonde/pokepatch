@@ -3,62 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 
 const PAIRS_PER_POST = 2;
+const DRAG_TYPE = "text/pokepatch-after-id";
 
-function isPng(file) {
-  return file.type === "image/png";
-}
-
-function sortByName(items) {
-  return [...items].sort((a, b) =>
-    a.file.name.localeCompare(b.file.name, undefined, { numeric: true }),
-  );
+function isImage(file) {
+  return file.type.startsWith("image/");
 }
 
 /**
- * Pair a "before" folder with an "after" folder. Files are matched by filename
- * first (so matching names line up regardless of upload order), then any
- * leftovers are paired positionally in sorted order. Returns the ordered pairs
- * plus any files that could not be matched.
+ * Build the before-driven rows: one row per before image, in upload order, with
+ * the after the user has matched to it (or null). Afters are matched one-to-one.
  */
-export function pairFolders(beforeItems, afterItems) {
-  const sortedBefore = sortByName(beforeItems);
-  const sortedAfter = sortByName(afterItems);
-
-  const afterByName = new Map();
-  for (const item of sortedAfter) {
-    const list = afterByName.get(item.file.name) ?? [];
-    list.push(item);
-    afterByName.set(item.file.name, list);
-  }
-
-  const usedAfterIds = new Set();
-  const pairs = [];
-  const unmatchedBefore = [];
-
-  for (const before of sortedBefore) {
-    const candidates = afterByName.get(before.file.name);
-    const match = candidates?.find((item) => !usedAfterIds.has(item.id));
-    if (match) {
-      usedAfterIds.add(match.id);
-      pairs.push({ id: `${before.id}:${match.id}`, before, after: match });
-    } else {
-      unmatchedBefore.push(before);
-    }
-  }
-
-  const unmatchedAfter = sortedAfter.filter((item) => !usedAfterIds.has(item.id));
-  const positional = Math.min(unmatchedBefore.length, unmatchedAfter.length);
-  for (let i = 0; i < positional; i += 1) {
-    const before = unmatchedBefore[i];
-    const after = unmatchedAfter[i];
-    pairs.push({ id: `${before.id}:${after.id}`, before, after });
-  }
-
-  return {
-    pairs,
-    unpairedBefore: unmatchedBefore.slice(positional),
-    unpairedAfter: unmatchedAfter.slice(positional),
-  };
+export function buildPairs(beforeItems, afterItems, afterByBefore) {
+  return beforeItems.map((before) => {
+    const afterId = afterByBefore[before.id] ?? null;
+    const after = afterId
+      ? afterItems.find((item) => item.id === afterId) ?? null
+      : null;
+    return { id: before.id, before, after };
+  });
 }
 
 function fileFromEntry(entry) {
@@ -115,42 +77,8 @@ async function filesFromDrop(dataTransfer) {
   return files;
 }
 
-function ThumbStrip({ items, previewUrls, onRemove }) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {items.map((item) => (
-        <div key={item.id} className="group relative w-16 shrink-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={previewUrls[item.id]}
-            alt={item.file.name}
-            className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
-          />
-          <button
-            type="button"
-            onClick={() => onRemove(item.id)}
-            className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
-            aria-label={`Remove ${item.file.name}`}
-          >
-            ×
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function FolderDropzone({
-  title,
-  inputId,
-  items,
-  previewUrls,
-  onAddFiles,
-  onRemove,
-  onClear,
-}) {
+function FolderDropzone({ inputId, dragging, setDragging, onAddFiles }) {
   const inputRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -167,101 +95,35 @@ function FolderDropzone({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="font-secondary text-sm font-semibold text-blush/90">
-          {title}
-        </p>
-        {items.length > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-xs font-semibold text-berry/90 hover:text-berry"
-          >
-            Clear ({items.length})
-          </button>
-        )}
-      </div>
-
-      <label
-        htmlFor={inputId}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
+    <label
+      htmlFor={inputId}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-6 text-center transition ${
+        dragging
+          ? "border-berry bg-berry/10"
+          : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+      }`}
+    >
+      <p className="text-sm text-ink/70">Drop a folder here or click to browse</p>
+      <p className="text-xs text-ink/40">PNG or JPG</p>
+      <input
+        id={inputId}
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="sr-only"
+        onChange={(event) => {
+          onAddFiles(Array.from(event.target.files ?? []));
+          event.target.value = "";
         }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`flex cursor-pointer flex-col items-center gap-1 rounded-xl border border-dashed px-4 py-6 text-center transition ${
-          dragging
-            ? "border-berry bg-berry/10"
-            : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
-        }`}
-      >
-        <p className="text-sm text-ink/70">Drop a folder here or click to browse</p>
-        <p className="text-xs text-ink/40">PNGs only</p>
-        <input
-          id={inputId}
-          ref={inputRef}
-          type="file"
-          accept="image/png"
-          multiple
-          className="sr-only"
-          onChange={(event) => {
-            onAddFiles(Array.from(event.target.files ?? []));
-            event.target.value = "";
-          }}
-        />
-      </label>
-
-      {items.length > 0 && (
-        <ThumbStrip items={items} previewUrls={previewUrls} onRemove={onRemove} />
-      )}
-    </div>
-  );
-}
-
-function PairPreview({ pair, index, previewUrls, onRemove }) {
-  return (
-    <div className="rounded-xl border border-ink/10 bg-night/40 p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="font-secondary text-xs font-semibold text-blush/80">
-          Pair {index + 1}
-        </p>
-        <button
-          type="button"
-          onClick={() => onRemove(pair)}
-          className="text-xs font-semibold text-berry/90 hover:text-berry"
-        >
-          Remove pair
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { role: "before", label: "Before", item: pair.before },
-          { role: "after", label: "After", item: pair.after },
-        ].map(({ role, label, item }) => (
-          <div
-            key={role}
-            className="overflow-hidden rounded-xl border border-ink/15 bg-night/50"
-          >
-            <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
-              {label}
-            </p>
-            <div className="p-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={previewUrls[item.id]}
-                alt={`${label} preview`}
-                className="mx-auto max-h-36 w-full object-contain"
-              />
-              <p className="mt-2 truncate text-xs text-ink/50">
-                {item.file.name}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      />
+    </label>
   );
 }
 
@@ -270,12 +132,14 @@ export default function StudioFolderBoard({
   afterItems,
   setBeforeItems,
   setAfterItems,
-  pairs,
-  unpairedBefore,
-  unpairedAfter,
+  afterByBefore,
+  setAfterByBefore,
   onError,
 }) {
   const [previewUrls, setPreviewUrls] = useState({});
+  const [beforeDragging, setBeforeDragging] = useState(false);
+  const [afterDragging, setAfterDragging] = useState(false);
+  const [activeRow, setActiveRow] = useState(null);
 
   useEffect(() => {
     const urls = Object.fromEntries(
@@ -290,82 +154,219 @@ export default function StudioFolderBoard({
     };
   }, [beforeItems, afterItems]);
 
-  function addFiles(setItems, fileList) {
-    const pngs = fileList.filter(isPng);
-    if (pngs.length === 0) {
-      onError("No PNG images found in that folder.");
+  const pairs = buildPairs(beforeItems, afterItems, afterByBefore);
+  const usedAfterIds = new Set(Object.values(afterByBefore));
+  const availableAfter = afterItems.filter((item) => !usedAfterIds.has(item.id));
+  const matchedCount = pairs.filter((pair) => pair.after).length;
+  const postCount = Math.ceil(matchedCount / PAIRS_PER_POST);
+
+  function addBefore(fileList) {
+    const images = Array.from(fileList).filter(isImage);
+    if (images.length === 0) {
+      onError("No images found in that folder.");
       return;
     }
-    setItems((prev) => [
+    setBeforeItems((prev) => [
       ...prev,
-      ...pngs.map((file) => ({ id: crypto.randomUUID(), file })),
+      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
     ]);
     onError("");
   }
 
-  function removeItem(setItems, id) {
-    setItems((prev) => prev.filter((item) => item.id !== id));
+  function addAfter(fileList) {
+    const images = Array.from(fileList).filter(isImage);
+    if (images.length === 0) {
+      onError("No images found in that folder.");
+      return;
+    }
+    setAfterItems((prev) => [
+      ...prev,
+      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
+    ]);
+    onError("");
   }
 
-  function removePair(pair) {
-    setBeforeItems((prev) => prev.filter((item) => item.id !== pair.before.id));
-    setAfterItems((prev) => prev.filter((item) => item.id !== pair.after.id));
+  function removeBefore(beforeId) {
+    setBeforeItems((prev) => prev.filter((item) => item.id !== beforeId));
+    setAfterByBefore((prev) => {
+      const next = { ...prev };
+      delete next[beforeId];
+      return next;
+    });
   }
 
-  const postCount = Math.ceil(pairs.length / PAIRS_PER_POST);
-  const unpairedCount = unpairedBefore.length + unpairedAfter.length;
+  function clearBefore() {
+    setBeforeItems([]);
+    setAfterByBefore({});
+  }
+
+  function removeAfter(afterId) {
+    setAfterItems((prev) => prev.filter((item) => item.id !== afterId));
+    setAfterByBefore((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).filter(([, value]) => value !== afterId),
+      ),
+    );
+  }
+
+  function clearAfter() {
+    setAfterItems([]);
+    setAfterByBefore({});
+  }
+
+  function matchAfter(beforeId, afterId) {
+    if (!afterItems.some((item) => item.id === afterId)) return;
+    setAfterByBefore((prev) => {
+      const next = {};
+      for (const [key, value] of Object.entries(prev)) {
+        if (value !== afterId) next[key] = value;
+      }
+      next[beforeId] = afterId;
+      return next;
+    });
+    onError("");
+  }
+
+  function unmatchAfter(beforeId) {
+    setAfterByBefore((prev) => {
+      const next = { ...prev };
+      delete next[beforeId];
+      return next;
+    });
+  }
+
+  function handleRowDrop(event, beforeId) {
+    event.preventDefault();
+    setActiveRow(null);
+    const afterId = event.dataTransfer.getData(DRAG_TYPE);
+    if (afterId) matchAfter(beforeId, afterId);
+  }
+
+  function startAfterDrag(event, afterId) {
+    event.dataTransfer.setData(DRAG_TYPE, afterId);
+    event.dataTransfer.effectAllowed = "move";
+  }
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
-        <FolderDropzone
-          title="Before folder"
-          inputId="grid-before-folder"
-          items={beforeItems}
-          previewUrls={previewUrls}
-          onAddFiles={(files) => addFiles(setBeforeItems, files)}
-          onRemove={(id) => removeItem(setBeforeItems, id)}
-          onClear={() => setBeforeItems([])}
-        />
-        <FolderDropzone
-          title="After folder"
-          inputId="grid-after-folder"
-          items={afterItems}
-          previewUrls={previewUrls}
-          onAddFiles={(files) => addFiles(setAfterItems, files)}
-          onRemove={(id) => removeItem(setAfterItems, id)}
-          onClear={() => setAfterItems([])}
-        />
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="font-secondary text-sm font-semibold text-blush/90">
+              Before folder
+            </p>
+            {beforeItems.length > 0 && (
+              <button
+                type="button"
+                onClick={clearBefore}
+                className="text-xs font-semibold text-berry/90 hover:text-berry"
+              >
+                Clear ({beforeItems.length})
+              </button>
+            )}
+          </div>
+          <FolderDropzone
+            inputId="grid-before-folder"
+            dragging={beforeDragging}
+            setDragging={setBeforeDragging}
+            onAddFiles={addBefore}
+          />
+          <p className="text-xs text-ink/40">
+            Each before becomes a row below — drag an after onto it to match.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="font-secondary text-sm font-semibold text-blush/90">
+              After folder
+            </p>
+            {afterItems.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAfter}
+                className="text-xs font-semibold text-berry/90 hover:text-berry"
+              >
+                Clear ({afterItems.length})
+              </button>
+            )}
+          </div>
+          <FolderDropzone
+            inputId="grid-after-folder"
+            dragging={afterDragging}
+            setDragging={setAfterDragging}
+            onAddFiles={addAfter}
+          />
+        </div>
+      </div>
+
+      <div className="sticky top-0 z-20 space-y-2 rounded-xl border border-ink/15 bg-night/95 p-3 shadow-cozy-sm backdrop-blur">
+        <div className="flex items-center justify-between">
+          <p className="font-secondary text-sm font-semibold text-blush/90">
+            After bank
+          </p>
+          <p className="text-xs text-ink/50">Drag onto a row to match →</p>
+        </div>
+        <div className="max-h-40 overflow-y-auto">
+          {availableAfter.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {availableAfter.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(event) => startAfterDrag(event, item.id)}
+                  className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrls[item.id]}
+                    alt={item.file.name}
+                    className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
+                    draggable={false}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeAfter(item.id)}
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
+                    aria-label={`Remove ${item.file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="flex h-full min-h-[4rem] items-center justify-center text-center text-xs text-ink/40">
+              {afterItems.length > 0
+                ? "All afters matched — drag one onto a different row to move it"
+                : "Upload the after folder above"}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="font-secondary text-sm font-semibold text-blush/90">
-            Auto-paired preview
+            Match afters to befores
           </p>
           <p className="text-xs text-ink/50">
-            {pairs.length} pair{pairs.length === 1 ? "" : "s"} → {postCount}{" "}
-            image{postCount === 1 ? "" : "s"} (2 pairs per 2×2)
+            {matchedCount}/{pairs.length} matched → {postCount} image
+            {postCount === 1 ? "" : "s"} (2 pairs per 2×2)
           </p>
         </div>
 
-        {unpairedCount > 0 && (
-          <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-xs text-berry">
-            {unpairedCount} image{unpairedCount === 1 ? "" : "s"} could not be
-            paired ({unpairedBefore.length} before, {unpairedAfter.length}{" "}
-            after). Match the folders by filename or count.
-          </p>
-        )}
-
         {pairs.length === 0 ? (
           <p className="rounded-xl border border-dashed border-ink/15 bg-night/30 px-3 py-10 text-center text-sm text-ink/40">
-            Upload a before folder and an after folder to build pairs.
+            Upload a before folder to start building rows.
           </p>
         ) : (
           <div className="space-y-4">
             {pairs.map((pair, index) => {
               const postIndex = Math.floor(index / PAIRS_PER_POST);
               const showPostHeading = index % PAIRS_PER_POST === 0;
+              const isActive = activeRow === pair.id;
+
               return (
                 <div key={pair.id} className="space-y-2">
                   {showPostHeading && (
@@ -373,12 +374,95 @@ export default function StudioFolderBoard({
                       Post {postIndex + 1} · 2×2
                     </p>
                   )}
-                  <PairPreview
-                    pair={pair}
-                    index={index}
-                    previewUrls={previewUrls}
-                    onRemove={removePair}
-                  />
+                  <div className="rounded-xl border border-ink/10 bg-night/40 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="font-secondary text-xs font-semibold text-blush/80">
+                        Pair {index + 1}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => removeBefore(pair.before.id)}
+                        className="text-xs font-semibold text-berry/90 hover:text-berry"
+                      >
+                        Remove row
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="overflow-hidden rounded-xl border border-ink/15 bg-night/50">
+                        <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                          Before
+                        </p>
+                        <div className="p-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={previewUrls[pair.before.id]}
+                            alt="Before preview"
+                            className="mx-auto max-h-36 w-full object-contain"
+                          />
+                          <p className="mt-2 truncate text-xs text-ink/50">
+                            {pair.before.file.name}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          setActiveRow(pair.id);
+                        }}
+                        onDragLeave={() =>
+                          setActiveRow((prev) =>
+                            prev === pair.id ? null : prev,
+                          )
+                        }
+                        onDrop={(event) => handleRowDrop(event, pair.id)}
+                        className={`overflow-hidden rounded-xl border bg-night/50 transition ${
+                          isActive
+                            ? "border-berry bg-berry/10"
+                            : pair.after
+                              ? "border-ink/15"
+                              : "border-dashed border-ink/10"
+                        }`}
+                      >
+                        <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                          After
+                        </p>
+                        {pair.after ? (
+                          <div
+                            draggable
+                            onDragStart={(event) =>
+                              startAfterDrag(event, pair.after.id)
+                            }
+                            className="cursor-grab p-3 active:cursor-grabbing"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={previewUrls[pair.after.id]}
+                              alt="After preview"
+                              className="mx-auto max-h-36 w-full object-contain"
+                              draggable={false}
+                            />
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="truncate text-xs text-ink/50">
+                                {pair.after.file.name}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => unmatchAfter(pair.id)}
+                                className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="px-3 py-10 text-center text-xs text-ink/30">
+                            Drag an after here
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               );
             })}

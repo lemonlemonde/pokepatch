@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, { EMPTY_SLOTS } from "@/components/StudioMediaBank";
-import StudioFolderBoard, { pairFolders } from "@/components/StudioFolderBoard";
+import StudioFolderBoard, { buildPairs } from "@/components/StudioFolderBoard";
 import { canvasToBlob, stitchBothPosts } from "@/lib/instagramStitch";
 import { stitchGridPosts } from "@/lib/instagramGridStitch";
 import {
@@ -14,28 +15,45 @@ import {
 const COMPARISON_SUBTITLE =
   "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
 const GRID_SUBTITLE =
-  "Upload a before folder and an after folder — images auto-pair, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
+  "Upload a before folder and an after folder, pair them up yourself, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
+
+const STUDIO_BASE = "/admin/studio/";
 
 const STUDIO_OPTIONS = [
   {
     id: "photo",
+    slug: "front-back",
     title: "Front & back formatter",
     description:
       "Side-by-side before & after PNGs for front and back. 1080×1080 with labels and branding.",
   },
   {
     id: "grid",
+    slug: "grid",
     title: "2×2 grid formatter",
     description:
-      "Upload a before folder and an after folder, then export one or more 2×2 grid posts.",
+      "Upload a before folder and an after folder, pair them yourself, and export one or more 2×2 grid posts.",
   },
   {
     id: "video",
+    slug: "video",
     title: "Video formatter",
     description:
       "Side-by-side before & after videos for front and back. Same layout, labels, and branding as photos.",
   },
 ];
+
+function studioRoute(id) {
+  const option = STUDIO_OPTIONS.find((entry) => entry.id === id);
+  return option ? `${STUDIO_BASE}${option.slug}/` : STUDIO_BASE;
+}
+
+function modeFromPathname(pathname) {
+  const option = STUDIO_OPTIONS.find((entry) =>
+    pathname?.startsWith(`${STUDIO_BASE}${entry.slug}`),
+  );
+  return option?.id ?? null;
+}
 
 function StudioSelector({ onSelect }) {
   return (
@@ -272,14 +290,10 @@ function VideoFormatter({ onBack }) {
 function GridFormatter({ onBack }) {
   const [beforeItems, setBeforeItems] = useState([]);
   const [afterItems, setAfterItems] = useState([]);
+  const [afterByBefore, setAfterByBefore] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  const { pairs, unpairedBefore, unpairedAfter } = useMemo(
-    () => pairFolders(beforeItems, afterItems),
-    [beforeItems, afterItems],
-  );
 
   useEffect(() => {
     return () => {
@@ -291,17 +305,17 @@ function GridFormatter({ onBack }) {
     event.preventDefault();
     setError("");
 
-    if (pairs.length === 0) {
-      setError("Upload a before folder and an after folder to build pairs.");
+    const files = buildPairs(beforeItems, afterItems, afterByBefore)
+      .filter((pair) => pair.after)
+      .map((pair) => ({ before: pair.before.file, after: pair.after.file }));
+
+    if (files.length === 0) {
+      setError("Match at least one after to a before.");
       return;
     }
 
     setBusy(true);
     try {
-      const files = pairs.map((pair) => ({
-        before: pair.before.file,
-        after: pair.after.file,
-      }));
       const canvases = await stitchGridPosts(files);
       const next = await Promise.all(
         canvases.map(async (canvas, index) => {
@@ -336,9 +350,8 @@ function GridFormatter({ onBack }) {
           afterItems={afterItems}
           setBeforeItems={setBeforeItems}
           setAfterItems={setAfterItems}
-          pairs={pairs}
-          unpairedBefore={unpairedBefore}
-          unpairedAfter={unpairedAfter}
+          afterByBefore={afterByBefore}
+          setAfterByBefore={setAfterByBefore}
           onError={setError}
         />
 
@@ -363,19 +376,22 @@ function GridFormatter({ onBack }) {
 }
 
 export default function StudioTool() {
-  const [mode, setMode] = useState(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const mode = modeFromPathname(pathname);
+  const goBack = () => router.push(STUDIO_BASE);
 
   if (mode === "photo") {
-    return <PhotoFormatter onBack={() => setMode(null)} />;
+    return <PhotoFormatter onBack={goBack} />;
   }
 
   if (mode === "grid") {
-    return <GridFormatter onBack={() => setMode(null)} />;
+    return <GridFormatter onBack={goBack} />;
   }
 
   if (mode === "video") {
-    return <VideoFormatter onBack={() => setMode(null)} />;
+    return <VideoFormatter onBack={goBack} />;
   }
 
-  return <StudioSelector onSelect={setMode} />;
+  return <StudioSelector onSelect={(id) => router.push(studioRoute(id))} />;
 }

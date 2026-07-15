@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import {
   CardPhotoPreviewGrid,
@@ -24,6 +25,7 @@ const ADMIN_TABS = [
   {
     id: "orders",
     label: "Orders",
+    path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
       "Drag cards between columns to update status. Click a card to edit.",
@@ -31,6 +33,7 @@ const ADMIN_TABS = [
   {
     id: "gallery",
     label: "Gallery",
+    path: "/admin/gallery/",
     title: "Gallery admin",
     subtitle:
       "Upload and manage restorations shown on the public Gallery page.",
@@ -38,11 +41,19 @@ const ADMIN_TABS = [
   {
     id: "studio",
     label: "Studio",
+    path: "/admin/studio/",
     title: "Studio",
     subtitle:
       "Front & back, 2×2 grid, and video before & after formatters for Instagram posts.",
   },
 ];
+
+function tabFromPathname(pathname) {
+  const match = ADMIN_TABS.find((entry) =>
+    pathname?.startsWith(entry.path.replace(/\/$/, "")),
+  );
+  return match?.id ?? "orders";
+}
 
 const STATUSES = [
   { id: "new", label: "New" },
@@ -694,9 +705,11 @@ function OrderEditor({
 }
 
 export default function AdminApp() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const tab = tabFromPathname(pathname);
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
-  const [tab, setTab] = useState("orders");
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingOrderId, setLoadingOrderId] = useState(null);
@@ -916,7 +929,7 @@ export default function AdminApp() {
           <button
             key={entry.id}
             type="button"
-            onClick={() => setTab(entry.id)}
+            onClick={() => router.push(entry.path)}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
               tab === entry.id
                 ? "bg-berry text-night shadow-cozy"
