@@ -296,7 +296,7 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
               width={640}
               alt={label}
               priority={priority}
-              className="object-contain transition duration-200 group-hover:scale-105"
+              className="object-cover transition duration-200 group-hover:scale-105"
               sizes="(max-width: 768px) 50vw, 400px"
             />
             <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/20" />
