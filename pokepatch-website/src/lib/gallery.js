@@ -31,6 +31,25 @@ function publicUrlForPath(path) {
   return data?.publicUrl ?? null;
 }
 
+const STORAGE_PUBLIC_MARKER = "/storage/v1/object/public/";
+
+/**
+ * Return a width-constrained variant of a Supabase Storage image URL using the
+ * built-in image transformation endpoint. Non-storage URLs (e.g. local static
+ * fallbacks) and empty widths are returned unchanged.
+ */
+export function galleryImageUrl(src, { width, quality = 70 } = {}) {
+  if (!src || typeof src !== "string" || !width) return src;
+  const markerIndex = src.indexOf(STORAGE_PUBLIC_MARKER);
+  if (markerIndex === -1) return src;
+  const rendered = src.replace(
+    STORAGE_PUBLIC_MARKER,
+    "/storage/v1/render/image/public/"
+  );
+  const separator = rendered.includes("?") ? "&" : "?";
+  return `${rendered}${separator}width=${width}&quality=${quality}`;
+}
+
 function detectMediaKind(path) {
   if (!path) return "image";
   return /\.(mp4|webm|mov)(\?|$)/i.test(path) ? "video" : "image";

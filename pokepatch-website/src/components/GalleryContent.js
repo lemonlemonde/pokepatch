@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import Image from "next/image";
-import { DAMAGE_TAGS } from "@/lib/gallery";
+import { DAMAGE_TAGS, galleryImageUrl } from "@/lib/gallery";
 
 const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) {
   const videoRef = useRef(null);
@@ -227,6 +227,8 @@ function PlayBadge({ className = "" }) {
 }
 
 function PairSideCard({ src, type, label, onOpen, priority = false }) {
+  const [loaded, setLoaded] = useState(false);
+
   if (!src) {
     return (
       <div className="space-y-2">
@@ -239,6 +241,7 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
   }
 
   const isVideo = type === "video";
+  const displaySrc = isVideo ? src : galleryImageUrl(src, { width: 640 });
 
   return (
     <div className="space-y-2">
@@ -263,11 +266,14 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
         ) : (
           <>
             <Image
-              src={src}
+              src={displaySrc}
               alt={label}
               fill
               priority={priority}
-              className="object-cover transition duration-200 group-hover:scale-105"
+              onLoad={() => setLoaded(true)}
+              className={`object-cover transition duration-300 group-hover:scale-105 ${
+                loaded ? "opacity-100" : "opacity-0"
+              }`}
               sizes="(max-width: 768px) 50vw, 400px"
             />
             <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/20" />
@@ -406,7 +412,7 @@ function GalleryItemCard({ item, index, onOpen }) {
                           />
                         ) : (
                           <Image
-                            src={src}
+                            src={galleryImageUrl(src, { width: 128 })}
                             alt=""
                             fill
                             className="object-cover"
