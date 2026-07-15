@@ -24,16 +24,16 @@ const SLOT_GROUPS = [
 
 const MEDIA_CONFIG = {
   image: {
-    accept: "image/png",
+    accept: "image/*",
     bankLabel: "Image bank",
-    uploadHint: "Drop PNGs here, click to browse, or paste",
+    uploadHint: "Drop images here, click to browse, or paste",
     emptyBank: "Uploaded images appear here",
     allPlaced: "All images placed — drag one back here to swap",
     dropSlot: "Drop image here",
-    unsupportedError: "Only PNG images are supported.",
+    unsupportedError: "Only image files (PNG, JPG, etc.) are supported.",
     inputId: "card-images",
     pickFiles: (fileList) =>
-      Array.from(fileList).filter((file) => file.type === "image/png"),
+      Array.from(fileList).filter((file) => file.type.startsWith("image/")),
     supportsPaste: true,
   },
   video: {
@@ -199,7 +199,7 @@ export default function StudioMediaBank({
 
     const files = [];
     for (const item of items) {
-      if (item.type === "image/png") {
+      if (item.type.startsWith("image/")) {
         const file = item.getAsFile();
         if (file) files.push(file);
       }

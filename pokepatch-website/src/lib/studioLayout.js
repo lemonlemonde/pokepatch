@@ -18,6 +18,10 @@ export const LABEL_GAP = 28;
 export const BRAND_HANDLE = "@pokepatch.cards";
 export const LABEL_BLOCK_HEIGHT = LABEL_GAP + LABEL_FONT_SIZE;
 export const CARD_RADIUS = 8;
+export const ROW_GAP = 48;
+// Vertical space reserved at the top of a grid post so the branding badge
+// never overlaps the cards.
+export const GRID_TOP_BRAND_BAND = 116;
 
 let labelFontReady;
 let logoReady;
@@ -311,5 +315,112 @@ export function drawComparisonFrame(
     targetSh,
     imageTop,
   );
+  drawBranding(ctx, logoImg);
+}
+
+/** Center a single card within its column and draw it (no label). */
+function drawGridCard(
+  ctx,
+  resized,
+  metrics,
+  columnX,
+  slotWidth,
+  targetSw,
+  targetSh,
+  drawY,
+) {
+  const drawX = columnX + Math.floor((slotWidth - targetSw) / 2);
+  drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh);
+}
+
+/**
+ * Draw a 2×2 before/after grid. Each row is one before/after pair (before in
+ * the left column, after in the right); up to 2 rows are supported. A single
+ * "before"/"after" label is drawn once per column at the bottom, and a top band
+ * is reserved so the branding badge never overlaps the cards.
+ */
+export function drawGridFrame(ctx, rows, logoImg) {
+  enableHighQuality(ctx);
+  fillBackground(ctx);
+
+  const rowCount = rows.length;
+  const contentTop = EDGE_PADDING + GRID_TOP_BRAND_BAND;
+  const contentBottom = INSTAGRAM_HEIGHT - EDGE_PADDING - LABEL_BLOCK_HEIGHT;
+  const rowsRegionHeight = contentBottom - contentTop;
+  const rowMaxImageHeight = Math.max(
+    1,
+    (rowsRegionHeight - Math.max(rowCount - 1, 0) * ROW_GAP) / rowCount,
+  );
+
+  const rowData = rows.map((row) => {
+    const leftMetrics = getContainMetrics(
+      row.before,
+      SLOT_WIDTH,
+      rowMaxImageHeight,
+    );
+    const rightMetrics = getContainMetrics(
+      row.after,
+      SLOT_WIDTH,
+      rowMaxImageHeight,
+    );
+    const shared = getSharedTargetSize(leftMetrics, rightMetrics, SLOT_WIDTH);
+    return {
+      leftMetrics,
+      rightMetrics,
+      leftResized: prepareResized(row.before, leftMetrics),
+      rightResized: prepareResized(row.after, rightMetrics),
+      targetSw: shared.targetSw,
+      targetSh: Math.min(shared.targetSh, Math.floor(rowMaxImageHeight)),
+    };
+  });
+
+  const cardsHeight =
+    rowData.reduce((sum, row) => sum + row.targetSh, 0) +
+    Math.max(rowCount - 1, 0) * ROW_GAP;
+  let rowTop = contentTop + Math.floor((rowsRegionHeight - cardsHeight) / 2);
+
+  for (const row of rowData) {
+    drawGridCard(
+      ctx,
+      row.leftResized,
+      row.leftMetrics,
+      LEFT_COLUMN_X,
+      SLOT_WIDTH,
+      row.targetSw,
+      row.targetSh,
+      rowTop,
+    );
+    drawGridCard(
+      ctx,
+      row.rightResized,
+      row.rightMetrics,
+      RIGHT_COLUMN_X,
+      SLOT_WIDTH,
+      row.targetSw,
+      row.targetSh,
+      rowTop,
+    );
+    rowTop += row.targetSh + ROW_GAP;
+  }
+
+  ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = LABEL_COLOR;
+  const labelY = contentBottom + LABEL_GAP + LABEL_FONT_SIZE / 2;
+  drawTrackedText(
+    ctx,
+    "BEFORE",
+    LEFT_COLUMN_X + SLOT_WIDTH / 2,
+    labelY,
+    LABEL_TRACKING,
+  );
+  drawTrackedText(
+    ctx,
+    "AFTER",
+    RIGHT_COLUMN_X + SLOT_WIDTH / 2,
+    labelY,
+    LABEL_TRACKING,
+  );
+
   drawBranding(ctx, logoImg);
 }

@@ -7,7 +7,7 @@ import {
   ensureLogo,
 } from "@/lib/studioLayout";
 
-function loadImage(file) {
+export function loadImage(file) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
