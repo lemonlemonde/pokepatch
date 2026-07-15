@@ -246,27 +246,34 @@ export const FALLBACK_GALLERY_ITEMS = [
 export async function fetchPublishedGalleryItems() {
   if (!isSupabaseConfigured || !supabase) return null;
 
-  const { data, error } = await supabase
-    .from("gallery_items")
-    .select(
-      `
+  const buildSelect = (pairFields) => `
       id,
       title,
       set_name,
       damage_tags,
       created_at,
       gallery_pairs (
-        id,
-        sort_order,
-        media_kind,
-        caption,
-        before_path,
-        after_path
+        ${pairFields}
       )
-    `
-    )
-    .eq("published", true)
-    .order("created_at", { ascending: false });
+    `;
+
+  const runQuery = (pairFields) =>
+    supabase
+      .from("gallery_items")
+      .select(buildSelect(pairFields))
+      .eq("published", true)
+      .order("created_at", { ascending: false });
+
+  // `caption` is an additive column; fall back gracefully if the migration
+  // that adds it hasn't been applied yet so the gallery still renders.
+  let { data, error } = await runQuery(
+    "id, sort_order, media_kind, caption, before_path, after_path"
+  );
+  if (error) {
+    ({ data, error } = await runQuery(
+      "id, sort_order, media_kind, before_path, after_path"
+    ));
+  }
 
   if (error) {
     console.error("gallery_items fetch failed", error);

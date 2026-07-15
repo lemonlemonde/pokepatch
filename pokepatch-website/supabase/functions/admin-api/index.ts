@@ -107,11 +107,22 @@ async function fetchPairsForItems(
   itemIds: string[]
 ) {
   if (itemIds.length === 0) return new Map<string, Record<string, unknown>[]>();
-  const { data, error } = await supabase
-    .from("gallery_pairs")
-    .select("id, item_id, sort_order, media_kind, caption, before_path, after_path, created_at")
-    .in("item_id", itemIds)
-    .order("sort_order", { ascending: true });
+  const runQuery = (fields: string) =>
+    supabase
+      .from("gallery_pairs")
+      .select(fields)
+      .in("item_id", itemIds)
+      .order("sort_order", { ascending: true });
+
+  // `caption` is additive; fall back if the migration hasn't been applied yet.
+  let { data, error } = await runQuery(
+    "id, item_id, sort_order, media_kind, caption, before_path, after_path, created_at"
+  );
+  if (error) {
+    ({ data, error } = await runQuery(
+      "id, item_id, sort_order, media_kind, before_path, after_path, created_at"
+    ));
+  }
   if (error) throw error;
 
   const map = new Map<string, Record<string, unknown>[]>();
