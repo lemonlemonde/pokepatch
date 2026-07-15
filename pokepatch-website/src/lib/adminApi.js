@@ -237,6 +237,18 @@ export async function adminReorderGalleryPairs(itemId, orderedIds) {
   return payload.item;
 }
 
+export async function adminSaveGalleryPairCaption(pairId, caption) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_pair_save_caption",
+      pair_id: pairId,
+      caption,
+    },
+  });
+  return payload.item;
+}
+
 export async function adminClearGalleryPairSide(pairId, side) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

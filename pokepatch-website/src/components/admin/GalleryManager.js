@@ -10,6 +10,7 @@ import {
   adminListGallery,
   adminReorderGalleryPairs,
   adminSaveGalleryItem,
+  adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
@@ -165,6 +166,7 @@ export default function GalleryManager() {
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [staged, setStaged] = useState({});
+  const [captionDrafts, setCaptionDrafts] = useState({});
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const [reordering, setReordering] = useState(false);
@@ -194,6 +196,7 @@ export default function GalleryManager() {
     setSelectedId(item.id);
     setDraft(itemToDraft(item));
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -201,6 +204,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(emptyDraft());
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -208,6 +212,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(null);
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -251,6 +256,13 @@ export default function GalleryManager() {
         const [pairId, side] = key.split(":");
         if (!pairId || (side !== "before" && side !== "after")) continue;
         item = await adminUploadGalleryPairSide(pairId, side, file);
+      }
+
+      // Persist any edited pair captions for still-existing pairs.
+      const pairIds = new Set((selected?.pairs ?? []).map((pair) => pair.id));
+      for (const [pairId, caption] of Object.entries(captionDrafts)) {
+        if (!pairIds.has(pairId)) continue;
+        item = await adminSaveGalleryPairCaption(pairId, caption);
       }
 
       const rows = await refresh();
@@ -517,6 +529,22 @@ export default function GalleryManager() {
                       </button>
                     </div>
                   </div>
+                  <label className="mb-3 block space-y-1">
+                    <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
+                      Caption
+                    </span>
+                    <input
+                      value={captionDrafts[pair.id] ?? pair.caption ?? ""}
+                      onChange={(event) =>
+                        setCaptionDrafts((current) => ({
+                          ...current,
+                          [pair.id]: event.target.value,
+                        }))
+                      }
+                      className={fieldClassName()}
+                      placeholder="e.g. Front, Corner close-up"
+                    />
+                  </label>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <SideUpload
                       label="Before"

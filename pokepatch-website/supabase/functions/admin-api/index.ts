@@ -109,7 +109,7 @@ async function fetchPairsForItems(
   if (itemIds.length === 0) return new Map<string, Record<string, unknown>[]>();
   const { data, error } = await supabase
     .from("gallery_pairs")
-    .select("id, item_id, sort_order, media_kind, before_path, after_path, created_at")
+    .select("id, item_id, sort_order, media_kind, caption, before_path, after_path, created_at")
     .in("item_id", itemIds)
     .order("sort_order", { ascending: true });
   if (error) throw error;
@@ -762,6 +762,40 @@ Deno.serve(async (req) => {
       if (previousPath) {
         await supabase.storage.from(GALLERY_BUCKET).remove([previousPath]);
       }
+
+      const item = await getGalleryItem(supabase, existing.item_id as string);
+      return jsonResponse(req, { ok: true, item });
+    }
+
+    if (action === "gallery_pair_save_caption") {
+      const pairId = String(body.pair_id ?? "");
+      if (!pairId) {
+        return jsonResponse(req, { ok: false, error: "pair_id required" }, 400);
+      }
+
+      const caption =
+        typeof body.caption === "string" ? body.caption.trim().slice(0, 200) : "";
+
+      const { data: existing, error: existingError } = await supabase
+        .from("gallery_pairs")
+        .select("id, item_id")
+        .eq("id", pairId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) {
+        return jsonResponse(req, { ok: false, error: "not found" }, 404);
+      }
+
+      const { error: updateError } = await supabase
+        .from("gallery_pairs")
+        .update({ caption })
+        .eq("id", pairId);
+      if (updateError) throw updateError;
+
+      await supabase
+        .from("gallery_items")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", existing.item_id);
 
       const item = await getGalleryItem(supabase, existing.item_id as string);
       return jsonResponse(req, { ok: true, item });

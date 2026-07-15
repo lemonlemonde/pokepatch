@@ -68,6 +68,7 @@ function mapPair(row, urls = {}) {
     id: row.id,
     mediaKind,
     type: mediaKind,
+    caption: typeof row.caption === "string" ? row.caption : "",
     before,
     after,
     beforePath,
@@ -258,6 +259,7 @@ export async function fetchPublishedGalleryItems() {
         id,
         sort_order,
         media_kind,
+        caption,
         before_path,
         after_path
       )

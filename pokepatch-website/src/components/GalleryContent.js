@@ -283,23 +283,31 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
 
 function BeforeAfterPair({ pair, onOpen, priority = false }) {
   const kind = pairMediaKind(pair);
+  const caption = typeof pair.caption === "string" ? pair.caption.trim() : "";
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <PairSideCard
-        src={pair.before}
-        type={kind}
-        label="Before"
-        priority={priority}
-        onOpen={onOpen}
-      />
-      <PairSideCard
-        src={pair.after}
-        type={kind}
-        label="After"
-        priority={priority}
-        onOpen={onOpen}
-      />
+    <div className="space-y-2">
+      {caption && (
+        <p className="text-center text-xs font-semibold uppercase tracking-wide text-ink/60">
+          {caption}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <PairSideCard
+          src={pair.before}
+          type={kind}
+          label="Before"
+          priority={priority}
+          onOpen={onOpen}
+        />
+        <PairSideCard
+          src={pair.after}
+          type={kind}
+          label="After"
+          priority={priority}
+          onOpen={onOpen}
+        />
+      </div>
     </div>
   );
 }
