@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, { EMPTY_SLOTS } from "@/components/StudioMediaBank";
-import StudioFolderBoard, { buildPairs } from "@/components/StudioFolderBoard";
+import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
 import { canvasToBlob, stitchBothPosts } from "@/lib/instagramStitch";
 import { stitchGridPosts } from "@/lib/instagramGridStitch";
 import {
@@ -15,7 +15,7 @@ import {
 const COMPARISON_SUBTITLE =
   "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
 const GRID_SUBTITLE =
-  "Upload a before folder and an after folder, pair them up yourself, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
+  "Load the before & after banks on each side, drag a pair into each slot, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
 
 const STUDIO_BASE = "/admin/studio/";
 
@@ -290,7 +290,7 @@ function VideoFormatter({ onBack }) {
 function GridFormatter({ onBack }) {
   const [beforeItems, setBeforeItems] = useState([]);
   const [afterItems, setAfterItems] = useState([]);
-  const [afterByBefore, setAfterByBefore] = useState({});
+  const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -305,12 +305,24 @@ function GridFormatter({ onBack }) {
     event.preventDefault();
     setError("");
 
-    const files = buildPairs(beforeItems, afterItems, afterByBefore)
-      .filter((pair) => pair.after)
-      .map((pair) => ({ before: pair.before.file, after: pair.after.file }));
+    const partial = pairs.some(
+      (pair) => Boolean(pair.before) !== Boolean(pair.after),
+    );
+    if (partial) {
+      setError("Each pair needs both a before and an after (or remove it).");
+      return;
+    }
+
+    const files = pairs
+      .filter((pair) => pair.before && pair.after)
+      .map((pair) => ({
+        before: beforeItems.find((item) => item.id === pair.before)?.file,
+        after: afterItems.find((item) => item.id === pair.after)?.file,
+      }))
+      .filter((pair) => pair.before && pair.after);
 
     if (files.length === 0) {
-      setError("Match at least one after to a before.");
+      setError("Pair at least one before image with an after image.");
       return;
     }
 
@@ -340,9 +352,13 @@ function GridFormatter({ onBack }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl animate-fade-up">
-      <BackButton onClick={onBack} />
-      <SectionHeading subtitle={GRID_SUBTITLE}>2×2 grid formatter</SectionHeading>
+    <div className="mx-auto max-w-6xl animate-fade-up">
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={onBack} />
+        <SectionHeading subtitle={GRID_SUBTITLE}>
+          2×2 grid formatter
+        </SectionHeading>
+      </div>
 
       <form onSubmit={handleGenerate} className="space-y-6">
         <StudioFolderBoard
@@ -350,27 +366,33 @@ function GridFormatter({ onBack }) {
           afterItems={afterItems}
           setBeforeItems={setBeforeItems}
           setAfterItems={setAfterItems}
-          afterByBefore={afterByBefore}
-          setAfterByBefore={setAfterByBefore}
+          pairs={pairs}
+          setPairs={setPairs}
           onError={setError}
         />
 
-        {error && (
-          <p className="text-center text-sm text-berry" role="alert">
-            {error}
-          </p>
-        )}
+        <div className="mx-auto max-w-3xl space-y-6">
+          {error && (
+            <p className="text-center text-sm text-berry" role="alert">
+              {error}
+            </p>
+          )}
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? "Generating…" : "Generate grid posts"}
-        </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Generating…" : "Generate grid posts"}
+          </button>
+        </div>
       </form>
 
-      {outputs && <OutputGrid outputs={outputs} renderPreview={ImagePreview} />}
+      {outputs && (
+        <div className="mx-auto max-w-3xl">
+          <OutputGrid outputs={outputs} renderPreview={ImagePreview} />
+        </div>
+      )}
     </div>
   );
 }
