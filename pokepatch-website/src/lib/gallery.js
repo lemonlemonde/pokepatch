@@ -7,6 +7,7 @@ export const DAMAGE_TAGS = [
   { id: "dent", label: "Dent" },
   { id: "edge_lift", label: "Edge lift" },
   { id: "dirt", label: "Dirt" },
+  { id: "water_damage", label: "Water damage" },
 ];
 
 export const DAMAGE_TAG_IDS = new Set(DAMAGE_TAGS.map((tag) => tag.id));
@@ -28,6 +29,28 @@ function publicUrlForPath(path) {
   if (!path || !supabase) return null;
   const { data } = supabase.storage.from("gallery").getPublicUrl(path);
   return data?.publicUrl ?? null;
+}
+
+const STORAGE_PUBLIC_MARKER = "/storage/v1/object/public/";
+
+/**
+ * Return a width-constrained variant of a Supabase Storage image URL using the
+ * built-in image transformation endpoint. Non-storage URLs (e.g. local static
+ * fallbacks) and empty widths are returned unchanged.
+ */
+export function galleryImageUrl(src, { width, quality = 70 } = {}) {
+  if (!src || typeof src !== "string" || !width) return src;
+  const markerIndex = src.indexOf(STORAGE_PUBLIC_MARKER);
+  if (markerIndex === -1) return src;
+  const rendered = src.replace(
+    STORAGE_PUBLIC_MARKER,
+    "/storage/v1/render/image/public/"
+  );
+  const separator = rendered.includes("?") ? "&" : "?";
+  // resize=contain scales proportionally by width. Without it, Supabase
+  // defaults to a cover crop against the original height, producing a
+  // center-cropped vertical strip (i.e. a "zoomed in" image).
+  return `${rendered}${separator}width=${width}&resize=contain&quality=${quality}`;
 }
 
 function detectMediaKind(path) {
@@ -67,6 +90,7 @@ function mapPair(row, urls = {}) {
     id: row.id,
     mediaKind,
     type: mediaKind,
+    caption: typeof row.caption === "string" ? row.caption : "",
     before,
     after,
     beforePath,
@@ -257,6 +281,7 @@ export async function fetchPublishedGalleryItems() {
         id,
         sort_order,
         media_kind,
+        caption,
         before_path,
         after_path
       )

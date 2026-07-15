@@ -10,9 +10,11 @@ import {
   adminListGallery,
   adminReorderGalleryPairs,
   adminSaveGalleryItem,
+  adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { compressImageForUpload } from "@/lib/imageCompression";
 
 function fieldClassName() {
   return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
@@ -55,6 +57,14 @@ function ObjectPreview({ file, kind, className }) {
 
   // eslint-disable-next-line @next/next/no-img-element
   return <img src={url} alt="" className={className} />;
+}
+
+function sortItemsNewestFirst(rows) {
+  return [...rows].sort((a, b) => {
+    const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
 }
 
 function emptyDraft() {
@@ -157,6 +167,7 @@ export default function GalleryManager() {
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [staged, setStaged] = useState({});
+  const [captionDrafts, setCaptionDrafts] = useState({});
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const [reordering, setReordering] = useState(false);
@@ -167,7 +178,7 @@ export default function GalleryManager() {
     setLoading(true);
     setListError("");
     try {
-      const rows = await adminListGallery();
+      const rows = sortItemsNewestFirst(await adminListGallery());
       setItems(rows);
       return rows;
     } catch (err) {
@@ -186,6 +197,7 @@ export default function GalleryManager() {
     setSelectedId(item.id);
     setDraft(itemToDraft(item));
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -193,6 +205,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(emptyDraft());
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -200,6 +213,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(null);
     setStaged({});
+    setCaptionDrafts({});
     setEditorError("");
   }
 
@@ -242,7 +256,15 @@ export default function GalleryManager() {
         if (!file) continue;
         const [pairId, side] = key.split(":");
         if (!pairId || (side !== "before" && side !== "after")) continue;
-        item = await adminUploadGalleryPairSide(pairId, side, file);
+        const uploadFile = await compressImageForUpload(file);
+        item = await adminUploadGalleryPairSide(pairId, side, uploadFile);
+      }
+
+      // Persist any edited pair captions for still-existing pairs.
+      const pairIds = new Set((selected?.pairs ?? []).map((pair) => pair.id));
+      for (const [pairId, caption] of Object.entries(captionDrafts)) {
+        if (!pairIds.has(pairId)) continue;
+        item = await adminSaveGalleryPairCaption(pairId, caption);
       }
 
       const rows = await refresh();
@@ -347,8 +369,280 @@ export default function GalleryManager() {
     }
   }
 
+  function renderEditor() {
+    if (!draft) return null;
+    return (
+      <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-bold text-ink">
+              {selected ? `Edit — ${selected.title}` : "New gallery item"}
+            </h2>
+            <p className="mt-1 text-sm text-ink/60">
+              Save metadata, then add as many before/after pairs as you want.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={closeEditor}
+            className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink hover:border-blush"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-ink">Title</span>
+            <input
+              value={draft.title}
+              onChange={(event) =>
+                setDraft({ ...draft, title: event.target.value })
+              }
+              className={fieldClassName()}
+              placeholder="Card name"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-ink">Set</span>
+            <input
+              value={draft.set_name}
+              onChange={(event) =>
+                setDraft({ ...draft, set_name: event.target.value })
+              }
+              className={fieldClassName()}
+              placeholder="e.g. Base Set, Evolving Skies"
+            />
+          </label>
+          <label className="block space-y-1 sm:col-span-2">
+            <span className="text-sm font-semibold text-ink">Damage tags</span>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {DAMAGE_TAGS.map((tag) => {
+                const checked = draft.damage_tags.includes(tag.id);
+                return (
+                  <label
+                    key={tag.id}
+                    className="flex items-center gap-2 text-sm font-semibold text-ink"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...draft.damage_tags, tag.id]
+                          : draft.damage_tags.filter((id) => id !== tag.id);
+                        setDraft({
+                          ...draft,
+                          damage_tags: normalizeDamageTags(next),
+                        });
+                      }}
+                    />
+                    {tag.label}
+                  </label>
+                );
+              })}
+            </div>
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <input
+              type="checkbox"
+              checked={draft.published}
+              onChange={(event) =>
+                setDraft({ ...draft, published: event.target.checked })
+              }
+            />
+            Published on /gallery
+          </label>
+        </div>
+
+        {selected && (
+          <div className="mt-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-display text-lg font-bold text-ink">
+                Before / after pairs
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleAddPair("image")}
+                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+                >
+                  + Image pair
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => handleAddPair("video")}
+                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+                >
+                  + Video pair
+                </button>
+              </div>
+            </div>
+
+            {(selected.pairs ?? []).length === 0 ? (
+              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-sm text-ink/50">
+                No pairs yet. Add an image or video pair.
+              </p>
+            ) : (
+              (selected.pairs ?? []).map((pair, index) => (
+                <div
+                  key={pair.id}
+                  className="rounded-xl border border-ink/10 bg-night/15 p-4"
+                >
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink">
+                      Pair {index + 1}
+                      <span className="ml-2 text-xs font-normal uppercase tracking-wide text-ink/50">
+                        {pair.media_kind || "image"}
+                        {index === 0 ? " · featured" : ""}
+                      </span>
+                    </p>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={reordering || index === 0}
+                        onClick={() => handleMovePair(index, -1)}
+                        className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
+                        aria-label="Move pair up"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          reordering ||
+                          index === (selected.pairs ?? []).length - 1
+                        }
+                        onClick={() => handleMovePair(index, 1)}
+                        className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
+                        aria-label="Move pair down"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => handleDeletePair(pair.id)}
+                        className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <label className="mb-3 block space-y-1">
+                    <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
+                      Caption <span className="font-normal normal-case">(optional)</span>
+                    </span>
+                    <input
+                      value={captionDrafts[pair.id] ?? pair.caption ?? ""}
+                      onChange={(event) =>
+                        setCaptionDrafts((current) => ({
+                          ...current,
+                          [pair.id]: event.target.value,
+                        }))
+                      }
+                      className={fieldClassName()}
+                      placeholder="e.g. Front, Corner close-up"
+                    />
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <SideUpload
+                      label="Before"
+                      previewUrl={pair.urls?.before}
+                      stagedFile={staged[`${pair.id}:before`] ?? null}
+                      mediaKind={pair.media_kind}
+                      uploading={saving}
+                      onStage={(file) =>
+                        setStaged((current) => ({
+                          ...current,
+                          [`${pair.id}:before`]: file,
+                        }))
+                      }
+                      onClear={() => {
+                        if (staged[`${pair.id}:before`]) {
+                          setStaged((current) => {
+                            const next = { ...current };
+                            delete next[`${pair.id}:before`];
+                            return next;
+                          });
+                          return;
+                        }
+                        handleClearSide(pair.id, "before");
+                      }}
+                    />
+                    <SideUpload
+                      label="After"
+                      previewUrl={pair.urls?.after}
+                      stagedFile={staged[`${pair.id}:after`] ?? null}
+                      mediaKind={pair.media_kind}
+                      uploading={saving}
+                      onStage={(file) =>
+                        setStaged((current) => ({
+                          ...current,
+                          [`${pair.id}:after`]: file,
+                        }))
+                      }
+                      onClear={() => {
+                        if (staged[`${pair.id}:after`]) {
+                          setStaged((current) => {
+                            const next = { ...current };
+                            delete next[`${pair.id}:after`];
+                            return next;
+                          });
+                          return;
+                        }
+                        handleClearSide(pair.id, "after");
+                      }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
+        {!selected && (
+          <p className="mt-4 rounded-lg border border-ink/10 bg-night/20 px-3 py-2 text-sm text-ink/65">
+            Create the item first — then add before/after pairs.
+          </p>
+        )}
+
+        {editorError && (
+          <p className="mt-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+            {editorError}
+          </p>
+        )}
+
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSaveMeta}
+            className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-60 ${
+              saving ? "animate-soft-bounce" : ""
+            }`}
+          >
+            {saving ? "Saving…" : selected ? "Save changes" : "Create item"}
+          </button>
+          {selected && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleDelete}
+              className="rounded-xl border-2 border-berry/50 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-ink/70">
           Newest restorations appear first. Each card’s first pair shows on the gallery;
@@ -369,309 +663,68 @@ export default function GalleryManager() {
         </p>
       )}
 
-      {loading ? (
-        <LoadingIndicator label="Loading gallery…" />
-      ) : items.length === 0 && !draft ? (
-        <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
-          No gallery items yet. Click “New gallery item” to add your first restoration.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className={`flex flex-wrap items-center gap-3 rounded-xl border-2 px-3 py-3 ${
-                selectedId === item.id
-                  ? "border-berry bg-blush/20"
-                  : "border-ink/10 bg-cream"
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => openItem(item)}
-                className="min-w-0 flex-1 text-left"
+      {draft && !selected && renderEditor()}
+
+      <div className="order-last space-y-2">
+        {loading ? (
+          <LoadingIndicator label="Loading gallery…" />
+        ) : items.length === 0 && !draft ? (
+          <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+            No gallery items yet. Click “New gallery item” to add your first restoration.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className={`rounded-xl border-2 px-3 py-3 ${
+                  selectedId === item.id
+                    ? "border-berry bg-blush/20"
+                    : "border-ink/10 bg-cream"
+                }`}
               >
-                <span className="font-display text-base font-bold text-ink">
-                  {item.title}
-                </span>
-                <span className="mt-0.5 block truncate text-xs text-ink/55">
-                  {item.set_name ? `${item.set_name} · ` : ""}
-                  {(item.pairs ?? []).length} pair
-                  {(item.pairs ?? []).length === 1 ? "" : "s"}
-                  {(item.damage_tags ?? []).length
-                    ? ` · ${(item.damage_tags ?? []).length} tag${
-                        (item.damage_tags ?? []).length === 1 ? "" : "s"
-                      }`
-                    : ""}
-                  {!item.published ? " · unpublished" : ""}
-                </span>
-              </button>
-
-              {item.pairs?.[0]?.urls?.before && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.pairs[0].urls.before}
-                  alt=""
-                  className="h-12 w-9 rounded object-cover"
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {draft && (
-        <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="font-display text-xl font-bold text-ink">
-                {selected ? `Edit — ${selected.title}` : "New gallery item"}
-              </h2>
-              <p className="mt-1 text-sm text-ink/60">
-                Save metadata, then add as many before/after pairs as you want.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={closeEditor}
-              className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink hover:border-blush"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold text-ink">Title</span>
-              <input
-                value={draft.title}
-                onChange={(event) =>
-                  setDraft({ ...draft, title: event.target.value })
-                }
-                className={fieldClassName()}
-                placeholder="Card name"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-sm font-semibold text-ink">Set</span>
-              <input
-                value={draft.set_name}
-                onChange={(event) =>
-                  setDraft({ ...draft, set_name: event.target.value })
-                }
-                className={fieldClassName()}
-                placeholder="e.g. Base Set, Evolving Skies"
-              />
-            </label>
-            <label className="block space-y-1 sm:col-span-2">
-              <span className="text-sm font-semibold text-ink">Damage tags</span>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                {DAMAGE_TAGS.map((tag) => {
-                  const checked = draft.damage_tags.includes(tag.id);
-                  return (
-                    <label
-                      key={tag.id}
-                      className="flex items-center gap-2 text-sm font-semibold text-ink"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => {
-                          const next = event.target.checked
-                            ? [...draft.damage_tags, tag.id]
-                            : draft.damage_tags.filter((id) => id !== tag.id);
-                          setDraft({
-                            ...draft,
-                            damage_tags: normalizeDamageTags(next),
-                          });
-                        }}
-                      />
-                      {tag.label}
-                    </label>
-                  );
-                })}
-              </div>
-            </label>
-            <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-              <input
-                type="checkbox"
-                checked={draft.published}
-                onChange={(event) =>
-                  setDraft({ ...draft, published: event.target.checked })
-                }
-              />
-              Published on /gallery
-            </label>
-          </div>
-
-          {selected && (
-            <div className="mt-6 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-display text-lg font-bold text-ink">
-                  Before / after pairs
-                </h3>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    disabled={saving}
-                    onClick={() => handleAddPair("image")}
-                    className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+                    onClick={() =>
+                      selectedId === item.id ? closeEditor() : openItem(item)
+                    }
+                    className="min-w-0 flex-1 text-left"
                   >
-                    + Image pair
+                    <span className="font-display text-base font-bold text-ink">
+                      {item.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-ink/55">
+                      {item.set_name ? `${item.set_name} · ` : ""}
+                      {(item.pairs ?? []).length} pair
+                      {(item.pairs ?? []).length === 1 ? "" : "s"}
+                      {(item.damage_tags ?? []).length
+                        ? ` · ${(item.damage_tags ?? []).length} tag${
+                            (item.damage_tags ?? []).length === 1 ? "" : "s"
+                          }`
+                        : ""}
+                      {!item.published ? " · unpublished" : ""}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => handleAddPair("video")}
-                    className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
-                  >
-                    + Video pair
-                  </button>
+
+                  {item.pairs?.[0]?.urls?.before && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.pairs[0].urls.before}
+                      alt=""
+                      className="h-12 w-9 rounded object-cover"
+                    />
+                  )}
                 </div>
-              </div>
 
-              {(selected.pairs ?? []).length === 0 ? (
-                <p className="rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-sm text-ink/50">
-                  No pairs yet. Add an image or video pair.
-                </p>
-              ) : (
-                (selected.pairs ?? []).map((pair, index) => (
-                  <div
-                    key={pair.id}
-                    className="rounded-xl border border-ink/10 bg-night/15 p-4"
-                  >
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-ink">
-                        Pair {index + 1}
-                        <span className="ml-2 text-xs font-normal uppercase tracking-wide text-ink/50">
-                          {pair.media_kind || "image"}
-                          {index === 0 ? " · featured" : ""}
-                        </span>
-                      </p>
-                      <div className="flex gap-1">
-                        <button
-                          type="button"
-                          disabled={reordering || index === 0}
-                          onClick={() => handleMovePair(index, -1)}
-                          className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
-                          aria-label="Move pair up"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            reordering ||
-                            index === (selected.pairs ?? []).length - 1
-                          }
-                          onClick={() => handleMovePair(index, 1)}
-                          className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
-                          aria-label="Move pair down"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          disabled={saving}
-                          onClick={() => handleDeletePair(pair.id)}
-                          className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry disabled:opacity-50"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <SideUpload
-                        label="Before"
-                        previewUrl={pair.urls?.before}
-                        stagedFile={staged[`${pair.id}:before`] ?? null}
-                        mediaKind={pair.media_kind}
-                        uploading={saving}
-                        onStage={(file) =>
-                          setStaged((current) => ({
-                            ...current,
-                            [`${pair.id}:before`]: file,
-                          }))
-                        }
-                        onClear={() => {
-                          if (staged[`${pair.id}:before`]) {
-                            setStaged((current) => {
-                              const next = { ...current };
-                              delete next[`${pair.id}:before`];
-                              return next;
-                            });
-                            return;
-                          }
-                          handleClearSide(pair.id, "before");
-                        }}
-                      />
-                      <SideUpload
-                        label="After"
-                        previewUrl={pair.urls?.after}
-                        stagedFile={staged[`${pair.id}:after`] ?? null}
-                        mediaKind={pair.media_kind}
-                        uploading={saving}
-                        onStage={(file) =>
-                          setStaged((current) => ({
-                            ...current,
-                            [`${pair.id}:after`]: file,
-                          }))
-                        }
-                        onClear={() => {
-                          if (staged[`${pair.id}:after`]) {
-                            setStaged((current) => {
-                              const next = { ...current };
-                              delete next[`${pair.id}:after`];
-                              return next;
-                            });
-                            return;
-                          }
-                          handleClearSide(pair.id, "after");
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {!selected && (
-            <p className="mt-4 rounded-lg border border-ink/10 bg-night/20 px-3 py-2 text-sm text-ink/65">
-              Create the item first — then add before/after pairs.
-            </p>
-          )}
-
-          {editorError && (
-            <p className="mt-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
-              {editorError}
-            </p>
-          )}
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleSaveMeta}
-              className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-60 ${
-                saving ? "animate-soft-bounce" : ""
-              }`}
-            >
-              {saving ? "Saving…" : selected ? "Save changes" : "Create item"}
-            </button>
-            {selected && (
-              <button
-                type="button"
-                disabled={saving}
-                onClick={handleDelete}
-                className="rounded-xl border-2 border-berry/50 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        </section>
-      )}
+                {selectedId === item.id && (
+                  <div className="mt-4">{renderEditor()}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

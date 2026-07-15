@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import Image from "next/image";
-import { DAMAGE_TAGS } from "@/lib/gallery";
+import { DAMAGE_TAGS, galleryImageUrl } from "@/lib/gallery";
 
 const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) {
   const videoRef = useRef(null);
@@ -226,6 +226,35 @@ function PlayBadge({ className = "" }) {
   );
 }
 
+// Renders a Supabase gallery image resized via the transform endpoint, falling
+// back to the original URL if the transform fails (e.g. source too large to
+// process). Fades in once loaded to smooth the lazy-load pop-in.
+function GalleryImage({ src, width, alt, sizes, priority = false, className = "" }) {
+  const [loaded, setLoaded] = useState(false);
+  const [useOriginal, setUseOriginal] = useState(false);
+  const displaySrc = useOriginal ? src : galleryImageUrl(src, { width });
+
+  return (
+    <Image
+      src={displaySrc}
+      alt={alt}
+      fill
+      priority={priority}
+      sizes={sizes}
+      onLoad={() => setLoaded(true)}
+      onError={() => {
+        if (!useOriginal) {
+          setLoaded(false);
+          setUseOriginal(true);
+        }
+      }}
+      className={`${className} transition-opacity duration-300 ${
+        loaded ? "opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+}
+
 function PairSideCard({ src, type, label, onOpen, priority = false }) {
   if (!src) {
     return (
@@ -262,10 +291,10 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
           </>
         ) : (
           <>
-            <Image
+            <GalleryImage
               src={src}
+              width={640}
               alt={label}
-              fill
               priority={priority}
               className="object-cover transition duration-200 group-hover:scale-105"
               sizes="(max-width: 768px) 50vw, 400px"
@@ -283,8 +312,9 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
 
 function BeforeAfterPair({ pair, onOpen, priority = false }) {
   const kind = pairMediaKind(pair);
+  const caption = typeof pair.caption === "string" ? pair.caption.trim() : "";
 
-  return (
+  const grid = (
     <div className="grid grid-cols-2 gap-3">
       <PairSideCard
         src={pair.before}
@@ -301,6 +331,29 @@ function BeforeAfterPair({ pair, onOpen, priority = false }) {
         onOpen={onOpen}
       />
     </div>
+  );
+
+  if (!caption) return grid;
+
+  return (
+    <figure className="overflow-hidden rounded-2xl border border-ink/10 bg-cream/50 shadow-sm">
+      <div className="p-3 pb-2.5">{grid}</div>
+      <figcaption className="flex items-center justify-center gap-2 border-t border-ink/10 bg-night/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-ink/75">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5 shrink-0 text-berry"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h10M4 17h7" />
+        </svg>
+        {caption}
+      </figcaption>
+    </figure>
   );
 }
 
@@ -397,12 +450,12 @@ function GalleryItemCard({ item, index, onOpen }) {
                             className="absolute inset-0 h-full w-full object-cover"
                           />
                         ) : (
-                          <Image
+                          <GalleryImage
                             src={src}
+                            width={128}
                             alt=""
-                            fill
-                            className="object-cover"
                             sizes="32px"
+                            className="object-cover"
                           />
                         )}
                         {isVideo && (
