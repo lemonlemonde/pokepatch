@@ -314,30 +314,46 @@ function BeforeAfterPair({ pair, onOpen, priority = false }) {
   const kind = pairMediaKind(pair);
   const caption = typeof pair.caption === "string" ? pair.caption.trim() : "";
 
-  return (
-    <div className="space-y-2">
-      {caption && (
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-ink/60">
-          {caption}
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-3">
-        <PairSideCard
-          src={pair.before}
-          type={kind}
-          label="Before"
-          priority={priority}
-          onOpen={onOpen}
-        />
-        <PairSideCard
-          src={pair.after}
-          type={kind}
-          label="After"
-          priority={priority}
-          onOpen={onOpen}
-        />
-      </div>
+  const grid = (
+    <div className="grid grid-cols-2 gap-3">
+      <PairSideCard
+        src={pair.before}
+        type={kind}
+        label="Before"
+        priority={priority}
+        onOpen={onOpen}
+      />
+      <PairSideCard
+        src={pair.after}
+        type={kind}
+        label="After"
+        priority={priority}
+        onOpen={onOpen}
+      />
     </div>
+  );
+
+  if (!caption) return grid;
+
+  return (
+    <figure className="overflow-hidden rounded-2xl border border-ink/10 bg-cream/50 shadow-sm">
+      <div className="p-3 pb-2.5">{grid}</div>
+      <figcaption className="flex items-center justify-center gap-2 border-t border-ink/10 bg-night/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-ink/75">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5 shrink-0 text-berry"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M4 12h10M4 17h7" />
+        </svg>
+        {caption}
+      </figcaption>
+    </figure>
   );
 }
 

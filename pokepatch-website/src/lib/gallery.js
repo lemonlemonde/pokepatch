@@ -47,7 +47,10 @@ export function galleryImageUrl(src, { width, quality = 70 } = {}) {
     "/storage/v1/render/image/public/"
   );
   const separator = rendered.includes("?") ? "&" : "?";
-  return `${rendered}${separator}width=${width}&quality=${quality}`;
+  // resize=contain scales proportionally by width. Without it, Supabase
+  // defaults to a cover crop against the original height, producing a
+  // center-cropped vertical strip (i.e. a "zoomed in" image).
+  return `${rendered}${separator}width=${width}&resize=contain&quality=${quality}`;
 }
 
 function detectMediaKind(path) {

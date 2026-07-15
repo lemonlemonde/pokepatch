@@ -666,64 +666,64 @@ export default function GalleryManager() {
       {draft && !selected && renderEditor()}
 
       <div className="order-last space-y-2">
-      {loading ? (
-        <LoadingIndicator label="Loading gallery…" />
-      ) : items.length === 0 && !draft ? (
-        <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
-          No gallery items yet. Click “New gallery item” to add your first restoration.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {items.map((item) => (
-            <li
-              key={item.id}
-              className={`rounded-xl border-2 px-3 py-3 ${
-                selectedId === item.id
-                  ? "border-berry bg-blush/20"
-                  : "border-ink/10 bg-cream"
-              }`}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    selectedId === item.id ? closeEditor() : openItem(item)
-                  }
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <span className="font-display text-base font-bold text-ink">
-                    {item.title}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-ink/55">
-                    {item.set_name ? `${item.set_name} · ` : ""}
-                    {(item.pairs ?? []).length} pair
-                    {(item.pairs ?? []).length === 1 ? "" : "s"}
-                    {(item.damage_tags ?? []).length
-                      ? ` · ${(item.damage_tags ?? []).length} tag${
-                          (item.damage_tags ?? []).length === 1 ? "" : "s"
-                        }`
-                      : ""}
-                    {!item.published ? " · unpublished" : ""}
-                  </span>
-                </button>
+        {loading ? (
+          <LoadingIndicator label="Loading gallery…" />
+        ) : items.length === 0 && !draft ? (
+          <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+            No gallery items yet. Click “New gallery item” to add your first restoration.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li
+                key={item.id}
+                className={`rounded-xl border-2 px-3 py-3 ${
+                  selectedId === item.id
+                    ? "border-berry bg-blush/20"
+                    : "border-ink/10 bg-cream"
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      selectedId === item.id ? closeEditor() : openItem(item)
+                    }
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <span className="font-display text-base font-bold text-ink">
+                      {item.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-ink/55">
+                      {item.set_name ? `${item.set_name} · ` : ""}
+                      {(item.pairs ?? []).length} pair
+                      {(item.pairs ?? []).length === 1 ? "" : "s"}
+                      {(item.damage_tags ?? []).length
+                        ? ` · ${(item.damage_tags ?? []).length} tag${
+                            (item.damage_tags ?? []).length === 1 ? "" : "s"
+                          }`
+                        : ""}
+                      {!item.published ? " · unpublished" : ""}
+                    </span>
+                  </button>
 
-                {item.pairs?.[0]?.urls?.before && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.pairs[0].urls.before}
-                    alt=""
-                    className="h-12 w-9 rounded object-cover"
-                  />
+                  {item.pairs?.[0]?.urls?.before && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.pairs[0].urls.before}
+                      alt=""
+                      className="h-12 w-9 rounded object-cover"
+                    />
+                  )}
+                </div>
+
+                {selectedId === item.id && (
+                  <div className="mt-4">{renderEditor()}</div>
                 )}
-              </div>
-
-              {selectedId === item.id && (
-                <div className="mt-4">{renderEditor()}</div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
