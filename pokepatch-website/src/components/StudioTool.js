@@ -91,24 +91,50 @@ function BackButton({ onClick }) {
   );
 }
 
+function downloadAll(outputs) {
+  outputs.forEach((output, index) => {
+    setTimeout(() => {
+      const anchor = document.createElement("a");
+      anchor.href = output.url;
+      anchor.download = output.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    }, index * 150);
+  });
+}
+
 function OutputGrid({ outputs, renderPreview }) {
   return (
-    <div className="mt-10 grid gap-10 sm:grid-cols-2">
-      {outputs.map((output) => (
-        <div key={output.key} className="space-y-4 text-center">
-          <p className="font-secondary text-sm text-ink/60">
-            {output.label} (1080×1080)
-          </p>
-          {renderPreview(output)}
-          <a
-            href={output.url}
-            download={output.filename}
-            className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+    <div className="mt-10 space-y-8">
+      {outputs.length > 1 && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => downloadAll(outputs)}
+            className="rounded-xl bg-berry px-6 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110"
           >
-            Download {output.label.toLowerCase()}
-          </a>
+            Download all ({outputs.length})
+          </button>
         </div>
-      ))}
+      )}
+      <div className="grid gap-10 sm:grid-cols-2">
+        {outputs.map((output) => (
+          <div key={output.key} className="space-y-4 text-center">
+            <p className="font-secondary text-sm text-ink/60">
+              {output.label} (1080×1080)
+            </p>
+            {renderPreview(output)}
+            <a
+              href={output.url}
+              download={output.filename}
+              className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+            >
+              Download {output.label.toLowerCase()}
+            </a>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
