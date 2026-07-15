@@ -7,9 +7,7 @@ export function isPostHogEnabled() {
 }
 
 export function shouldTrackPath(pathname) {
-  return (
-    !pathname.startsWith("/admin") && !pathname.startsWith("/studio")
-  );
+  return !pathname.startsWith("/admin");
 }
 
 export function initPostHog() {
