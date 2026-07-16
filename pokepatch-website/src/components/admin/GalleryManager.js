@@ -13,7 +13,7 @@ import {
   adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
-import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative } from "@/lib/gallery";
 import { compressImageForUpload } from "@/lib/imageCompression";
 
 function fieldClassName() {
@@ -695,6 +695,9 @@ export default function GalleryManager() {
                       {item.title}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-ink/55">
+                      {item.created_at
+                        ? `${formatPostedRelative(item.created_at)} · `
+                        : ""}
                       {item.set_name ? `${item.set_name} · ` : ""}
                       {(item.pairs ?? []).length} pair
                       {(item.pairs ?? []).length === 1 ? "" : "s"}

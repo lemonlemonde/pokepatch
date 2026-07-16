@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
 import Image from "next/image";
-import { DAMAGE_TAGS, galleryImageUrl } from "@/lib/gallery";
+import { DAMAGE_TAGS, galleryImageUrl, formatPostedRelative } from "@/lib/gallery";
 
 const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) {
   const videoRef = useRef(null);
@@ -366,6 +366,9 @@ function GalleryItemCard({ item, index, onOpen }) {
   const featured = pairs[0] ?? null;
   const extra = pairs.slice(1);
   const hasExtra = extra.length > 0;
+  const postedLabel = item.createdAt
+    ? formatPostedRelative(item.createdAt)
+    : "";
 
   return (
     <div
@@ -380,6 +383,14 @@ function GalleryItemCard({ item, index, onOpen }) {
               <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
                 {item.setName}
               </p>
+            ) : null}
+            {postedLabel ? (
+              <time
+                dateTime={item.createdAt}
+                className="mt-1.5 block text-[0.6rem] font-medium tracking-wide text-ink/35"
+              >
+                {postedLabel}
+              </time>
             ) : null}
           </div>
 
