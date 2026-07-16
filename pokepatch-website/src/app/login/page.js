@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,7 +13,7 @@ function fieldClassName(invalid = false) {
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/my-orders";
@@ -101,7 +101,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="mx-auto max-w-md px-6 py-16">
+    <>
       <div className="animate-fade-up">
         <SectionHeading subtitle={mode === "login" ? "Welcome back!" : "Create your account"}>
           {mode === "login" ? "Log in" : "Sign up"}
@@ -270,6 +270,22 @@ export default function LoginPage() {
           </Link>
         </div>
       </div>
+    </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <div className="mx-auto max-w-md px-6 py-16">
+      <Suspense
+        fallback={
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <p className="font-secondary text-ink/70">Loading...</p>
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
     </div>
   );
 }
