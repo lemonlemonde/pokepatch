@@ -34,8 +34,10 @@ function apiUrl() {
 }
 
 async function adminRequest(url, { token, body, formData, method = "POST" } = {}) {
+  const anonKey = getAnonKey();
   const headers = {
-    apikey: getAnonKey(),
+    apikey: anonKey,
+    Authorization: `Bearer ${anonKey}`,
   };
   if (token) {
     headers["X-Admin-Token"] = token;
