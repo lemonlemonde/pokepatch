@@ -9,9 +9,14 @@ begin;
 alter table public.orders
 add column if not exists user_id uuid references auth.users(id) on delete set null;
 
-create index if not exists orders_user_id_idx on public.orders(user_id);
+-- Add customer_email column to orders (required for account linking)
+alter table public.orders
+add column if not exists customer_email text;
 
--- Function to link orders to a user account by matching contact info
+create index if not exists orders_user_id_idx on public.orders(user_id);
+create index if not exists orders_customer_email_idx on public.orders(lower(customer_email));
+
+-- Function to link orders to a user account by matching email
 create or replace function public.claim_my_orders()
 returns jsonb
 language plpgsql
@@ -39,19 +44,13 @@ begin
     raise exception 'user email not found';
   end if;
 
-  -- Find and claim orders that match the user's email in contacts
+  -- Find and claim orders that match the user's email
   -- Only claim orders that don't already have a user_id
   with matching_orders as (
-    select distinct o.id
-    from public.orders o
-    join public.contacts c on c.order_id = o.id
-    where o.user_id is null
-      and (
-        -- Match email in contact value (case insensitive)
-        lower(c.value) = lower(v_user_email)
-        -- Also match if customer_name contains the email (in case they entered it there)
-        or lower(o.customer_name) like '%' || lower(v_user_email) || '%'
-      )
+    select id
+    from public.orders
+    where user_id is null
+      and lower(customer_email) = lower(v_user_email)
   ),
   updated as (
     update public.orders
