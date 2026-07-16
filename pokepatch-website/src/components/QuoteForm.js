@@ -81,10 +81,9 @@ function cardFieldErrors(card) {
   };
 }
 
-function getFieldErrors({ customerName, email, deliveryMethod, contacts, cards }) {
+function getFieldErrors({ customerName, deliveryMethod, contacts, cards }) {
   const errors = {
     customerName: customerName.trim() === "",
-    email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     deliveryMethod: deliveryMethod === "",
     contacts: !contacts.some((c) => c.value.trim() !== ""),
     cards: {},
@@ -123,9 +122,6 @@ function getFirstErrorElement(errors, contacts, cards) {
 
   if (errors.customerName) {
     return document.getElementById("customer_name");
-  }
-  if (errors.email) {
-    return document.getElementById("customer_email");
   }
   if (errors.deliveryMethod) {
     return document.getElementById("delivery_method");
@@ -180,7 +176,6 @@ export default function QuoteForm() {
   const customerInfoCompletedRef = useRef(false);
   const cardDetailsCompletedRef = useRef(false);
   const [customerName, setCustomerName] = useState("");
-  const [email, setEmail] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [contacts, setContacts] = useState([emptyContact()]);
   const [cards, setCards] = useState([emptyCard()]);
@@ -199,12 +194,11 @@ export default function QuoteForm() {
   useEffect(() => {
     if (customerInfoCompletedRef.current) return;
     const hasContact = contacts.some((c) => c.value.trim() !== "");
-    const hasEmail = email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (customerName.trim() && hasEmail && deliveryMethod && hasContact) {
+    if (customerName.trim() && deliveryMethod && hasContact) {
       customerInfoCompletedRef.current = true;
       capture("quote_form_step_completed", { step: "customer_info" });
     }
-  }, [customerName, email, deliveryMethod, contacts]);
+  }, [customerName, deliveryMethod, contacts]);
 
   useEffect(() => {
     if (cardDetailsCompletedRef.current) return;
@@ -383,7 +377,6 @@ export default function QuoteForm() {
 
     const errors = getFieldErrors({
       customerName,
-      email,
       deliveryMethod,
       contacts,
       cards,
@@ -445,7 +438,6 @@ export default function QuoteForm() {
       const payload = {
         id: orderId,
         customer_name: customerName.trim(),
-        customer_email: email.trim().toLowerCase(),
         delivery_method: deliveryMethod,
         contacts: filledContacts.map((c) => ({
           contact_type: c.contactType,
@@ -468,7 +460,6 @@ export default function QuoteForm() {
 
       setStatus("success");
       setCustomerName("");
-      setEmail("");
       setDeliveryMethod("");
       setContacts([emptyContact()]);
       setCards([emptyCard()]);
@@ -558,34 +549,6 @@ export default function QuoteForm() {
           />
         </div>
 
-        <div>
-          <label htmlFor="customer_email" className="mb-1 block text-lg font-bold text-ink">
-            Email <span className="text-berry">*</span>
-          </label>
-          <p className="mb-2 font-secondary text-sm text-ink/70">
-            We&apos;ll send your quote and updates to this email.
-          </p>
-          <input
-            id="customer_email"
-            name="customer_email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              onFormInteraction();
-              clearFieldError("email");
-              setEmail(e.target.value);
-            }}
-            placeholder="you@example.com"
-            className={fieldClassName(fieldErrors?.email)}
-            aria-invalid={fieldErrors?.email || undefined}
-          />
-          {fieldErrors?.email && (
-            <p className="mt-1 text-sm text-berry">
-              Please enter a valid email address
-            </p>
-          )}
-        </div>
-
         <fieldset id="delivery_method" className="space-y-3 scroll-mt-24">
           <legend className="text-lg font-bold text-ink">
             Delivery method <span className="text-berry">*</span>
@@ -630,10 +593,10 @@ export default function QuoteForm() {
 
         <div className="space-y-3">
           <p className="text-lg font-bold text-ink">
-            Preferred contact method <span className="text-berry">*</span>
+            Contact methods <span className="text-berry">*</span>
           </p>
           <p className="font-secondary text-sm text-ink/70">
-            How would you prefer we contact you about your quote?
+            Add at least one way we can reach you about your quote.
           </p>
           {contacts.map((contact, index) => (
             <div
