@@ -376,7 +376,7 @@ function GalleryItemCard({ item, index, onOpen }) {
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
       <div className="space-y-4 p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 text-left">
             <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
             {item.setName ? (
@@ -394,9 +394,9 @@ function GalleryItemCard({ item, index, onOpen }) {
             ) : null}
           </div>
 
-          <div className="w-full rounded-xl border border-ink/15 bg-night/10 px-2.5 py-2 sm:w-auto sm:shrink-0 sm:px-3">
+          <div className="shrink-0 rounded-xl border border-ink/15 bg-night/10 px-3 py-2">
             <ul
-              className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-flow-col sm:grid-cols-none sm:grid-rows-2 sm:gap-x-4"
+              className="grid grid-flow-col grid-rows-2 gap-x-4 gap-y-1.5"
               aria-label="Damage checklist"
             >
               {DAMAGE_TAGS.map((tag) => {
@@ -404,7 +404,7 @@ function GalleryItemCard({ item, index, onOpen }) {
                 return (
                   <li
                     key={tag.id}
-                    className={`flex min-w-0 items-center gap-1.5 sm:gap-2 ${
+                    className={`flex items-center gap-2 ${
                       applicable ? "text-ink/80" : "opacity-35"
                     }`}
                   >
@@ -413,10 +413,10 @@ function GalleryItemCard({ item, index, onOpen }) {
                       checked={applicable}
                       readOnly
                       tabIndex={-1}
-                      className="pointer-events-none h-3.5 w-3.5 shrink-0 accent-berry"
+                      className="pointer-events-none h-3.5 w-3.5 accent-berry"
                       aria-hidden="true"
                     />
-                    <span className="truncate text-[0.7rem] font-semibold sm:whitespace-nowrap sm:text-xs">
+                    <span className="whitespace-nowrap text-xs font-semibold">
                       {tag.label}
                     </span>
                   </li>
