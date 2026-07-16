@@ -67,6 +67,15 @@ function sortItemsNewestFirst(rows) {
   });
 }
 
+function formatPostedDate(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function emptyDraft() {
   return {
     title: "",
@@ -695,6 +704,9 @@ export default function GalleryManager() {
                       {item.title}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-ink/55">
+                      {item.created_at
+                        ? `Posted ${formatPostedDate(item.created_at)} · `
+                        : ""}
                       {item.set_name ? `${item.set_name} · ` : ""}
                       {(item.pairs ?? []).length} pair
                       {(item.pairs ?? []).length === 1 ? "" : "s"}

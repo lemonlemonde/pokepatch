@@ -48,8 +48,10 @@
 --
 -- See: supabase/migrations/20260714000000_gallery_items.sql
 --      (+ pairs, set_name, damage_tags, drop item sort_order through 20260714040000)
+--      (+ gallery_items_published_created_at_idx in 20260716000000)
 --
 -- Table: gallery_items (title, set_name, damage_tags, published; ordered by created_at desc)
+-- Index: gallery_items_published_created_at_idx (published, created_at desc)
 -- Table: gallery_pairs (before/after storage paths per item; ordered list)
 -- Bucket: gallery (public)
 -- RLS: anon SELECT published items + their pairs
