@@ -25,6 +25,47 @@ export function normalizeDamageTags(raw) {
   return tags;
 }
 
+/**
+ * Relative post age, one unit only
+ * (minutes → hours → days → weeks → months → years).
+ */
+export function formatPostedRelative(value) {
+  if (!value) return "";
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return "";
+
+  const diffMs = Date.now() - then;
+  if (diffMs < 60_000) return "just now";
+
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 60) {
+    return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return days === 1 ? "1 day ago" : `${days} days ago`;
+  }
+
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? "1 week ago" : `${weeks} weeks ago`;
+  }
+
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return months === 1 ? "1 month ago" : `${months} months ago`;
+  }
+
+  const years = Math.floor(days / 365);
+  return years === 1 ? "1 year ago" : `${years} years ago`;
+}
+
 function publicUrlForPath(path) {
   if (!path || !supabase) return null;
   const { data } = supabase.storage.from("gallery").getPublicUrl(path);
@@ -109,6 +150,7 @@ export function mapGalleryRowToItem(row) {
     title: row.title,
     setName: row.set_name ?? row.setName ?? "",
     damageTags: normalizeDamageTags(row.damage_tags ?? row.damageTags),
+    createdAt: row.created_at ?? row.createdAt ?? null,
     pairs,
   };
 }

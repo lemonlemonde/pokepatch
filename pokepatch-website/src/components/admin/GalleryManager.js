@@ -13,7 +13,7 @@ import {
   adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
-import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative } from "@/lib/gallery";
 import { compressImageForUpload } from "@/lib/imageCompression";
 
 function fieldClassName() {
@@ -64,15 +64,6 @@ function sortItemsNewestFirst(rows) {
     const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b?.created_at ? new Date(b.created_at).getTime() : 0;
     return bTime - aTime;
-  });
-}
-
-function formatPostedDate(value) {
-  if (!value) return "";
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
   });
 }
 
@@ -705,7 +696,7 @@ export default function GalleryManager() {
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-ink/55">
                       {item.created_at
-                        ? `Posted ${formatPostedDate(item.created_at)} · `
+                        ? `${formatPostedRelative(item.created_at)} · `
                         : ""}
                       {item.set_name ? `${item.set_name} · ` : ""}
                       {(item.pairs ?? []).length} pair
