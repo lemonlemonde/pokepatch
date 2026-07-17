@@ -2,20 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
+import { useAuth } from "@/contexts/AuthContext";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { CONTACT_TYPES } from "@/lib/contacts";
 import { capture } from "@/lib/posthog";
 
 const MAX_CARDS = 10;
 const MAX_PHOTOS_PER_CARD = 4;
 const MAX_FILE_MB = 50;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
-
-const CONTACT_TYPES = [
-  { value: "phone", label: "Phone" },
-  { value: "discord", label: "Discord" },
-  { value: "instagram", label: "Instagram" },
-];
 
 function copyFileList(fileList) {
   if (!fileList) return [];
@@ -42,13 +39,25 @@ function optionClassName(invalid = false) {
     : "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3";
 }
 
-function emptyContact() {
-  return { id: crypto.randomUUID(), contactType: "phone", value: "" };
-}
-
 function emptyCard() {
   return {
     id: crypto.randomUUID(),
+    cardName: "",
+    setName: "",
+    description: "",
+    files: [],
+  };
+}
+
+function emptyContactValues() {
+  return CONTACT_TYPES.reduce((acc, type) => ({ ...acc, [type.value]: "" }), {});
+}
+
+// The first card is rendered during SSR, so it needs a stable ID that matches on
+// the server and client. Dynamically added cards use random UUIDs.
+function initialCard() {
+  return {
+    id: "card-initial",
     cardName: "",
     setName: "",
     description: "",
@@ -81,11 +90,11 @@ function cardFieldErrors(card) {
   };
 }
 
-function getFieldErrors({ customerName, deliveryMethod, contacts, cards }) {
+function getFieldErrors({ customerName, email, deliveryMethod, cards }) {
   const errors = {
     customerName: customerName.trim() === "",
+    email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     deliveryMethod: deliveryMethod === "",
-    contacts: !contacts.some((c) => c.value.trim() !== ""),
     cards: {},
     noCards: cards.length === 0,
   };
@@ -110,24 +119,24 @@ function getFieldErrors({ customerName, deliveryMethod, contacts, cards }) {
 
 function hasFieldErrors(errors) {
   if (!errors) return false;
-  if (errors.customerName || errors.deliveryMethod || errors.contacts) {
+  if (errors.customerName || errors.email || errors.deliveryMethod) {
     return true;
   }
   if (errors.noCards) return true;
   return Object.keys(errors.cards).length > 0;
 }
 
-function getFirstErrorElement(errors, contacts, cards) {
+function getFirstErrorElement(errors, cards) {
   if (!errors) return null;
 
   if (errors.customerName) {
     return document.getElementById("customer_name");
   }
+  if (errors.email) {
+    return document.getElementById("customer_email");
+  }
   if (errors.deliveryMethod) {
     return document.getElementById("delivery_method");
-  }
-  if (errors.contacts && contacts[0]) {
-    return document.getElementById(`contact_value_${contacts[0].id}`);
   }
   if (errors.noCards) {
     return document.getElementById("cards_empty");
@@ -153,8 +162,8 @@ function getFirstErrorElement(errors, contacts, cards) {
   return null;
 }
 
-function scrollToFirstError(errors, contacts, cards) {
-  const element = getFirstErrorElement(errors, contacts, cards);
+function scrollToFirstError(errors, cards) {
+  const element = getFirstErrorElement(errors, cards);
   if (!element) return;
 
   element.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -171,14 +180,19 @@ function scrollToFirstError(errors, contacts, cards) {
 
 export default function QuoteForm() {
   const router = useRouter();
+  const { user } = useAuth();
+  const profileLoadedRef = useRef(false);
   const formRef = useRef(null);
   const formStartedRef = useRef(false);
   const customerInfoCompletedRef = useRef(false);
   const cardDetailsCompletedRef = useRef(false);
   const [customerName, setCustomerName] = useState("");
+  const [email, setEmail] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
-  const [contacts, setContacts] = useState([emptyContact()]);
-  const [cards, setCards] = useState([emptyCard()]);
+  const [contactValues, setContactValues] = useState(emptyContactValues);
+  const [lockedTypes, setLockedTypes] = useState({});
+  const [preferredContactId, setPreferredContactId] = useState("email");
+  const [cards, setCards] = useState([initialCard()]);
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -193,12 +207,12 @@ export default function QuoteForm() {
 
   useEffect(() => {
     if (customerInfoCompletedRef.current) return;
-    const hasContact = contacts.some((c) => c.value.trim() !== "");
-    if (customerName.trim() && deliveryMethod && hasContact) {
+    const hasEmail = email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (customerName.trim() && hasEmail && deliveryMethod) {
       customerInfoCompletedRef.current = true;
       capture("quote_form_step_completed", { step: "customer_info" });
     }
-  }, [customerName, deliveryMethod, contacts]);
+  }, [customerName, email, deliveryMethod]);
 
   useEffect(() => {
     if (cardDetailsCompletedRef.current) return;
@@ -207,6 +221,38 @@ export default function QuoteForm() {
       capture("quote_form_step_completed", { step: "card_details" });
     }
   }, [cards]);
+
+  // Logged-in customers use their account email; keep it in sync and locked.
+  useEffect(() => {
+    if (user?.email) setEmail(user.email);
+  }, [user]);
+
+  // Pre-fill name and saved contact methods from the customer's profile (once).
+  useEffect(() => {
+    if (!user || !supabase || profileLoadedRef.current) return;
+    profileLoadedRef.current = true;
+    supabase
+      .from("customer_profiles")
+      .select("full_name, contacts")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!data) return;
+        if (data.full_name) setCustomerName(data.full_name);
+        if (Array.isArray(data.contacts) && data.contacts.length > 0) {
+          const values = emptyContactValues();
+          const locked = {};
+          for (const c of data.contacts) {
+            if (c && c.contact_type in values) {
+              values[c.contact_type] = c.value ?? "";
+              locked[c.contact_type] = true;
+            }
+          }
+          setContactValues(values);
+          setLockedTypes(locked);
+        }
+      });
+  }, [user]);
 
   function clearFieldError(key) {
     setFieldErrors((prev) => {
@@ -229,25 +275,9 @@ export default function QuoteForm() {
     });
   }
 
-  function updateContact(id, patch) {
+  function updateContactValue(type, value) {
     onFormInteraction();
-    if (patch.value !== undefined) clearFieldError("contacts");
-    setContacts((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
-    );
-  }
-
-  function addContact() {
-    setContacts((prev) => [...prev, emptyContact()]);
-  }
-
-  function removeContact(id) {
-    setContacts((prev) => {
-      if (prev.length <= 1) {
-        return [emptyContact()];
-      }
-      return prev.filter((c) => c.id !== id);
-    });
+    setContactValues((prev) => ({ ...prev, [type]: value }));
   }
 
   function updateCard(id, patch) {
@@ -359,8 +389,23 @@ export default function QuoteForm() {
     });
   }
 
-  const filledContacts = contacts.filter((c) => c.value.trim() !== "");
   const completeCards = cards.filter(isCardComplete);
+
+  const filledContactTypes = CONTACT_TYPES.filter(
+    (type) => (contactValues[type.value] ?? "").trim() !== ""
+  );
+
+  const preferredOptions = [
+    { id: "email", label: email.trim() ? `Email (${email.trim()})` : "Email" },
+    ...filledContactTypes.map((type) => ({
+      id: type.value,
+      label: `${type.label} (${contactValues[type.value].trim()})`,
+    })),
+  ];
+  const preferredOptionIds = new Set(preferredOptions.map((o) => o.id));
+  const effectivePreferredId = preferredOptionIds.has(preferredContactId)
+    ? preferredContactId
+    : "email";
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -377,8 +422,8 @@ export default function QuoteForm() {
 
     const errors = getFieldErrors({
       customerName,
+      email,
       deliveryMethod,
-      contacts,
       cards,
     });
 
@@ -388,7 +433,7 @@ export default function QuoteForm() {
       setStatus("idle");
       setErrorMessage("");
       requestAnimationFrame(() => {
-        scrollToFirstError(errors, contacts, cards);
+        scrollToFirstError(errors, cards);
       });
       return;
     }
@@ -400,7 +445,7 @@ export default function QuoteForm() {
     capture("quote_form_submit_attempted", {
       card_count: completeCards.length,
       delivery_method: deliveryMethod,
-      contact_method_count: filledContacts.length,
+      contact_method_count: filledContactTypes.length,
     });
 
     const orderId = crypto.randomUUID();
@@ -435,13 +480,23 @@ export default function QuoteForm() {
       setStatus("submitting");
       phase = "insert";
 
+      let preferredType = "email";
+      let preferredValue = email.trim().toLowerCase();
+      if (effectivePreferredId !== "email") {
+        preferredType = effectivePreferredId;
+        preferredValue = contactValues[effectivePreferredId].trim();
+      }
+
       const payload = {
         id: orderId,
         customer_name: customerName.trim(),
+        customer_email: email.trim().toLowerCase(),
         delivery_method: deliveryMethod,
-        contacts: filledContacts.map((c) => ({
-          contact_type: c.contactType,
-          value: c.value.trim(),
+        preferred_contact_type: preferredType,
+        preferred_contact_value: preferredValue,
+        contacts: filledContactTypes.map((type) => ({
+          contact_type: type.value,
+          value: contactValues[type.value].trim(),
         })),
         cards: cardsPayload,
       };
@@ -452,16 +507,49 @@ export default function QuoteForm() {
 
       if (rpcError) throw rpcError;
 
+      // Logged-in submit: make sure the new order is linked to this account now,
+      // not just on next login.
+      if (user) {
+        try {
+          await supabase.rpc("claim_my_orders");
+        } catch (err) {
+          console.error("Failed to link order to account:", err);
+        }
+      }
+
+      // Snapshot the entered details so that, if this visitor creates an account
+      // afterwards, their name + contacts are saved to their profile.
+      if (!user) {
+        try {
+          localStorage.setItem(
+            "pokepatch_pending_profile",
+            JSON.stringify({
+              email: email.trim().toLowerCase(),
+              full_name: customerName.trim(),
+              contacts: filledContactTypes.map((type) => ({
+                contact_type: type.value,
+                value: contactValues[type.value].trim(),
+              })),
+            })
+          );
+        } catch {
+          // Ignore storage errors (e.g. private mode); profile save is best-effort.
+        }
+      }
+
       capture("quote_form_submitted", {
         card_count: completeCards.length,
         delivery_method: deliveryMethod,
-        contact_method_count: filledContacts.length,
+        contact_method_count: filledContactTypes.length,
       });
 
       setStatus("success");
       setCustomerName("");
+      setEmail("");
       setDeliveryMethod("");
-      setContacts([emptyContact()]);
+      setContactValues(emptyContactValues());
+      setLockedTypes({});
+      setPreferredContactId("email");
       setCards([emptyCard()]);
       setFieldErrors(null);
       setCardFileErrors({});
@@ -549,6 +637,46 @@ export default function QuoteForm() {
           />
         </div>
 
+        <div>
+          <label htmlFor="customer_email" className="mb-1 block text-lg font-bold text-ink">
+            Email <span className="text-berry">*</span>
+          </label>
+          <p className="mb-2 font-secondary text-sm text-ink/70">
+            {user
+              ? "We'll send your quote and updates to your account email."
+              : "We'll send your quote and updates to this email."}
+          </p>
+          <input
+            id="customer_email"
+            name="customer_email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              onFormInteraction();
+              clearFieldError("email");
+              setEmail(e.target.value);
+            }}
+            placeholder="you@example.com"
+            className={fieldClassName(fieldErrors?.email)}
+            aria-invalid={fieldErrors?.email || undefined}
+            disabled={!!user}
+            readOnly={!!user}
+          />
+          {user && (
+            <p className="mt-1 font-secondary text-xs text-ink/60">
+              Using your account email.{" "}
+              <Link href="/account" className="font-semibold text-blush hover:underline">
+                Manage account
+              </Link>
+            </p>
+          )}
+          {fieldErrors?.email && (
+            <p className="mt-1 text-sm text-berry">
+              Please enter a valid email address
+            </p>
+          )}
+        </div>
+
         <fieldset id="delivery_method" className="space-y-3 scroll-mt-24">
           <legend className="text-lg font-bold text-ink">
             Delivery method <span className="text-berry">*</span>
@@ -592,78 +720,78 @@ export default function QuoteForm() {
         </fieldset>
 
         <div className="space-y-3">
-          <p className="text-lg font-bold text-ink">
-            Contact methods <span className="text-berry">*</span>
-          </p>
+          <p className="text-lg font-bold text-ink">Other forms of contact</p>
           <p className="font-secondary text-sm text-ink/70">
-            Add at least one way we can reach you about your quote.
+            Optional. Share any of these so we can reach you.
           </p>
-          {contacts.map((contact, index) => (
-            <div
-              key={contact.id}
-              className="flex flex-col gap-2 rounded-xl border-2 border-ink/10 bg-cream/80 p-3 sm:flex-row sm:items-end"
-            >
-              <div className="sm:w-40">
+          {CONTACT_TYPES.map((type) => {
+            const value = contactValues[type.value] ?? "";
+            const locked = !!lockedTypes[type.value];
+            return (
+              <div key={type.value}>
                 <label
-                  htmlFor={`contact_type_${contact.id}`}
+                  htmlFor={`contact_${type.value}`}
                   className="mb-1 block font-secondary text-xs text-ink/70"
                 >
-                  Type
+                  {type.label}
                 </label>
-                <select
-                  id={`contact_type_${contact.id}`}
-                  value={contact.contactType}
-                  onChange={(e) =>
-                    updateContact(contact.id, { contactType: e.target.value })
-                  }
-                  className={fieldClassName()}
-                >
-                  {CONTACT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
+                {locked ? (
+                  <div className="rounded-xl border-2 border-ink/10 bg-cream/60 px-4 py-2">
+                    <p className="font-secondary text-sm text-ink/80">{value}</p>
+                  </div>
+                ) : (
+                  <input
+                    id={`contact_${type.value}`}
+                    type="text"
+                    value={value}
+                    onChange={(e) => updateContactValue(type.value, e.target.value)}
+                    placeholder={
+                      type.value === "phone" ? "(555) 555-5555" : "@yourusername"
+                    }
+                    className={fieldClassName()}
+                  />
+                )}
               </div>
-              <div className="min-w-0 flex-1">
-                <label
-                  htmlFor={`contact_value_${contact.id}`}
-                  className="mb-1 block font-secondary text-xs text-ink/70"
-                >
-                  {index === 0 ? "Value" : `Contact ${index + 1}`}
-                </label>
-                <input
-                  id={`contact_value_${contact.id}`}
-                  type="text"
-                  value={contact.value}
-                  onChange={(e) =>
-                    updateContact(contact.id, { value: e.target.value })
-                  }
-                  placeholder={
-                    contact.contactType === "phone"
-                      ? "(555) 555-5555"
-                      : "@yourusername"
-                  }
-                  className={fieldClassName(fieldErrors?.contacts)}
-                  aria-invalid={fieldErrors?.contacts || undefined}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => removeContact(contact.id)}
-                className="rounded-full border-2 border-ink/15 px-3 py-2 text-sm font-semibold text-ink/70 transition-colors duration-150 sm:hover:border-blush sm:hover:text-ink"
+            );
+          })}
+          {Object.keys(lockedTypes).length > 0 && (
+            <p className="font-secondary text-xs text-ink/60">
+              Saved contact methods come from your account.{" "}
+              <Link
+                href="/account"
+                className="font-semibold text-blush hover:underline"
               >
-                Remove
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addContact}
-            className="inline-flex items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
+                Manage account
+              </Link>
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <label
+            htmlFor="preferred_contact"
+            className="block text-lg font-bold text-ink"
           >
-            + Add contact method
-          </button>
+            Preferred contact method <span className="text-berry">*</span>
+          </label>
+          <p className="font-secondary text-sm text-ink/70">
+            How would you prefer we reach you about your quote?
+          </p>
+          <select
+            id="preferred_contact"
+            value={effectivePreferredId}
+            onChange={(e) => {
+              onFormInteraction();
+              setPreferredContactId(e.target.value);
+            }}
+            className={fieldClassName()}
+          >
+            {preferredOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
       </section>
 

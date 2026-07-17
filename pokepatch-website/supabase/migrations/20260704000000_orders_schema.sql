@@ -134,6 +134,7 @@ as $$
 declare
   v_order_id uuid;
   v_customer_name text;
+  v_customer_email text;
   v_delivery_method text;
   v_contacts jsonb;
   v_cards jsonb;
@@ -169,6 +170,11 @@ begin
   v_customer_name := trim(coalesce(p_payload ->> 'customer_name', ''));
   if v_customer_name = '' then
     raise exception 'customer_name is required';
+  end if;
+
+  v_customer_email := trim(coalesce(p_payload ->> 'customer_email', ''));
+  if v_customer_email = '' then
+    raise exception 'customer_email is required';
   end if;
 
   v_delivery_method := p_payload ->> 'delivery_method';
@@ -251,8 +257,8 @@ begin
   end loop;
 
   -- Working order, then original order (FK parent for other originals)
-  insert into public.orders (id, customer_name, delivery_method, general_notes)
-  values (v_order_id, v_customer_name, v_delivery_method, null)
+  insert into public.orders (id, customer_name, customer_email, delivery_method, general_notes)
+  values (v_order_id, v_customer_name, v_customer_email, v_delivery_method, null)
   returning * into v_order;
 
   insert into public.orders_original (

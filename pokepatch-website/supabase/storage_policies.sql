@@ -36,4 +36,28 @@ begin
 end;
 $$;
 
+-- Logged-in customers submit orders as the authenticated role, so they need the
+-- same order-path upload permission. Without this, a signed-in user submitting an
+-- order fails with "new row violates row-level security policy".
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'storage'
+      and tablename = 'objects'
+      and policyname = 'authenticated can upload order card photos'
+  ) then
+    create policy "authenticated can upload order card photos"
+      on storage.objects
+      for insert
+      to authenticated
+      with check (
+        bucket_id = 'card-photos'
+        and name like 'order-%'
+      );
+  end if;
+end;
+$$;
+
 -- Service role (notify edge function) bypasses RLS for signed URLs; no policy needed.
