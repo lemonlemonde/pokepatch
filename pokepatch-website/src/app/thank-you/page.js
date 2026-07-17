@@ -84,18 +84,18 @@ export default function ThankYouPage() {
     try {
       const data = await signUp(email, password);
 
-      if (data.user && !data.session) {
-        setSuccess(
-          "Account created! Please check your email to confirm your account. Your orders will be linked automatically."
-        );
-        setShowAccountCreation(false);
-      } else if (data.session) {
+      if (data.session) {
         setSuccess(
           "Account created successfully! Your orders have been linked to your account."
         );
         setTimeout(() => {
           router.push("/my-orders");
         }, 2000);
+      } else {
+        setSuccess(
+          "Account created! Please check your email to confirm your account. Your orders will be linked automatically."
+        );
+        setShowAccountCreation(false);
       }
     } catch (err) {
       setError(err.message || "Failed to create account. Please try again.");
@@ -239,11 +239,11 @@ export default function ThankYouPage() {
                 )}
               </div>
 
-              <div className="flex gap-3">
+              <div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
+                  className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
                 >
                   {loading ? (
                     <span className="inline-block animate-soft-bounce">
@@ -252,17 +252,6 @@ export default function ThankYouPage() {
                   ) : (
                     "Create account"
                   )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAccountCreation(false);
-                    setError("");
-                    setSuccess("");
-                  }}
-                  className="rounded-full border-2 border-ink/15 px-6 py-3 font-bold text-ink/70 transition-colors sm:hover:border-blush sm:hover:text-ink"
-                >
-                  Skip
                 </button>
               </div>
             </form>
