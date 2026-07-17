@@ -68,7 +68,7 @@ export default function ThankYouPage() {
     setLoading(true);
 
     try {
-      const { data } = await signUp(email, password);
+      const data = await signUp(email, password);
 
       if (data.user && !data.session) {
         setSuccess(

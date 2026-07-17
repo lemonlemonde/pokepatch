@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,8 +29,13 @@ function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState({});
 
   // If already logged in, redirect
+  useEffect(() => {
+    if (user && !loading) {
+      router.push(redirectTo);
+    }
+  }, [user, loading, redirectTo, router]);
+
   if (user && !loading) {
-    router.push(redirectTo);
     return null;
   }
 
@@ -79,7 +84,7 @@ function LoginForm() {
         await signIn(email, password);
         router.push(redirectTo);
       } else {
-        const { data } = await signUp(email, password);
+        const data = await signUp(email, password);
         
         // Check if email confirmation is required
         if (data.user && !data.session) {
