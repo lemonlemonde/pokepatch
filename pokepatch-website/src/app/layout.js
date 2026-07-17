@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import PostHogProvider from "@/components/PostHogProvider";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -39,9 +40,11 @@ export default function RootLayout({ children }) {
       >
         <div className="gradient-bg" aria-hidden="true" />
         <PostHogProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <AuthProvider>
+            <Navbar />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </AuthProvider>
         </PostHogProvider>
       </body>
     </html>
