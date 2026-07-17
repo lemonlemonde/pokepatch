@@ -22,7 +22,6 @@ export default function ThankYouPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   // If already logged in, don't show account creation
@@ -72,7 +71,6 @@ export default function ThankYouPage() {
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
 
     if (!validateForm()) {
       setError("Please check the form for errors.");
@@ -85,17 +83,9 @@ export default function ThankYouPage() {
       const data = await signUp(email, password);
 
       if (data.session) {
-        setSuccess(
-          "Account created successfully! Your orders have been linked to your account."
-        );
-        setTimeout(() => {
-          router.push("/my-orders");
-        }, 2000);
+        router.push("/my-orders");
       } else {
-        setSuccess(
-          "Account created! Please check your email to confirm your account. Your orders will be linked automatically."
-        );
-        setShowAccountCreation(false);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
       }
     } catch (err) {
       setError(err.message || "Failed to create account. Please try again.");
@@ -149,12 +139,6 @@ export default function ThankYouPage() {
             {error && (
               <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
                 {error}
-              </p>
-            )}
-
-            {success && (
-              <p className="rounded-2xl border-2 border-mint bg-mint/40 px-4 py-3 text-sm font-semibold text-ink">
-                {success}
               </p>
             )}
 

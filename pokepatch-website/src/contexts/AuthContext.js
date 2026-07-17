@@ -114,22 +114,12 @@ export function AuthProvider({ children }) {
 
     if (error) throw error;
 
-    let result = data;
+    // Claim orders now when signup returns a session (email confirmation off).
+    // When confirmation is on, orders are claimed on the SIGNED_IN event after
+    // the user confirms via email.
+    if (data.session) await claimOrders();
 
-    // If signup didn't return a session, immediately sign in with the same
-    // credentials so the user is logged in right away, no matter how they
-    // signed up. (Requires email confirmation to be disabled in Supabase.)
-    if (!result.session) {
-      const { data: signInData, error: signInError } =
-        await supabase.auth.signInWithPassword({ email, password });
-      if (!signInError && signInData?.session) {
-        result = signInData;
-      }
-    }
-
-    if (result.session) await claimOrders();
-
-    return result;
+    return data;
   };
 
   const signIn = async (email, password) => {
