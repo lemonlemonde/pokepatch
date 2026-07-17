@@ -56,14 +56,24 @@ export default function Navbar() {
             </li>
           ))}
           {user ? (
-            <li>
-              <Link
-                href="/my-orders"
-                className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
-              >
-                My Orders
-              </Link>
-            </li>
+            <>
+              <li>
+                <Link
+                  href="/my-orders"
+                  className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                >
+                  My Orders
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/account"
+                  className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                >
+                  Account
+                </Link>
+              </li>
+            </>
           ) : (
             <li>
               <Link

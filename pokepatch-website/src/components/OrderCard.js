@@ -9,6 +9,13 @@ function getPublicUrl(path) {
   return data?.publicUrl || null;
 }
 
+function contactIcon(type) {
+  if (type === "phone") return "📞";
+  if (type === "discord") return "💬";
+  if (type === "email") return "✉️";
+  return "📷";
+}
+
 function formatDate(dateString) {
   const date = new Date(dateString);
   return date.toLocaleDateString("en-US", {
@@ -112,14 +119,16 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               <div>
                 <h4 className="mb-2 text-sm font-bold text-ink">Contact Methods</h4>
                 <div className="space-y-1">
+                  {orderDetails.preferred_contact_type && (
+                    <p className="font-secondary text-sm text-ink/80">
+                      <span className="font-semibold text-ink">Preferred:</span>{" "}
+                      {contactIcon(orderDetails.preferred_contact_type)}{" "}
+                      {orderDetails.preferred_contact_value}
+                    </p>
+                  )}
                   {orderDetails.contacts.map((contact) => (
                     <p key={contact.id} className="font-secondary text-sm text-ink/80">
-                      {contact.contact_type === "phone"
-                        ? "📞"
-                        : contact.contact_type === "discord"
-                          ? "💬"
-                          : "📷"}{" "}
-                      {contact.value}
+                      {contactIcon(contact.contact_type)} {contact.value}
                     </p>
                   ))}
                 </div>

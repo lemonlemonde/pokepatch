@@ -32,6 +32,20 @@ export default function ThankYouPage() {
     }
   }, [user]);
 
+  // Pre-fill the email from the order they just submitted so the account links
+  // up and their entered contacts get saved to the new profile.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem("pokepatch_pending_profile");
+      if (!raw) return;
+      const pending = JSON.parse(raw);
+      if (pending?.email) setEmail(pending.email);
+    } catch {
+      // Ignore storage/parse errors; email can be entered manually.
+    }
+  }, []);
+
   const validateForm = () => {
     const errors = {};
 
