@@ -174,40 +174,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         onClick={onClick}
         className="flex w-full items-center gap-4 p-4 text-left transition-colors duration-150 hover:bg-ink/[0.04]"
       >
-        <div className="grid aspect-square w-16 shrink-0 grid-cols-2 gap-1 rounded-xl border border-ink/10 bg-night/40 p-1">
-          {previewPaths.length === 0 ? (
-            <div className="col-span-2 row-span-2 flex items-center justify-center text-xl text-ink/30">
-              🃏
-            </div>
-          ) : (
-            previewPaths.slice(0, 4).map((path, index) => {
-              const url = previewUrls[path];
-              const showMore = hasMore && index === 3;
-              return (
-                <div
-                  key={path || index}
-                  className="relative aspect-square overflow-hidden rounded-md bg-night/50"
-                >
-                  {url ? (
-                    <img
-                      src={url}
-                      alt={`Order #${order.display_id} card ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full animate-pulse bg-ink/5" />
-                  )}
-                  {showMore && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-sm font-bold text-cream backdrop-blur-[1px]">
-                      …
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-display text-lg font-bold leading-none text-ink">
@@ -228,6 +194,40 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               🃏 {cardCountText}
             </span>
           </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1 rounded-xl border border-ink/10 bg-night/40 p-1">
+          {previewPaths.length === 0 ? (
+            <div className="flex aspect-[3/4] w-9 items-center justify-center text-base text-ink/30">
+              🃏
+            </div>
+          ) : (
+            previewPaths.slice(0, 4).map((path, index) => {
+              const url = previewUrls[path];
+              const showMore = hasMore && index === 3;
+              return (
+                <div
+                  key={path || index}
+                  className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
+                >
+                  {url ? (
+                    <img
+                      src={url}
+                      alt={`Order #${order.display_id} card ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full w-full animate-pulse bg-ink/5" />
+                  )}
+                  {showMore && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-sm font-bold text-cream backdrop-blur-[1px]">
+                      …
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
 
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-night/30 text-ink/60">
