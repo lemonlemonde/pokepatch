@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
-import {
-  CardPhotoPreviewGrid,
-  StagedCardPhotoPreviews,
-} from "@/components/CardPhotoPreviews";
+import { CardPhotoPreviewGrid } from "@/components/CardPhotoPreviews";
 import {
   adminDeleteOrders,
   adminGetOrder,
@@ -15,7 +13,6 @@ import {
   adminLogout,
   adminSaveOrder,
   adminSetStatus,
-  adminUploadPhoto,
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
@@ -28,6 +25,8 @@ import {
   groupOrdersByStatus,
   normalizeOrderStatus,
   orderStatusHeadingClass,
+  orderStatusLabel,
+  orderStatusBadgeClass,
   isClosedOrderStatus,
   filterClosedColumnOrders,
 } from "@/lib/orderStatus";
@@ -39,7 +38,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag cards between columns to update status. Click a card to edit. Check boxes to multi-select, then delete with confirmation.",
+      "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -59,9 +58,24 @@ const ADMIN_TABS = [
   },
 ];
 
+const ORDERS_ALL_META = {
+  id: "orders-all",
+  title: "All orders",
+  subtitle:
+    "Spreadsheet view of every order. Click a row to open it.",
+};
+
+const ORDERS_EDIT_META = {
+  id: "orders-edit",
+  title: "Edit order",
+  subtitle: "",
+};
+
 function tabFromPathname(pathname) {
+  const path = pathname?.replace(/\/$/, "") ?? "";
+  if (path.endsWith("/admin/orders/all")) return "orders-all";
   const match = ADMIN_TABS.find((entry) =>
-    pathname?.startsWith(entry.path.replace(/\/$/, "")),
+    path.startsWith(entry.path.replace(/\/$/, "")),
   );
   return match?.id ?? "orders";
 }
@@ -70,13 +84,6 @@ const CONTACT_TYPES = [
   { value: "phone", label: "Phone" },
   { value: "discord", label: "Discord" },
   { value: "instagram", label: "Instagram" },
-];
-
-const ADMIN_IMAGE_TYPES = [
-  { value: "progress_front", label: "Progress front" },
-  { value: "progress_back", label: "Progress back" },
-  { value: "final_front", label: "Final front" },
-  { value: "final_back", label: "Final back" },
 ];
 
 function fieldClassName() {
@@ -100,13 +107,10 @@ function deliveryLabel(value) {
   return value ?? "";
 }
 
-function emptyStagedUploads() {
-  return {
-    progress_front: [],
-    progress_back: [],
-    final_front: [],
-    final_back: [],
-  };
+function deliveryShortLabel(value) {
+  if (value === "local_dropoff") return "Local";
+  if (value === "shipping") return "Ship";
+  return deliveryLabel(value);
 }
 
 function orderToDraft(order) {
@@ -115,6 +119,7 @@ function orderToDraft(order) {
     customer_email: order.customer_email ?? "",
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
+    photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
@@ -127,7 +132,6 @@ function orderToDraft(order) {
       set_name: card.set_name ?? "",
       description: card.description ?? "",
       images: card.images ?? [],
-      staged: emptyStagedUploads(),
     })),
   };
 }
@@ -138,6 +142,7 @@ function draftPayload(draft) {
       customer_name: draft.customer_name.trim(),
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
+      photos_drive_url: draft.photos_drive_url.trim(),
       status: draft.status,
     },
     contacts: draft.contacts
@@ -160,6 +165,17 @@ function validateDraftForSave(draft) {
   if (!draft.customer_name.trim()) {
     return "Customer name is required.";
   }
+  const driveUrl = draft.photos_drive_url.trim();
+  if (driveUrl) {
+    try {
+      const parsed = new URL(driveUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "Google Drive link must be an http(s) URL.";
+      }
+    } catch {
+      return "Google Drive link must be a valid URL.";
+    }
+  }
   for (const contact of draft.contacts) {
     if (!contact.value.trim()) {
       return "Fill in every contact or remove empty rows before saving.";
@@ -171,12 +187,6 @@ function validateDraftForSave(draft) {
     }
   }
   return null;
-}
-
-function hasStagedUploads(draft) {
-  return draft.cards.some((card) =>
-    ADMIN_IMAGE_TYPES.some((type) => card.staged[type.value]?.length > 0)
-  );
 }
 
 function LoadingIndicator({ label = "Loading…", compact = false, className = "" }) {
@@ -331,96 +341,225 @@ function TrashIcon({ className = "h-5 w-5" }) {
   );
 }
 
+const INSPECT_OPEN_DELAY_MS = 150;
+const INSPECT_CLOSE_DELAY_MS = 100;
+const INSPECT_PANEL_WIDTH = 280;
+const INSPECT_CURSOR_OFFSET = 14;
+const INSPECT_PANEL_HEIGHT_ESTIMATE = 220;
+
+function clampInspectPosition(clientX, clientY, panelHeight = INSPECT_PANEL_HEIGHT_ESTIMATE) {
+  let left = clientX + INSPECT_CURSOR_OFFSET;
+  let top = clientY + INSPECT_CURSOR_OFFSET;
+
+  if (left + INSPECT_PANEL_WIDTH > window.innerWidth - 8) {
+    left = clientX - INSPECT_PANEL_WIDTH - INSPECT_CURSOR_OFFSET;
+  }
+  if (top + panelHeight > window.innerHeight - 8) {
+    top = clientY - panelHeight - INSPECT_CURSOR_OFFSET;
+  }
+
+  return {
+    left: Math.max(8, Math.min(left, window.innerWidth - INSPECT_PANEL_WIDTH - 8)),
+    top: Math.max(8, Math.min(top, window.innerHeight - panelHeight - 8)),
+  };
+}
+
 function KanbanCard({
   order,
   onOpen,
-  onToggleCheck,
   onContextMenu,
   dragging,
-  editorSelected,
-  checked,
-  loading,
 }) {
+  const panelElRef = useRef(null);
+  const cursorRef = useRef({ x: 0, y: 0 });
+  const openTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const [inspectOpen, setInspectOpen] = useState(false);
+  const [panelPos, setPanelPos] = useState(null);
+
   const cardCount = order.card_count ?? order.cards?.length ?? 0;
   const previewUrls = Array.isArray(order.preview_urls)
     ? order.preview_urls.filter(Boolean).slice(0, 4)
     : [];
+  const thumbUrl = previewUrls[0] ?? null;
   const hasMore = cardCount > previewUrls.length && previewUrls.length > 0;
+  const metaChip = `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
 
-  return (
+  const clearTimers = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const placeAtCursor = useCallback((clientX, clientY, { syncState = false } = {}) => {
+    cursorRef.current = { x: clientX, y: clientY };
+    const height =
+      panelElRef.current?.offsetHeight ?? INSPECT_PANEL_HEIGHT_ESTIMATE;
+    const next = clampInspectPosition(clientX, clientY, height);
+    if (panelElRef.current) {
+      panelElRef.current.style.top = `${next.top}px`;
+      panelElRef.current.style.left = `${next.left}px`;
+    }
+    if (syncState || !panelElRef.current) {
+      setPanelPos(next);
+    }
+  }, []);
+
+  const showInspect = useCallback(() => {
+    clearTimers();
+    const { x, y } = cursorRef.current;
+    placeAtCursor(x, y, { syncState: true });
+    setInspectOpen(true);
+  }, [clearTimers, placeAtCursor]);
+
+  const hideInspect = useCallback(() => {
+    clearTimers();
+    setInspectOpen(false);
+  }, [clearTimers]);
+
+  const scheduleOpen = useCallback(() => {
+    if (dragging) return;
+    clearTimers();
+    openTimerRef.current = setTimeout(showInspect, INSPECT_OPEN_DELAY_MS);
+  }, [clearTimers, dragging, showInspect]);
+
+  const scheduleClose = useCallback(() => {
+    clearTimers();
+    closeTimerRef.current = setTimeout(hideInspect, INSPECT_CLOSE_DELAY_MS);
+  }, [clearTimers, hideInspect]);
+
+  function handleMouseEnter(event) {
+    placeAtCursor(event.clientX, event.clientY, { syncState: true });
+    scheduleOpen();
+  }
+
+  function handleMouseMove(event) {
+    placeAtCursor(event.clientX, event.clientY, {
+      syncState: !inspectOpen,
+    });
+  }
+
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
+  useEffect(() => {
+    if (dragging) hideInspect();
+  }, [dragging, hideInspect]);
+
+  useEffect(() => {
+    if (!inspectOpen) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape") hideInspect();
+    }
+    // Re-measure once the panel is in the DOM so viewport clamping is accurate.
+    const { x, y } = cursorRef.current;
+    placeAtCursor(x, y, { syncState: true });
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inspectOpen, hideInspect, placeAtCursor]);
+
+  const card = (
     <div
       onContextMenu={(event) => {
         event.preventDefault();
         onContextMenu?.(event, order);
       }}
-      className={`relative flex w-full items-start gap-2 rounded-xl border-2 px-3 py-3 text-left shadow-cozy-sm transition ${
-        checked
-          ? "border-berry/70 bg-berry/10"
-          : editorSelected
-            ? "border-berry bg-blush/30 shadow-cozy ring-2 ring-berry/50 ring-offset-2 ring-offset-night/40"
-            : "border-ink/10 bg-cream hover:border-blush/60"
-      } ${dragging ? "opacity-50" : ""} ${loading ? "pointer-events-none" : ""}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={scheduleClose}
+      className={`relative flex w-full items-center gap-2 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 ${
+        dragging ? "opacity-50" : ""
+      }`}
     >
-      {loading && (
-        <span className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-night/40">
-          <span
-            aria-hidden="true"
-            className="h-6 w-6 animate-spin rounded-full border-2 border-ink/20 border-t-berry"
-          />
-        </span>
-      )}
-      <label
-        className="mt-1 shrink-0"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={() => onToggleCheck(order.id)}
-          aria-label={`Select order #${order.display_id}`}
-          className="h-4 w-4 accent-berry"
-        />
-      </label>
       <button
         type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey) {
-            event.preventDefault();
-            onToggleCheck(order.id);
-            return;
-          }
-          onOpen(order.id);
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={() => onOpen(order.id)}
+        onFocus={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          placeAtCursor(rect.left + rect.width / 2, rect.top + rect.height / 2, {
+            syncState: true,
+          });
+          scheduleOpen();
         }}
-        aria-current={editorSelected ? "true" : undefined}
-        aria-busy={loading || undefined}
+        onBlur={scheduleClose}
+        aria-describedby={
+          inspectOpen ? `order-inspect-${order.id}` : undefined
+        }
       >
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-bold tabular-nums text-ink">
-              #{order.display_id}
-            </p>
-            <p className="mt-1 truncate text-sm font-semibold text-ink">
-              {order.customer_name}
-            </p>
-            <p className="mt-1 text-xs text-ink/60">
-              {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
-              {deliveryLabel(order.delivery_method)}
-            </p>
-            <p className="mt-1 text-xs text-ink/50">
-              {formatDate(order.created_at)}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-ink/10 bg-night/40 p-1">
+        <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+          #{order.display_id}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+          {order.customer_name}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-ink/55">
+          {metaChip}
+        </span>
+        <span className="relative aspect-[3/4] w-7 shrink-0 overflow-hidden rounded bg-night/50">
+          {thumbUrl ? (
+            <img
+              src={thumbUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : null}
+          {cardCount > 1 && (
+            <span className="absolute inset-x-0 bottom-0 bg-night/75 py-px text-center text-[9px] font-bold leading-none text-cream">
+              {cardCount}
+            </span>
+          )}
+        </span>
+      </button>
+    </div>
+  );
+
+  const inspectPortal =
+    inspectOpen &&
+    panelPos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div className="pointer-events-none fixed inset-0 z-[200]">
+        <div
+          ref={panelElRef}
+          role="tooltip"
+          id={`order-inspect-${order.id}`}
+          className="absolute rounded-xl border-2 border-ink/15 bg-cream p-3 shadow-cozy"
+          style={{
+            top: panelPos.top,
+            left: panelPos.left,
+            width: INSPECT_PANEL_WIDTH,
+          }}
+        >
+          <p className="text-sm font-bold tabular-nums text-ink">
+            #{order.display_id}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-ink">
+            {order.customer_name}
+          </p>
+          <p className="mt-1 text-xs text-ink/60">
+            {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
+            {deliveryLabel(order.delivery_method)}
+          </p>
+          <p className="mt-0.5 text-xs text-ink/50">
+            {formatDate(order.created_at)}
+          </p>
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
             {previewUrls.length === 0 ? (
-              <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
+              <div className="aspect-[3/4] w-12 rounded-md bg-night/50" />
             ) : (
               previewUrls.map((url, index) => {
-                const showMore = hasMore && index === previewUrls.length - 1;
+                const showMoreOverlay =
+                  hasMore && index === previewUrls.length - 1;
                 return (
                   <div
                     key={`${url}-${index}`}
-                    className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
+                    className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md bg-night/50"
                   >
                     <img
                       src={url}
@@ -428,7 +567,7 @@ function KanbanCard({
                       className="h-full w-full object-cover"
                       draggable={false}
                     />
-                    {showMore && (
+                    {showMoreOverlay && (
                       <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
                         …
                       </div>
@@ -439,8 +578,15 @@ function KanbanCard({
             )}
           </div>
         </div>
-      </button>
-    </div>
+      </div>,
+      document.body
+    );
+
+  return (
+    <>
+      {card}
+      {inspectPortal}
+    </>
   );
 }
 
@@ -550,43 +696,114 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
   );
 }
 
+function formatDateShort(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function OrdersAllList({ orders, onOpenOrder }) {
+  const sorted = useMemo(() => {
+    return [...(orders ?? [])].sort((a, b) => {
+      const aId = Number(a.display_id) || 0;
+      const bId = Number(b.display_id) || 0;
+      return bId - aId;
+    });
+  }, [orders]);
+
+  if (sorted.length === 0) {
+    return (
+      <p className="rounded border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+        No orders yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded border border-ink/20 bg-cream">
+      <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-ink/20 bg-night/40 text-xs font-semibold uppercase tracking-wide text-ink/60">
+            <th className="whitespace-nowrap px-3 py-2">#</th>
+            <th className="whitespace-nowrap px-3 py-2">Customer</th>
+            <th className="whitespace-nowrap px-3 py-2">Email</th>
+            <th className="whitespace-nowrap px-3 py-2">Status</th>
+            <th className="whitespace-nowrap px-3 py-2">Cards</th>
+            <th className="whitespace-nowrap px-3 py-2">Delivery</th>
+            <th className="whitespace-nowrap px-3 py-2">Created</th>
+            <th className="whitespace-nowrap px-3 py-2">Closed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((order) => {
+            const status = normalizeOrderStatus(order.status);
+            const cardCount = order.card_count ?? order.cards?.length ?? 0;
+            return (
+              <tr
+                key={order.id}
+                onClick={() => onOpenOrder(order.id)}
+                className="cursor-pointer border-b border-ink/10 odd:bg-night/15 transition hover:bg-blush/20"
+              >
+                <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-ink">
+                  {order.display_id}
+                </td>
+                <td className="max-w-[12rem] truncate px-3 py-1.5 font-medium text-ink">
+                  {order.customer_name}
+                </td>
+                <td className="max-w-[14rem] truncate px-3 py-1.5 text-ink/70">
+                  {order.customer_email || "—"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  <span
+                    className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${orderStatusBadgeClass(
+                      status
+                    )}`}
+                  >
+                    {orderStatusLabel(status)}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/80">
+                  {cardCount}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-ink/70">
+                  {deliveryShortLabel(order.delivery_method)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/60">
+                  {formatDateShort(order.created_at)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/60">
+                  {isClosedOrderStatus(status)
+                    ? formatDateShort(order.completed_at) || "—"
+                    : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function KanbanBoard({
   orders,
   onOpenOrder,
   onStatusChange,
   onRequestDelete,
-  selectedOrderId,
-  loadingOrderId,
+  onViewAllOrders,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
   const [trashArmed, setTrashArmed] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
-  const [checkedIds, setCheckedIds] = useState(() => new Set());
-  const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const [showAllCanceled, setShowAllCanceled] = useState(false);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
   const dragOrder = useMemo(
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
   );
-  const checkedOrders = useMemo(
-    () => orders.filter((order) => checkedIds.has(order.id)),
-    [orders, checkedIds]
-  );
-
-  useEffect(() => {
-    setCheckedIds((current) => {
-      const valid = new Set(orders.map((order) => order.id));
-      let changed = false;
-      const next = new Set();
-      for (const id of current) {
-        if (valid.has(id)) next.add(id);
-        else changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [orders]);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -608,49 +825,6 @@ function KanbanBoard({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu]);
-
-  function toggleCheck(orderId) {
-    setCheckedIds((current) => {
-      const next = new Set(current);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
-  }
-
-  function clearChecked() {
-    setCheckedIds(new Set());
-  }
-
-  function setColumnChecked(columnOrders, checked) {
-    setCheckedIds((current) => {
-      const next = new Set(current);
-      for (const order of columnOrders) {
-        if (checked) next.add(order.id);
-        else next.delete(order.id);
-      }
-      return next;
-    });
-  }
-
-  function ordersForDeleteRequest(seedOrders) {
-    const seeds = (Array.isArray(seedOrders) ? seedOrders : [seedOrders]).filter(
-      Boolean
-    );
-    if (
-      checkedOrders.length > 1 &&
-      seeds.some((order) => checkedIds.has(order.id))
-    ) {
-      return checkedOrders;
-    }
-    return seeds;
-  }
-
-  function requestDelete(seedOrders) {
-    const targets = ordersForDeleteRequest(seedOrders);
-    if (!targets.length) return;
-    onRequestDelete(targets);
-  }
 
   function handleDragStart(event, orderId) {
     event.dataTransfer.setData("text/plain", orderId);
@@ -693,7 +867,7 @@ function KanbanBoard({
     setDragOrderId(null);
     setTrashArmed(false);
     if (!order) return;
-    requestDelete(order);
+    onRequestDelete([order]);
   }
 
   function handleCardContextMenu(event, order) {
@@ -704,23 +878,14 @@ function KanbanBoard({
     });
   }
 
-  function showAllForClosedStatus(statusId) {
-    if (statusId === "completed") return showAllCompleted;
-    if (statusId === "canceled") return showAllCanceled;
-    return false;
-  }
-
   function renderColumn(status, { closed }) {
     const rawOrders = columns[status.id] ?? [];
-    const showAll = closed ? showAllForClosedStatus(status.id) : false;
     const columnOrders = closed
-      ? filterClosedColumnOrders(rawOrders, showAll)
+      ? filterClosedColumnOrders(rawOrders)
       : rawOrders;
-    const checkedInColumn = columnOrders.filter((order) =>
-      checkedIds.has(order.id)
-    ).length;
-    const allColumnChecked =
-      columnOrders.length > 0 && checkedInColumn === columnOrders.length;
+    const hiddenCount = closed
+      ? Math.max(0, rawOrders.length - columnOrders.length)
+      : 0;
 
     return (
       <section
@@ -730,55 +895,29 @@ function KanbanBoard({
         onDrop={(event) => handleDrop(event, status.id)}
       >
         <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <input
-              type="checkbox"
-              checked={allColumnChecked}
-              disabled={columnOrders.length === 0}
-              ref={(node) => {
-                if (node) {
-                  node.indeterminate =
-                    checkedInColumn > 0 && !allColumnChecked;
-                }
-              }}
-              onChange={(event) =>
-                setColumnChecked(columnOrders, event.target.checked)
-              }
-              aria-label={`Select all in ${status.label}`}
-              className="h-3.5 w-3.5 shrink-0 accent-berry disabled:opacity-40"
-            />
-            <h2
-              className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
-                status.id
-              )}`}
+          <h2
+            className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+              status.id
+            )}`}
+          >
+            {status.label}
+            {rawOrders.length > 0 && (
+              <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                {rawOrders.length}
+              </span>
+            )}
+          </h2>
+          {closed && hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={onViewAllOrders}
+              className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
             >
-              {status.label}
-              {columnOrders.length > 0 && (
-                <span className="ml-1.5 text-sm font-semibold text-ink/40">
-                  {columnOrders.length}
-                </span>
-              )}
-            </h2>
-          </div>
-          {closed && (
-            <label className="flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-semibold text-ink/60">
-              <input
-                type="checkbox"
-                checked={showAll}
-                onChange={(event) => {
-                  if (status.id === "completed") {
-                    setShowAllCompleted(event.target.checked);
-                  } else if (status.id === "canceled") {
-                    setShowAllCanceled(event.target.checked);
-                  }
-                }}
-                className="h-3.5 w-3.5 accent-berry"
-              />
               Show all
-            </label>
+            </button>
           )}
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-0.5">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
           {columnOrders.map((order) => (
             <div
               key={order.id}
@@ -789,12 +928,8 @@ function KanbanBoard({
               <KanbanCard
                 order={order}
                 onOpen={onOpenOrder}
-                onToggleCheck={toggleCheck}
                 onContextMenu={handleCardContextMenu}
                 dragging={dragOrderId === order.id}
-                editorSelected={order.id === selectedOrderId}
-                checked={checkedIds.has(order.id)}
-                loading={order.id === loadingOrderId}
               />
             </div>
           ))}
@@ -805,23 +940,32 @@ function KanbanBoard({
                 : "Drop orders here"}
             </p>
           )}
+          {closed && hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={onViewAllOrders}
+              className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
+            >
+              +{hiddenCount} older than 7 days — show all
+            </button>
+          )}
         </div>
       </section>
     );
   }
 
-  const trashTargets =
-    dragOrderId && checkedIds.has(dragOrderId) && checkedOrders.length > 1
-      ? checkedOrders
-      : dragOrder
-        ? [dragOrder]
-        : [];
-  const contextDeleteTargets = contextMenu
-    ? ordersForDeleteRequest(contextMenu.order)
-    : [];
-
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onViewAllOrders}
+          className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+        >
+          View all orders
+        </button>
+      </div>
+
       <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
@@ -830,34 +974,6 @@ function KanbanBoard({
           renderColumn(status, { closed: true })
         )}
       </div>
-
-      {checkedOrders.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-berry/30 bg-berry/10 px-4 py-3">
-          <p className="text-sm font-semibold text-ink">
-            {checkedOrders.length} selected
-            <span className="ml-2 font-normal text-ink/60">
-              {formatOrderIdList(checkedOrders, 4)}
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={clearChecked}
-              className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => requestDelete(checkedOrders)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-berry px-3 py-1.5 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
-            >
-              <TrashIcon className="h-4 w-4" />
-              Delete selected
-            </button>
-          </div>
-        </div>
-      )}
 
       <div
         role="region"
@@ -881,19 +997,15 @@ function KanbanBoard({
         <div className="text-center sm:text-left">
           <p className="text-sm font-semibold">
             {trashArmed
-              ? trashTargets.length > 1
-                ? `Release to delete ${trashTargets.length} orders`
-                : `Release to delete #${dragOrder?.display_id ?? ""}`
+              ? `Release to delete #${dragOrder?.display_id ?? ""}`
               : dragOrderId
-                ? trashTargets.length > 1
-                  ? `Drop to delete ${trashTargets.length} selected`
-                  : "Drop here to delete"
+                ? "Drop here to delete"
                 : "Recycling bin"}
           </p>
           <p className="mt-0.5 text-xs opacity-80">
             {dragOrderId
               ? "You’ll confirm before anything is deleted"
-              : "Select cards, right-click, or drag here — always confirms first"}
+              : "Right-click or drag here — always confirms first"}
           </p>
         </div>
       </div>
@@ -910,15 +1022,13 @@ function KanbanBoard({
             role="menuitem"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-berry transition hover:bg-berry/10"
             onClick={() => {
-              const targets = contextDeleteTargets;
+              const order = contextMenu.order;
               setContextMenu(null);
-              onRequestDelete(targets);
+              onRequestDelete([order]);
             }}
           >
             <TrashIcon className="h-4 w-4" />
-            {contextDeleteTargets.length > 1
-              ? `Delete ${contextDeleteTargets.length} selected`
-              : "Delete order"}
+            Delete order
           </button>
         </div>
       )}
@@ -926,13 +1036,38 @@ function KanbanBoard({
   );
 }
 
+function editorFieldClass() {
+  return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
+}
+
+function EditorSection({ title, action, children }) {
+  return (
+    <section className="rounded-2xl border border-ink/10 bg-cream/80 p-5 shadow-cozy-sm sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-ink">{title}</h3>
+        {action ?? null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function EditorLabel({ children }) {
+  return (
+    <span className="mb-1.5 block text-sm font-medium text-ink/65">
+      {children}
+    </span>
+  );
+}
+
 function OrderEditor({
-  orderId,
   displayId,
   draft,
   dirty,
   saving,
   error,
+  onBack,
+  backLabel = "Back",
   onChange,
   onCancel,
   onSave,
@@ -950,10 +1085,13 @@ function OrderEditor({
 
   function addContact() {
     updateDraft({
-      contacts: [
-        ...draft.contacts,
-        { contact_type: "phone", value: "" },
-      ],
+      contacts: [...draft.contacts, { contact_type: "phone", value: "" }],
+    });
+  }
+
+  function removeContact(index) {
+    updateDraft({
+      contacts: draft.contacts.filter((_, i) => i !== index),
     });
   }
 
@@ -964,273 +1102,283 @@ function OrderEditor({
     updateDraft({ cards });
   }
 
-  function stageFiles(cardIndex, imageType, fileList) {
-    const files = Array.from(fileList ?? []);
-    if (files.length === 0) return;
-    const cards = draft.cards.map((card, i) => {
-      if (i !== cardIndex) return card;
-      return {
-        ...card,
-        staged: {
-          ...card.staged,
-          [imageType]: [
-            ...(card.staged[imageType] ?? []),
-            ...files.map((file) => ({ id: crypto.randomUUID(), file })),
-          ],
-        },
-      };
-    });
-    updateDraft({ cards });
-  }
-
-  function removeStagedFile(cardIndex, imageType, fileId) {
-    const cards = draft.cards.map((card, i) => {
-      if (i !== cardIndex) return card;
-      return {
-        ...card,
-        staged: {
-          ...card.staged,
-          [imageType]: (card.staged[imageType] ?? []).filter((item) => item.id !== fileId),
-        },
-      };
-    });
-    updateDraft({ cards });
-  }
+  const driveUrl = draft.photos_drive_url.trim();
 
   return (
-    <section
-      className={`relative mt-8 rounded-xl border-2 border-ink/10 bg-night/50 p-4 sm:p-6 ${
+    <div
+      className={`mx-auto max-w-3xl space-y-5 ${
         saving ? "pointer-events-none opacity-60" : ""
       }`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold tabular-nums text-ink">Order #{displayId}</h2>
-          <p className="mt-1 text-sm text-ink/60">Edit fields, then Save. Photos upload on Save.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <div className="space-y-3">
+        {onBack ? (
           <button
             type="button"
-            onClick={onCancel}
-            disabled={saving || !dirty}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+            onClick={onBack}
+            className="text-sm font-medium text-ink/55 transition hover:text-ink"
           >
-            Cancel
+            ← {backLabel}
           </button>
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saving || !dirty}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-40"
-          >
-            {saving ? "Saving…" : "Save"}
-          </button>
+        ) : null}
+
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <h2 className="text-2xl font-bold tabular-nums tracking-tight text-ink sm:text-3xl">
+              Order #{displayId}
+            </h2>
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
+                draft.status
+              )}`}
+            >
+              {orderStatusLabel(draft.status)}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={saving || !dirty}
+              className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+            >
+              Discard
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || !dirty}
+              className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy-sm transition hover:brightness-110 disabled:opacity-40"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
         </div>
       </div>
 
       {error && (
-        <p className="mt-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+        <p className="rounded-xl border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
           {error}
         </p>
       )}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <label className="block">
-          <span className="text-sm font-semibold text-ink/70">Customer name</span>
-          <input
-            className={`${fieldClassName()} mt-1`}
-            value={draft.customer_name}
-            onChange={(event) => updateDraft({ customer_name: event.target.value })}
-          />
-        </label>
-        {draft.customer_email ? (
+      <EditorSection title="Customer">
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="text-sm font-semibold text-ink/70">Email</span>
+            <EditorLabel>Customer name</EditorLabel>
             <input
-              className={`${fieldClassName()} mt-1 cursor-default opacity-80`}
-              value={draft.customer_email}
-              readOnly
+              className={editorFieldClass()}
+              value={draft.customer_name}
+              onChange={(event) =>
+                updateDraft({ customer_name: event.target.value })
+              }
             />
           </label>
-        ) : null}
+          {draft.customer_email ? (
+            <div>
+              <EditorLabel>Email</EditorLabel>
+              <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
+                {draft.customer_email}
+              </p>
+            </div>
+          ) : null}
+          <label className="block">
+            <EditorLabel>Delivery</EditorLabel>
+            <select
+              className={editorFieldClass()}
+              value={draft.delivery_method}
+              onChange={(event) =>
+                updateDraft({ delivery_method: event.target.value })
+              }
+            >
+              <option value="local_dropoff">Local drop-off</option>
+              <option value="shipping">Shipping</option>
+            </select>
+          </label>
+          <label className="block">
+            <EditorLabel>Status</EditorLabel>
+            <select
+              className={editorFieldClass()}
+              value={draft.status}
+              onChange={(event) => updateDraft({ status: event.target.value })}
+            >
+              {ORDER_STATUSES.map((status) => (
+                <option key={status.id} value={status.id}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block sm:col-span-2">
+            <EditorLabel>Notes</EditorLabel>
+            <textarea
+              className={`${editorFieldClass()} min-h-[88px]`}
+              value={draft.general_notes}
+              onChange={(event) =>
+                updateDraft({ general_notes: event.target.value })
+              }
+            />
+          </label>
+        </div>
+      </EditorSection>
+
+      <EditorSection
+        title="Google Drive"
+        action={
+          driveUrl ? (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-berry transition hover:underline"
+            >
+              Open folder
+            </a>
+          ) : null
+        }
+      >
         <label className="block">
-          <span className="text-sm font-semibold text-ink/70">Delivery</span>
-          <select
-            className={`${fieldClassName()} mt-1`}
-            value={draft.delivery_method}
-            onChange={(event) => updateDraft({ delivery_method: event.target.value })}
-          >
-            <option value="local_dropoff">Local drop-off</option>
-            <option value="shipping">Shipping</option>
-          </select>
-        </label>
-        <label className="block md:col-span-2">
-          <span className="text-sm font-semibold text-ink/70">General notes</span>
-          <textarea
-            className={`${fieldClassName()} mt-1 min-h-[88px]`}
-            value={draft.general_notes}
-            onChange={(event) => updateDraft({ general_notes: event.target.value })}
+          <EditorLabel>Folder link</EditorLabel>
+          <input
+            className={editorFieldClass()}
+            type="url"
+            inputMode="url"
+            placeholder="https://drive.google.com/drive/folders/…"
+            value={draft.photos_drive_url}
+            onChange={(event) =>
+              updateDraft({ photos_drive_url: event.target.value })
+            }
           />
         </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-ink/70">Status</span>
-          <select
-            className={`${fieldClassName()} mt-1`}
-            value={draft.status}
-            onChange={(event) => updateDraft({ status: event.target.value })}
-          >
-            {ORDER_STATUSES.map((status) => (
-              <option key={status.id} value={status.id}>
-                {status.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      </EditorSection>
 
-      <div className="mt-8">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-display text-xl font-bold text-blush">Contacts</h3>
+      <EditorSection
+        title="Contacts"
+        action={
           <button
             type="button"
             onClick={addContact}
-            className="rounded-lg border border-ink/20 px-3 py-1 text-xs font-semibold text-ink hover:border-blush"
+            className="text-sm font-semibold text-berry transition hover:underline"
           >
             Add contact
           </button>
-        </div>
-        <p className="mt-1 text-xs text-ink/50">
-          Remove empty contact rows before saving.
-        </p>
-        <div className="mt-3 space-y-3">
-          {draft.contacts.map((contact, index) => (
-            <div key={contact.id ?? `new-${index}`} className="grid gap-2 sm:grid-cols-[140px_1fr]">
-              <select
-                className={fieldClassName()}
-                value={contact.contact_type}
-                onChange={(event) =>
-                  updateContact(index, { contact_type: event.target.value })
-                }
+        }
+      >
+        {draft.contacts.length === 0 ? (
+          <p className="text-sm text-ink/45">No contacts yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {draft.contacts.map((contact, index) => (
+              <div
+                key={contact.id ?? `new-${index}`}
+                className="flex flex-col gap-2 sm:flex-row sm:items-center"
               >
-                {CONTACT_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                className={fieldClassName()}
-                value={contact.value}
-                onChange={(event) => updateContact(index, { value: event.target.value })}
-                placeholder="Contact value"
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+                <select
+                  className={`${editorFieldClass()} sm:w-40 sm:shrink-0`}
+                  value={contact.contact_type}
+                  onChange={(event) =>
+                    updateContact(index, {
+                      contact_type: event.target.value,
+                    })
+                  }
+                >
+                  {CONTACT_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className={editorFieldClass()}
+                  value={contact.value}
+                  onChange={(event) =>
+                    updateContact(index, { value: event.target.value })
+                  }
+                  placeholder="Contact value"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeContact(index)}
+                  aria-label="Remove contact"
+                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold text-ink/40 transition hover:bg-berry/10 hover:text-berry sm:px-2"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </EditorSection>
 
-      <div className="mt-8 space-y-6">
-        <h3 className="font-display text-xl font-bold text-blush">Cards</h3>
+      <div className="space-y-4">
+        <h3 className="px-1 text-base font-semibold text-ink">Cards</h3>
         {draft.cards.map((card, cardIndex) => {
           const customerImages = (card.images ?? []).filter(
             (image) => image.image_type === "customer"
           );
-          const adminImagesByType = Object.fromEntries(
-            ADMIN_IMAGE_TYPES.map((type) => [
-              type.value,
-              (card.images ?? []).filter((image) => image.image_type === type.value),
-            ])
-          );
 
           return (
-            <article
-              key={card.id}
-              className="rounded-xl border border-ink/10 bg-cream/90 p-4"
-            >
-              <h4 className="mb-3 font-display text-lg font-bold text-ink">
-                Card {cardIndex + 1}
-              </h4>
-              <div className="grid gap-3 md:grid-cols-2">
+            <EditorSection key={card.id} title={`Card ${cardIndex + 1}`}>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block">
-                  <span className="text-sm font-semibold text-ink/70">Card name</span>
+                  <EditorLabel>Card name</EditorLabel>
                   <input
-                    className={`${fieldClassName()} mt-1`}
+                    className={editorFieldClass()}
                     value={card.card_name}
                     onChange={(event) =>
-                      updateCard(cardIndex, { card_name: event.target.value })
+                      updateCard(cardIndex, {
+                        card_name: event.target.value,
+                      })
                     }
                   />
                 </label>
                 <label className="block">
-                  <span className="text-sm font-semibold text-ink/70">Set</span>
+                  <EditorLabel>Set</EditorLabel>
                   <input
-                    className={`${fieldClassName()} mt-1`}
+                    className={editorFieldClass()}
                     value={card.set_name}
                     onChange={(event) =>
                       updateCard(cardIndex, { set_name: event.target.value })
                     }
                   />
                 </label>
-                <label className="block md:col-span-2">
-                  <span className="text-sm font-semibold text-ink/70">Description</span>
+                <label className="block sm:col-span-2">
+                  <EditorLabel>Description</EditorLabel>
                   <textarea
-                    className={`${fieldClassName()} mt-1 min-h-[72px]`}
+                    className={`${editorFieldClass()} min-h-[72px]`}
                     value={card.description}
                     onChange={(event) =>
-                      updateCard(cardIndex, { description: event.target.value })
+                      updateCard(cardIndex, {
+                        description: event.target.value,
+                      })
                     }
                   />
                 </label>
               </div>
-
-              <div className="mt-4 space-y-4">
-                <CardPhotoPreviewGrid
-                  title="Customer photos"
-                  items={savedPhotoItems(customerImages)}
-                />
-                {ADMIN_IMAGE_TYPES.map((type) => (
-                  <div key={type.value}>
-                    <CardPhotoPreviewGrid
-                      title={type.label}
-                      items={savedPhotoItems(adminImagesByType[type.value])}
-                    />
-                    <label className="mt-2 inline-flex cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80">
-                      Add {type.label.toLowerCase()}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => {
-                          stageFiles(cardIndex, type.value, event.target.files);
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    <StagedCardPhotoPreviews
-                      files={card.staged[type.value] ?? []}
-                      onRemove={(fileId) =>
-                        removeStagedFile(cardIndex, type.value, fileId)
-                      }
-                      caption={`${(card.staged[type.value] ?? []).length} file${
-                        (card.staged[type.value] ?? []).length === 1 ? "" : "s"
-                      } selected — uploads on Save`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </article>
+              {customerImages.length > 0 ? (
+                <div className="mt-4 border-t border-ink/10 pt-4">
+                  <CardPhotoPreviewGrid
+                    title="Customer photos"
+                    items={savedPhotoItems(customerImages)}
+                  />
+                </div>
+              ) : null}
+            </EditorSection>
           );
         })}
       </div>
-    </section>
+    </div>
   );
 }
 
 export default function AdminApp() {
   const router = useRouter();
   const pathname = usePathname();
-  const tab = tabFromPathname(pathname);
+  const searchParams = useSearchParams();
+  const pathTab = tabFromPathname(pathname);
+  const routeOrderId = searchParams.get("edit");
+  const tab = routeOrderId ? "orders-edit" : pathTab;
+  const editReturnPath =
+    searchParams.get("from") === "all" ? "/admin/orders/all/" : "/admin/orders/";
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -1248,12 +1396,26 @@ export default function AdminApp() {
 
   const dirty = useMemo(() => {
     if (!draft) return false;
-    const payload = JSON.stringify(draftPayload(draft));
-    const staged = hasStagedUploads(draft);
-    return payload !== savedSnapshot || staged;
+    return JSON.stringify(draftPayload(draft)) !== savedSnapshot;
   }, [draft, savedSnapshot]);
 
-  const activeTab = ADMIN_TABS.find((entry) => entry.id === tab) ?? ADMIN_TABS[0];
+  const activeTab =
+    tab === "orders-all"
+      ? ORDERS_ALL_META
+      : tab === "orders-edit"
+        ? ORDERS_EDIT_META
+        : (ADMIN_TABS.find((entry) => entry.id === tab) ?? ADMIN_TABS[0]);
+  const ordersSectionActive =
+    tab === "orders" || tab === "orders-all" || tab === "orders-edit";
+
+  const clearEditor = useCallback(() => {
+    setSelectedOrderId(null);
+    setSelectedDisplayId(null);
+    setDraft(null);
+    setSavedSnapshot("");
+    setEditorError("");
+    setLoadingOrderId(null);
+  }, []);
 
   const refreshOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -1287,6 +1449,42 @@ export default function AdminApp() {
     };
   }, [refreshOrders]);
 
+  useEffect(() => {
+    if (tab !== "orders-edit") clearEditor();
+  }, [tab, clearEditor]);
+
+  useEffect(() => {
+    if (!authed || tab !== "orders-edit" || !routeOrderId) return undefined;
+
+    let cancelled = false;
+    async function load() {
+      setEditorError("");
+      setLoadingOrderId(routeOrderId);
+      setSelectedOrderId(routeOrderId);
+      setDraft(null);
+      try {
+        const order = await adminGetOrder(routeOrderId);
+        if (cancelled) return;
+        const nextDraft = orderToDraft(order);
+        setSelectedDisplayId(order.display_id);
+        setDraft(nextDraft);
+        setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
+      } catch (err) {
+        if (cancelled) return;
+        setSelectedOrderId(null);
+        setSelectedDisplayId(null);
+        setDraft(null);
+        setEditorError(err.message || "Could not load order.");
+      } finally {
+        if (!cancelled) setLoadingOrderId(null);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, tab, routeOrderId]);
+
   async function handleLoginSuccess() {
     setAuthed(true);
     await refreshOrders();
@@ -1296,8 +1494,7 @@ export default function AdminApp() {
     await adminLogout();
     setAuthed(false);
     setOrders([]);
-    setSelectedOrderId(null);
-    setDraft(null);
+    clearEditor();
   }
 
   async function handleStatusChange(orderId, status) {
@@ -1364,11 +1561,8 @@ export default function AdminApp() {
       const deleted = new Set(ids);
       setOrders((current) => current.filter((order) => !deleted.has(order.id)));
       if (selectedOrderId && deleted.has(selectedOrderId)) {
-        setSelectedOrderId(null);
-        setSelectedDisplayId(null);
-        setDraft(null);
-        setSavedSnapshot("");
-        setEditorError("");
+        clearEditor();
+        router.push(editReturnPath);
       }
       setDeleteTargets(null);
     } catch (err) {
@@ -1378,29 +1572,32 @@ export default function AdminApp() {
     }
   }
 
-  async function openOrder(orderId) {
+  function openOrder(orderId, { from } = {}) {
+    const params = new URLSearchParams({ edit: String(orderId) });
+    if (from === "all") params.set("from", "all");
+    router.push(`/admin/orders/?${params.toString()}`);
+  }
+
+  function leaveEditor() {
+    clearEditor();
+    router.push(editReturnPath);
+  }
+
+  async function handleCancel() {
+    if (!selectedOrderId || !dirty) return;
     setEditorError("");
-    setLoadingOrderId(orderId);
-    setSelectedOrderId(orderId);
-    setDraft(null);
+    setLoadingOrderId(selectedOrderId);
     try {
-      const order = await adminGetOrder(orderId);
+      const order = await adminGetOrder(selectedOrderId);
       const nextDraft = orderToDraft(order);
       setSelectedDisplayId(order.display_id);
       setDraft(nextDraft);
       setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
     } catch (err) {
-      setSelectedOrderId(null);
-      setSelectedDisplayId(null);
-      setEditorError(err.message || "Could not load order.");
+      setEditorError(err.message || "Could not reload order.");
     } finally {
       setLoadingOrderId(null);
     }
-  }
-
-  async function handleCancel() {
-    if (!selectedOrderId) return;
-    await openOrder(selectedOrderId);
   }
 
   async function handleSave() {
@@ -1415,34 +1612,14 @@ export default function AdminApp() {
     setEditorError("");
     try {
       const payload = draftPayload(draft);
-      const uploadTasks = [];
-      for (const card of draft.cards) {
-        for (const type of ADMIN_IMAGE_TYPES) {
-          for (const item of card.staged[type.value] ?? []) {
-            uploadTasks.push(
-              adminUploadPhoto(selectedOrderId, card.id, type.value, item.file)
-            );
-          }
-        }
-      }
-
       const refreshed = await adminSaveOrder(selectedOrderId, payload);
-
-      if (uploadTasks.length > 0) {
-        await Promise.all(uploadTasks);
-      }
-
-      const finalOrder =
-        uploadTasks.length > 0
-          ? await adminGetOrder(selectedOrderId)
-          : refreshed;
-      const nextDraft = orderToDraft(finalOrder);
+      const nextDraft = orderToDraft(refreshed);
       setDraft(nextDraft);
       setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
       setOrders((current) =>
         current.map((order) =>
           order.id === selectedOrderId
-            ? { ...order, ...orderToKanbanSummary(finalOrder) }
+            ? { ...order, ...orderToKanbanSummary(refreshed) }
             : order
         )
       );
@@ -1487,11 +1664,15 @@ export default function AdminApp() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10">
       <div className="relative mb-6">
-        <SectionHeading subtitle={activeTab.subtitle}>
-          {activeTab.title}
-        </SectionHeading>
+        {tab !== "orders-edit" ? (
+          <SectionHeading subtitle={activeTab.subtitle}>
+            {activeTab.title}
+          </SectionHeading>
+        ) : (
+          <div className="h-0 sm:h-10" aria-hidden="true" />
+        )}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:justify-end">
-          {tab === "orders" && loadingOrders && orders.length > 0 && (
+          {ordersSectionActive && loadingOrders && orders.length > 0 && (
             <LoadingIndicator compact label="Refreshing…" />
           )}
           <button
@@ -1511,9 +1692,13 @@ export default function AdminApp() {
             type="button"
             onClick={() => router.push(entry.path)}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === entry.id
-                ? "bg-berry text-night shadow-cozy"
-                : "border-2 border-ink/15 text-ink hover:border-blush"
+              entry.id === "orders"
+                ? ordersSectionActive
+                  ? "bg-berry text-night shadow-cozy"
+                  : "border-2 border-ink/15 text-ink hover:border-blush"
+                : tab === entry.id
+                  ? "bg-berry text-night shadow-cozy"
+                  : "border-2 border-ink/15 text-ink hover:border-blush"
             }`}
           >
             {entry.label}
@@ -1523,60 +1708,88 @@ export default function AdminApp() {
 
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
-      {tab === "orders" && (
+      {ordersSectionActive && (
         <>
-          {listError && (
+          {listError && tab !== "orders-edit" && (
             <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
               {listError}
             </p>
           )}
 
-          {loadingOrders && orders.length === 0 ? (
+          {tab === "orders-edit" ? (
+            <div className="space-y-4">
+              {!routeOrderId && (
+                <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+                  Missing order id. Go back and open an order again.
+                </p>
+              )}
+
+              {routeOrderId && loadingOrderId && !draft && (
+                <LoadingIndicator label="Loading order…" />
+              )}
+
+              {routeOrderId && editorError && !draft && !loadingOrderId && (
+                <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+                  {editorError}
+                </p>
+              )}
+
+              {selectedOrderId && draft && (
+                <OrderEditor
+                  displayId={selectedDisplayId}
+                  draft={draft}
+                  dirty={dirty}
+                  saving={saving}
+                  error={editorError}
+                  onBack={leaveEditor}
+                  backLabel={
+                    searchParams.get("from") === "all"
+                      ? "Back to all orders"
+                      : "Back to board"
+                  }
+                  onChange={setDraft}
+                  onCancel={handleCancel}
+                  onSave={handleSave}
+                />
+              )}
+            </div>
+          ) : loadingOrders && orders.length === 0 ? (
             <LoadingIndicator label="Loading orders…" />
+          ) : tab === "orders-all" ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-ink/50">
+                  {orders.length} order{orders.length === 1 ? "" : "s"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin/orders/")}
+                  className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+                >
+                  Back to board
+                </button>
+              </div>
+              <OrdersAllList
+                orders={orders}
+                onOpenOrder={(orderId) => openOrder(orderId, { from: "all" })}
+              />
+            </div>
           ) : (
-            <KanbanBoard
-              orders={orders}
-              onOpenOrder={openOrder}
-              onStatusChange={handleStatusChange}
-              onRequestDelete={handleRequestDelete}
-              selectedOrderId={selectedOrderId}
-              loadingOrderId={loadingOrderId}
-            />
-          )}
-
-          <DeleteOrderDialog
-            orders={deleteTargets}
-            deleting={deletingOrder}
-            onCancel={handleCancelDelete}
-            onConfirm={handleConfirmDelete}
-          />
-
-          {loadingOrderId && !draft && (
-            <LoadingIndicator label="Loading order…" className="mt-8" />
-          )}
-
-          {editorError && !draft && !loadingOrderId && (
-            <p className="mt-8 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
-              {editorError}
-            </p>
-          )}
-
-          {saving && selectedOrderId && draft && (
-            <LoadingIndicator label="Saving order…" className="mt-8 py-6" />
-          )}
-
-          {selectedOrderId && draft && (
-            <OrderEditor
-              orderId={selectedOrderId}
-              displayId={selectedDisplayId}
-              draft={draft}
-              dirty={dirty}
-              saving={saving}
-              error={editorError}
-              onChange={setDraft}
-              onCancel={handleCancel}
-              onSave={handleSave}
-            />
+            <>
+              <KanbanBoard
+                orders={orders}
+                onOpenOrder={openOrder}
+                onStatusChange={handleStatusChange}
+                onRequestDelete={handleRequestDelete}
+                onViewAllOrders={() => router.push("/admin/orders/all/")}
+              />
+              <DeleteOrderDialog
+                orders={deleteTargets}
+                deleting={deletingOrder}
+                onCancel={handleCancelDelete}
+                onConfirm={handleConfirmDelete}
+              />
+            </>
           )}
         </>
       )}
