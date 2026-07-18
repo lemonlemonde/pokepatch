@@ -7,7 +7,7 @@ Password-gated admin UI for PokePatch orders. The browser never sees `ADMIN_PASS
 | Function | Path | Role |
 |----------|------|------|
 | `admin-auth` | `/functions/v1/admin-auth` | Login, logout, validate session |
-| `admin-api` | `/functions/v1/admin-api` | List/get/save orders, set status, upload admin photos, gallery CMS |
+| `admin-api` | `/functions/v1/admin-api` | List/get/save/delete orders, set status, upload admin photos, gallery CMS |
 
 Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests still send the Supabase anon `apikey` header; admin actions also send `X-Admin-Token`.
 
@@ -105,6 +105,7 @@ JSON POST (requires `X-Admin-Token`):
 | `list` | — |
 | `get` | `order_id` |
 | `set_status` | `order_id`, `status` |
+| `delete` | `order_id` or `order_ids` (array) |
 | `save` | `order_id`, `order`, `contacts`, `cards` |
 | `gallery_list` | — |
 | `gallery_get` | `id` |

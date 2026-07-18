@@ -8,6 +8,7 @@ import {
   StagedCardPhotoPreviews,
 } from "@/components/CardPhotoPreviews";
 import {
+  adminDeleteOrders,
   adminGetOrder,
   adminListOrders,
   adminLogin,
@@ -38,7 +39,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag cards between columns to update status. Click a card to edit.",
+      "Drag cards between columns to update status. Click a card to edit. Check boxes to multi-select, then delete with confirmation.",
   },
   {
     id: "gallery",
@@ -310,7 +311,36 @@ function orderToKanbanSummary(order) {
   };
 }
 
-function KanbanCard({ order, onOpen, dragging, selected, loading }) {
+function TrashIcon({ className = "h-5 w-5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function KanbanCard({
+  order,
+  onOpen,
+  onToggleCheck,
+  onContextMenu,
+  dragging,
+  editorSelected,
+  checked,
+  loading,
+}) {
   const cardCount = order.card_count ?? order.cards?.length ?? 0;
   const previewUrls = Array.isArray(order.preview_urls)
     ? order.preview_urls.filter(Boolean).slice(0, 4)
@@ -318,71 +348,99 @@ function KanbanCard({ order, onOpen, dragging, selected, loading }) {
   const hasMore = cardCount > previewUrls.length && previewUrls.length > 0;
 
   return (
-    <button
-      type="button"
-      draggable
-      onClick={() => onOpen(order.id)}
-      aria-current={selected ? "true" : undefined}
-      aria-busy={loading || undefined}
-      className={`relative w-full rounded-xl border-2 px-3 py-3 text-left shadow-cozy-sm transition ${
-        selected
-          ? "border-berry bg-blush/30 shadow-cozy ring-2 ring-berry/50 ring-offset-2 ring-offset-night/40"
-          : "border-ink/10 bg-cream hover:border-blush/60"
+    <div
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onContextMenu?.(event, order);
+      }}
+      className={`relative flex w-full items-start gap-2 rounded-xl border-2 px-3 py-3 text-left shadow-cozy-sm transition ${
+        checked
+          ? "border-berry/70 bg-berry/10"
+          : editorSelected
+            ? "border-berry bg-blush/30 shadow-cozy ring-2 ring-berry/50 ring-offset-2 ring-offset-night/40"
+            : "border-ink/10 bg-cream hover:border-blush/60"
       } ${dragging ? "opacity-50" : ""} ${loading ? "pointer-events-none" : ""}`}
     >
       {loading && (
-        <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-night/40">
+        <span className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-night/40">
           <span
             aria-hidden="true"
             className="h-6 w-6 animate-spin rounded-full border-2 border-ink/20 border-t-berry"
           />
         </span>
       )}
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-lg font-bold tabular-nums text-ink">
-            #{order.display_id}
-          </p>
-          <p className="mt-1 truncate text-sm font-semibold text-ink">
-            {order.customer_name}
-          </p>
-          <p className="mt-1 text-xs text-ink/60">
-            {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
-            {deliveryLabel(order.delivery_method)}
-          </p>
-          <p className="mt-1 text-xs text-ink/50">
-            {formatDate(order.created_at)}
-          </p>
+      <label
+        className="mt-1 shrink-0"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={() => onToggleCheck(order.id)}
+          aria-label={`Select order #${order.display_id}`}
+          className="h-4 w-4 accent-berry"
+        />
+      </label>
+      <button
+        type="button"
+        className="min-w-0 flex-1 text-left"
+        onClick={(event) => {
+          if (event.metaKey || event.ctrlKey) {
+            event.preventDefault();
+            onToggleCheck(order.id);
+            return;
+          }
+          onOpen(order.id);
+        }}
+        aria-current={editorSelected ? "true" : undefined}
+        aria-busy={loading || undefined}
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-lg font-bold tabular-nums text-ink">
+              #{order.display_id}
+            </p>
+            <p className="mt-1 truncate text-sm font-semibold text-ink">
+              {order.customer_name}
+            </p>
+            <p className="mt-1 text-xs text-ink/60">
+              {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
+              {deliveryLabel(order.delivery_method)}
+            </p>
+            <p className="mt-1 text-xs text-ink/50">
+              {formatDate(order.created_at)}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-ink/10 bg-night/40 p-1">
+            {previewUrls.length === 0 ? (
+              <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
+            ) : (
+              previewUrls.map((url, index) => {
+                const showMore = hasMore && index === previewUrls.length - 1;
+                return (
+                  <div
+                    key={`${url}-${index}`}
+                    className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
+                  >
+                    <img
+                      src={url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      draggable={false}
+                    />
+                    {showMore && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
+                        …
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-ink/10 bg-night/40 p-1">
-          {previewUrls.length === 0 ? (
-            <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
-          ) : (
-            previewUrls.map((url, index) => {
-              const showMore = hasMore && index === previewUrls.length - 1;
-              return (
-                <div
-                  key={`${url}-${index}`}
-                  className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
-                >
-                  <img
-                    src={url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                  />
-                  {showMore && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
-                      …
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </button>
+      </button>
+    </div>
   );
 }
 
@@ -404,35 +462,246 @@ function savedPhotoItems(images) {
   });
 }
 
+function formatOrderIdList(orders, limit = 8) {
+  const labels = orders.map((order) => `#${order.display_id}`);
+  if (labels.length <= limit) return labels.join(", ");
+  const remaining = labels.length - limit;
+  return `${labels.slice(0, limit).join(", ")} and ${remaining} more`;
+}
+
+function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
+  useEffect(() => {
+    if (!orders?.length) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape" && !deleting) onCancel();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [orders, deleting, onCancel]);
+
+  if (!orders?.length) return null;
+
+  const count = orders.length;
+  const isBulk = count > 1;
+  const title = isBulk
+    ? `Delete ${count} orders?`
+    : `Delete order #${orders[0].display_id}?`;
+  const confirmLabel = isBulk
+    ? `Yes, delete ${count} orders`
+    : "Yes, delete this order";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4"
+      role="presentation"
+      onClick={() => {
+        if (!deleting) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-order-title"
+        className="w-full max-w-md rounded-2xl border-2 border-ink/15 bg-cream p-6 shadow-cozy"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-berry/15 text-berry">
+            <TrashIcon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h2
+              id="delete-order-title"
+              className="font-display text-xl font-bold text-ink"
+            >
+              {title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-ink/70">
+              Are you sure you want to delete{" "}
+              {isBulk ? "these orders" : "this order"}? This permanently
+              removes {isBulk ? "them" : "it"}, including contacts, cards, and
+              photos. This cannot be undone.
+            </p>
+            <p className="mt-3 rounded-lg border border-ink/10 bg-night/30 px-3 py-2 text-xs font-semibold tabular-nums text-ink/80">
+              {formatOrderIdList(orders)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={deleting}
+            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={deleting}
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-40"
+          >
+            {deleting ? "Deleting…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function KanbanBoard({
   orders,
   onOpenOrder,
   onStatusChange,
+  onRequestDelete,
   selectedOrderId,
   loadingOrderId,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
+  const [trashArmed, setTrashArmed] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(() => new Set());
   const [showAllCompleted, setShowAllCompleted] = useState(false);
   const [showAllCanceled, setShowAllCanceled] = useState(false);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
+  const dragOrder = useMemo(
+    () => orders.find((order) => order.id === dragOrderId) ?? null,
+    [orders, dragOrderId]
+  );
+  const checkedOrders = useMemo(
+    () => orders.filter((order) => checkedIds.has(order.id)),
+    [orders, checkedIds]
+  );
+
+  useEffect(() => {
+    setCheckedIds((current) => {
+      const valid = new Set(orders.map((order) => order.id));
+      let changed = false;
+      const next = new Set();
+      for (const id of current) {
+        if (valid.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [orders]);
+
+  useEffect(() => {
+    if (!contextMenu) return undefined;
+
+    function closeMenu() {
+      setContextMenu(null);
+    }
+
+    function onKeyDown(event) {
+      if (event.key === "Escape") closeMenu();
+    }
+
+    window.addEventListener("click", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("click", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [contextMenu]);
+
+  function toggleCheck(orderId) {
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
+      return next;
+    });
+  }
+
+  function clearChecked() {
+    setCheckedIds(new Set());
+  }
+
+  function setColumnChecked(columnOrders, checked) {
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      for (const order of columnOrders) {
+        if (checked) next.add(order.id);
+        else next.delete(order.id);
+      }
+      return next;
+    });
+  }
+
+  function ordersForDeleteRequest(seedOrders) {
+    const seeds = (Array.isArray(seedOrders) ? seedOrders : [seedOrders]).filter(
+      Boolean
+    );
+    if (
+      checkedOrders.length > 1 &&
+      seeds.some((order) => checkedIds.has(order.id))
+    ) {
+      return checkedOrders;
+    }
+    return seeds;
+  }
+
+  function requestDelete(seedOrders) {
+    const targets = ordersForDeleteRequest(seedOrders);
+    if (!targets.length) return;
+    onRequestDelete(targets);
+  }
 
   function handleDragStart(event, orderId) {
     event.dataTransfer.setData("text/plain", orderId);
     event.dataTransfer.effectAllowed = "move";
     setDragOrderId(orderId);
+    setContextMenu(null);
   }
 
   function handleDragEnd() {
     setDragOrderId(null);
+    setTrashArmed(false);
   }
 
   async function handleDrop(event, status) {
     event.preventDefault();
     const orderId = event.dataTransfer.getData("text/plain");
     setDragOrderId(null);
+    setTrashArmed(false);
     if (!orderId) return;
     await onStatusChange(orderId, status);
+  }
+
+  function handleTrashDragOver(event) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    setTrashArmed(true);
+  }
+
+  function handleTrashDragLeave(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    setTrashArmed(false);
+  }
+
+  function handleTrashDrop(event) {
+    event.preventDefault();
+    const orderId = event.dataTransfer.getData("text/plain");
+    const order =
+      orders.find((entry) => entry.id === orderId) ??
+      (dragOrderId === orderId ? dragOrder : null);
+    setDragOrderId(null);
+    setTrashArmed(false);
+    if (!order) return;
+    requestDelete(order);
+  }
+
+  function handleCardContextMenu(event, order) {
+    setContextMenu({
+      order,
+      x: Math.min(event.clientX, window.innerWidth - 200),
+      y: Math.min(event.clientY, window.innerHeight - 100),
+    });
   }
 
   function showAllForClosedStatus(statusId) {
@@ -447,6 +716,11 @@ function KanbanBoard({
     const columnOrders = closed
       ? filterClosedColumnOrders(rawOrders, showAll)
       : rawOrders;
+    const checkedInColumn = columnOrders.filter((order) =>
+      checkedIds.has(order.id)
+    ).length;
+    const allColumnChecked =
+      columnOrders.length > 0 && checkedInColumn === columnOrders.length;
 
     return (
       <section
@@ -456,18 +730,36 @@ function KanbanBoard({
         onDrop={(event) => handleDrop(event, status.id)}
       >
         <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
-          <h2
-            className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
-              status.id
-            )}`}
-          >
-            {status.label}
-            {columnOrders.length > 0 && (
-              <span className="ml-1.5 text-sm font-semibold text-ink/40">
-                {columnOrders.length}
-              </span>
-            )}
-          </h2>
+          <div className="flex min-w-0 items-center gap-2">
+            <input
+              type="checkbox"
+              checked={allColumnChecked}
+              disabled={columnOrders.length === 0}
+              ref={(node) => {
+                if (node) {
+                  node.indeterminate =
+                    checkedInColumn > 0 && !allColumnChecked;
+                }
+              }}
+              onChange={(event) =>
+                setColumnChecked(columnOrders, event.target.checked)
+              }
+              aria-label={`Select all in ${status.label}`}
+              className="h-3.5 w-3.5 shrink-0 accent-berry disabled:opacity-40"
+            />
+            <h2
+              className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+                status.id
+              )}`}
+            >
+              {status.label}
+              {columnOrders.length > 0 && (
+                <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                  {columnOrders.length}
+                </span>
+              )}
+            </h2>
+          </div>
           {closed && (
             <label className="flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-semibold text-ink/60">
               <input
@@ -497,8 +789,11 @@ function KanbanBoard({
               <KanbanCard
                 order={order}
                 onOpen={onOpenOrder}
+                onToggleCheck={toggleCheck}
+                onContextMenu={handleCardContextMenu}
                 dragging={dragOrderId === order.id}
-                selected={order.id === selectedOrderId}
+                editorSelected={order.id === selectedOrderId}
+                checked={checkedIds.has(order.id)}
                 loading={order.id === loadingOrderId}
               />
             </div>
@@ -515,13 +810,117 @@ function KanbanBoard({
     );
   }
 
+  const trashTargets =
+    dragOrderId && checkedIds.has(dragOrderId) && checkedOrders.length > 1
+      ? checkedOrders
+      : dragOrder
+        ? [dragOrder]
+        : [];
+  const contextDeleteTargets = contextMenu
+    ? ordersForDeleteRequest(contextMenu.order)
+    : [];
+
   return (
-    <div className="grid h-[min(70vh,calc(100dvh-14rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {ACTIVE_ORDER_STATUSES.map((status) =>
-        renderColumn(status, { closed: false })
+    <div className="space-y-4">
+      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {ACTIVE_ORDER_STATUSES.map((status) =>
+          renderColumn(status, { closed: false })
+        )}
+        {CLOSED_ORDER_STATUSES.map((status) =>
+          renderColumn(status, { closed: true })
+        )}
+      </div>
+
+      {checkedOrders.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-berry/30 bg-berry/10 px-4 py-3">
+          <p className="text-sm font-semibold text-ink">
+            {checkedOrders.length} selected
+            <span className="ml-2 font-normal text-ink/60">
+              {formatOrderIdList(checkedOrders, 4)}
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={clearChecked}
+              className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => requestDelete(checkedOrders)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-berry px-3 py-1.5 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
+            >
+              <TrashIcon className="h-4 w-4" />
+              Delete selected
+            </button>
+          </div>
+        </div>
       )}
-      {CLOSED_ORDER_STATUSES.map((status) =>
-        renderColumn(status, { closed: true })
+
+      <div
+        role="region"
+        aria-label="Delete order drop zone"
+        onDragOver={handleTrashDragOver}
+        onDragLeave={handleTrashDragLeave}
+        onDrop={handleTrashDrop}
+        className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
+          dragOrderId
+            ? trashArmed
+              ? "border-berry bg-berry/20 text-berry shadow-cozy"
+              : "border-berry/50 bg-berry/10 text-berry/90"
+            : "border-ink/15 bg-night/30 text-ink/45"
+        }`}
+      >
+        <TrashIcon
+          className={`h-6 w-6 transition ${
+            trashArmed ? "scale-110" : ""
+          }`}
+        />
+        <div className="text-center sm:text-left">
+          <p className="text-sm font-semibold">
+            {trashArmed
+              ? trashTargets.length > 1
+                ? `Release to delete ${trashTargets.length} orders`
+                : `Release to delete #${dragOrder?.display_id ?? ""}`
+              : dragOrderId
+                ? trashTargets.length > 1
+                  ? `Drop to delete ${trashTargets.length} selected`
+                  : "Drop here to delete"
+                : "Recycling bin"}
+          </p>
+          <p className="mt-0.5 text-xs opacity-80">
+            {dragOrderId
+              ? "You’ll confirm before anything is deleted"
+              : "Select cards, right-click, or drag here — always confirms first"}
+          </p>
+        </div>
+      </div>
+
+      {contextMenu && (
+        <div
+          role="menu"
+          className="fixed z-40 min-w-[12rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-berry transition hover:bg-berry/10"
+            onClick={() => {
+              const targets = contextDeleteTargets;
+              setContextMenu(null);
+              onRequestDelete(targets);
+            }}
+          >
+            <TrashIcon className="h-4 w-4" />
+            {contextDeleteTargets.length > 1
+              ? `Delete ${contextDeleteTargets.length} selected`
+              : "Delete order"}
+          </button>
+        </div>
       )}
     </div>
   );
@@ -844,6 +1243,8 @@ export default function AdminApp() {
   const [editorError, setEditorError] = useState("");
   const [saving, setSaving] = useState(false);
   const [listError, setListError] = useState("");
+  const [deleteTargets, setDeleteTargets] = useState(null);
+  const [deletingOrder, setDeletingOrder] = useState(false);
 
   const dirty = useMemo(() => {
     if (!draft) return false;
@@ -932,6 +1333,48 @@ export default function AdminApp() {
     } catch (err) {
       setOrders(previous);
       setListError(err.message || "Could not update status.");
+    }
+  }
+
+  function handleRequestDelete(ordersToDelete) {
+    const list = (Array.isArray(ordersToDelete)
+      ? ordersToDelete
+      : [ordersToDelete]
+    )
+      .filter(Boolean)
+      .map((order) => ({
+        id: order.id,
+        display_id: order.display_id,
+      }));
+    if (list.length === 0) return;
+    setDeleteTargets(list);
+  }
+
+  const handleCancelDelete = useCallback(() => {
+    if (!deletingOrder) setDeleteTargets(null);
+  }, [deletingOrder]);
+
+  async function handleConfirmDelete() {
+    if (!deleteTargets?.length) return;
+    setDeletingOrder(true);
+    setListError("");
+    const ids = deleteTargets.map((order) => order.id);
+    try {
+      await adminDeleteOrders(ids);
+      const deleted = new Set(ids);
+      setOrders((current) => current.filter((order) => !deleted.has(order.id)));
+      if (selectedOrderId && deleted.has(selectedOrderId)) {
+        setSelectedOrderId(null);
+        setSelectedDisplayId(null);
+        setDraft(null);
+        setSavedSnapshot("");
+        setEditorError("");
+      }
+      setDeleteTargets(null);
+    } catch (err) {
+      setListError(err.message || "Could not delete order.");
+    } finally {
+      setDeletingOrder(false);
     }
   }
 
@@ -1095,10 +1538,18 @@ export default function AdminApp() {
               orders={orders}
               onOpenOrder={openOrder}
               onStatusChange={handleStatusChange}
+              onRequestDelete={handleRequestDelete}
               selectedOrderId={selectedOrderId}
               loadingOrderId={loadingOrderId}
             />
           )}
+
+          <DeleteOrderDialog
+            orders={deleteTargets}
+            deleting={deletingOrder}
+            onCancel={handleCancelDelete}
+            onConfirm={handleConfirmDelete}
+          />
 
           {loadingOrderId && !draft && (
             <LoadingIndicator label="Loading order…" className="mt-8" />
