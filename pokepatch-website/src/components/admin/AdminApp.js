@@ -108,6 +108,7 @@ function emptyStagedUploads() {
 function orderToDraft(order) {
   return {
     customer_name: order.customer_name ?? "",
+    customer_email: order.customer_email ?? "",
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
     status: order.status ?? "new",
@@ -530,6 +531,16 @@ function OrderEditor({
             onChange={(event) => updateDraft({ customer_name: event.target.value })}
           />
         </label>
+        {draft.customer_email ? (
+          <label className="block">
+            <span className="text-sm font-semibold text-ink/70">Email</span>
+            <input
+              className={`${fieldClassName()} mt-1 cursor-default opacity-80`}
+              value={draft.customer_email}
+              readOnly
+            />
+          </label>
+        ) : null}
         <label className="block">
           <span className="text-sm font-semibold text-ink/70">Delivery</span>
           <select
