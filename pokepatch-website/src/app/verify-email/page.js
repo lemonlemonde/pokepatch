@@ -65,7 +65,7 @@ function VerifyEmailContent() {
       </div>
 
       <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 text-center [animation-delay:150ms]">
-        <p className="font-secondary text-ink/80">
+        <p className="text-ink/80">
           We sent a confirmation link to{" "}
           {email ? (
             <span className="font-semibold text-ink">{email}</span>
@@ -76,7 +76,7 @@ function VerifyEmailContent() {
           to log in.
         </p>
 
-        <p className="font-secondary text-sm text-ink/60">
+        <p className="text-sm text-ink/60">
           Can&apos;t find it? Check your spam or promotions folder.
         </p>
 
@@ -111,7 +111,7 @@ function VerifyEmailContent() {
         <div className="border-t border-ink/10 pt-4">
           <Link
             href="/login"
-            className="font-secondary text-sm font-semibold text-blush hover:underline"
+            className="text-sm font-semibold text-blush hover:underline"
           >
             Back to log in
           </Link>
@@ -127,7 +127,7 @@ export default function VerifyEmailPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="font-secondary text-ink/70">Loading...</p>
+            <p className="text-ink/70">Loading...</p>
           </div>
         }
       >

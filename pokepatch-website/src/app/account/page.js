@@ -136,7 +136,7 @@ export default function AccountPage() {
   if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="font-secondary text-ink/70">Loading...</p>
+        <p className="text-ink/70">Loading...</p>
       </div>
     );
   }
@@ -167,7 +167,7 @@ export default function AccountPage() {
         )}
 
         {loading ? (
-          <p className="py-8 text-center font-secondary text-ink/70">
+          <p className="py-8 text-center text-ink/70">
             Loading your profile...
           </p>
         ) : (
@@ -183,7 +183,7 @@ export default function AccountPage() {
                 readOnly
                 className={`${fieldClassName()} opacity-70`}
               />
-              <p className="mt-1 font-secondary text-xs text-ink/60">
+              <p className="mt-1 text-xs text-ink/60">
                 Your account email can&apos;t be changed here.
               </p>
             </div>
@@ -212,7 +212,7 @@ export default function AccountPage() {
                 <div key={type.value}>
                   <label
                     htmlFor={`contact_${type.value}`}
-                    className="mb-1 block font-secondary text-xs text-ink/70"
+                    className="mb-1 block text-xs text-ink/70"
                   >
                     {type.label}
                   </label>

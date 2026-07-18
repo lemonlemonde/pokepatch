@@ -226,7 +226,7 @@ function LoginForm() {
 
         <div className="border-t border-ink/10 pt-4 text-center">
           {mode === "login" ? (
-            <p className="font-secondary text-sm text-ink/70">
+            <p className="text-sm text-ink/70">
               Don&apos;t have an account?{" "}
               <button
                 onClick={() => {
@@ -240,7 +240,7 @@ function LoginForm() {
               </button>
             </p>
           ) : (
-            <p className="font-secondary text-sm text-ink/70">
+            <p className="text-sm text-ink/70">
               Already have an account?{" "}
               <button
                 onClick={() => {
@@ -267,7 +267,7 @@ export default function LoginPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="font-secondary text-ink/70">Loading...</p>
+            <p className="text-ink/70">Loading...</p>
           </div>
         }
       >

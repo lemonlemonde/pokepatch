@@ -644,7 +644,7 @@ export default function QuoteForm() {
           <label htmlFor="customer_email" className="mb-1 block text-lg font-bold text-ink">
             Email <span className="text-berry">*</span>
           </label>
-          <p className="mb-2 font-secondary text-sm text-ink/70">
+          <p className="mb-2 text-sm text-ink/70">
             {user
               ? "We'll send your quote and updates to your account email."
               : "We'll send your quote and updates to this email."}
@@ -666,7 +666,7 @@ export default function QuoteForm() {
             readOnly={!!user}
           />
           {user && (
-            <p className="mt-1 font-secondary text-xs text-ink/60">
+            <p className="mt-1 text-xs text-ink/60">
               Using your account email.{" "}
               <Link href="/account" className="font-semibold text-blush hover:underline">
                 Manage account
@@ -684,7 +684,7 @@ export default function QuoteForm() {
           <legend className="text-lg font-bold text-ink">
             Delivery method <span className="text-berry">*</span>
           </legend>
-          <p className="font-secondary text-sm text-ink/70">
+          <p className="text-sm text-ink/70">
             If you choose local drop-off, we&apos;ll provide the address after we
             review your submission.
           </p>
@@ -701,7 +701,7 @@ export default function QuoteForm() {
               }}
               className="mt-1"
             />
-            <span className="font-secondary text-sm text-ink">
+            <span className="text-sm text-ink">
               📍 Local Drop-Off (North San Jose)
             </span>
           </label>
@@ -718,13 +718,13 @@ export default function QuoteForm() {
               }}
               className="mt-1"
             />
-            <span className="font-secondary text-sm text-ink">📦 Shipping</span>
+            <span className="text-sm text-ink">📦 Shipping</span>
           </label>
         </fieldset>
 
         <div className="space-y-3">
           <p className="text-lg font-bold text-ink">Other forms of contact</p>
-          <p className="font-secondary text-sm text-ink/70">
+          <p className="text-sm text-ink/70">
             Optional. Share any of these so we can reach you.
           </p>
           {CONTACT_TYPES.map((type) => {
@@ -734,13 +734,13 @@ export default function QuoteForm() {
               <div key={type.value}>
                 <label
                   htmlFor={`contact_${type.value}`}
-                  className="mb-1 block font-secondary text-xs text-ink/70"
+                  className="mb-1 block text-xs text-ink/70"
                 >
                   {type.label}
                 </label>
                 {locked ? (
                   <div className="rounded-xl border-2 border-ink/10 bg-cream/60 px-4 py-2">
-                    <p className="font-secondary text-sm text-ink/80">{value}</p>
+                    <p className="text-sm text-ink/80">{value}</p>
                   </div>
                 ) : (
                   <input
@@ -758,7 +758,7 @@ export default function QuoteForm() {
             );
           })}
           {Object.keys(lockedTypes).length > 0 && (
-            <p className="font-secondary text-xs text-ink/60">
+            <p className="text-xs text-ink/60">
               Saved contact methods come from your account.{" "}
               <Link
                 href="/account"
@@ -777,7 +777,7 @@ export default function QuoteForm() {
           >
             Preferred contact method <span className="text-berry">*</span>
           </label>
-          <p className="font-secondary text-sm text-ink/70">
+          <p className="text-sm text-ink/70">
             How would you prefer we reach you about your quote?
           </p>
           <select
@@ -801,7 +801,7 @@ export default function QuoteForm() {
       <section className="space-y-6 border-t border-ink/10 pt-10">
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
-          <p className="mt-1 font-secondary text-sm text-ink/70">
+          <p className="mt-1 text-sm text-ink/70">
             Add up to 10 cards. For more than 10 cards, submit as 1 card entry
             with a photo of the entire bulk lot and a combined description.
           </p>
@@ -812,8 +812,8 @@ export default function QuoteForm() {
             id="cards_empty"
             className={
               fieldErrors?.noCards
-                ? "scroll-mt-24 rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 font-secondary text-sm text-ink"
-                : "scroll-mt-24 font-secondary text-sm text-ink/60"
+                ? "scroll-mt-24 rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 text-sm text-ink"
+                : "scroll-mt-24 text-sm text-ink/60"
             }
           >
             No cards yet. Add a card to continue.
@@ -842,7 +842,7 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`card_name_${card.id}`}
-                  className="mb-1 block font-secondary text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-semibold text-ink"
                 >
                   Card name <span className="text-berry">*</span>
                 </label>
@@ -862,7 +862,7 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`set_name_${card.id}`}
-                  className="mb-1 block font-secondary text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-semibold text-ink"
                 >
                   Set
                 </label>
@@ -881,11 +881,11 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`description_${card.id}`}
-                  className="mb-1 block font-secondary text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-semibold text-ink"
                 >
                   Description <span className="text-berry">*</span>
                 </label>
-                <p className="mb-2 font-secondary text-sm text-ink/70">
+                <p className="mb-2 text-sm text-ink/70">
                   Note the damage and where it is (e.g. crease on left edge,
                   scratches on holo).
                 </p>
@@ -903,10 +903,10 @@ export default function QuoteForm() {
               </div>
 
               <div>
-                <p className="mb-1 font-secondary text-sm font-semibold text-ink">
+                <p className="mb-1 text-sm font-semibold text-ink">
                   Photos <span className="text-berry">*</span>
                 </p>
-                <p className="mb-2 font-secondary text-sm text-ink/70">
+                <p className="mb-2 text-sm text-ink/70">
                   Clear photos of the front and back (up to {MAX_PHOTOS_PER_CARD}{" "}
                   per card).
                 </p>
@@ -959,7 +959,7 @@ export default function QuoteForm() {
             + Add Card
           </button>
           {cards.length >= MAX_CARDS && (
-            <p className="font-secondary text-sm text-ink/70">
+            <p className="text-sm text-ink/70">
               Maximum of {MAX_CARDS} cards. For larger lots, use one card entry
               with a photo of the entire lot and a description.
             </p>

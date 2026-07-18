@@ -7,7 +7,7 @@ export default function FaqItem({ question, answer, items }) {
           <span className="text-blush transition group-open:rotate-45">+</span>
         </span>
       </summary>
-      <div className="border-t border-ink/10 px-5 py-4 font-secondary text-sm leading-relaxed text-ink/70">
+      <div className="border-t border-ink/10 px-5 py-4 text-sm leading-relaxed text-ink/70">
         {items ? (
           <dl className="space-y-2">
             {items.map((item) => (

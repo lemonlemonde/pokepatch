@@ -105,12 +105,12 @@ export default function ThankYouPage() {
       </div>
 
       <div className="pixel-border animate-fade-up space-y-5 rounded-2xl bg-cream/60 p-8 text-center [animation-delay:150ms]">
-        <p className="font-secondary text-ink/80">
+        <p className="text-ink/80">
           We&apos;ve received your restoration request and will review your cards
           shortly. You&apos;ll receive a quote within approximately 2 hours using the
           contact information you provided.
         </p>
-        <p className="font-secondary font-semibold text-ink">
+        <p className="font-semibold text-ink">
           We look forward to helping bring your cards back to life!
         </p>
 
@@ -119,10 +119,10 @@ export default function ThankYouPage() {
           isSupabaseConfigured &&
           !showAccountCreation && (
           <div className="space-y-3 border-t border-ink/10 pt-5">
-            <p className="font-secondary text-sm font-semibold text-ink">
+            <p className="text-sm font-semibold text-ink">
               Want to track your order online?
             </p>
-            <p className="font-secondary text-sm text-ink/70">
+            <p className="text-sm text-ink/70">
               Create an account to view order updates and photos as we work on your
               cards.
             </p>
@@ -167,7 +167,7 @@ export default function ThankYouPage() {
                     Please enter a valid email address
                   </p>
                 )}
-                <p className="mt-1 font-secondary text-xs text-ink/60">
+                <p className="mt-1 text-xs text-ink/60">
                   Use the same email you provided in your contact info to automatically
                   link this order.
                 </p>
@@ -242,7 +242,7 @@ export default function ThankYouPage() {
 
         {customerAuthEnabled && user && (
           <div className="space-y-3 border-t border-ink/10 pt-5">
-            <p className="font-secondary text-sm font-semibold text-ink">
+            <p className="text-sm font-semibold text-ink">
               Your order has been linked to your account!
             </p>
             <Button href="/my-orders">View my orders</Button>

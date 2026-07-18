@@ -115,8 +115,8 @@ export default function Home() {
         {/* <p className="mt-2 font-secondary text-sm text-ink/50 md:text-base">
           where every card gets a Max Revive
         </p> */}
-        <p className="mt-2 font-secondary text-sm text-ink/70 md:text-base">
-        Bay Area Drop-Off • Nationwide Mail-In
+        <p className="mt-2 text-sm text-ink/70 md:text-base">
+          Bay Area Drop-Off • Nationwide Mail-In
         </p>
         <p className="mt-3 font-secondary text-base italic text-berry">
           

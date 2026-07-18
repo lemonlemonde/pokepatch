@@ -63,7 +63,7 @@ const iconClassName = "h-3.5 w-3.5 shrink-0 text-blush/80";
 export default function SocialLinks({ className = "" }) {
   return (
     <ul
-      className={`flex flex-col items-center gap-1.5 font-secondary text-sm sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-5 sm:gap-y-1 ${className}`}
+      className={`flex flex-col items-center gap-1.5 text-sm sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-5 sm:gap-y-1 ${className}`}
     >
       {links.map(({ label, value, href, Icon }) => {
         const content = (
