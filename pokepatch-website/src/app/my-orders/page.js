@@ -10,7 +10,7 @@ import OrderCard from "@/components/OrderCard";
 
 export default function MyOrdersPage() {
   const router = useRouter();
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -40,15 +40,6 @@ export default function MyOrdersPage() {
     }
   }, [user]);
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      router.push("/");
-    } catch (err) {
-      setError("Failed to sign out");
-    }
-  };
-
   if (authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -59,18 +50,10 @@ export default function MyOrdersPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-16">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div className="animate-fade-up">
-          <SectionHeading subtitle="Track your restoration orders">
-            My Orders
-          </SectionHeading>
-        </div>
-        <button
-          onClick={handleSignOut}
-          className="animate-fade-up rounded-full border-2 border-ink/15 px-4 py-2 text-sm font-semibold text-ink/70 transition-colors duration-150 [animation-delay:100ms] sm:hover:border-blush sm:hover:text-ink"
-        >
-          Sign out
-        </button>
+      <div className="animate-fade-up">
+        <SectionHeading subtitle="Track your restoration orders">
+          My Orders
+        </SectionHeading>
       </div>
 
       <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
