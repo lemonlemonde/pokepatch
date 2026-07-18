@@ -102,15 +102,6 @@ function VerifyEmailContent() {
             Back to log in
           </Link>
         </div>
-
-        <div className="border-t border-ink/10 pt-4">
-          <Link
-            href="/"
-            className="font-secondary text-sm text-ink/70 hover:text-ink hover:underline"
-          >
-            Back to home
-          </Link>
-        </div>
       </div>
     </>
   );
