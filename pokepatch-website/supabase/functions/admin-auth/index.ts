@@ -11,6 +11,19 @@ import {
   validateSession,
 } from "../_shared/adminSession.ts";
 
+function getAllowedAdminEmails(): string[] {
+  return (Deno.env.get("ADMIN_ALLOWED_EMAILS") ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function getBearerToken(req: Request): string | null {
+  const header = req.headers.get("Authorization") ?? "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
 Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
@@ -20,12 +33,28 @@ Deno.serve(async (req) => {
     const body = req.method === "POST" ? await req.json() : {};
     const action = String(body.action ?? "validate");
 
-    if (action === "login") {
-      const password = String(body.password ?? "");
-      const expected = Deno.env.get("ADMIN_PASSWORD") ?? "";
-      if (!expected || password !== expected) {
-        return jsonResponse(req, { ok: false, error: "invalid password" }, 401);
+    if (action === "loginWithSession") {
+      const jwt = getBearerToken(req);
+      if (!jwt) {
+        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
       }
+
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser(jwt);
+      if (error || !user?.email) {
+        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
+      }
+
+      const allowed = getAllowedAdminEmails();
+      if (
+        allowed.length === 0 ||
+        !allowed.includes(user.email.trim().toLowerCase())
+      ) {
+        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
+      }
+
       const session = await createSession(supabase);
       return jsonResponse(req, { ok: true, ...session });
     }
