@@ -602,15 +602,6 @@ export default function QuoteForm() {
         </p>
       )}
 
-      {showValidationError && (
-        <p
-          className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
-          role="alert"
-        >
-          Please fill out all required fields
-        </p>
-      )}
-
       {status === "error" && errorMessage && (
         <p className="rounded-2xl border-2 border-blush bg-blush/40 px-4 py-3 text-sm font-semibold text-ink">
           {errorMessage}
@@ -621,7 +612,7 @@ export default function QuoteForm() {
         <h2 className="text-xl font-bold text-ink">Customer information</h2>
 
         <div>
-          <label htmlFor="customer_name" className="mb-1 block text-lg font-bold text-ink">
+          <label htmlFor="customer_name" className="mb-1 block text-sm font-bold text-ink">
             Name <span className="text-berry">*</span>
           </label>
           <input
@@ -641,7 +632,7 @@ export default function QuoteForm() {
         </div>
 
         <div>
-          <label htmlFor="customer_email" className="mb-1 block text-lg font-bold text-ink">
+          <label htmlFor="customer_email" className="mb-1 block text-sm font-bold text-ink">
             Email <span className="text-berry">*</span>
           </label>
           <p className="mb-2 text-sm text-ink/70">
@@ -681,7 +672,7 @@ export default function QuoteForm() {
         </div>
 
         <fieldset id="delivery_method" className="space-y-3 scroll-mt-24">
-          <legend className="text-lg font-bold text-ink">
+          <legend className="text-sm font-bold text-ink">
             Delivery method <span className="text-berry">*</span>
           </legend>
           <p className="text-sm text-ink/70">
@@ -723,7 +714,7 @@ export default function QuoteForm() {
         </fieldset>
 
         <div className="space-y-3">
-          <p className="text-lg font-bold text-ink">Other forms of contact</p>
+          <p className="text-sm font-bold text-ink">Other forms of contact</p>
           <p className="text-sm text-ink/70">
             Optional. Share any of these so we can reach you.
           </p>
@@ -734,7 +725,7 @@ export default function QuoteForm() {
               <div key={type.value}>
                 <label
                   htmlFor={`contact_${type.value}`}
-                  className="mb-1 block text-xs text-ink/70"
+                  className="mb-1 block text-sm font-bold text-ink"
                 >
                   {type.label}
                 </label>
@@ -773,9 +764,9 @@ export default function QuoteForm() {
         <div className="space-y-3">
           <label
             htmlFor="preferred_contact"
-            className="block text-lg font-bold text-ink"
+            className="block text-sm font-bold text-ink"
           >
-            Preferred contact method <span className="text-berry">*</span>
+            Preferred contact method
           </label>
           <p className="text-sm text-ink/70">
             How would you prefer we reach you about your quote?
@@ -842,7 +833,7 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`card_name_${card.id}`}
-                  className="mb-1 block text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-bold text-ink"
                 >
                   Card name <span className="text-berry">*</span>
                 </label>
@@ -862,7 +853,7 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`set_name_${card.id}`}
-                  className="mb-1 block text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-bold text-ink"
                 >
                   Set
                 </label>
@@ -881,7 +872,7 @@ export default function QuoteForm() {
               <div>
                 <label
                   htmlFor={`description_${card.id}`}
-                  className="mb-1 block text-sm font-semibold text-ink"
+                  className="mb-1 block text-sm font-bold text-ink"
                 >
                   Description <span className="text-berry">*</span>
                 </label>
@@ -903,7 +894,7 @@ export default function QuoteForm() {
               </div>
 
               <div>
-                <p className="mb-1 text-sm font-semibold text-ink">
+                <p className="mb-1 text-sm font-bold text-ink">
                   Photos <span className="text-berry">*</span>
                 </p>
                 <p className="mb-2 text-sm text-ink/70">

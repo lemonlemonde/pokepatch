@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Button from "@/components/Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -267,7 +268,7 @@ export default function LoginPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="text-ink/70">Loading...</p>
+            <LoadingSpinner />
           </div>
         }
       >
