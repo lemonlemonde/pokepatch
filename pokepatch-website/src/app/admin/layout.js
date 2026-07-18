@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import AdminApp from "@/components/admin/AdminApp";
 
 export const metadata = {
@@ -10,12 +11,14 @@ export const metadata = {
 
 // AdminApp lives in the layout so it stays mounted across the section routes
 // (/admin/orders, /admin/orders/all, /admin/gallery, /admin/studio). The
-// per-section pages render nothing; the active tab is derived from the URL
-// inside AdminApp.
+// per-section pages render nothing; the active view is derived from the URL
+// inside AdminApp (including ?edit=<orderId> for the order editor).
 export default function AdminLayout({ children }) {
   return (
     <>
-      <AdminApp />
+      <Suspense fallback={null}>
+        <AdminApp />
+      </Suspense>
       {children}
     </>
   );
