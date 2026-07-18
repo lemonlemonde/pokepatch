@@ -7,7 +7,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
 import SectionHeading from "@/components/SectionHeading";
 import OrderCard from "@/components/OrderCard";
-import { ORDER_STATUSES, groupOrdersByStatus, orderStatusHeadingClass } from "@/lib/orderStatus";
+import {
+  ORDER_STATUSES,
+  groupOrdersByStatus,
+  orderStatusHeadingClass,
+  filterOrdersByCompletedVisibility,
+} from "@/lib/orderStatus";
 
 export default function MyOrdersPage() {
   const router = useRouter();
@@ -41,7 +46,14 @@ export default function MyOrdersPage() {
     }
   }, [user]);
 
-  const ordersByStatus = useMemo(() => groupOrdersByStatus(orders), [orders]);
+  const visibleOrders = useMemo(
+    () => filterOrdersByCompletedVisibility(orders),
+    [orders]
+  );
+  const ordersByStatus = useMemo(
+    () => groupOrdersByStatus(visibleOrders),
+    [visibleOrders]
+  );
   const statusSections = useMemo(
     () =>
       ORDER_STATUSES.flatMap((status) => {
@@ -104,37 +116,44 @@ export default function MyOrdersPage() {
             <p className="font-secondary text-sm text-ink/70">
               Click on an order to view details and any updates from our team.
             </p>
-            {statusSections.map((section) => (
-              <section key={section.id} className="space-y-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2
-                    className={`font-display text-lg font-bold ${orderStatusHeadingClass(
-                      section.id
-                    )}`}
-                  >
-                    {section.label}
-                  </h2>
-                  <span className="font-secondary text-xs text-ink/45">
-                    {section.orders.length}{" "}
-                    {section.orders.length === 1 ? "order" : "orders"}
-                  </span>
-                </div>
-                <div className="space-y-4">
-                  {section.orders.map((order) => (
-                    <OrderCard
-                      key={order.id}
-                      order={order}
-                      onClick={() =>
-                        setExpandedOrderId((prev) =>
-                          prev === order.id ? null : order.id
-                        )
-                      }
-                      isExpanded={expandedOrderId === order.id}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
+
+            {visibleOrders.length === 0 ? (
+              <p className="rounded-xl border border-ink/10 bg-night/20 px-4 py-6 text-center font-secondary text-sm text-ink/60">
+                No recent orders to show.
+              </p>
+            ) : (
+              statusSections.map((section) => (
+                <section key={section.id} className="space-y-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h2
+                      className={`font-display text-lg font-bold ${orderStatusHeadingClass(
+                        section.id
+                      )}`}
+                    >
+                      {section.label}
+                    </h2>
+                    <span className="font-secondary text-xs text-ink/45">
+                      {section.orders.length}{" "}
+                      {section.orders.length === 1 ? "order" : "orders"}
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {section.orders.map((order) => (
+                      <OrderCard
+                        key={order.id}
+                        order={order}
+                        onClick={() =>
+                          setExpandedOrderId((prev) =>
+                            prev === order.id ? null : order.id
+                          )
+                        }
+                        isExpanded={expandedOrderId === order.id}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))
+            )}
           </div>
         )}
 

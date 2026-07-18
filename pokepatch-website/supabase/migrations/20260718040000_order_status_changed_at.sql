@@ -1,15 +1,15 @@
--- PokePatch: expose order status on My Orders
+-- PokePatch: track when an order entered its current status
 --
--- Adds `status` to the get_my_orders payload so the customer orders page can
--- group and badge orders. UI label for `new` is "To do".
---
--- Also repairs any draft rename of `new` → `todo` back to the live allowed set:
---   new | in_progress | completed | delivered
+-- Adds orders.status_changed_at (updated whenever status changes) so the
+-- admin board can sort:
+--   To do        → by submitted time (created_at)
+--   In progress  → by when moved into in progress (status_changed_at)
+--   Completed /
+--   Canceled     → by when closed (completed_at)
 --
 -- SAFETY
--- - Additive for get_my_orders; constraint repair is idempotent.
+-- - Additive column + trigger; replaces get_my_orders only to expose the field.
 -- - Never touches quote_requests or *_original backup tables.
--- - Wrapped in a transaction.
 
 begin;
 
@@ -21,26 +21,40 @@ begin
 end;
 $$;
 
--- ---------------------------------------------------------------------------
--- Ensure status values match what update_order already accepts
--- ---------------------------------------------------------------------------
-
-alter table public.orders drop constraint if exists orders_status_check;
+alter table public.orders
+  add column if not exists status_changed_at timestamptz;
 
 update public.orders
-set status = 'new'
-where status = 'todo';
+set status_changed_at = coalesce(completed_at, created_at, now())
+where status_changed_at is null;
 
 alter table public.orders
-  alter column status set default 'new';
+  alter column status_changed_at set default now();
 
-alter table public.orders
-  add constraint orders_status_check
-  check (status in ('new', 'in_progress', 'completed', 'delivered'));
+create or replace function public.orders_touch_status_changed_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    new.status_changed_at := coalesce(new.status_changed_at, new.created_at, now());
+    return new;
+  end if;
 
--- ---------------------------------------------------------------------------
--- get_my_orders — include status for customer My Orders sections
--- ---------------------------------------------------------------------------
+  if new.status is distinct from old.status then
+    new.status_changed_at := now();
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists orders_status_changed_at_trg on public.orders;
+
+create trigger orders_status_changed_at_trg
+  before insert or update of status on public.orders
+  for each row
+  execute function public.orders_touch_status_changed_at();
 
 create or replace function public.get_my_orders()
 returns jsonb
@@ -65,6 +79,8 @@ begin
       'customer_name', o.customer_name,
       'delivery_method', o.delivery_method,
       'status', o.status,
+      'completed_at', o.completed_at,
+      'status_changed_at', o.status_changed_at,
       'card_count', (
         select count(*)
         from public.cards c

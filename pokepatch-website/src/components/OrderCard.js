@@ -180,7 +180,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-lg font-bold leading-none text-ink">
+            <h3 className="text-lg font-bold tabular-nums leading-none text-ink">
               Order #{order.display_id}
             </h3>
             <span

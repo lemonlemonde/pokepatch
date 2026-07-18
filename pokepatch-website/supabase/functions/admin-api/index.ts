@@ -150,7 +150,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, delivery_method, status"
+      "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at"
     )
     .order("created_at", { ascending: false });
   if (ordersError) throw ordersError;
@@ -159,20 +159,55 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const orderIds = orders.map((o) => o.id as string);
   const { data: cards, error: cardsError } = await supabase
     .from("cards")
-    .select("order_id")
-    .in("order_id", orderIds);
+    .select("id, order_id")
+    .in("order_id", orderIds)
+    .order("id", { ascending: true });
   if (cardsError) throw cardsError;
 
   const countByOrder = new Map<string, number>();
+  const cardOrderById = new Map<string, string>();
   for (const card of cards ?? []) {
     const orderId = card.order_id as string;
+    const cardId = card.id as string;
     countByOrder.set(orderId, (countByOrder.get(orderId) ?? 0) + 1);
+    cardOrderById.set(cardId, orderId);
   }
 
-  return orders.map((order) => ({
-    ...order,
-    card_count: countByOrder.get(order.id as string) ?? 0,
-  }));
+  const cardIds = (cards ?? []).map((c) => c.id as string);
+  const previewPathsByOrder = new Map<string, string[]>();
+  if (cardIds.length > 0) {
+    const { data: imageRows, error: imagesError } = await supabase
+      .from("card_images")
+      .select("id, card_id, storage_path")
+      .in("card_id", cardIds)
+      .eq("image_type", "customer")
+      .order("id", { ascending: true });
+    if (imagesError) throw imagesError;
+
+    for (const image of imageRows ?? []) {
+      const orderId = cardOrderById.get(image.card_id as string);
+      if (!orderId) continue;
+      const paths = previewPathsByOrder.get(orderId) ?? [];
+      if (paths.length >= 4) continue;
+      paths.push(image.storage_path as string);
+      previewPathsByOrder.set(orderId, paths);
+    }
+  }
+
+  const allPreviewPaths = [...previewPathsByOrder.values()].flat();
+  const signedMap = await signPaths(supabase, allPreviewPaths);
+
+  return orders.map((order) => {
+    const orderId = order.id as string;
+    const paths = previewPathsByOrder.get(orderId) ?? [];
+    return {
+      ...order,
+      card_count: countByOrder.get(orderId) ?? 0,
+      preview_urls: paths
+        .map((path) => signedMap.get(path))
+        .filter((url): url is string => Boolean(url)),
+    };
+  });
 }
 
 async function fetchOrderGraph(
@@ -182,7 +217,7 @@ async function fetchOrderGraph(
   let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, delivery_method, general_notes, status"
+      "id, display_id, created_at, customer_name, delivery_method, general_notes, status, completed_at, status_changed_at"
     )
     .order("created_at", { ascending: false });
 

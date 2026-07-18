@@ -31,7 +31,7 @@ Run migrations before deploying:
 
 Admin orders migration adds:
 
-- `orders.status` (`new`, `in_progress`, `completed`, `delivered`)
+- `orders.status` (`new`, `in_progress`, `completed`, `canceled`)
 - Expanded `card_images.image_type` values for admin uploads
 - `admin_sessions` table
 - `update_order` status support
