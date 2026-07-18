@@ -4,12 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 import SectionHeading from "@/components/SectionHeading";
 import OrderCard from "@/components/OrderCard";
 
 export default function MyOrdersPage() {
   const router = useRouter();
+  const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,10 +19,14 @@ export default function MyOrdersPage() {
   const [expandedOrderId, setExpandedOrderId] = useState(null);
 
   useEffect(() => {
+    if (!customerAuthEnabled) {
+      router.replace("/");
+      return;
+    }
     if (!authLoading && !user) {
       router.push("/login?redirect=/my-orders");
     }
-  }, [user, authLoading, router]);
+  }, [customerAuthEnabled, user, authLoading, router]);
 
   useEffect(() => {
     if (user && supabase) {
@@ -40,7 +46,7 @@ export default function MyOrdersPage() {
     }
   }, [user]);
 
-  if (authLoading || !user) {
+  if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="font-secondary text-ink/70">Loading...</p>

@@ -1,11 +1,16 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 
 const AuthContext = createContext({});
 
 const PENDING_PROFILE_KEY = "pokepatch_pending_profile";
+
+const authDisabledError = () => {
+  throw new Error("Customer auth is disabled");
+};
 
 // If a visitor filled out the quote form and then created an account, save the
 // name + contacts they entered to their profile. Only applies when the snapshot
@@ -73,11 +78,12 @@ async function claimOrders() {
 }
 
 export function AuthProvider({ children }) {
+  const enabled = isCustomerAuthEnabled();
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
 
   useEffect(() => {
-    if (!supabase) {
+    if (!enabled || !supabase) {
       setLoading(false);
       return;
     }
@@ -102,11 +108,12 @@ export function AuthProvider({ children }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [enabled]);
 
   const signUp = async (email, password) => {
+    if (!enabled) authDisabledError();
     if (!supabase) throw new Error("Supabase not configured");
-    
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -123,8 +130,9 @@ export function AuthProvider({ children }) {
   };
 
   const signIn = async (email, password) => {
+    if (!enabled) authDisabledError();
     if (!supabase) throw new Error("Supabase not configured");
-    
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -138,14 +146,15 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
+    if (!enabled) return;
     if (!supabase) throw new Error("Supabase not configured");
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
   const value = {
-    user,
-    loading,
+    user: enabled ? user : null,
+    loading: enabled ? loading : false,
     signUp,
     signIn,
     signOut,

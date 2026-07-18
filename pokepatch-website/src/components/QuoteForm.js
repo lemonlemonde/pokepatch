@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import { capture } from "@/lib/posthog";
@@ -180,7 +181,8 @@ function scrollToFirstError(errors, cards) {
 
 export default function QuoteForm() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user: authUser } = useAuth();
+  const user = isCustomerAuthEnabled() ? authUser : null;
   const profileLoadedRef = useRef(false);
   const formRef = useRef(null);
   const formStartedRef = useRef(false);
@@ -519,7 +521,7 @@ export default function QuoteForm() {
 
       // Snapshot the entered details so that, if this visitor creates an account
       // afterwards, their name + contacts are saved to their profile.
-      if (!user) {
+      if (!user && isCustomerAuthEnabled()) {
         try {
           localStorage.setItem(
             "pokepatch_pending_profile",

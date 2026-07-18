@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import SectionHeading from "@/components/SectionHeading";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 function fieldClassName(invalid = false) {
@@ -16,6 +17,7 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/my-orders";
+  const customerAuthEnabled = isCustomerAuthEnabled();
   const { signIn, signUp, user } = useAuth();
 
   const [mode, setMode] = useState("login"); // "login" or "signup"
@@ -26,14 +28,21 @@ function LoginForm() {
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
+  useEffect(() => {
+    if (!customerAuthEnabled) {
+      router.replace("/");
+    }
+  }, [customerAuthEnabled, router]);
+
   // If already logged in, redirect
   useEffect(() => {
+    if (!customerAuthEnabled) return;
     if (user && !loading) {
       router.push(redirectTo);
     }
-  }, [user, loading, redirectTo, router]);
+  }, [customerAuthEnabled, user, loading, redirectTo, router]);
 
-  if (user && !loading) {
+  if (!customerAuthEnabled || (user && !loading)) {
     return null;
   }
 
