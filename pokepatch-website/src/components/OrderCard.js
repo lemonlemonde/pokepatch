@@ -24,18 +24,18 @@ async function signPaths(paths) {
   return map;
 }
 
-function contactIcon(type) {
-  if (type === "phone") return "📞";
-  if (type === "discord") return "💬";
-  if (type === "instagram") return "📸";
-  if (type === "email") return "✉️";
-  return "📷";
+function contactLabel(type) {
+  if (type === "phone") return "Phone";
+  if (type === "discord") return "Discord";
+  if (type === "instagram") return "Instagram";
+  if (type === "email") return "Email";
+  return "Contact";
 }
 
 function deliveryLabel(method) {
   return method === "local_dropoff"
-    ? { icon: "📍", text: "Local Drop-Off", sub: "North San Jose" }
-    : { icon: "📦", text: "Shipping", sub: "Mailed to you" };
+    ? { text: "Local Drop-Off", sub: "North San Jose" }
+    : { text: "Shipping", sub: "Mailed to you" };
 }
 
 // Non-customer photos are the ones our team adds, so we badge them.
@@ -162,6 +162,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const hasUpdates = order.has_admin_photos;
   const imageCount = order.image_count ?? previewPaths.length;
   const hasMore = imageCount > 4;
+  const delivery = orderDetails
+    ? deliveryLabel(orderDetails.delivery_method)
+    : null;
 
   return (
     <div
@@ -187,20 +190,18 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             )}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/55">
-            <span className="inline-flex items-center gap-1 rounded-full bg-night/30 px-2 py-0.5">
-              🗓 {formatDate(order.created_at)}
+            <span className="rounded-full bg-night/30 px-2 py-0.5">
+              {formatDate(order.created_at)}
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-night/30 px-2 py-0.5">
-              🃏 {cardCountText}
+            <span className="rounded-full bg-night/30 px-2 py-0.5">
+              {cardCountText}
             </span>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1 rounded-xl border border-ink/10 bg-night/40 p-1">
           {previewPaths.length === 0 ? (
-            <div className="flex aspect-[3/4] w-9 items-center justify-center text-base text-ink/30">
-              🃏
-            </div>
+            <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
           ) : (
             previewPaths.slice(0, 4).map((path, index) => {
               const url = previewUrls[path];
@@ -258,11 +259,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
                   <p className={LABEL_CLS}>Delivery</p>
                   <p className="mt-1 font-secondary text-sm font-semibold text-ink">
-                    {deliveryLabel(orderDetails.delivery_method).icon}{" "}
-                    {deliveryLabel(orderDetails.delivery_method).text}
+                    {delivery.text}
                   </p>
                   <p className="font-secondary text-xs text-ink/55">
-                    {deliveryLabel(orderDetails.delivery_method).sub}
+                    {delivery.sub}
                   </p>
                 </div>
 
@@ -270,7 +270,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   <p className={LABEL_CLS}>Preferred contact</p>
                   <p className="mt-1 font-secondary text-sm font-semibold text-ink">
                     {orderDetails.preferred_contact_type
-                      ? `${contactIcon(orderDetails.preferred_contact_type)} ${
+                      ? `${contactLabel(orderDetails.preferred_contact_type)} · ${
                           orderDetails.preferred_contact_value
                         }`
                       : "—"}
@@ -282,7 +282,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                           key={contact.id}
                           className="inline-flex items-center gap-1 rounded-full bg-night/40 px-2 py-0.5 text-xs text-ink/70"
                         >
-                          {contactIcon(contact.contact_type)} {contact.value}
+                          {contactLabel(contact.contact_type)} · {contact.value}
                         </span>
                       ))}
                     </div>
