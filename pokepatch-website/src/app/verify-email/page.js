@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -92,10 +93,10 @@ function VerifyEmailContent() {
         )}
 
         {isSupabaseConfigured && email && (
-          <button
+          <Button
+            fullWidth
             onClick={handleResend}
             disabled={status === "sending" || cooldown > 0}
-            className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
           >
             {status === "sending" ? (
               <span className="inline-block animate-soft-bounce">Sending...</span>
@@ -104,7 +105,7 @@ function VerifyEmailContent() {
             ) : (
               "Resend confirmation email"
             )}
-          </button>
+          </Button>
         )}
 
         <div className="border-t border-ink/10 pt-4">

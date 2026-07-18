@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
@@ -126,12 +126,9 @@ export default function ThankYouPage() {
               Create an account to view order updates and photos as we work on your
               cards.
             </p>
-            <button
-              onClick={() => setShowAccountCreation(true)}
-              className="inline-block rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-            >
+            <Button onClick={() => setShowAccountCreation(true)}>
               Create account
-            </button>
+            </Button>
           </div>
         )}
 
@@ -229,11 +226,7 @@ export default function ThankYouPage() {
               </div>
 
               <div>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-                >
+                <Button type="submit" fullWidth disabled={loading}>
                   {loading ? (
                     <span className="inline-block animate-soft-bounce">
                       Creating account...
@@ -241,7 +234,7 @@ export default function ThankYouPage() {
                   ) : (
                     "Create account"
                   )}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -252,22 +245,14 @@ export default function ThankYouPage() {
             <p className="font-secondary text-sm font-semibold text-ink">
               Your order has been linked to your account!
             </p>
-            <Link
-              href="/my-orders"
-              className="inline-block rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-            >
-              View my orders
-            </Link>
+            <Button href="/my-orders">View my orders</Button>
           </div>
         )}
 
         <div className="pt-2">
-          <Link
-            href="/"
-            className="inline-block rounded-full bg-blush px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-blush/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-          >
+          <Button href="/" variant="secondary">
             Back to home
-          </Link>
+          </Button>
         </div>
       </div>
     </div>

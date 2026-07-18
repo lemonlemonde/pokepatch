@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -210,11 +211,7 @@ function LoginForm() {
             </div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading || !isSupabaseConfigured}
-            className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-          >
+          <Button type="submit" fullWidth disabled={loading || !isSupabaseConfigured}>
             {loading ? (
               <span className="inline-block animate-soft-bounce">
                 {mode === "login" ? "Logging in..." : "Creating account..."}
@@ -224,7 +221,7 @@ function LoginForm() {
             ) : (
               "Create account"
             )}
-          </button>
+          </Button>
         </form>
 
         <div className="border-t border-ink/10 pt-4 text-center">

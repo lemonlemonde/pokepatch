@@ -1,5 +1,5 @@
-import Link from "next/link";
 import Image from "next/image";
+import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
@@ -121,12 +121,9 @@ export default function Home() {
         <p className="mt-3 font-secondary text-base italic text-berry">
           
         </p>
-        <Link
-          href="/contact"
-          className="mt-6 inline-block rounded-full bg-gradient-to-b from-[#441937] to-[#1A0F2E] px-6 py-3 font-secondary font-bold text-[#FFE3EE] shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:from-[#581f47] sm:hover:to-[#22143C] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-        >
+        <Button href="/contact" className="mt-6">
           Get a Quote
-        </Link>
+        </Button>
       </section>
 
       <section className="mb-16 animate-fade-up [animation-delay:150ms]">
