@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import SectionHeading from "@/components/SectionHeading";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -250,15 +249,6 @@ function LoginForm() {
               </button>
             </p>
           )}
-        </div>
-
-        <div className="border-t border-ink/10 pt-4 text-center">
-          <Link
-            href="/"
-            className="font-secondary text-sm text-ink/70 hover:text-ink hover:underline"
-          >
-            Back to home
-          </Link>
         </div>
       </div>
     </>
