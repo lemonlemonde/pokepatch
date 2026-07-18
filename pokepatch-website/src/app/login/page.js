@@ -25,7 +25,6 @@ function LoginForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   // If already logged in, redirect
@@ -65,7 +64,6 @@ function LoginForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
 
     if (!isSupabaseConfigured) {
       setError("Authentication is not configured. Please contact support.");
@@ -85,17 +83,13 @@ function LoginForm() {
         router.push(redirectTo);
       } else {
         const data = await signUp(email, password);
-        
-        // Check if email confirmation is required
-        if (data.user && !data.session) {
-          setSuccess(
-            "Account created! Please check your email to confirm your account before logging in."
-          );
-          setMode("login");
-          setPassword("");
-          setConfirmPassword("");
-        } else {
+
+        // With email confirmation on, signup returns no session. Send the user
+        // to the confirm-your-email page instead of the protected redirect.
+        if (data.session) {
           router.push(redirectTo);
+        } else {
+          router.push(`/verify-email?email=${encodeURIComponent(email)}`);
         }
       }
     } catch (err) {
@@ -129,12 +123,6 @@ function LoginForm() {
         {error && (
           <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
             {error}
-          </p>
-        )}
-
-        {success && (
-          <p className="rounded-2xl border-2 border-mint bg-mint/40 px-4 py-3 text-sm font-semibold text-ink">
-            {success}
           </p>
         )}
 
@@ -239,7 +227,6 @@ function LoginForm() {
                 onClick={() => {
                   setMode("signup");
                   setError("");
-                  setSuccess("");
                   setFieldErrors({});
                 }}
                 className="font-semibold text-blush hover:underline"
@@ -254,7 +241,6 @@ function LoginForm() {
                 onClick={() => {
                   setMode("login");
                   setError("");
-                  setSuccess("");
                   setFieldErrors({});
                   setConfirmPassword("");
                 }}

@@ -115,6 +115,8 @@ export function AuthProvider({ children }) {
     if (error) throw error;
 
     // Claim orders now when signup returns a session (email confirmation off).
+    // When confirmation is on, orders are claimed on the SIGNED_IN event after
+    // the user confirms via email.
     if (data.session) await claimOrders();
 
     return data;
