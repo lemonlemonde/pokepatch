@@ -162,14 +162,23 @@ function previewSrc(pair) {
   return pair.before || pair.after || null;
 }
 
+function itemKeyOf(item) {
+  return item.id ?? item.title;
+}
+
 function GalleryItemCard({ item, index, onOpen }) {
   const pairs = (item.pairs ?? []).filter((pair) => pair.before || pair.after);
   const featured = pairs[0] ?? null;
   const extra = pairs.slice(1);
   const hasExtra = extra.length > 0;
+  // Scope lightbox navigation to this card's media only.
+  const openMedia = (media) => onOpen(itemKeyOf(item), media);
   const postedLabel = item.createdAt
     ? formatPostedRelative(item.createdAt)
     : "";
+  const damageTags = DAMAGE_TAGS.filter((tag) =>
+    (item.damageTags ?? []).includes(tag.id),
+  );
 
   return (
     <div
@@ -195,42 +204,27 @@ function GalleryItemCard({ item, index, onOpen }) {
             ) : null}
           </div>
 
-          <div className="w-full rounded-xl border border-ink/15 bg-night/10 px-2.5 py-2 sm:w-auto sm:shrink-0 sm:px-3">
+          {damageTags.length > 0 && (
             <ul
-              className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-flow-col sm:grid-cols-none sm:grid-rows-2 sm:gap-x-4"
-              aria-label="Damage checklist"
+              className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end"
+              aria-label="Damage repaired"
             >
-              {DAMAGE_TAGS.map((tag) => {
-                const applicable = (item.damageTags ?? []).includes(tag.id);
-                return (
-                  <li
-                    key={tag.id}
-                    className={`flex min-w-0 items-center gap-1.5 sm:gap-2 ${
-                      applicable ? "text-ink/80" : "opacity-35"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={applicable}
-                      readOnly
-                      tabIndex={-1}
-                      className="pointer-events-none h-3.5 w-3.5 shrink-0 accent-berry"
-                      aria-hidden="true"
-                    />
-                    <span className="truncate text-[0.7rem] font-semibold sm:whitespace-nowrap sm:text-xs">
-                      {tag.label}
-                    </span>
-                  </li>
-                );
-              })}
+              {damageTags.map((tag) => (
+                <li
+                  key={tag.id}
+                  className="rounded-full border border-ink/15 bg-night/30 px-2.5 py-1 text-xs font-semibold text-ink/80"
+                >
+                  {tag.label}
+                </li>
+              ))}
             </ul>
-          </div>
+          )}
         </div>
 
         {featured && (
           <BeforeAfterPair
             pair={featured}
-            onOpen={onOpen}
+            onOpen={openMedia}
             priority={index <= 1}
           />
         )}
@@ -296,7 +290,7 @@ function GalleryItemCard({ item, index, onOpen }) {
                 <BeforeAfterPair
                   key={pair.id ?? `${item.title}-extra-${pairIndex}`}
                   pair={pair}
-                  onOpen={onOpen}
+                  onOpen={openMedia}
                 />
               ))}
             </div>
@@ -462,7 +456,8 @@ function Pagination({ currentPage, totalPages, onChange }) {
 export default function GalleryContent({ items }) {
   const [activeFilter, setActiveFilter] = useState("all");
   const [page, setPage] = useState(1);
-  const [activeIndex, setActiveIndex] = useState(null);
+  // Lightbox target: { itemKey, index } into that card's own media list.
+  const [active, setActive] = useState(null);
   const topRef = useRef(null);
 
   const damageCounts = useMemo(() => {
@@ -491,42 +486,59 @@ export default function GalleryContent({ items }) {
     return filteredItems.slice(start, start + PAGE_SIZE);
   }, [filteredItems, currentPage]);
 
-  // Lightbox navigation stays within the currently visible (filtered +
-  // paginated) media so Prev/Next never jumps to a hidden card.
-  const mediaList = useMemo(() => buildMediaList(pageItems), [pageItems]);
-  const closeLightbox = useCallback(() => setActiveIndex(null), []);
+  // Lightbox navigation is scoped to the clicked card: Prev/Next only move
+  // through that card's own before/after media, never across cards.
+  const mediaByItem = useMemo(() => {
+    const map = new Map();
+    for (const item of pageItems) {
+      map.set(itemKeyOf(item), buildMediaList([item]));
+    }
+    return map;
+  }, [pageItems]);
+
+  const activeList = active ? mediaByItem.get(active.itemKey) ?? [] : [];
+  const activeMedia = active ? activeList[active.index] ?? null : null;
+
+  const closeLightbox = useCallback(() => setActive(null), []);
 
   const openMedia = useCallback(
-    (media) => {
-      const index = mediaList.findIndex(
+    (itemKey, media) => {
+      const list = mediaByItem.get(itemKey) ?? [];
+      const index = list.findIndex(
         (entry) => entry.src === media.src && entry.label === media.label,
       );
-      setActiveIndex(index === -1 ? null : index);
+      setActive(index === -1 ? null : { itemKey, index });
     },
-    [mediaList],
+    [mediaByItem],
   );
 
   const goPrevious = useCallback(() => {
-    setActiveIndex((index) => (index === null || index <= 0 ? index : index - 1));
+    setActive((current) =>
+      !current || current.index <= 0
+        ? current
+        : { ...current, index: current.index - 1 },
+    );
   }, []);
 
   const goNext = useCallback(() => {
-    setActiveIndex((index) =>
-      index === null || index >= mediaList.length - 1 ? index : index + 1,
-    );
-  }, [mediaList.length]);
-
-  const activeMedia = activeIndex === null ? null : mediaList[activeIndex];
+    setActive((current) => {
+      if (!current) return current;
+      const list = mediaByItem.get(current.itemKey) ?? [];
+      return current.index >= list.length - 1
+        ? current
+        : { ...current, index: current.index + 1 };
+    });
+  }, [mediaByItem]);
 
   const selectFilter = useCallback((filterId) => {
     setActiveFilter(filterId);
     setPage(1);
-    setActiveIndex(null);
+    setActive(null);
   }, []);
 
   const changePage = useCallback((next) => {
     setPage(next);
-    setActiveIndex(null);
+    setActive(null);
     if (topRef.current) {
       topRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -585,8 +597,10 @@ export default function GalleryContent({ items }) {
           onClose={closeLightbox}
           onPrevious={goPrevious}
           onNext={goNext}
-          hasPrevious={activeIndex > 0}
-          hasNext={activeIndex < mediaList.length - 1}
+          hasPrevious={active.index > 0}
+          hasNext={active.index < activeList.length - 1}
+          position={active.index + 1}
+          total={activeList.length}
         />
       )}
     </>
