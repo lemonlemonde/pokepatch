@@ -42,7 +42,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the latest 7 — use Show all for the rest. Right-click or drag to the bin to delete.",
+      "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -975,7 +975,7 @@ function KanbanBoard({
               onClick={onViewAllOrders}
               className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
             >
-              +{hiddenCount} older — show all
+              +{hiddenCount} older than 7 days — show all
             </button>
           )}
         </div>

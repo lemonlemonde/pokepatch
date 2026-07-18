@@ -10,18 +10,15 @@ export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "new" || status.id === "in_progress"
 );
 
-/** Closed statuses shown as kanban columns (most recent N cards only). */
+/** Closed statuses shown as kanban columns (last week only by default). */
 export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "completed" || status.id === "canceled"
 );
 
 export const DEFAULT_ORDER_STATUS = "new";
 
-/** Closed orders older than this are hidden on My Orders. */
+/** Closed orders older than this are hidden on My Orders and the admin kanban. */
 export const COMPLETED_VISIBLE_DAYS = 7;
-
-/** How many closed orders appear in each admin kanban column. */
-export const CLOSED_COLUMN_VISIBLE_COUNT = 7;
 
 const LABEL_BY_ID = Object.fromEntries(
   ORDER_STATUSES.map((status) => [status.id, status.label]),
@@ -90,16 +87,11 @@ export function filterOrdersByCompletedVisibility(orders) {
 }
 
 /**
- * Admin kanban closed columns: keep the most recent `limit` orders.
- * Columns are sorted oldest→newest, so the newest sit at the end.
+ * Admin kanban closed columns: only orders closed within COMPLETED_VISIBLE_DAYS.
+ * Older closed orders live on the all-orders list.
  */
-export function filterClosedColumnOrders(
-  orders,
-  limit = CLOSED_COLUMN_VISIBLE_COUNT
-) {
-  const list = orders ?? [];
-  if (list.length <= limit) return list;
-  return list.slice(-limit);
+export function filterClosedColumnOrders(orders) {
+  return filterOrdersByCompletedVisibility(orders);
 }
 
 function timeMs(value, fallback) {
