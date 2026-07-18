@@ -10,7 +10,7 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 function fieldClassName(invalid = false) {
   return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
+    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
@@ -139,7 +139,7 @@ export default function ThankYouPage() {
             </h3>
 
             {error && (
-              <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
+              <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
                 {error}
               </p>
             )}
@@ -163,7 +163,7 @@ export default function ThankYouPage() {
                   required
                 />
                 {fieldErrors.email && (
-                  <p className="mt-1 text-sm text-berry">
+                  <p className="mt-1 text-sm text-error">
                     Please enter a valid email address
                   </p>
                 )}
@@ -194,7 +194,7 @@ export default function ThankYouPage() {
                   required
                 />
                 {fieldErrors.password && (
-                  <p className="mt-1 text-sm text-berry">
+                  <p className="mt-1 text-sm text-error">
                     Password must be at least 6 characters
                   </p>
                 )}
@@ -221,7 +221,7 @@ export default function ThankYouPage() {
                   required
                 />
                 {fieldErrors.confirmPassword && (
-                  <p className="mt-1 text-sm text-berry">Passwords do not match</p>
+                  <p className="mt-1 text-sm text-error">Passwords do not match</p>
                 )}
               </div>
 

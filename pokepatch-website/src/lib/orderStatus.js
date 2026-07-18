@@ -53,7 +53,7 @@ export function orderStatusBadgeClass(statusId) {
       return "bg-ink/25 text-ink/80";
     case "new":
     default:
-      return "bg-status-red text-night";
+      return "bg-status-red text-white";
   }
 }
 

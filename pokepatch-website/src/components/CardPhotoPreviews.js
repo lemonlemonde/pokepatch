@@ -63,7 +63,7 @@ export function CardPhotoPreviewGrid({
     return (
       <div className={className}>
         <p className="text-sm font-semibold text-ink">{title}</p>
-        <p className="mt-1 text-xs text-ink/40">{emptyText}</p>
+        <p className="mt-1 text-xs text-ink/60">{emptyText}</p>
       </div>
     );
   }
