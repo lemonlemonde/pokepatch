@@ -248,7 +248,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       {isExpanded && (
         <div className="border-t border-ink/10 p-4">
           {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 font-secondary text-sm text-ink/60">
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink/60">
               <span className="h-2 w-2 animate-pulse rounded-full bg-blush" />
               Loading order details…
             </div>
@@ -266,17 +266,17 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
                   <p className={LABEL_CLS}>Delivery</p>
-                  <p className="mt-1 font-secondary text-sm font-semibold text-ink">
+                  <p className="mt-1 text-sm font-semibold text-ink">
                     {delivery.text}
                   </p>
-                  <p className="font-secondary text-xs text-ink/55">
+                  <p className="text-xs text-ink/55">
                     {delivery.sub}
                   </p>
                 </div>
 
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
                   <p className={LABEL_CLS}>Preferred contact</p>
-                  <p className="mt-1 font-secondary text-sm font-semibold text-ink">
+                  <p className="mt-1 text-sm font-semibold text-ink">
                     {orderDetails.preferred_contact_type
                       ? `${contactLabel(orderDetails.preferred_contact_type)} · ${
                           orderDetails.preferred_contact_value
@@ -304,7 +304,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
                     Notes from our team
                   </p>
-                  <p className="mt-1 font-secondary text-sm text-ink/85">
+                  <p className="mt-1 text-sm text-ink/85">
                     {orderDetails.general_notes}
                   </p>
                 </div>
@@ -350,11 +350,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h5 className="truncate font-secondary text-sm font-bold text-ink">
+                            <h5 className="truncate text-sm font-bold text-ink">
                               {card.card_name}
                             </h5>
                             {card.set_name && (
-                              <p className="truncate font-secondary text-xs text-ink/60">
+                              <p className="truncate text-xs text-ink/60">
                                 {card.set_name}
                               </p>
                             )}
@@ -372,11 +372,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                             <div className="min-w-0 flex-1 space-y-2">
                               <p className={LABEL_CLS}>Description</p>
                               {card.description ? (
-                                <p className="font-secondary text-sm text-ink/80">
+                                <p className="text-sm text-ink/80">
                                   {card.description}
                                 </p>
                               ) : (
-                                <p className="font-secondary text-sm italic text-ink/45">
+                                <p className="text-sm italic text-ink/45">
                                   No description provided.
                                 </p>
                               )}

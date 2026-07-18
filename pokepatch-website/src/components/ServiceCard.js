@@ -29,11 +29,11 @@ export default function ServiceCard({
                 : "items-baseline gap-1"
             }`}
           >
-            <span className="font-secondary text-2xl font-bold leading-none text-berry">
+            <span className="text-2xl font-bold leading-none text-berry">
               {price}
             </span>
             {unit && (
-              <span className="font-secondary text-xs font-semibold text-ink/60">
+              <span className="text-xs font-semibold text-ink/60">
                 {unit}
               </span>
             )}
@@ -42,7 +42,7 @@ export default function ServiceCard({
       </div>
 
       {features.length > 0 && (
-        <ul className="mt-4 space-y-1 font-secondary text-sm text-ink/70">
+        <ul className="mt-4 space-y-1 text-sm text-ink/70">
           {features.map((feature) => (
             <li key={feature} className="flex items-start gap-2">
               <span className="text-ink/40">•</span>
@@ -57,7 +57,7 @@ export default function ServiceCard({
           <p className="text-xs font-bold uppercase tracking-wide text-ink/50">
             {bulkLabel}
           </p>
-          <ul className="mt-2 space-y-1 font-secondary text-sm">
+          <ul className="mt-2 space-y-1 text-sm">
             {bulk.map((item) => (
               <li
                 key={item.label}

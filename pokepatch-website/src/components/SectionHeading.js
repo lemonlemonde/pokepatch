@@ -5,7 +5,7 @@ export default function SectionHeading({ children, subtitle }) {
         {children}
       </h2>
       {subtitle && (
-        <p className="mt-2 font-secondary text-sm text-ink/60 md:text-base">
+        <p className="mt-2 text-sm text-ink/60 md:text-base">
           {subtitle}
         </p>
       )}

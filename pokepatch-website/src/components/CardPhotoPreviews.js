@@ -43,7 +43,7 @@ function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
         </button>
       )}
       {label && (
-        <span className="block truncate px-2 py-1 font-secondary text-xs text-ink">
+        <span className="block truncate px-2 py-1 text-xs text-ink">
           {label}
         </span>
       )}
@@ -62,8 +62,8 @@ export function CardPhotoPreviewGrid({
   if (title && items.length === 0) {
     return (
       <div className={className}>
-        <p className="font-secondary text-sm font-semibold text-ink">{title}</p>
-        <p className="mt-1 font-secondary text-xs text-ink/40">{emptyText}</p>
+        <p className="text-sm font-semibold text-ink">{title}</p>
+        <p className="mt-1 text-xs text-ink/40">{emptyText}</p>
       </div>
     );
   }
@@ -73,11 +73,11 @@ export function CardPhotoPreviewGrid({
   return (
     <div className={className}>
       {title && (
-        <p className="font-secondary text-sm font-semibold text-ink">{title}</p>
+        <p className="text-sm font-semibold text-ink">{title}</p>
       )}
       {caption && (
         <p
-          className={`font-secondary text-sm text-ink/60 ${title ? "mt-1" : ""}`}
+          className={`text-sm text-ink/60 ${title ? "mt-1" : ""}`}
         >
           {caption}
         </p>

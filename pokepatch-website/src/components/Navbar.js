@@ -53,7 +53,7 @@ export default function Navbar() {
             <li key={href}>
               <Link
                 href={href}
-                className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                className="rounded-full px-2 py-1 text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
               >
                 {label}
               </Link>
@@ -65,7 +65,7 @@ export default function Navbar() {
                 <li>
                   <Link
                     href="/my-orders"
-                    className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                    className="rounded-full px-2 py-1 text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
                   >
                     My Orders
                   </Link>
@@ -73,7 +73,7 @@ export default function Navbar() {
                 <li>
                   <Link
                     href="/account"
-                    className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                    className="rounded-full px-2 py-1 text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
                   >
                     Account
                   </Link>
@@ -82,7 +82,7 @@ export default function Navbar() {
                   <li>
                     <Link
                       href="/admin/orders/"
-                      className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                      className="rounded-full px-2 py-1 text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
                     >
                       Admin
                     </Link>
@@ -93,7 +93,7 @@ export default function Navbar() {
               <li>
                 <Link
                   href="/login"
-                  className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                  className="rounded-full px-2 py-1 text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
                 >
                   Log in
                 </Link>
