@@ -10,7 +10,7 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 function fieldClassName(invalid = false) {
   return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
+    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
@@ -130,7 +130,7 @@ function LoginForm() {
         )}
 
         {error && (
-          <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
             {error}
           </p>
         )}
@@ -154,7 +154,7 @@ function LoginForm() {
               required
             />
             {fieldErrors.email && (
-              <p className="mt-1 text-sm text-berry">
+              <p className="mt-1 text-sm text-error">
                 Please enter a valid email address
               </p>
             )}
@@ -178,7 +178,7 @@ function LoginForm() {
               required
             />
             {fieldErrors.password && mode === "signup" && (
-              <p className="mt-1 text-sm text-berry">
+              <p className="mt-1 text-sm text-error">
                 Password must be at least 6 characters
               </p>
             )}
@@ -206,7 +206,7 @@ function LoginForm() {
                 required
               />
               {fieldErrors.confirmPassword && (
-                <p className="mt-1 text-sm text-berry">Passwords do not match</p>
+                <p className="mt-1 text-sm text-error">Passwords do not match</p>
               )}
             </div>
           )}

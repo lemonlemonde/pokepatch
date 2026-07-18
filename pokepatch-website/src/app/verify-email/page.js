@@ -87,7 +87,7 @@ function VerifyEmailContent() {
         )}
 
         {status === "error" && (
-          <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
             {error}
           </p>
         )}

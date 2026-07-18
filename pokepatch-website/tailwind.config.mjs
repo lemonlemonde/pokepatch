@@ -31,6 +31,9 @@ export default {
         },
         ink: "#F3E9F2",
         berry: "#E0518A",
+        // Semantic error color, kept separate from the berry brand accent so
+        // invalid states never look like prices/highlights.
+        error: "#F87171",
         night: "#0B1020",
         plum: "#1A1230",
       },

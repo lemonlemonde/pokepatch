@@ -188,7 +188,7 @@ function GalleryItemCard({ item, index, onOpen }) {
             {postedLabel ? (
               <time
                 dateTime={item.createdAt}
-                className="mt-1.5 block text-[0.6rem] font-medium tracking-wide text-ink/35"
+                className="mt-1.5 block text-xs font-medium tracking-wide text-ink/55"
               >
                 {postedLabel}
               </time>

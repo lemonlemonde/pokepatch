@@ -31,13 +31,13 @@ function sanitizeFilename(name) {
 
 function fieldClassName(invalid = false) {
   return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-berry bg-cream px-4 py-2 text-ink outline-none focus:border-berry"
+    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
 function optionClassName(invalid = false) {
   return invalid
-    ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-berry bg-cream/80 px-4 py-3"
+    ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-error bg-cream/80 px-4 py-3"
     : "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3";
 }
 
@@ -604,7 +604,7 @@ export default function QuoteForm() {
 
       {showValidationError && (
         <p
-          className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink"
+          className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
           role="alert"
         >
           Please fill out all required fields
@@ -674,7 +674,7 @@ export default function QuoteForm() {
             </p>
           )}
           {fieldErrors?.email && (
-            <p className="mt-1 text-sm text-berry">
+            <p className="mt-1 text-sm text-error">
               Please enter a valid email address
             </p>
           )}
@@ -812,7 +812,7 @@ export default function QuoteForm() {
             id="cards_empty"
             className={
               fieldErrors?.noCards
-                ? "scroll-mt-24 rounded-xl border-2 border-berry bg-berry/10 px-4 py-3 text-sm text-ink"
+                ? "scroll-mt-24 rounded-xl border-2 border-error bg-error/10 px-4 py-3 text-sm text-ink"
                 : "scroll-mt-24 text-sm text-ink/60"
             }
           >
@@ -927,7 +927,7 @@ export default function QuoteForm() {
                   htmlFor={inputId}
                   className={
                     cardErrors?.files
-                      ? "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border-2 border-berry bg-berry/20 px-4 py-2 text-sm font-semibold text-ink"
+                      ? "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border-2 border-error bg-error/15 px-4 py-2 text-sm font-semibold text-ink"
                       : "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
                   }
                 >
@@ -981,7 +981,7 @@ export default function QuoteForm() {
       <div className="space-y-2">
         {showValidationError && (
           <p
-            className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink"
+            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
             role="alert"
           >
             Please fill out all required fields

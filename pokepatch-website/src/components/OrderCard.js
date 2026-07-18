@@ -7,7 +7,7 @@ import { orderStatusLabel, orderStatusBadgeClass } from "@/lib/orderStatus";
 const SIGNED_URL_EXPIRES_IN = 60 * 60; // 1 hour
 
 const LABEL_CLS =
-  "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/45";
+  "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/60";
 
 // card-photos is a private bucket, so we mint short-lived signed URLs. RLS
 // ensures a customer can only sign photos that belong to their own orders.
@@ -255,7 +255,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
           )}
 
           {error && (
-            <p className="rounded-xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
+            <p className="rounded-xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
               {error}
             </p>
           )}
@@ -358,7 +358,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 {card.set_name}
                               </p>
                             )}
-                            <p className="mt-0.5 text-[11px] text-ink/45">
+                            <p className="mt-0.5 text-[11px] text-ink/60">
                               {photoCount} {photoCount === 1 ? "photo" : "photos"}
                             </p>
                           </div>
@@ -376,7 +376,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                   {card.description}
                                 </p>
                               ) : (
-                                <p className="text-sm italic text-ink/45">
+                                <p className="text-sm italic text-ink/60">
                                   No description provided.
                                 </p>
                               )}

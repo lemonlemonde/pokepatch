@@ -95,7 +95,7 @@ const visibleOrders = useMemo(
         )}
 
         {error && (
-          <p className="rounded-2xl border-2 border-berry bg-berry/20 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
             {error}
           </p>
         )}
@@ -134,7 +134,7 @@ const visibleOrders = useMemo(
                     >
                       {section.label}
                     </h2>
-                    <span className="text-xs text-ink/45">
+                    <span className="text-xs text-ink/60">
                       {section.orders.length}{" "}
                       {section.orders.length === 1 ? "order" : "orders"}
                     </span>
