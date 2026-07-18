@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -127,7 +128,7 @@ export default function VerifyEmailPage() {
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">
-            <p className="text-ink/70">Loading...</p>
+            <LoadingSpinner />
           </div>
         }
       >

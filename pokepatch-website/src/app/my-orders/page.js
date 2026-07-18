@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 import Button from "@/components/Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import OrderCard from "@/components/OrderCard";
 import {
@@ -74,7 +75,7 @@ const visibleOrders = useMemo(
   if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-ink/70">Loading...</p>
+        <LoadingSpinner />
       </div>
     );
   }
@@ -88,11 +89,7 @@ const visibleOrders = useMemo(
       </div>
 
       <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
-        {loading && (
-          <div className="py-8 text-center">
-            <p className="text-ink/70">Loading your orders...</p>
-          </div>
-        )}
+        {loading && <LoadingSpinner label="Loading your orders…" />}
 
         {error && (
           <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">

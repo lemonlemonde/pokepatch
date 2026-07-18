@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 
 function fieldClassName() {
@@ -136,7 +137,7 @@ export default function AccountPage() {
   if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-ink/70">Loading...</p>
+        <LoadingSpinner />
       </div>
     );
   }
@@ -167,9 +168,7 @@ export default function AccountPage() {
         )}
 
         {loading ? (
-          <p className="py-8 text-center text-ink/70">
-            Loading your profile...
-          </p>
+          <LoadingSpinner label="Loading your profile…" />
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
             <div>

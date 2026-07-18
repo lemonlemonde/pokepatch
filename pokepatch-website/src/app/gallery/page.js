@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import SectionHeading from "@/components/SectionHeading";
 import GalleryContent from "@/components/GalleryContent";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   FALLBACK_GALLERY_ITEMS,
   fetchPublishedGalleryItems,
@@ -44,17 +45,7 @@ export default function GalleryPage() {
       </div>
 
       {loading ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="flex flex-col items-center justify-center gap-3 py-16"
-        >
-          <div
-            aria-hidden="true"
-            className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-berry border-r-blush"
-          />
-          <p className="text-sm font-semibold text-ink/70">Loading gallery…</p>
-        </div>
+        <LoadingSpinner label="Loading gallery…" />
       ) : (
         <GalleryContent items={items} />
       )}
