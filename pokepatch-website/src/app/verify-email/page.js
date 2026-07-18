@@ -1,26 +1,39 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import SectionHeading from "@/components/SectionHeading";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
 function VerifyEmailContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "";
+  const customerAuthEnabled = isCustomerAuthEnabled();
 
   const [status, setStatus] = useState("idle"); // idle | sending | sent | error
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
+    if (!customerAuthEnabled) {
+      router.replace("/");
+    }
+  }, [customerAuthEnabled, router]);
+
+  useEffect(() => {
     if (cooldown <= 0) return;
     const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
+
+  if (!customerAuthEnabled) {
+    return null;
+  }
 
   const handleResend = async () => {
     if (!supabase || !email || cooldown > 0) return;

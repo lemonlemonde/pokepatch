@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import logo from "../app/pokepatch_icon.png";
 
 const links = [
@@ -14,6 +15,7 @@ const links = [
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const customerAuthEnabled = isCustomerAuthEnabled();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -55,35 +57,36 @@ export default function Navbar() {
               </Link>
             </li>
           ))}
-          {user ? (
-            <>
+          {customerAuthEnabled &&
+            (user ? (
+              <>
+                <li>
+                  <Link
+                    href="/my-orders"
+                    className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                  >
+                    My Orders
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/account"
+                    className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                  >
+                    Account
+                  </Link>
+                </li>
+              </>
+            ) : (
               <li>
                 <Link
-                  href="/my-orders"
+                  href="/login"
                   className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
                 >
-                  My Orders
+                  Log in
                 </Link>
               </li>
-              <li>
-                <Link
-                  href="/account"
-                  className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
-                >
-                  Account
-                </Link>
-              </li>
-            </>
-          ) : (
-            <li>
-              <Link
-                href="/login"
-                className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
-              >
-                Log in
-              </Link>
-            </li>
-          )}
+            ))}
         </ul>
       </nav>
     </header>

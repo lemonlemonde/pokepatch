@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 function fieldClassName(invalid = false) {
@@ -15,6 +16,7 @@ function fieldClassName(invalid = false) {
 
 export default function ThankYouPage() {
   const router = useRouter();
+  const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, signUp } = useAuth();
   const [showAccountCreation, setShowAccountCreation] = useState(false);
   const [email, setEmail] = useState("");
@@ -112,7 +114,10 @@ export default function ThankYouPage() {
           We look forward to helping bring your cards back to life!
         </p>
 
-        {!user && isSupabaseConfigured && !showAccountCreation && (
+        {customerAuthEnabled &&
+          !user &&
+          isSupabaseConfigured &&
+          !showAccountCreation && (
           <div className="space-y-3 border-t border-ink/10 pt-5">
             <p className="font-secondary text-sm font-semibold text-ink">
               Want to track your order online?
@@ -130,7 +135,7 @@ export default function ThankYouPage() {
           </div>
         )}
 
-        {showAccountCreation && !user && (
+        {customerAuthEnabled && showAccountCreation && !user && (
           <div className="space-y-4 border-t border-ink/10 pt-5 text-left">
             <h3 className="text-center text-lg font-bold text-ink">
               Create your account
@@ -242,7 +247,7 @@ export default function ThankYouPage() {
           </div>
         )}
 
-        {user && (
+        {customerAuthEnabled && user && (
           <div className="space-y-3 border-t border-ink/10 pt-5">
             <p className="font-secondary text-sm font-semibold text-ink">
               Your order has been linked to your account!

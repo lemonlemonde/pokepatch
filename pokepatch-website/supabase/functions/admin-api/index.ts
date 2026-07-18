@@ -217,7 +217,7 @@ async function fetchOrderGraph(
   let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, delivery_method, general_notes, status, completed_at, status_changed_at"
+"id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, status, completed_at, status_changed_at"
     )
     .order("created_at", { ascending: false });
 

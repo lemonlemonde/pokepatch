@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import SectionHeading from "@/components/SectionHeading";
@@ -17,6 +18,7 @@ function emptyContactValues() {
 
 export default function AccountPage() {
   const router = useRouter();
+  const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, loading: authLoading, signOut } = useAuth();
 
   const [fullName, setFullName] = useState("");
@@ -28,10 +30,14 @@ export default function AccountPage() {
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
+    if (!customerAuthEnabled) {
+      router.replace("/");
+      return;
+    }
     if (!authLoading && !user) {
       router.push("/login?redirect=/account");
     }
-  }, [user, authLoading, router]);
+  }, [customerAuthEnabled, user, authLoading, router]);
 
   useEffect(() => {
     if (!user || !supabase) return;
@@ -127,7 +133,7 @@ export default function AccountPage() {
     }
   }
 
-  if (authLoading || !user) {
+  if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <p className="font-secondary text-ink/70">Loading...</p>
