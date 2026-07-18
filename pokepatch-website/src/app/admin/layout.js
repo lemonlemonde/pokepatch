@@ -9,8 +9,9 @@ export const metadata = {
 };
 
 // AdminApp lives in the layout so it stays mounted across the section routes
-// (/admin/orders, /admin/gallery, /admin/studio). The per-section pages render
-// nothing; the active tab is derived from the URL inside AdminApp.
+// (/admin/orders, /admin/orders/all, /admin/gallery, /admin/studio). The
+// per-section pages render nothing; the active tab is derived from the URL
+// inside AdminApp.
 export default function AdminLayout({ children }) {
   return (
     <>

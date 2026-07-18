@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import {
@@ -28,6 +29,8 @@ import {
   groupOrdersByStatus,
   normalizeOrderStatus,
   orderStatusHeadingClass,
+  orderStatusLabel,
+  orderStatusBadgeClass,
   isClosedOrderStatus,
   filterClosedColumnOrders,
 } from "@/lib/orderStatus";
@@ -39,7 +42,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag cards between columns to update status. Click a card to edit. Check boxes to multi-select, then delete with confirmation.",
+      "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the latest 7 — use Show all for the rest. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -59,9 +62,18 @@ const ADMIN_TABS = [
   },
 ];
 
+const ORDERS_ALL_META = {
+  id: "orders-all",
+  title: "All orders",
+  subtitle:
+    "Spreadsheet view of every order. Click a row to open the editor.",
+};
+
 function tabFromPathname(pathname) {
+  const path = pathname?.replace(/\/$/, "") ?? "";
+  if (path.endsWith("/admin/orders/all")) return "orders-all";
   const match = ADMIN_TABS.find((entry) =>
-    pathname?.startsWith(entry.path.replace(/\/$/, "")),
+    path.startsWith(entry.path.replace(/\/$/, "")),
   );
   return match?.id ?? "orders";
 }
@@ -98,6 +110,12 @@ function deliveryLabel(value) {
   if (value === "local_dropoff") return "Local drop-off";
   if (value === "shipping") return "Shipping";
   return value ?? "";
+}
+
+function deliveryShortLabel(value) {
+  if (value === "local_dropoff") return "Local";
+  if (value === "shipping") return "Ship";
+  return deliveryLabel(value);
 }
 
 function emptyStagedUploads() {
@@ -331,96 +349,239 @@ function TrashIcon({ className = "h-5 w-5" }) {
   );
 }
 
+const INSPECT_OPEN_DELAY_MS = 150;
+const INSPECT_CLOSE_DELAY_MS = 100;
+const INSPECT_PANEL_WIDTH = 280;
+const INSPECT_CURSOR_OFFSET = 14;
+const INSPECT_PANEL_HEIGHT_ESTIMATE = 220;
+
+function clampInspectPosition(clientX, clientY, panelHeight = INSPECT_PANEL_HEIGHT_ESTIMATE) {
+  let left = clientX + INSPECT_CURSOR_OFFSET;
+  let top = clientY + INSPECT_CURSOR_OFFSET;
+
+  if (left + INSPECT_PANEL_WIDTH > window.innerWidth - 8) {
+    left = clientX - INSPECT_PANEL_WIDTH - INSPECT_CURSOR_OFFSET;
+  }
+  if (top + panelHeight > window.innerHeight - 8) {
+    top = clientY - panelHeight - INSPECT_CURSOR_OFFSET;
+  }
+
+  return {
+    left: Math.max(8, Math.min(left, window.innerWidth - INSPECT_PANEL_WIDTH - 8)),
+    top: Math.max(8, Math.min(top, window.innerHeight - panelHeight - 8)),
+  };
+}
+
 function KanbanCard({
   order,
   onOpen,
-  onToggleCheck,
   onContextMenu,
   dragging,
   editorSelected,
-  checked,
   loading,
 }) {
+  const panelElRef = useRef(null);
+  const cursorRef = useRef({ x: 0, y: 0 });
+  const openTimerRef = useRef(null);
+  const closeTimerRef = useRef(null);
+  const [inspectOpen, setInspectOpen] = useState(false);
+  const [panelPos, setPanelPos] = useState(null);
+
   const cardCount = order.card_count ?? order.cards?.length ?? 0;
   const previewUrls = Array.isArray(order.preview_urls)
     ? order.preview_urls.filter(Boolean).slice(0, 4)
     : [];
+  const thumbUrl = previewUrls[0] ?? null;
   const hasMore = cardCount > previewUrls.length && previewUrls.length > 0;
+  const metaChip = `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
 
-  return (
+  const clearTimers = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const placeAtCursor = useCallback((clientX, clientY, { syncState = false } = {}) => {
+    cursorRef.current = { x: clientX, y: clientY };
+    const height =
+      panelElRef.current?.offsetHeight ?? INSPECT_PANEL_HEIGHT_ESTIMATE;
+    const next = clampInspectPosition(clientX, clientY, height);
+    if (panelElRef.current) {
+      panelElRef.current.style.top = `${next.top}px`;
+      panelElRef.current.style.left = `${next.left}px`;
+    }
+    if (syncState || !panelElRef.current) {
+      setPanelPos(next);
+    }
+  }, []);
+
+  const showInspect = useCallback(() => {
+    clearTimers();
+    const { x, y } = cursorRef.current;
+    placeAtCursor(x, y, { syncState: true });
+    setInspectOpen(true);
+  }, [clearTimers, placeAtCursor]);
+
+  const hideInspect = useCallback(() => {
+    clearTimers();
+    setInspectOpen(false);
+  }, [clearTimers]);
+
+  const scheduleOpen = useCallback(() => {
+    if (dragging || loading) return;
+    clearTimers();
+    openTimerRef.current = setTimeout(showInspect, INSPECT_OPEN_DELAY_MS);
+  }, [clearTimers, dragging, loading, showInspect]);
+
+  const scheduleClose = useCallback(() => {
+    clearTimers();
+    closeTimerRef.current = setTimeout(hideInspect, INSPECT_CLOSE_DELAY_MS);
+  }, [clearTimers, hideInspect]);
+
+  function handleMouseEnter(event) {
+    placeAtCursor(event.clientX, event.clientY, { syncState: true });
+    scheduleOpen();
+  }
+
+  function handleMouseMove(event) {
+    placeAtCursor(event.clientX, event.clientY, {
+      syncState: !inspectOpen,
+    });
+  }
+
+  useEffect(() => () => clearTimers(), [clearTimers]);
+
+  useEffect(() => {
+    if (dragging) hideInspect();
+  }, [dragging, hideInspect]);
+
+  useEffect(() => {
+    if (!inspectOpen) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape") hideInspect();
+    }
+    // Re-measure once the panel is in the DOM so viewport clamping is accurate.
+    const { x, y } = cursorRef.current;
+    placeAtCursor(x, y, { syncState: true });
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [inspectOpen, hideInspect, placeAtCursor]);
+
+  const card = (
     <div
       onContextMenu={(event) => {
         event.preventDefault();
         onContextMenu?.(event, order);
       }}
-      className={`relative flex w-full items-start gap-2 rounded-xl border-2 px-3 py-3 text-left shadow-cozy-sm transition ${
-        checked
-          ? "border-berry/70 bg-berry/10"
-          : editorSelected
-            ? "border-berry bg-blush/30 shadow-cozy ring-2 ring-berry/50 ring-offset-2 ring-offset-night/40"
-            : "border-ink/10 bg-cream hover:border-blush/60"
+      onMouseEnter={handleMouseEnter}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={scheduleClose}
+      className={`relative flex w-full items-center gap-2 rounded-lg border-2 px-2 py-1.5 text-left shadow-cozy-sm transition ${
+        editorSelected
+          ? "border-berry bg-blush/30 shadow-cozy ring-2 ring-berry/50 ring-offset-2 ring-offset-night/40"
+          : "border-ink/10 bg-cream hover:border-blush/60"
       } ${dragging ? "opacity-50" : ""} ${loading ? "pointer-events-none" : ""}`}
     >
       {loading && (
-        <span className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-night/40">
+        <span className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-night/40">
           <span
             aria-hidden="true"
-            className="h-6 w-6 animate-spin rounded-full border-2 border-ink/20 border-t-berry"
+            className="h-5 w-5 animate-spin rounded-full border-2 border-ink/20 border-t-berry"
           />
         </span>
       )}
-      <label
-        className="mt-1 shrink-0"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={() => onToggleCheck(order.id)}
-          aria-label={`Select order #${order.display_id}`}
-          className="h-4 w-4 accent-berry"
-        />
-      </label>
       <button
         type="button"
-        className="min-w-0 flex-1 text-left"
-        onClick={(event) => {
-          if (event.metaKey || event.ctrlKey) {
-            event.preventDefault();
-            onToggleCheck(order.id);
-            return;
-          }
-          onOpen(order.id);
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        onClick={() => onOpen(order.id)}
+        onFocus={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          placeAtCursor(rect.left + rect.width / 2, rect.top + rect.height / 2, {
+            syncState: true,
+          });
+          scheduleOpen();
         }}
+        onBlur={scheduleClose}
         aria-current={editorSelected ? "true" : undefined}
         aria-busy={loading || undefined}
+        aria-describedby={
+          inspectOpen ? `order-inspect-${order.id}` : undefined
+        }
       >
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-bold tabular-nums text-ink">
-              #{order.display_id}
-            </p>
-            <p className="mt-1 truncate text-sm font-semibold text-ink">
-              {order.customer_name}
-            </p>
-            <p className="mt-1 text-xs text-ink/60">
-              {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
-              {deliveryLabel(order.delivery_method)}
-            </p>
-            <p className="mt-1 text-xs text-ink/50">
-              {formatDate(order.created_at)}
-            </p>
-          </div>
-          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-ink/10 bg-night/40 p-1">
+        <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+          #{order.display_id}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+          {order.customer_name}
+        </span>
+        <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-ink/55">
+          {metaChip}
+        </span>
+        <span className="relative aspect-[3/4] w-7 shrink-0 overflow-hidden rounded bg-night/50">
+          {thumbUrl ? (
+            <img
+              src={thumbUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : null}
+          {cardCount > 1 && (
+            <span className="absolute inset-x-0 bottom-0 bg-night/75 py-px text-center text-[9px] font-bold leading-none text-cream">
+              {cardCount}
+            </span>
+          )}
+        </span>
+      </button>
+    </div>
+  );
+
+  const inspectPortal =
+    inspectOpen &&
+    panelPos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div className="pointer-events-none fixed inset-0 z-[200]">
+        <div
+          ref={panelElRef}
+          role="tooltip"
+          id={`order-inspect-${order.id}`}
+          className="absolute rounded-xl border-2 border-ink/15 bg-cream p-3 shadow-cozy"
+          style={{
+            top: panelPos.top,
+            left: panelPos.left,
+            width: INSPECT_PANEL_WIDTH,
+          }}
+        >
+          <p className="text-sm font-bold tabular-nums text-ink">
+            #{order.display_id}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-ink">
+            {order.customer_name}
+          </p>
+          <p className="mt-1 text-xs text-ink/60">
+            {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
+            {deliveryLabel(order.delivery_method)}
+          </p>
+          <p className="mt-0.5 text-xs text-ink/50">
+            {formatDate(order.created_at)}
+          </p>
+          <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
             {previewUrls.length === 0 ? (
-              <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
+              <div className="aspect-[3/4] w-12 rounded-md bg-night/50" />
             ) : (
               previewUrls.map((url, index) => {
-                const showMore = hasMore && index === previewUrls.length - 1;
+                const showMoreOverlay =
+                  hasMore && index === previewUrls.length - 1;
                 return (
                   <div
                     key={`${url}-${index}`}
-                    className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
+                    className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md bg-night/50"
                   >
                     <img
                       src={url}
@@ -428,7 +589,7 @@ function KanbanCard({
                       className="h-full w-full object-cover"
                       draggable={false}
                     />
-                    {showMore && (
+                    {showMoreOverlay && (
                       <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
                         …
                       </div>
@@ -439,8 +600,15 @@ function KanbanCard({
             )}
           </div>
         </div>
-      </button>
-    </div>
+      </div>,
+      document.body
+    );
+
+  return (
+    <>
+      {card}
+      {inspectPortal}
+    </>
   );
 }
 
@@ -550,43 +718,119 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
   );
 }
 
+function formatDateShort(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function OrdersAllList({ orders, onOpenOrder, selectedOrderId }) {
+  const sorted = useMemo(() => {
+    return [...(orders ?? [])].sort((a, b) => {
+      const aId = Number(a.display_id) || 0;
+      const bId = Number(b.display_id) || 0;
+      return bId - aId;
+    });
+  }, [orders]);
+
+  if (sorted.length === 0) {
+    return (
+      <p className="rounded border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+        No orders yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded border border-ink/20 bg-cream">
+      <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
+        <thead>
+          <tr className="border-b border-ink/20 bg-night/40 text-xs font-semibold uppercase tracking-wide text-ink/60">
+            <th className="whitespace-nowrap px-3 py-2">#</th>
+            <th className="whitespace-nowrap px-3 py-2">Customer</th>
+            <th className="whitespace-nowrap px-3 py-2">Email</th>
+            <th className="whitespace-nowrap px-3 py-2">Status</th>
+            <th className="whitespace-nowrap px-3 py-2">Cards</th>
+            <th className="whitespace-nowrap px-3 py-2">Delivery</th>
+            <th className="whitespace-nowrap px-3 py-2">Created</th>
+            <th className="whitespace-nowrap px-3 py-2">Closed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((order) => {
+            const status = normalizeOrderStatus(order.status);
+            const cardCount = order.card_count ?? order.cards?.length ?? 0;
+            const selected = order.id === selectedOrderId;
+            return (
+              <tr
+                key={order.id}
+                onClick={() => onOpenOrder(order.id)}
+                className={`cursor-pointer border-b border-ink/10 transition hover:bg-blush/20 ${
+                  selected ? "bg-berry/15" : "odd:bg-night/15"
+                }`}
+              >
+                <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-ink">
+                  {order.display_id}
+                </td>
+                <td className="max-w-[12rem] truncate px-3 py-1.5 font-medium text-ink">
+                  {order.customer_name}
+                </td>
+                <td className="max-w-[14rem] truncate px-3 py-1.5 text-ink/70">
+                  {order.customer_email || "—"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  <span
+                    className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${orderStatusBadgeClass(
+                      status
+                    )}`}
+                  >
+                    {orderStatusLabel(status)}
+                  </span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/80">
+                  {cardCount}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 text-ink/70">
+                  {deliveryShortLabel(order.delivery_method)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/60">
+                  {formatDateShort(order.created_at)}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/60">
+                  {isClosedOrderStatus(status)
+                    ? formatDateShort(order.completed_at) || "—"
+                    : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function KanbanBoard({
   orders,
   onOpenOrder,
   onStatusChange,
   onRequestDelete,
+  onViewAllOrders,
   selectedOrderId,
   loadingOrderId,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
   const [trashArmed, setTrashArmed] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
-  const [checkedIds, setCheckedIds] = useState(() => new Set());
-  const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const [showAllCanceled, setShowAllCanceled] = useState(false);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
   const dragOrder = useMemo(
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
   );
-  const checkedOrders = useMemo(
-    () => orders.filter((order) => checkedIds.has(order.id)),
-    [orders, checkedIds]
-  );
-
-  useEffect(() => {
-    setCheckedIds((current) => {
-      const valid = new Set(orders.map((order) => order.id));
-      let changed = false;
-      const next = new Set();
-      for (const id of current) {
-        if (valid.has(id)) next.add(id);
-        else changed = true;
-      }
-      return changed ? next : current;
-    });
-  }, [orders]);
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -608,49 +852,6 @@ function KanbanBoard({
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [contextMenu]);
-
-  function toggleCheck(orderId) {
-    setCheckedIds((current) => {
-      const next = new Set(current);
-      if (next.has(orderId)) next.delete(orderId);
-      else next.add(orderId);
-      return next;
-    });
-  }
-
-  function clearChecked() {
-    setCheckedIds(new Set());
-  }
-
-  function setColumnChecked(columnOrders, checked) {
-    setCheckedIds((current) => {
-      const next = new Set(current);
-      for (const order of columnOrders) {
-        if (checked) next.add(order.id);
-        else next.delete(order.id);
-      }
-      return next;
-    });
-  }
-
-  function ordersForDeleteRequest(seedOrders) {
-    const seeds = (Array.isArray(seedOrders) ? seedOrders : [seedOrders]).filter(
-      Boolean
-    );
-    if (
-      checkedOrders.length > 1 &&
-      seeds.some((order) => checkedIds.has(order.id))
-    ) {
-      return checkedOrders;
-    }
-    return seeds;
-  }
-
-  function requestDelete(seedOrders) {
-    const targets = ordersForDeleteRequest(seedOrders);
-    if (!targets.length) return;
-    onRequestDelete(targets);
-  }
 
   function handleDragStart(event, orderId) {
     event.dataTransfer.setData("text/plain", orderId);
@@ -693,7 +894,7 @@ function KanbanBoard({
     setDragOrderId(null);
     setTrashArmed(false);
     if (!order) return;
-    requestDelete(order);
+    onRequestDelete([order]);
   }
 
   function handleCardContextMenu(event, order) {
@@ -704,23 +905,14 @@ function KanbanBoard({
     });
   }
 
-  function showAllForClosedStatus(statusId) {
-    if (statusId === "completed") return showAllCompleted;
-    if (statusId === "canceled") return showAllCanceled;
-    return false;
-  }
-
   function renderColumn(status, { closed }) {
     const rawOrders = columns[status.id] ?? [];
-    const showAll = closed ? showAllForClosedStatus(status.id) : false;
     const columnOrders = closed
-      ? filterClosedColumnOrders(rawOrders, showAll)
+      ? filterClosedColumnOrders(rawOrders)
       : rawOrders;
-    const checkedInColumn = columnOrders.filter((order) =>
-      checkedIds.has(order.id)
-    ).length;
-    const allColumnChecked =
-      columnOrders.length > 0 && checkedInColumn === columnOrders.length;
+    const hiddenCount = closed
+      ? Math.max(0, rawOrders.length - columnOrders.length)
+      : 0;
 
     return (
       <section
@@ -730,55 +922,29 @@ function KanbanBoard({
         onDrop={(event) => handleDrop(event, status.id)}
       >
         <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            <input
-              type="checkbox"
-              checked={allColumnChecked}
-              disabled={columnOrders.length === 0}
-              ref={(node) => {
-                if (node) {
-                  node.indeterminate =
-                    checkedInColumn > 0 && !allColumnChecked;
-                }
-              }}
-              onChange={(event) =>
-                setColumnChecked(columnOrders, event.target.checked)
-              }
-              aria-label={`Select all in ${status.label}`}
-              className="h-3.5 w-3.5 shrink-0 accent-berry disabled:opacity-40"
-            />
-            <h2
-              className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
-                status.id
-              )}`}
+          <h2
+            className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+              status.id
+            )}`}
+          >
+            {status.label}
+            {rawOrders.length > 0 && (
+              <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                {rawOrders.length}
+              </span>
+            )}
+          </h2>
+          {closed && hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={onViewAllOrders}
+              className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
             >
-              {status.label}
-              {columnOrders.length > 0 && (
-                <span className="ml-1.5 text-sm font-semibold text-ink/40">
-                  {columnOrders.length}
-                </span>
-              )}
-            </h2>
-          </div>
-          {closed && (
-            <label className="flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-semibold text-ink/60">
-              <input
-                type="checkbox"
-                checked={showAll}
-                onChange={(event) => {
-                  if (status.id === "completed") {
-                    setShowAllCompleted(event.target.checked);
-                  } else if (status.id === "canceled") {
-                    setShowAllCanceled(event.target.checked);
-                  }
-                }}
-                className="h-3.5 w-3.5 accent-berry"
-              />
               Show all
-            </label>
+            </button>
           )}
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-0.5">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
           {columnOrders.map((order) => (
             <div
               key={order.id}
@@ -789,11 +955,9 @@ function KanbanBoard({
               <KanbanCard
                 order={order}
                 onOpen={onOpenOrder}
-                onToggleCheck={toggleCheck}
                 onContextMenu={handleCardContextMenu}
                 dragging={dragOrderId === order.id}
                 editorSelected={order.id === selectedOrderId}
-                checked={checkedIds.has(order.id)}
                 loading={order.id === loadingOrderId}
               />
             </div>
@@ -805,23 +969,32 @@ function KanbanBoard({
                 : "Drop orders here"}
             </p>
           )}
+          {closed && hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={onViewAllOrders}
+              className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
+            >
+              +{hiddenCount} older — show all
+            </button>
+          )}
         </div>
       </section>
     );
   }
 
-  const trashTargets =
-    dragOrderId && checkedIds.has(dragOrderId) && checkedOrders.length > 1
-      ? checkedOrders
-      : dragOrder
-        ? [dragOrder]
-        : [];
-  const contextDeleteTargets = contextMenu
-    ? ordersForDeleteRequest(contextMenu.order)
-    : [];
-
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onViewAllOrders}
+          className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+        >
+          View all orders
+        </button>
+      </div>
+
       <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
@@ -830,34 +1003,6 @@ function KanbanBoard({
           renderColumn(status, { closed: true })
         )}
       </div>
-
-      {checkedOrders.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-berry/30 bg-berry/10 px-4 py-3">
-          <p className="text-sm font-semibold text-ink">
-            {checkedOrders.length} selected
-            <span className="ml-2 font-normal text-ink/60">
-              {formatOrderIdList(checkedOrders, 4)}
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={clearChecked}
-              className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={() => requestDelete(checkedOrders)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-berry px-3 py-1.5 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
-            >
-              <TrashIcon className="h-4 w-4" />
-              Delete selected
-            </button>
-          </div>
-        </div>
-      )}
 
       <div
         role="region"
@@ -881,19 +1026,15 @@ function KanbanBoard({
         <div className="text-center sm:text-left">
           <p className="text-sm font-semibold">
             {trashArmed
-              ? trashTargets.length > 1
-                ? `Release to delete ${trashTargets.length} orders`
-                : `Release to delete #${dragOrder?.display_id ?? ""}`
+              ? `Release to delete #${dragOrder?.display_id ?? ""}`
               : dragOrderId
-                ? trashTargets.length > 1
-                  ? `Drop to delete ${trashTargets.length} selected`
-                  : "Drop here to delete"
+                ? "Drop here to delete"
                 : "Recycling bin"}
           </p>
           <p className="mt-0.5 text-xs opacity-80">
             {dragOrderId
               ? "You’ll confirm before anything is deleted"
-              : "Select cards, right-click, or drag here — always confirms first"}
+              : "Right-click or drag here — always confirms first"}
           </p>
         </div>
       </div>
@@ -910,15 +1051,13 @@ function KanbanBoard({
             role="menuitem"
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-berry transition hover:bg-berry/10"
             onClick={() => {
-              const targets = contextDeleteTargets;
+              const order = contextMenu.order;
               setContextMenu(null);
-              onRequestDelete(targets);
+              onRequestDelete([order]);
             }}
           >
             <TrashIcon className="h-4 w-4" />
-            {contextDeleteTargets.length > 1
-              ? `Delete ${contextDeleteTargets.length} selected`
-              : "Delete order"}
+            Delete order
           </button>
         </div>
       )}
@@ -1253,7 +1392,11 @@ export default function AdminApp() {
     return payload !== savedSnapshot || staged;
   }, [draft, savedSnapshot]);
 
-  const activeTab = ADMIN_TABS.find((entry) => entry.id === tab) ?? ADMIN_TABS[0];
+  const activeTab =
+    tab === "orders-all"
+      ? ORDERS_ALL_META
+      : (ADMIN_TABS.find((entry) => entry.id === tab) ?? ADMIN_TABS[0]);
+  const ordersSectionActive = tab === "orders" || tab === "orders-all";
 
   const refreshOrders = useCallback(async () => {
     setLoadingOrders(true);
@@ -1491,7 +1634,7 @@ export default function AdminApp() {
           {activeTab.title}
         </SectionHeading>
         <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:justify-end">
-          {tab === "orders" && loadingOrders && orders.length > 0 && (
+          {ordersSectionActive && loadingOrders && orders.length > 0 && (
             <LoadingIndicator compact label="Refreshing…" />
           )}
           <button
@@ -1511,9 +1654,13 @@ export default function AdminApp() {
             type="button"
             onClick={() => router.push(entry.path)}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              tab === entry.id
-                ? "bg-berry text-night shadow-cozy"
-                : "border-2 border-ink/15 text-ink hover:border-blush"
+              entry.id === "orders"
+                ? ordersSectionActive
+                  ? "bg-berry text-night shadow-cozy"
+                  : "border-2 border-ink/15 text-ink hover:border-blush"
+                : tab === entry.id
+                  ? "bg-berry text-night shadow-cozy"
+                  : "border-2 border-ink/15 text-ink hover:border-blush"
             }`}
           >
             {entry.label}
@@ -1523,7 +1670,7 @@ export default function AdminApp() {
 
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
-      {tab === "orders" && (
+      {ordersSectionActive && (
         <>
           {listError && (
             <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
@@ -1533,12 +1680,33 @@ export default function AdminApp() {
 
           {loadingOrders && orders.length === 0 ? (
             <LoadingIndicator label="Loading orders…" />
+          ) : tab === "orders-all" ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-ink/50">
+                  {orders.length} order{orders.length === 1 ? "" : "s"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin/orders/")}
+                  className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+                >
+                  Back to board
+                </button>
+              </div>
+              <OrdersAllList
+                orders={orders}
+                onOpenOrder={openOrder}
+                selectedOrderId={selectedOrderId}
+              />
+            </div>
           ) : (
             <KanbanBoard
               orders={orders}
               onOpenOrder={openOrder}
               onStatusChange={handleStatusChange}
               onRequestDelete={handleRequestDelete}
+              onViewAllOrders={() => router.push("/admin/orders/all/")}
               selectedOrderId={selectedOrderId}
               loadingOrderId={loadingOrderId}
             />

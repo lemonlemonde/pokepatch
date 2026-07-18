@@ -10,15 +10,18 @@ export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "new" || status.id === "in_progress"
 );
 
-/** Closed statuses — drop targets on admin; cards older than 7 days need Show all. */
+/** Closed statuses shown as kanban columns (most recent N cards only). */
 export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "completed" || status.id === "canceled"
 );
 
 export const DEFAULT_ORDER_STATUS = "new";
 
-/** Closed orders older than this are hidden by default. */
+/** Closed orders older than this are hidden on My Orders. */
 export const COMPLETED_VISIBLE_DAYS = 7;
+
+/** How many closed orders appear in each admin kanban column. */
+export const CLOSED_COLUMN_VISIBLE_COUNT = 7;
 
 const LABEL_BY_ID = Object.fromEntries(
   ORDER_STATUSES.map((status) => [status.id, status.label]),
@@ -86,9 +89,17 @@ export function filterOrdersByCompletedVisibility(orders) {
   return (orders ?? []).filter((order) => !isOlderCompletedOrder(order));
 }
 
-export function filterClosedColumnOrders(orders, showAllClosed = false) {
-  if (showAllClosed) return orders ?? [];
-  return filterOrdersByCompletedVisibility(orders);
+/**
+ * Admin kanban closed columns: keep the most recent `limit` orders.
+ * Columns are sorted oldest→newest, so the newest sit at the end.
+ */
+export function filterClosedColumnOrders(
+  orders,
+  limit = CLOSED_COLUMN_VISIBLE_COUNT
+) {
+  const list = orders ?? [];
+  if (list.length <= limit) return list;
+  return list.slice(-limit);
 }
 
 function timeMs(value, fallback) {
