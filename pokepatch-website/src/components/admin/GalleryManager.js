@@ -375,7 +375,7 @@ export default function GalleryManager() {
       <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="font-display text-xl font-bold text-ink">
+            <h2 className="text-xl font-bold text-ink">
               {selected ? `Edit — ${selected.title}` : "New gallery item"}
             </h2>
             <p className="mt-1 text-sm text-ink/60">
@@ -458,7 +458,7 @@ export default function GalleryManager() {
         {selected && (
           <div className="mt-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="font-display text-lg font-bold text-ink">
+              <h3 className="text-lg font-bold text-ink">
                 Before / after pairs
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -691,7 +691,7 @@ export default function GalleryManager() {
                     }
                     className="min-w-0 flex-1 text-left"
                   >
-                    <span className="font-display text-base font-bold text-ink">
+                    <span className="text-base font-bold text-ink">
                       {item.title}
                     </span>
                     <span className="mt-0.5 block truncate text-xs text-ink/55">

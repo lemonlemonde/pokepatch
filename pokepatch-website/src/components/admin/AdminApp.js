@@ -658,7 +658,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
           <div className="min-w-0">
             <h2
               id="delete-order-title"
-              className="font-display text-xl font-bold text-ink"
+              className="text-xl font-bold text-ink"
             >
               {title}
             </h2>
@@ -896,7 +896,7 @@ function KanbanBoard({
       >
         <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
           <h2
-            className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+            className={`min-w-0 truncate text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
               status.id
             )}`}
           >
