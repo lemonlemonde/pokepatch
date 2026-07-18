@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 
 const PAIRS_PER_POST = 2;
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -167,16 +168,25 @@ function SideBank({
                 onDragStart={(event) => setDragItem(event, role, item.id)}
                 className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <StudioOpenableThumb
                   src={previewUrls[item.id]}
                   alt={item.file.name}
-                  className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
-                  draggable={false}
-                />
+                  label={item.file.name}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={previewUrls[item.id]}
+                    alt={item.file.name}
+                    className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
+                    draggable={false}
+                  />
+                </StudioOpenableThumb>
                 <button
                   type="button"
-                  onClick={() => onRemoveItem(item.id)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRemoveItem(item.id);
+                  }}
                   className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
                   aria-label={`Remove ${item.file.name}`}
                 >
@@ -234,18 +244,27 @@ function PairSlot({
           onDragStart={onDragStartFilled}
           className="cursor-grab p-3 active:cursor-grabbing"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <StudioOpenableThumb
             src={previewUrl}
-            alt={`${label} preview`}
-            className="mx-auto max-h-36 w-full object-contain"
-            draggable={false}
-          />
+            alt={`${label} — ${item.file.name}`}
+            label={label}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt={`${label} preview`}
+              className="mx-auto max-h-36 w-full object-contain"
+              draggable={false}
+            />
+          </StudioOpenableThumb>
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-ink/50">{item.file.name}</p>
             <button
               type="button"
-              onClick={onClear}
+              onClick={(event) => {
+                event.stopPropagation();
+                onClear();
+              }}
               className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
             >
               Remove

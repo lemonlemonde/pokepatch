@@ -3,14 +3,39 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
-import StudioMediaBank, { EMPTY_SLOTS } from "@/components/StudioMediaBank";
+import StudioMediaBank, {
+  BEFORE_AFTER_PAIR_SLOT_GROUPS,
+  EMPTY_SLOTS,
+  FRONT_BACK_PAIR_SLOT_GROUPS,
+} from "@/components/StudioMediaBank";
 import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
-import { canvasToBlob, stitchBothPosts } from "@/lib/instagramStitch";
+import {
+  canvasToBlob,
+  stitchBeforeAfterPosts,
+  stitchBothPosts,
+} from "@/lib/instagramStitch";
 import { stitchGridPosts } from "@/lib/instagramGridStitch";
 import {
   extensionForMimeType,
   stitchBothVideos,
 } from "@/lib/instagramVideoStitch";
+
+const PHOTO_GROUP_MODES = [
+  {
+    id: "before-after-pair",
+    label: "Before-After Pair",
+    subtitle:
+      "Before & after side-by-side. Fill Front/Any for one post; Back is optional for a second. 1080×1080.",
+    slotGroups: BEFORE_AFTER_PAIR_SLOT_GROUPS,
+  },
+  {
+    id: "front-back-pair",
+    label: "Front-Back Pair",
+    subtitle:
+      "Front & back side-by-side. Fill Before for one post; After is optional for a second. 1080×1080.",
+    slotGroups: FRONT_BACK_PAIR_SLOT_GROUPS,
+  },
+];
 
 const COMPARISON_SUBTITLE =
   "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
@@ -23,9 +48,9 @@ const STUDIO_OPTIONS = [
   {
     id: "photo",
     slug: "front-back",
-    title: "Front & back formatter",
+    title: "1×2 formatter",
     description:
-      "Side-by-side before & after PNGs for front and back. 1080×1080 with labels and branding.",
+      "Before-After or Front-Back pair posts. One complete pair is enough for a single output. 1080×1080.",
   },
   {
     id: "grid",
@@ -160,6 +185,10 @@ function MediaFormatter({
   onBack,
   onGenerate,
   renderPreview,
+  controls = null,
+  resetKey = null,
+  slotGroups,
+  validateFiles = null,
 }) {
   const [bank, setBank] = useState([]);
   const [slots, setSlots] = useState(EMPTY_SLOTS);
@@ -173,6 +202,15 @@ function MediaFormatter({
     };
   }, [outputs]);
 
+  useEffect(() => {
+    if (resetKey == null) return;
+    setOutputs((prev) => {
+      prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+      return null;
+    });
+    setError("");
+  }, [resetKey]);
+
   function getSlotFiles() {
     return slots.map((id) => bank.find((item) => item.id === id)?.file ?? null);
   }
@@ -182,7 +220,13 @@ function MediaFormatter({
     setError("");
 
     const files = getSlotFiles();
-    if (files.some((file) => !file)) {
+    if (validateFiles) {
+      const validationError = validateFiles(files);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+    } else if (files.some((file) => !file)) {
       setError(emptySlotMessage);
       return;
     }
@@ -207,6 +251,8 @@ function MediaFormatter({
       <SectionHeading subtitle={subtitle}>{title}</SectionHeading>
 
       <form onSubmit={handleGenerate} className="space-y-6">
+        {controls}
+
         <StudioMediaBank
           mediaType={mediaType}
           bank={bank}
@@ -214,6 +260,7 @@ function MediaFormatter({
           slots={slots}
           setSlots={setSlots}
           onError={setError}
+          slotGroups={slotGroups}
         />
 
         {error && (
@@ -236,13 +283,7 @@ function MediaFormatter({
   );
 }
 
-async function generatePhotoOutputs(files) {
-  const { front, back } = await stitchBothPosts(files);
-  const pairs = [
-    { key: "front", label: "Front", canvas: front },
-    { key: "back", label: "Back", canvas: back },
-  ];
-
+async function canvasOutputsFromPairs(pairs) {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
       const blob = await canvasToBlob(canvas);
@@ -254,6 +295,68 @@ async function generatePhotoOutputs(files) {
       };
     }),
   );
+}
+
+function validatePhotoPairFiles(files, groupBy) {
+  const [beforeFront, beforeBack, afterFront, afterBack] = files;
+
+  if (groupBy === "front-back-pair") {
+    const beforeOk = Boolean(beforeFront && beforeBack);
+    const afterOk = Boolean(afterFront && afterBack);
+    if (!beforeOk && !afterOk) {
+      return "Fill at least one complete pair (Before: front + back, and/or After: front + back).";
+    }
+    if ((beforeFront || beforeBack) && !beforeOk) {
+      return "Before pair needs both Front and Back.";
+    }
+    if ((afterFront || afterBack) && !afterOk) {
+      return "After pair needs both Front and Back.";
+    }
+    return null;
+  }
+
+  const frontOk = Boolean(beforeFront && afterFront);
+  const backOk = Boolean(beforeBack && afterBack);
+  if (!frontOk && !backOk) {
+    return "Fill at least one complete pair (Front/Any: before + after, and/or Back: before + after).";
+  }
+  if ((beforeFront || afterFront) && !frontOk) {
+    return "Front/Any pair needs both Before and After.";
+  }
+  if ((beforeBack || afterBack) && !backOk) {
+    return "Back pair needs both Before and After.";
+  }
+  return null;
+}
+
+async function generatePhotoOutputs(files, groupBy) {
+  if (groupBy === "front-back-pair") {
+    const canvases = await stitchBeforeAfterPosts(files);
+    const pairs = [];
+    if (canvases.before) {
+      pairs.push({ key: "before", label: "Before", canvas: canvases.before });
+    }
+    if (canvases.after) {
+      pairs.push({ key: "after", label: "After", canvas: canvases.after });
+    }
+    return canvasOutputsFromPairs(pairs);
+  }
+
+  const canvases = await stitchBothPosts(files);
+  const pairs = [];
+  if (canvases.front) {
+    // Solo Front/Any pair → filename pokepatch-any.png; with Back → front/back.
+    const solo = !canvases.back;
+    pairs.push({
+      key: solo ? "any" : "front",
+      label: solo ? "Any" : "Front",
+      canvas: canvases.front,
+    });
+  }
+  if (canvases.back) {
+    pairs.push({ key: "back", label: "Back", canvas: canvases.back });
+  }
+  return canvasOutputsFromPairs(pairs);
 }
 
 async function generateVideoOutputs(files) {
@@ -274,18 +377,61 @@ async function generateVideoOutputs(files) {
   });
 }
 
+function GroupModeToggle({ value, onChange }) {
+  return (
+    <div
+      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+      role="group"
+      aria-label="Pair mode"
+    >
+      <p className="font-secondary text-sm text-ink/60">Pair mode</p>
+      <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
+        {PHOTO_GROUP_MODES.map((mode) => {
+          const active = value === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(mode.id)}
+              className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
+                active
+                  ? "bg-berry text-night shadow-cozy-sm"
+                  : "text-ink/70 hover:text-ink"
+              }`}
+            >
+              {mode.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PhotoFormatter({ onBack }) {
+  const [groupBy, setGroupBy] = useState("before-after-pair");
+  const activeMode =
+    PHOTO_GROUP_MODES.find((mode) => mode.id === groupBy) ??
+    PHOTO_GROUP_MODES[0];
+
   return (
     <MediaFormatter
       mediaType="image"
-      title="Front & back formatter"
-      subtitle={COMPARISON_SUBTITLE}
-      emptySlotMessage="Drag an image into each of the 4 slots."
+      title="1×2 formatter"
+      subtitle={activeMode.subtitle}
+      emptySlotMessage="Fill at least one complete pair."
       generateLabel="Generate images"
       busyLabel="Generating…"
       onBack={onBack}
-      onGenerate={generatePhotoOutputs}
+      onGenerate={(files) => generatePhotoOutputs(files, groupBy)}
+      validateFiles={(files) => validatePhotoPairFiles(files, groupBy)}
       renderPreview={ImagePreview}
+      resetKey={groupBy}
+      slotGroups={activeMode.slotGroups}
+      controls={
+        <GroupModeToggle value={groupBy} onChange={setGroupBy} />
+      }
     />
   );
 }

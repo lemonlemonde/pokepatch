@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 
 export const EMPTY_SLOTS = [null, null, null, null];
 const DRAG_TYPE = "text/pokepatch-bank-id";
 
-const SLOT_GROUPS = [
+/** Default: before|after for front, then back (1×2 Before-After Pair / video). */
+export const BEFORE_AFTER_PAIR_SLOT_GROUPS = [
   {
-    title: "Front",
+    title: "Front / Any",
+    optional: false,
     slots: [
       { index: 0, label: "Before" },
       { index: 2, label: "After" },
@@ -15,12 +18,35 @@ const SLOT_GROUPS = [
   },
   {
     title: "Back",
+    optional: true,
     slots: [
       { index: 1, label: "Before" },
       { index: 3, label: "After" },
     ],
   },
 ];
+
+/** Front|back for before, then after (1×2 Front-Back Pair). */
+export const FRONT_BACK_PAIR_SLOT_GROUPS = [
+  {
+    title: "Before",
+    optional: false,
+    slots: [
+      { index: 0, label: "Front" },
+      { index: 1, label: "Back" },
+    ],
+  },
+  {
+    title: "After",
+    optional: true,
+    slots: [
+      { index: 2, label: "Front" },
+      { index: 3, label: "Back" },
+    ],
+  },
+];
+
+const SLOT_GROUPS = BEFORE_AFTER_PAIR_SLOT_GROUPS;
 
 const MEDIA_CONFIG = {
   image: {
@@ -67,28 +93,38 @@ function BankThumbnail({ item, previewUrl, onRemove, mediaType }) {
       onDragStart={handleDragStart}
       className="group relative w-24 shrink-0 cursor-grab active:cursor-grabbing"
     >
-      {mediaType === "video" ? (
-        <video
-          src={previewUrl}
-          muted
-          playsInline
-          preload="metadata"
-          className="aspect-[3/4] w-full rounded-lg border border-ink/15 bg-night/60 object-contain p-1"
-          draggable={false}
-        />
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={previewUrl}
-          alt={item.file.name}
-          className="aspect-[3/4] w-full rounded-lg border border-ink/15 bg-night/60 object-contain p-1"
-          draggable={false}
-        />
-      )}
+      <StudioOpenableThumb
+        src={previewUrl}
+        alt={item.file.name}
+        label={item.file.name}
+        mediaType={mediaType}
+      >
+        {mediaType === "video" ? (
+          <video
+            src={previewUrl}
+            muted
+            playsInline
+            preload="metadata"
+            className="aspect-[3/4] w-full rounded-lg border border-ink/15 bg-night/60 object-contain p-1"
+            draggable={false}
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewUrl}
+            alt={item.file.name}
+            className="aspect-[3/4] w-full rounded-lg border border-ink/15 bg-night/60 object-contain p-1"
+            draggable={false}
+          />
+        )}
+      </StudioOpenableThumb>
       <p className="mt-1 truncate text-[10px] text-ink/50">{item.file.name}</p>
       <button
         type="button"
-        onClick={() => onRemove(item.id)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onRemove(item.id);
+        }}
         className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-berry text-xs font-bold text-night group-hover:flex"
         aria-label={`Remove ${item.file.name}`}
       >
@@ -105,6 +141,7 @@ export default function StudioMediaBank({
   slots,
   setSlots,
   onError,
+  slotGroups = SLOT_GROUPS,
 }) {
   const config = MEDIA_CONFIG[mediaType];
   const [uploadDragging, setUploadDragging] = useState(false);
@@ -281,10 +318,15 @@ export default function StudioMediaBank({
         <p className="font-secondary text-sm font-semibold text-blush/90">
           Drag into slots
         </p>
-        {SLOT_GROUPS.map((group) => (
+        {slotGroups.map((group) => (
           <div key={group.title} className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
               {group.title}
+              {group.optional ? (
+                <span className="ml-1 font-normal normal-case text-ink/35">
+                  (optional)
+                </span>
+              ) : null}
             </p>
             <div className="grid grid-cols-2 gap-3">
               {group.slots.map(({ index: slotIndex, label }) => {
@@ -326,31 +368,41 @@ export default function StudioMediaBank({
                         }}
                         className="cursor-grab p-3 active:cursor-grabbing"
                       >
-                        {mediaType === "video" ? (
-                          <video
-                            src={preview}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="mx-auto max-h-36 w-full object-contain"
-                            draggable={false}
-                          />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={preview}
-                            alt={`${group.title} ${label} preview`}
-                            className="mx-auto max-h-36 w-full object-contain"
-                            draggable={false}
-                          />
-                        )}
+                        <StudioOpenableThumb
+                          src={preview}
+                          alt={`${group.title} ${label} — ${item.file.name}`}
+                          label={`${group.title} · ${label}`}
+                          mediaType={mediaType}
+                        >
+                          {mediaType === "video" ? (
+                            <video
+                              src={preview}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="mx-auto max-h-36 w-full object-contain"
+                              draggable={false}
+                            />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={preview}
+                              alt={`${group.title} ${label} preview`}
+                              className="mx-auto max-h-36 w-full object-contain"
+                              draggable={false}
+                            />
+                          )}
+                        </StudioOpenableThumb>
                         <div className="mt-2 flex items-center justify-between gap-2">
                           <p className="truncate text-xs text-ink/50">
                             {item.file.name}
                           </p>
                           <button
                             type="button"
-                            onClick={() => clearSlot(slotIndex)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              clearSlot(slotIndex);
+                            }}
                             className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
                           >
                             Remove

@@ -1,55 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, forwardRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { DAMAGE_TAGS, galleryImageUrl, formatPostedRelative } from "@/lib/gallery";
-
-const MutedVideo = forwardRef(function MutedVideo({ className, ...props }, ref) {
-  const videoRef = useRef(null);
-
-  const setRefs = useCallback(
-    (node) => {
-      videoRef.current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
-    },
-    [ref],
-  );
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) {
-      return undefined;
-    }
-
-    const enforceMute = () => {
-      video.muted = true;
-      video.volume = 0;
-    };
-
-    enforceMute();
-    video.addEventListener("volumechange", enforceMute);
-    video.addEventListener("play", enforceMute);
-
-    return () => {
-      video.removeEventListener("volumechange", enforceMute);
-      video.removeEventListener("play", enforceMute);
-    };
-  }, []);
-
-  return (
-    <video
-      ref={setRefs}
-      muted
-      playsInline
-      className={className}
-      {...props}
-    />
-  );
-});
+import MediaLightbox from "@/components/MediaLightbox";
 
 function pairMediaKind(pair) {
   return pair.type === "video" || pair.mediaKind === "video" ? "video" : "image";
@@ -80,130 +34,6 @@ function buildMediaList(items) {
       }
       return entries;
     }),
-  );
-}
-
-function GalleryLightbox({ media, onClose, onPrevious, onNext, hasPrevious, hasNext }) {
-  useEffect(() => {
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        onClose();
-      } else if (event.key === "ArrowLeft" && hasPrevious) {
-        onPrevious();
-      } else if (event.key === "ArrowRight" && hasNext) {
-        onNext();
-      }
-    };
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKey);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKey);
-    };
-  }, [onClose, onPrevious, onNext, hasPrevious, hasNext]);
-
-  const mediaClassName =
-    "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col bg-night/90"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={media.label}
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink transition hover:bg-ink/20"
-        aria-label="Close"
-      >
-        Close
-      </button>
-
-      {hasPrevious && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onPrevious();
-          }}
-          className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-ink/10 p-3 text-ink transition hover:bg-ink/20 sm:left-4"
-          aria-label="Previous"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            className="h-6 w-6"
-            aria-hidden="true"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </button>
-      )}
-
-      {hasNext && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onNext();
-          }}
-          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-ink/10 p-3 text-ink transition hover:bg-ink/20 sm:right-4"
-          aria-label="Next"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            className="h-6 w-6"
-            aria-hidden="true"
-          >
-            <path d="M9 18l6-6-6-6" />
-          </svg>
-        </button>
-      )}
-
-      <div className="flex-1" aria-hidden="true" />
-
-      <div className="flex w-full flex-shrink-0 items-center">
-        <div className="flex-1 self-stretch" aria-hidden="true" />
-        <div
-          className="flex flex-shrink-0 flex-col items-center"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {media.type === "image" ? (
-            <img
-              key={media.src}
-              src={media.src}
-              alt={media.alt}
-              className={mediaClassName}
-            />
-          ) : (
-            <MutedVideo
-              key={media.src}
-              src={media.src}
-              loop
-              controls
-              className={mediaClassName}
-            />
-          )}
-          <p className="mt-3 text-center text-sm font-bold uppercase tracking-wide text-ink/80">
-            {media.sectionTitle} — {media.label}
-          </p>
-        </div>
-        <div className="flex-1 self-stretch" aria-hidden="true" />
-      </div>
-
-      <div className="flex-1" aria-hidden="true" />
-    </div>
   );
 }
 
@@ -779,7 +609,7 @@ export default function GalleryContent({ items }) {
       </div>
 
       {activeMedia && (
-        <GalleryLightbox
+        <MediaLightbox
           media={activeMedia}
           onClose={closeLightbox}
           onPrevious={goPrevious}
