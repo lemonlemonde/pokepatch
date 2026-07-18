@@ -20,6 +20,12 @@ import {
 } from "@/lib/adminApi";
 import GalleryManager from "@/components/admin/GalleryManager";
 import StudioTool from "@/components/StudioTool";
+import {
+  ORDER_STATUSES,
+  groupOrdersByStatus,
+  normalizeOrderStatus,
+  orderStatusHeadingClass,
+} from "@/lib/orderStatus";
 
 const ADMIN_TABS = [
   {
@@ -54,13 +60,6 @@ function tabFromPathname(pathname) {
   );
   return match?.id ?? "orders";
 }
-
-const STATUSES = [
-  { id: "new", label: "New" },
-  { id: "in_progress", label: "In progress" },
-  { id: "completed", label: "Completed" },
-  { id: "delivered", label: "Delivered" },
-];
 
 const CONTACT_TYPES = [
   { value: "phone", label: "Phone" },
@@ -110,7 +109,7 @@ function orderToDraft(order) {
     customer_name: order.customer_name ?? "",
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
-    status: order.status ?? "new",
+    status: normalizeOrderStatus(order.status),
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
       contact_type: contact.contact_type,
@@ -281,7 +280,7 @@ function orderToKanbanSummary(order) {
     created_at: order.created_at,
     customer_name: order.customer_name,
     delivery_method: order.delivery_method,
-    status: order.status ?? "new",
+    status: normalizeOrderStatus(order.status),
     card_count: order.card_count ?? order.cards?.length ?? 0,
   };
 }
@@ -342,12 +341,8 @@ function KanbanBoard({ orders, onOpenOrder, onStatusChange, selectedOrderId, loa
   const [dragOrderId, setDragOrderId] = useState(null);
 
   const columns = useMemo(() => {
-    const grouped = Object.fromEntries(STATUSES.map((status) => [status.id, []]));
-    for (const order of orders) {
-      const status = order.status ?? "new";
-      if (grouped[status]) grouped[status].push(order);
-    }
-    for (const status of STATUSES) {
+    const grouped = groupOrdersByStatus(orders);
+    for (const status of ORDER_STATUSES) {
       grouped[status.id].sort(
         (a, b) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -376,14 +371,20 @@ function KanbanBoard({ orders, onOpenOrder, onStatusChange, selectedOrderId, loa
 
   return (
     <div className="grid gap-4 lg:grid-cols-4">
-      {STATUSES.map((status) => (
+      {ORDER_STATUSES.map((status) => (
         <section
           key={status.id}
           className="rounded-xl border-2 border-ink/10 bg-night/40 p-3"
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => handleDrop(event, status.id)}
         >
-          <h2 className="mb-3 font-display text-lg font-bold text-blush">{status.label}</h2>
+          <h2
+            className={`mb-3 font-display text-lg font-bold ${orderStatusHeadingClass(
+              status.id
+            )}`}
+          >
+            {status.label}
+          </h2>
           <div className="space-y-3">
             {(columns[status.id] ?? []).map((order) => (
               <div
@@ -556,7 +557,7 @@ function OrderEditor({
             value={draft.status}
             onChange={(event) => updateDraft({ status: event.target.value })}
           >
-            {STATUSES.map((status) => (
+            {ORDER_STATUSES.map((status) => (
               <option key={status.id} value={status.id}>
                 {status.label}
               </option>

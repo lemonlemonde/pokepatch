@@ -15,6 +15,7 @@ export default {
         mint: "#B8E8D0",
         lavender: "#D4C5F9",
         peach: "#FFDAB9",
+        sun: "#F5D76E",
         ink: "#F3E9F2",
         berry: "#E0518A",
         night: "#0B1020",

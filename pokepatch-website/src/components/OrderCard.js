@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { orderStatusLabel, orderStatusBadgeClass } from "@/lib/orderStatus";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 60; // 1 hour
 
@@ -182,6 +183,13 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             <h3 className="font-display text-lg font-bold leading-none text-ink">
               Order #{order.display_id}
             </h3>
+            <span
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${orderStatusBadgeClass(
+                order.status
+              )}`}
+            >
+              {orderStatusLabel(order.status)}
+            </span>
             {hasUpdates && (
               <span className="inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[11px] font-bold text-night">
                 <span className="h-1.5 w-1.5 rounded-full bg-night/70" />
