@@ -47,7 +47,8 @@ const links = [
   {
     label: "Discord",
     value: "pokepatch.cards",
-    href: "https://discord.com/",
+    // No public invite link yet — shown as plain text until one exists.
+    href: null,
     Icon: DiscordIcon,
   },
   {

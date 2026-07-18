@@ -27,9 +27,18 @@ const gugi = localFont({
 });
 
 export const metadata = {
-  title: "PokePatch Card Restorations",
+  metadataBase: new URL("https://pokepatch.cards"),
+  title: {
+    default: "PokePatch Card Restorations",
+    template: "%s — PokePatch",
+  },
   description:
     "Gentle, careful trading card restorations with a cozy touch. Surface cleaning, edge repair, crease flattening, and full restorations.",
+  openGraph: {
+    siteName: "PokePatch Card Restorations",
+    url: "https://pokepatch.cards",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }) {
