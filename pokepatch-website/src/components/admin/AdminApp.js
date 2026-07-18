@@ -20,6 +20,16 @@ import {
 } from "@/lib/adminApi";
 import GalleryManager from "@/components/admin/GalleryManager";
 import StudioTool from "@/components/StudioTool";
+import {
+  ORDER_STATUSES,
+  ACTIVE_ORDER_STATUSES,
+  CLOSED_ORDER_STATUSES,
+  groupOrdersByStatus,
+  normalizeOrderStatus,
+  orderStatusHeadingClass,
+  isClosedOrderStatus,
+  filterClosedColumnOrders,
+} from "@/lib/orderStatus";
 
 const ADMIN_TABS = [
   {
@@ -54,13 +64,6 @@ function tabFromPathname(pathname) {
   );
   return match?.id ?? "orders";
 }
-
-const STATUSES = [
-  { id: "new", label: "New" },
-  { id: "in_progress", label: "In progress" },
-  { id: "completed", label: "Completed" },
-  { id: "delivered", label: "Delivered" },
-];
 
 const CONTACT_TYPES = [
   { value: "phone", label: "Phone" },
@@ -111,7 +114,7 @@ function orderToDraft(order) {
     customer_email: order.customer_email ?? "",
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
-    status: order.status ?? "new",
+    status: normalizeOrderStatus(order.status),
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
       contact_type: contact.contact_type,
@@ -275,20 +278,44 @@ function LoginGate({ onSuccess }) {
   );
 }
 
+function previewUrlsFromOrder(order) {
+  if (Array.isArray(order.preview_urls) && order.preview_urls.length > 0) {
+    return order.preview_urls.filter(Boolean);
+  }
+  const urls = [];
+  for (const card of order.cards ?? []) {
+    for (const image of card.images ?? []) {
+      if (image.image_type !== "customer") continue;
+      if (image.signed_url) urls.push(image.signed_url);
+      if (urls.length >= 4) return urls;
+    }
+  }
+  return urls;
+}
+
 function orderToKanbanSummary(order) {
+  const status = normalizeOrderStatus(order.status);
+  const isClosed = isClosedOrderStatus(status);
   return {
     id: order.id,
     display_id: order.display_id,
     created_at: order.created_at,
     customer_name: order.customer_name,
     delivery_method: order.delivery_method,
-    status: order.status ?? "new",
+    status,
+    completed_at: isClosed ? (order.completed_at ?? null) : null,
+    status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
+    preview_urls: previewUrlsFromOrder(order),
   };
 }
 
 function KanbanCard({ order, onOpen, dragging, selected, loading }) {
   const cardCount = order.card_count ?? order.cards?.length ?? 0;
+  const previewUrls = Array.isArray(order.preview_urls)
+    ? order.preview_urls.filter(Boolean).slice(0, 4)
+    : [];
+  const hasMore = cardCount > previewUrls.length && previewUrls.length > 0;
 
   return (
     <button
@@ -311,12 +338,50 @@ function KanbanCard({ order, onOpen, dragging, selected, loading }) {
           />
         </span>
       )}
-      <p className="font-display text-lg font-bold text-ink">#{order.display_id}</p>
-      <p className="mt-1 text-sm font-semibold text-ink">{order.customer_name}</p>
-      <p className="mt-1 text-xs text-ink/60">
-        {cardCount} card{cardCount === 1 ? "" : "s"} · {deliveryLabel(order.delivery_method)}
-      </p>
-      <p className="mt-1 text-xs text-ink/50">{formatDate(order.created_at)}</p>
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-lg font-bold tabular-nums text-ink">
+            #{order.display_id}
+          </p>
+          <p className="mt-1 truncate text-sm font-semibold text-ink">
+            {order.customer_name}
+          </p>
+          <p className="mt-1 text-xs text-ink/60">
+            {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
+            {deliveryLabel(order.delivery_method)}
+          </p>
+          <p className="mt-1 text-xs text-ink/50">
+            {formatDate(order.created_at)}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 rounded-lg border border-ink/10 bg-night/40 p-1">
+          {previewUrls.length === 0 ? (
+            <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
+          ) : (
+            previewUrls.map((url, index) => {
+              const showMore = hasMore && index === previewUrls.length - 1;
+              return (
+                <div
+                  key={`${url}-${index}`}
+                  className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
+                >
+                  <img
+                    src={url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    draggable={false}
+                  />
+                  {showMore && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
+                      …
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
     </button>
   );
 }
@@ -339,23 +404,18 @@ function savedPhotoItems(images) {
   });
 }
 
-function KanbanBoard({ orders, onOpenOrder, onStatusChange, selectedOrderId, loadingOrderId }) {
+function KanbanBoard({
+  orders,
+  onOpenOrder,
+  onStatusChange,
+  selectedOrderId,
+  loadingOrderId,
+}) {
   const [dragOrderId, setDragOrderId] = useState(null);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const [showAllCanceled, setShowAllCanceled] = useState(false);
 
-  const columns = useMemo(() => {
-    const grouped = Object.fromEntries(STATUSES.map((status) => [status.id, []]));
-    for (const order of orders) {
-      const status = order.status ?? "new";
-      if (grouped[status]) grouped[status].push(order);
-    }
-    for (const status of STATUSES) {
-      grouped[status.id].sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
-    }
-    return grouped;
-  }, [orders]);
+  const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
 
   function handleDragStart(event, orderId) {
     event.dataTransfer.setData("text/plain", orderId);
@@ -375,41 +435,94 @@ function KanbanBoard({ orders, onOpenOrder, onStatusChange, selectedOrderId, loa
     await onStatusChange(orderId, status);
   }
 
-  return (
-    <div className="grid gap-4 lg:grid-cols-4">
-      {STATUSES.map((status) => (
-        <section
-          key={status.id}
-          className="rounded-xl border-2 border-ink/10 bg-night/40 p-3"
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => handleDrop(event, status.id)}
-        >
-          <h2 className="mb-3 font-display text-lg font-bold text-blush">{status.label}</h2>
-          <div className="space-y-3">
-            {(columns[status.id] ?? []).map((order) => (
-              <div
-                key={order.id}
-                draggable
-                onDragStart={(event) => handleDragStart(event, order.id)}
-                onDragEnd={handleDragEnd}
-              >
-                <KanbanCard
-                  order={order}
-                  onOpen={onOpenOrder}
-                  dragging={dragOrderId === order.id}
-                  selected={order.id === selectedOrderId}
-                  loading={order.id === loadingOrderId}
-                />
-              </div>
-            ))}
-            {(columns[status.id] ?? []).length === 0 && (
-              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
-                Drop orders here
-              </p>
+  function showAllForClosedStatus(statusId) {
+    if (statusId === "completed") return showAllCompleted;
+    if (statusId === "canceled") return showAllCanceled;
+    return false;
+  }
+
+  function renderColumn(status, { closed }) {
+    const rawOrders = columns[status.id] ?? [];
+    const showAll = closed ? showAllForClosedStatus(status.id) : false;
+    const columnOrders = closed
+      ? filterClosedColumnOrders(rawOrders, showAll)
+      : rawOrders;
+
+    return (
+      <section
+        key={status.id}
+        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 border-ink/10 bg-night/40 p-3"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => handleDrop(event, status.id)}
+      >
+        <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
+          <h2
+            className={`min-w-0 truncate font-display text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+              status.id
+            )}`}
+          >
+            {status.label}
+            {columnOrders.length > 0 && (
+              <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                {columnOrders.length}
+              </span>
             )}
-          </div>
-        </section>
-      ))}
+          </h2>
+          {closed && (
+            <label className="flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap text-xs font-semibold text-ink/60">
+              <input
+                type="checkbox"
+                checked={showAll}
+                onChange={(event) => {
+                  if (status.id === "completed") {
+                    setShowAllCompleted(event.target.checked);
+                  } else if (status.id === "canceled") {
+                    setShowAllCanceled(event.target.checked);
+                  }
+                }}
+                className="h-3.5 w-3.5 accent-berry"
+              />
+              Show all
+            </label>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-0.5">
+          {columnOrders.map((order) => (
+            <div
+              key={order.id}
+              draggable
+              onDragStart={(event) => handleDragStart(event, order.id)}
+              onDragEnd={handleDragEnd}
+            >
+              <KanbanCard
+                order={order}
+                onOpen={onOpenOrder}
+                dragging={dragOrderId === order.id}
+                selected={order.id === selectedOrderId}
+                loading={order.id === loadingOrderId}
+              />
+            </div>
+          ))}
+          {columnOrders.length === 0 && (
+            <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
+              {closed
+                ? `Drop to mark ${status.label.toLowerCase()}`
+                : "Drop orders here"}
+            </p>
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <div className="grid h-[min(70vh,calc(100dvh-14rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {ACTIVE_ORDER_STATUSES.map((status) =>
+        renderColumn(status, { closed: false })
+      )}
+      {CLOSED_ORDER_STATUSES.map((status) =>
+        renderColumn(status, { closed: true })
+      )}
     </div>
   );
 }
@@ -493,7 +606,7 @@ function OrderEditor({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-2xl font-bold text-ink">Order #{displayId}</h2>
+          <h2 className="text-2xl font-bold tabular-nums text-ink">Order #{displayId}</h2>
           <p className="mt-1 text-sm text-ink/60">Edit fields, then Save. Photos upload on Save.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -567,7 +680,7 @@ function OrderEditor({
             value={draft.status}
             onChange={(event) => updateDraft({ status: event.target.value })}
           >
-            {STATUSES.map((status) => (
+            {ORDER_STATUSES.map((status) => (
               <option key={status.id} value={status.id}>
                 {status.label}
               </option>
@@ -788,17 +901,30 @@ export default function AdminApp() {
 
   async function handleStatusChange(orderId, status) {
     const previous = orders;
+    const nextStatus = normalizeOrderStatus(status);
     setOrders((current) =>
-      current.map((order) =>
-        order.id === orderId ? { ...order, status } : order
-      )
+      current.map((order) => {
+        if (order.id !== orderId) return order;
+        const wasClosed = isClosedOrderStatus(order.status);
+        const nextClosed = isClosedOrderStatus(nextStatus);
+        return {
+          ...order,
+          status: nextStatus,
+          status_changed_at: new Date().toISOString(),
+          completed_at: nextClosed
+            ? wasClosed
+              ? order.completed_at
+              : new Date().toISOString()
+            : null,
+        };
+      })
     );
     try {
-      await adminSetStatus(orderId, status);
+      await adminSetStatus(orderId, nextStatus);
       if (selectedOrderId === orderId) {
         setDraft((current) => {
           if (!current) return current;
-          const next = { ...current, status };
+          const next = { ...current, status: nextStatus };
           setSavedSnapshot(JSON.stringify(draftPayload(next)));
           return next;
         });

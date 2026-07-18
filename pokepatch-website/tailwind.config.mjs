@@ -4,6 +4,15 @@ export default {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/lib/**/*.{js,ts}",
+  ],
+  safelist: [
+    "bg-status-red",
+    "bg-status-yellow",
+    "bg-status-green",
+    "text-status-red",
+    "text-status-yellow",
+    "text-status-green",
   ],
   theme: {
     extend: {
@@ -15,6 +24,11 @@ export default {
         mint: "#B8E8D0",
         lavender: "#D4C5F9",
         peach: "#FFDAB9",
+        status: {
+          red: "#EF4444",
+          yellow: "#EAB308",
+          green: "#22C55E",
+        },
         ink: "#F3E9F2",
         berry: "#E0518A",
         night: "#0B1020",
