@@ -45,6 +45,58 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+async function deleteOrderAndPhotos(
+  supabase: ReturnType<typeof getServiceClient>,
+  orderId: string
+): Promise<{ id: string; display_id: number | string } | null> {
+  const { data: existing, error: existingError } = await supabase
+    .from("orders")
+    .select("id, display_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) return null;
+
+  const { data: cards, error: cardsError } = await supabase
+    .from("cards")
+    .select("id")
+    .eq("order_id", orderId);
+  if (cardsError) throw cardsError;
+
+  const cardIds = (cards ?? []).map((card) => card.id as string);
+  let paths: string[] = [];
+  if (cardIds.length > 0) {
+    const { data: images, error: imagesError } = await supabase
+      .from("card_images")
+      .select("storage_path")
+      .in("card_id", cardIds);
+    if (imagesError) throw imagesError;
+    paths = (images ?? [])
+      .map((image) => image.storage_path as string)
+      .filter(Boolean);
+  }
+
+  const { error: deleteError } = await supabase
+    .from("orders")
+    .delete()
+    .eq("id", orderId);
+  if (deleteError) throw deleteError;
+
+  if (paths.length > 0) {
+    const { error: storageError } = await supabase.storage
+      .from(BUCKET)
+      .remove(paths);
+    if (storageError) {
+      console.error("order photo cleanup failed", storageError);
+    }
+  }
+
+  return {
+    id: existing.id as string,
+    display_id: existing.display_id as number | string,
+  };
+}
+
 function rpcErrorMessage(err: unknown): string {
   if (err && typeof err === "object") {
     const record = err as Record<string, unknown>;
@@ -523,6 +575,40 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
       return jsonResponse(req, { ok: true, order: data });
+    }
+
+    if (action === "delete") {
+      const rawIds = Array.isArray(body.order_ids)
+        ? body.order_ids
+        : body.order_id
+          ? [body.order_id]
+          : [];
+      const orderIds = [
+        ...new Set(
+          rawIds
+            .map((value) => String(value ?? "").trim())
+            .filter(Boolean)
+        ),
+      ];
+      if (orderIds.length === 0) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_id or order_ids required" },
+          400
+        );
+      }
+
+      const deleted: { id: string; display_id: number | string }[] = [];
+      for (const orderId of orderIds) {
+        const result = await deleteOrderAndPhotos(supabase, orderId);
+        if (result) deleted.push(result);
+      }
+
+      if (deleted.length === 0) {
+        return jsonResponse(req, { ok: false, error: "not found" }, 404);
+      }
+
+      return jsonResponse(req, { ok: true, deleted });
     }
 
     if (action === "save") {

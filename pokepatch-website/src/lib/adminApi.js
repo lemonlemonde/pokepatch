@@ -146,6 +146,18 @@ export async function adminSetStatus(orderId, status) {
   return payload.order;
 }
 
+export async function adminDeleteOrders(orderIds) {
+  const ids = [...new Set((orderIds ?? []).map(String).filter(Boolean))];
+  if (ids.length === 0) {
+    throw new Error("No orders selected.");
+  }
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "delete", order_ids: ids },
+  });
+  return payload.deleted;
+}
+
 export async function adminUploadPhoto(orderId, cardId, imageType, file) {
   const formData = new FormData();
   formData.append("kind", "order");
