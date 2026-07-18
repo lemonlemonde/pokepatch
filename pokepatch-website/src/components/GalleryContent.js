@@ -599,6 +599,8 @@ export default function GalleryContent({ items }) {
           onNext={goNext}
           hasPrevious={active.index > 0}
           hasNext={active.index < activeList.length - 1}
+          position={active.index + 1}
+          total={activeList.length}
         />
       )}
     </>

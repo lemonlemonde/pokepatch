@@ -58,6 +58,8 @@ export const MutedVideo = forwardRef(function MutedVideo(
 /**
  * Fullscreen media viewer used by the public Gallery and Studio tools.
  * `media`: { type: "image"|"video", src, alt, label, sectionTitle? }
+ * `position`/`total`: optional 1-based counter within the opened set,
+ * e.g. "3 of 4" for the clicked card's own photos.
  */
 export default function MediaLightbox({
   media,
@@ -66,6 +68,8 @@ export default function MediaLightbox({
   onNext,
   hasPrevious = false,
   hasNext = false,
+  position = null,
+  total = null,
 }) {
   const containerRef = useRef(null);
 
@@ -121,6 +125,11 @@ export default function MediaLightbox({
     "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
   const caption = [media.sectionTitle, media.label].filter(Boolean).join(" — ");
 
+  const counter =
+    position !== null && total !== null && total > 1
+      ? `${position} of ${total}`
+      : "";
+
   const dialog = (
     <div
       ref={containerRef}
@@ -131,6 +140,11 @@ export default function MediaLightbox({
       aria-modal="true"
       aria-label={media.label || media.alt || "Media"}
     >
+      {counter && (
+        <p className="absolute left-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink">
+          {counter}
+        </p>
+      )}
       <button
         type="button"
         onClick={onClose}
