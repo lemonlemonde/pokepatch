@@ -170,6 +170,9 @@ function GalleryItemCard({ item, index, onOpen }) {
   const postedLabel = item.createdAt
     ? formatPostedRelative(item.createdAt)
     : "";
+  const damageTags = DAMAGE_TAGS.filter((tag) =>
+    (item.damageTags ?? []).includes(tag.id),
+  );
 
   return (
     <div
@@ -195,36 +198,21 @@ function GalleryItemCard({ item, index, onOpen }) {
             ) : null}
           </div>
 
-          <div className="w-full rounded-xl border border-ink/15 bg-night/10 px-2.5 py-2 sm:w-auto sm:shrink-0 sm:px-3">
+          {damageTags.length > 0 && (
             <ul
-              className="grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-flow-col sm:grid-cols-none sm:grid-rows-2 sm:gap-x-4"
-              aria-label="Damage checklist"
+              className="flex flex-wrap gap-1.5 sm:shrink-0 sm:justify-end"
+              aria-label="Damage repaired"
             >
-              {DAMAGE_TAGS.map((tag) => {
-                const applicable = (item.damageTags ?? []).includes(tag.id);
-                return (
-                  <li
-                    key={tag.id}
-                    className={`flex min-w-0 items-center gap-1.5 sm:gap-2 ${
-                      applicable ? "text-ink/80" : "opacity-35"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={applicable}
-                      readOnly
-                      tabIndex={-1}
-                      className="pointer-events-none h-3.5 w-3.5 shrink-0 accent-berry"
-                      aria-hidden="true"
-                    />
-                    <span className="truncate text-[0.7rem] font-semibold sm:whitespace-nowrap sm:text-xs">
-                      {tag.label}
-                    </span>
-                  </li>
-                );
-              })}
+              {damageTags.map((tag) => (
+                <li
+                  key={tag.id}
+                  className="rounded-full border border-ink/15 bg-night/30 px-2.5 py-1 text-xs font-semibold text-ink/80"
+                >
+                  {tag.label}
+                </li>
+              ))}
             </ul>
-          </div>
+          )}
         </div>
 
         {featured && (
@@ -587,6 +575,8 @@ export default function GalleryContent({ items }) {
           onNext={goNext}
           hasPrevious={activeIndex > 0}
           hasNext={activeIndex < mediaList.length - 1}
+          position={activeIndex + 1}
+          total={mediaList.length}
         />
       )}
     </>

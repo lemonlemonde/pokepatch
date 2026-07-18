@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, forwardRef } from "react";
 import { createPortal } from "react-dom";
 
+const FOCUSABLE_SELECTOR = "button, [href], video[controls], [tabindex]:not([tabindex='-1'])";
+
 export const MutedVideo = forwardRef(function MutedVideo(
   { className, ...props },
   ref,
@@ -56,6 +58,7 @@ export const MutedVideo = forwardRef(function MutedVideo(
 /**
  * Fullscreen media viewer used by the public Gallery and Studio tools.
  * `media`: { type: "image"|"video", src, alt, label, sectionTitle? }
+ * `position`/`total`: optional 1-based counter ("3 of 12") shown when both set.
  */
 export default function MediaLightbox({
   media,
@@ -64,8 +67,14 @@ export default function MediaLightbox({
   onNext,
   hasPrevious = false,
   hasNext = false,
+  position = null,
+  total = null,
 }) {
+  const containerRef = useRef(null);
+
   useEffect(() => {
+    const container = containerRef.current;
+
     const handleKey = (event) => {
       if (event.key === "Escape") {
         onClose();
@@ -73,6 +82,20 @@ export default function MediaLightbox({
         onPrevious?.();
       } else if (event.key === "ArrowRight" && hasNext) {
         onNext?.();
+      } else if (event.key === "Tab" && container) {
+        // Keep Tab focus inside the dialog while it is open.
+        const focusable = [...container.querySelectorAll(FOCUSABLE_SELECTOR)];
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || !container.contains(active))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (active === last || !container.contains(active))) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
 
@@ -86,18 +109,41 @@ export default function MediaLightbox({
     };
   }, [onClose, onPrevious, onNext, hasPrevious, hasNext]);
 
+  // Move focus into the dialog on open and hand it back on close.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    containerRef.current?.focus();
+    return () => {
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
   const mediaClassName =
     "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
   const caption = [media.sectionTitle, media.label].filter(Boolean).join(" — ");
 
+  const counter =
+    position !== null && total !== null && total > 1
+      ? `${position} of ${total}`
+      : "";
+
   const dialog = (
     <div
-      className="fixed inset-0 z-[100] flex flex-col bg-night/90"
+      ref={containerRef}
+      tabIndex={-1}
+      className="fixed inset-0 z-[100] flex flex-col bg-night/90 outline-none"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={media.label || media.alt || "Media"}
     >
+      {counter && (
+        <p className="absolute left-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink">
+          {counter}
+        </p>
+      )}
       <button
         type="button"
         onClick={onClose}
