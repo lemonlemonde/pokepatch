@@ -15,11 +15,11 @@ export const metadata = {
 // inside AdminApp (including ?edit=<orderId> for the order editor).
 export default function AdminLayout({ children }) {
   return (
-    <>
+    <div className="admin-plain-type">
       <Suspense fallback={null}>
         <AdminApp />
       </Suspense>
       {children}
-    </>
+    </div>
   );
 }

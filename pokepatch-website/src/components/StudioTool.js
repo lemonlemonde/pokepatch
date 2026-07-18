@@ -91,12 +91,8 @@ function StudioSelector({ onSelect }) {
             onClick={() => onSelect(option.id)}
             className="rounded-xl border border-ink/20 bg-night/50 px-6 py-10 text-left shadow-cozy-sm transition hover:border-berry/40 hover:bg-night/70"
           >
-            <p className="font-display text-xl font-bold text-ink">
-              {option.title}
-            </p>
-            <p className="mt-2 font-secondary text-sm text-ink/60">
-              {option.description}
-            </p>
+            <p className="text-xl font-bold text-ink">{option.title}</p>
+            <p className="mt-2 text-sm text-ink/60">{option.description}</p>
           </button>
         ))}
       </div>

@@ -13,6 +13,12 @@ body {
   font-family: var(--font-nunito), system-ui, sans-serif;
 }
 
+/* Admin uses regular Nunito only — no Pixelify / Gugi display fonts. */
+.admin-plain-type .font-display,
+.admin-plain-type .font-secondary {
+  font-family: var(--font-nunito), system-ui, sans-serif;
+}
+
 @layer components {
   .pixel-border {
     border: 3px solid rgba(243, 233, 242, 0.25);
