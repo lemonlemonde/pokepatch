@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Button from "@/components/Button";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
@@ -987,11 +988,7 @@ export default function QuoteForm() {
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={isBusy || !isSupabaseConfigured}
-          className="w-full rounded-full bg-lavender px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50 active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-lavender/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-        >
+        <Button type="submit" fullWidth disabled={isBusy || !isSupabaseConfigured}>
           {isBusy ? (
             <span className="inline-block animate-soft-bounce">
               {status === "uploading" ? "Uploading photos..." : "Submitting..."}
@@ -999,7 +996,7 @@ export default function QuoteForm() {
           ) : (
             "Submit quote request"
           )}
-        </button>
+        </Button>
       </div>
     </form>
   );

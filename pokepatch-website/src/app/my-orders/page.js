@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
+import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import OrderCard from "@/components/OrderCard";
 import {
@@ -108,12 +109,7 @@ const visibleOrders = useMemo(
               Orders you submit will automatically be linked to your account if
               you use the same email address.
             </p>
-            <Link
-              href="/contact"
-              className="inline-block rounded-full bg-blush px-6 py-3 font-bold text-night shadow-cozy transition-all duration-200 ease-out active:translate-y-0.5 active:shadow-cozy-sm sm:hover:-translate-y-1 sm:hover:bg-blush/80 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
-            >
-              Submit a restoration request
-            </Link>
+            <Button href="/contact">Submit a restoration request</Button>
           </div>
         )}
 
