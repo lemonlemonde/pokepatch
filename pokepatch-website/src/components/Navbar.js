@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
+import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import logo from "../app/pokepatch_icon.png";
 
 const links = [
@@ -17,6 +18,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user } = useAuth();
+  const showAdmin = customerAuthEnabled && isAdminAllowedEmail(user?.email);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -76,6 +78,16 @@ export default function Navbar() {
                     Account
                   </Link>
                 </li>
+                {showAdmin && (
+                  <li>
+                    <Link
+                      href="/admin/orders/"
+                      className="rounded-full px-2 py-1 font-secondary text-sm font-semibold text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:px-3"
+                    >
+                      Admin
+                    </Link>
+                  </li>
+                )}
               </>
             ) : (
               <li>

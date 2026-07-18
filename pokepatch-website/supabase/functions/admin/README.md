@@ -1,6 +1,8 @@
 # Admin edge functions
 
-Password-gated admin UI for PokePatch orders. The browser never sees `ADMIN_PASSWORD` or the service role key — only a short-lived session token after login.
+Email-gated admin UI for PokePatch orders. The browser never sees
+`ADMIN_ALLOWED_EMAILS` or the service role key — only a short-lived session
+token after login.
 
 ## Functions
 
@@ -15,7 +17,7 @@ Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests st
 
 | Secret | Purpose |
 |--------|---------|
-| `ADMIN_PASSWORD` | Shared admin login password (server-side only) |
+| `ADMIN_ALLOWED_EMAILS` | Comma-separated emails allowed to mint an admin session via customer JWT |
 
 Auto-injected by Supabase (do not set manually):
 
@@ -63,7 +65,7 @@ Migrations (run in order in the SQL Editor):
 From `pokepatch-website/`:
 
 ```bash
-supabase secrets set ADMIN_PASSWORD="long-random-admin-password"
+supabase secrets set ADMIN_ALLOWED_EMAILS="you@example.com"
 supabase functions deploy admin-auth --no-verify-jwt
 supabase functions deploy admin-api --no-verify-jwt
 ```
@@ -79,7 +81,7 @@ Then deploy the static site so `/admin/` is available.
 
 ## Frontend
 
-- Route: `/admin/` (not linked in public nav) — Orders + Gallery tabs
+- Route: `/admin/` — Orders + Gallery tabs; **Admin** appears in the main navbar for allowlisted signed-in emails
 - Client: [`src/lib/adminApi.js`](../../src/lib/adminApi.js)
 - UI: [`src/components/admin/AdminApp.js`](../../src/components/admin/AdminApp.js)
 - Gallery UI: [`src/components/admin/GalleryManager.js`](../../src/components/admin/GalleryManager.js)
@@ -92,7 +94,7 @@ Session token is stored in `sessionStorage` under `pokepatch-admin-token`.
 
 | Body | Response |
 |------|----------|
-| `{ "action": "login", "password": "..." }` | `{ ok, token, expires_at }` |
+| `{ "action": "loginWithSession" }` + `Authorization: Bearer <user JWT>` | `{ ok, token, expires_at }` if email is allowlisted |
 | `{ "action": "logout" }` + `X-Admin-Token` | `{ ok: true }` |
 | `{ "action": "validate" }` + `X-Admin-Token` | `{ ok: true }` or 401 |
 

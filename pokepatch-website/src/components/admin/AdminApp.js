@@ -5,17 +5,20 @@ import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import { CardPhotoPreviewGrid } from "@/components/CardPhotoPreviews";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import {
   adminDeleteOrders,
   adminGetOrder,
   adminListOrders,
-  adminLogin,
+  adminLoginWithSession,
   adminLogout,
   adminSaveOrder,
   adminSetStatus,
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
+import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import StudioTool from "@/components/StudioTool";
 import {
@@ -85,10 +88,6 @@ const CONTACT_TYPES = [
   { value: "discord", label: "Discord" },
   { value: "instagram", label: "Instagram" },
 ];
-
-function fieldClassName() {
-  return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
 
 function formatDate(value) {
   if (!value) return "";
@@ -220,71 +219,6 @@ function LoadingIndicator({ label = "Loading…", compact = false, className = "
     >
       {spinner}
       <p className="animate-soft-bounce text-sm font-semibold text-ink/70">{label}</p>
-    </div>
-  );
-}
-
-function LoginGate({ onSuccess }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await adminLogin(password);
-      onSuccess();
-    } catch (err) {
-      setError(err.message || "Login failed.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-sm animate-fade-up">
-      <SectionHeading subtitle="Orders admin — password required.">
-        Admin login
-      </SectionHeading>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <input
-          type="password"
-          value={password}
-          onChange={(event) => {
-            setPassword(event.target.value);
-            setError("");
-          }}
-          placeholder="Admin password"
-          autoComplete="current-password"
-          className={fieldClassName()}
-        />
-        {error && (
-          <p className="text-center text-sm text-berry" role="alert">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={busy}
-          className={`w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-60 ${
-            busy ? "animate-soft-bounce" : ""
-          }`}
-        >
-          {busy ? (
-            <span className="inline-flex items-center justify-center gap-2">
-              <span
-                aria-hidden="true"
-                className="h-4 w-4 animate-spin rounded-full border-2 border-night/20 border-t-night"
-              />
-              Signing in…
-            </span>
-          ) : (
-            "Sign in"
-          )}
-        </button>
-      </form>
     </div>
   );
 }
@@ -1374,6 +1308,7 @@ export default function AdminApp() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
   const pathTab = tabFromPathname(pathname);
   const routeOrderId = searchParams.get("edit");
   const tab = routeOrderId ? "orders-edit" : pathTab;
@@ -1381,6 +1316,7 @@ export default function AdminApp() {
     searchParams.get("from") === "all" ? "/admin/orders/all/" : "/admin/orders/";
   const [ready, setReady] = useState(false);
   const [authed, setAuthed] = useState(false);
+  const [authError, setAuthError] = useState("");
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingOrderId, setLoadingOrderId] = useState(null);
@@ -1437,17 +1373,60 @@ export default function AdminApp() {
         setReady(true);
         return;
       }
+
+      // Reuse an existing admin token if still valid.
       const ok = await adminValidate();
       if (cancelled) return;
-      setAuthed(ok);
-      setReady(true);
-      if (ok) await refreshOrders();
+      if (ok) {
+        setAuthed(true);
+        setAuthError("");
+        setReady(true);
+        await refreshOrders();
+        return;
+      }
+
+      // Wait for customer auth before attempting email-based admin login.
+      if (authLoading) return;
+
+      if (!user) {
+        router.replace("/login?redirect=/admin/orders/");
+        return;
+      }
+
+      if (!isAdminAllowedEmail(user.email)) {
+        router.replace("/");
+        return;
+      }
+
+      if (!supabase) {
+        setAuthError("Supabase is not configured.");
+        setAuthed(false);
+        setReady(true);
+        return;
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        if (!accessToken) throw new Error("Missing session");
+        await adminLoginWithSession(accessToken);
+        if (cancelled) return;
+        setAuthed(true);
+        setAuthError("");
+        setReady(true);
+        await refreshOrders();
+      } catch (err) {
+        if (cancelled) return;
+        setAuthError(err.message || "Could not start admin session.");
+        setAuthed(false);
+        setReady(true);
+      }
     }
     boot();
     return () => {
       cancelled = true;
     };
-  }, [refreshOrders]);
+  }, [refreshOrders, user, authLoading, router]);
 
   useEffect(() => {
     if (tab !== "orders-edit") clearEditor();
@@ -1484,11 +1463,6 @@ export default function AdminApp() {
       cancelled = true;
     };
   }, [authed, tab, routeOrderId]);
-
-  async function handleLoginSuccess() {
-    setAuthed(true);
-    await refreshOrders();
-  }
 
   async function handleLogout() {
     await adminLogout();
@@ -1630,7 +1604,7 @@ export default function AdminApp() {
     }
   }
 
-  if (!ready) {
+  if (!ready || authLoading) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-16">
         <LoadingIndicator label="Loading admin…" />
@@ -1654,9 +1628,15 @@ export default function AdminApp() {
   }
 
   if (!authed) {
+    // Unsigned / unauthorized users are redirected in boot(); this is only for
+    // allowlisted users whose admin session mint failed.
     return (
-      <div className="mx-auto max-w-lg px-4 py-16">
-        <LoginGate onSuccess={handleLoginSuccess} />
+      <div className="mx-auto max-w-6xl px-4 py-16">
+        <LoadingIndicator
+          label={
+            authError ? "Couldn't open admin. Try refreshing." : "Loading admin…"
+          }
+        />
       </div>
     );
   }

@@ -70,10 +70,35 @@ async function adminRequest(url, { token, body, formData, method = "POST" } = {}
   return payload;
 }
 
-export async function adminLogin(password) {
-  const payload = await adminRequest(authUrl(), {
-    body: { action: "login", password },
+/** Mint an admin session from a signed-in customer's Supabase access token. */
+export async function adminLoginWithSession(accessToken) {
+  if (!accessToken) throw new Error("Missing session");
+  const anonKey = getAnonKey();
+  const response = await fetch(authUrl(), {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ action: "loginWithSession" }),
   });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || payload?.ok === false) {
+    const message =
+      (typeof payload?.error === "string" && payload.error) ||
+      (typeof payload?.message === "string" && payload.message) ||
+      `Request failed (${response.status})`;
+    throw new Error(message);
+  }
+
   storeAdminToken(payload.token);
   return payload;
 }
