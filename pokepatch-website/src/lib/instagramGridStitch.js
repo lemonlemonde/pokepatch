@@ -1,4 +1,4 @@
-import { loadImage } from "@/lib/instagramStitch";
+import { loadImage, resolveOverlay } from "@/lib/instagramStitch";
 import {
   INSTAGRAM_HEIGHT,
   INSTAGRAM_WIDTH,
@@ -16,12 +16,24 @@ const PAIRS_PER_POST = 2;
  * ceil(N / 2) canvases.
  *
  * @param {{ before: File, after: File }[]} pairs
+ * @param {{
+ *   showCardInfo?: boolean,
+ *   showCaption?: boolean,
+ *   frontFile?: File | null,
+ *   card?: string,
+ *   set?: string,
+ *   restoration?: string,
+ * } | null} overlayOptions
  * @returns {Promise<HTMLCanvasElement[]>}
  */
-export async function stitchGridPosts(pairs) {
+export async function stitchGridPosts(pairs, overlayOptions = null) {
   if (!pairs.length) return [];
 
-  const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
+  const [, logoImg, overlay] = await Promise.all([
+    ensureLabelFont(),
+    ensureLogo(),
+    resolveOverlay(overlayOptions),
+  ]);
 
   const loadedRows = await Promise.all(
     pairs.map(async (pair) => ({
@@ -42,7 +54,7 @@ export async function stitchGridPosts(pairs) {
 
     const ctx = canvas.getContext("2d");
     enableHighQuality(ctx);
-    drawGridFrame(ctx, rows, logoImg);
+    drawGridFrame(ctx, rows, logoImg, overlay);
 
     return canvas;
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, {
@@ -9,6 +9,7 @@ import StudioMediaBank, {
   FRONT_BACK_PAIR_SLOT_GROUPS,
 } from "@/components/StudioMediaBank";
 import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
+import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import {
   canvasToBlob,
   stitchBeforeAfterPosts,
@@ -19,6 +20,273 @@ import {
   extensionForMimeType,
   stitchBothVideos,
 } from "@/lib/instagramVideoStitch";
+
+const INPUT_CLASS =
+  "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
+
+function createEmptyCardMeta() {
+  return {
+    frontFile: null,
+    frontPreviewUrl: null,
+    card: "",
+    set: "",
+    restoration: "",
+    showCardInfo: true,
+    showCaption: true,
+  };
+}
+
+function validateCardMeta(meta) {
+  if (meta.showCardInfo) {
+    if (!meta.frontFile) return "Card info needs a front image.";
+    if (!meta.card.trim()) return "Card info needs a card name.";
+    if (!meta.set.trim()) return "Card info needs a set name.";
+  }
+  if (meta.showCaption && !meta.restoration.trim()) {
+    return "Restoration caption needs restoration text.";
+  }
+  return null;
+}
+
+function cardMetaToOverlayOptions(meta) {
+  return {
+    showCardInfo: meta.showCardInfo,
+    showCaption: meta.showCaption,
+    frontFile: meta.frontFile,
+    card: meta.card.trim(),
+    set: meta.set.trim(),
+    restoration: meta.restoration.trim(),
+  };
+}
+
+function MetaSwitch({ id, label, description, checked, onChange }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <label
+          htmlFor={id}
+          className="font-secondary text-sm font-semibold text-ink"
+        >
+          {label}
+        </label>
+        {description ? (
+          <p className="mt-0.5 text-xs text-ink/50">{description}</p>
+        ) : null}
+      </div>
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+          checked ? "bg-berry" : "bg-ink/25"
+        }`}
+      >
+        <span
+          aria-hidden="true"
+          className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-cream shadow-cozy-sm transition ${
+            checked ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function StudioCardMetaControls({ value, onChange }) {
+  const frontInputId = useId();
+  const cardInfoSwitchId = useId();
+  const captionSwitchId = useId();
+  const [uploadDragging, setUploadDragging] = useState(false);
+
+  useEffect(() => {
+    const url = value.frontPreviewUrl;
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [value.frontPreviewUrl]);
+
+  function patch(partial) {
+    onChange({ ...value, ...partial });
+  }
+
+  function setFrontFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    patch({
+      frontFile: file,
+      frontPreviewUrl: URL.createObjectURL(file),
+    });
+  }
+
+  function handleFrontChange(event) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file) {
+      patch({ frontFile: null, frontPreviewUrl: null });
+      return;
+    }
+    setFrontFile(file);
+  }
+
+  function handleUploadDrop(event) {
+    event.preventDefault();
+    setUploadDragging(false);
+    const file = Array.from(event.dataTransfer.files ?? []).find((entry) =>
+      entry.type.startsWith("image/"),
+    );
+    if (file) setFrontFile(file);
+  }
+
+  function clearFront() {
+    patch({ frontFile: null, frontPreviewUrl: null });
+  }
+
+  return (
+    <div className="space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
+      <p className="font-secondary text-sm font-semibold text-ink">
+        Card overlays
+      </p>
+
+      <div className="space-y-3 rounded-xl border border-ink/10 bg-night/20 p-3">
+        <MetaSwitch
+          id={cardInfoSwitchId}
+          label="Card info"
+          description="Top-left chip with front thumbnail, card, and set"
+          checked={value.showCardInfo}
+          onChange={(showCardInfo) => patch({ showCardInfo })}
+        />
+
+        {value.showCardInfo ? (
+          <div className="grid gap-4 border-t border-ink/10 pt-3 sm:grid-cols-[minmax(0,11rem)_1fr]">
+            <div className="space-y-2">
+              <p className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                Front image
+              </p>
+              <div
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setUploadDragging(true);
+                }}
+                onDragLeave={() => setUploadDragging(false)}
+                onDrop={handleUploadDrop}
+                className={`rounded-xl transition ${
+                  uploadDragging ? "ring-2 ring-berry/60" : ""
+                }`}
+              >
+                {value.frontPreviewUrl ? (
+                  <div className="space-y-2">
+                    <StudioOpenableThumb
+                      src={value.frontPreviewUrl}
+                      alt="Card front preview"
+                      label={value.frontFile?.name || "Card front"}
+                      className="block w-24"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={value.frontPreviewUrl}
+                        alt="Card front preview"
+                        className="h-24 w-24 rounded-lg border border-ink/15 object-cover"
+                      />
+                    </StudioOpenableThumb>
+                    <div className="flex w-24 flex-col gap-1">
+                      <label
+                        htmlFor={frontInputId}
+                        className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                      >
+                        Replace
+                      </label>
+                      <button
+                        type="button"
+                        onClick={clearFront}
+                        className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor={frontInputId}
+                    className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-6 text-center transition ${
+                      uploadDragging
+                        ? "border-berry bg-berry/10"
+                        : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+                    }`}
+                  >
+                    <p className="text-xs text-ink/70">
+                      Drop image here or browse
+                    </p>
+                  </label>
+                )}
+              </div>
+              <input
+                id={frontInputId}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleFrontChange}
+              />
+            </div>
+
+            <div className="grid gap-3">
+              <label className="block space-y-1.5">
+                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  Card
+                </span>
+                <input
+                  type="text"
+                  value={value.card}
+                  onChange={(event) => patch({ card: event.target.value })}
+                  placeholder="Sylveon-GX (Secret Rare)"
+                  className={INPUT_CLASS}
+                />
+              </label>
+              <label className="block space-y-1.5">
+                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  Set
+                </span>
+                <input
+                  type="text"
+                  value={value.set}
+                  onChange={(event) => patch({ set: event.target.value })}
+                  placeholder="Guardians Rising"
+                  className={INPUT_CLASS}
+                />
+              </label>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="space-y-3 rounded-xl border border-ink/10 bg-night/20 p-3">
+        <MetaSwitch
+          id={captionSwitchId}
+          label="Restoration caption"
+          description="Centered caption above the images"
+          checked={value.showCaption}
+          onChange={(showCaption) => patch({ showCaption })}
+        />
+
+        {value.showCaption ? (
+          <label className="block space-y-1.5 border-t border-ink/10 pt-3">
+            <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+              Restoration
+            </span>
+            <input
+              type="text"
+              value={value.restoration}
+              onChange={(event) => patch({ restoration: event.target.value })}
+              placeholder="Surface Clean"
+              className={INPUT_CLASS}
+            />
+          </label>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 const PHOTO_GROUP_MODES = [
   {
@@ -182,9 +450,11 @@ function MediaFormatter({
   onGenerate,
   renderPreview,
   controls = null,
+  afterBank = null,
   resetKey = null,
   slotGroups,
   validateFiles = null,
+  validateExtra = null,
 }) {
   const [bank, setBank] = useState([]);
   const [slots, setSlots] = useState(EMPTY_SLOTS);
@@ -227,6 +497,14 @@ function MediaFormatter({
       return;
     }
 
+    if (validateExtra) {
+      const extraError = validateExtra();
+      if (extraError) {
+        setError(extraError);
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       const next = await onGenerate(files);
@@ -258,6 +536,8 @@ function MediaFormatter({
           onError={setError}
           slotGroups={slotGroups}
         />
+
+        {afterBank}
 
         {error && (
           <p className="text-center text-sm text-berry" role="alert">
@@ -325,9 +605,9 @@ function validatePhotoPairFiles(files, groupBy) {
   return null;
 }
 
-async function generatePhotoOutputs(files, groupBy) {
+async function generatePhotoOutputs(files, groupBy, overlayOptions = null) {
   if (groupBy === "front-back-pair") {
-    const canvases = await stitchBeforeAfterPosts(files);
+    const canvases = await stitchBeforeAfterPosts(files, overlayOptions);
     const pairs = [];
     if (canvases.before) {
       pairs.push({ key: "before", label: "Before", canvas: canvases.before });
@@ -338,7 +618,7 @@ async function generatePhotoOutputs(files, groupBy) {
     return canvasOutputsFromPairs(pairs);
   }
 
-  const canvases = await stitchBothPosts(files);
+  const canvases = await stitchBothPosts(files, overlayOptions);
   const pairs = [];
   if (canvases.front) {
     // Solo Front/Any pair → filename pokepatch-any.png; with Back → front/back.
@@ -407,6 +687,7 @@ function GroupModeToggle({ value, onChange }) {
 
 function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
+  const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
   const activeMode =
     PHOTO_GROUP_MODES.find((mode) => mode.id === groupBy) ??
     PHOTO_GROUP_MODES[0];
@@ -420,13 +701,19 @@ function PhotoFormatter({ onBack }) {
       generateLabel="Generate images"
       busyLabel="Generating…"
       onBack={onBack}
-      onGenerate={(files) => generatePhotoOutputs(files, groupBy)}
+      onGenerate={(files) =>
+        generatePhotoOutputs(files, groupBy, cardMetaToOverlayOptions(cardMeta))
+      }
       validateFiles={(files) => validatePhotoPairFiles(files, groupBy)}
+      validateExtra={() => validateCardMeta(cardMeta)}
       renderPreview={ImagePreview}
       resetKey={groupBy}
       slotGroups={activeMode.slotGroups}
       controls={
         <GroupModeToggle value={groupBy} onChange={setGroupBy} />
+      }
+      afterBank={
+        <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
       }
     />
   );
@@ -459,6 +746,7 @@ function GridFormatter({ onBack }) {
   const [beforeItems, setBeforeItems] = useState([]);
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
+  const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -494,9 +782,18 @@ function GridFormatter({ onBack }) {
       return;
     }
 
+    const metaError = validateCardMeta(cardMeta);
+    if (metaError) {
+      setError(metaError);
+      return;
+    }
+
     setBusy(true);
     try {
-      const canvases = await stitchGridPosts(files);
+      const canvases = await stitchGridPosts(
+        files,
+        cardMetaToOverlayOptions(cardMeta),
+      );
       const next = await Promise.all(
         canvases.map(async (canvas, index) => {
           const blob = await canvasToBlob(canvas);
@@ -540,6 +837,8 @@ function GridFormatter({ onBack }) {
         />
 
         <div className="mx-auto max-w-3xl space-y-6">
+          <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
+
           {error && (
             <p className="text-center text-sm text-berry" role="alert">
               {error}

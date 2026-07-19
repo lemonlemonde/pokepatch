@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     if (action === "loginWithSession") {
       const jwt = getBearerToken(req);
       if (!jwt) {
-        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
+        return jsonResponse(req, { ok: false, error: "missing session" }, 401);
       }
 
       const {
@@ -44,15 +44,25 @@ Deno.serve(async (req) => {
         error,
       } = await supabase.auth.getUser(jwt);
       if (error || !user?.email) {
-        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
+        console.error("admin-auth getUser failed:", error?.message ?? "no email");
+        return jsonResponse(req, { ok: false, error: "invalid session" }, 401);
       }
 
       const allowed = getAllowedAdminEmails();
-      if (
-        allowed.length === 0 ||
-        !allowed.includes(user.email.trim().toLowerCase())
-      ) {
-        return jsonResponse(req, { ok: false, error: "unauthorized" }, 401);
+      if (allowed.length === 0) {
+        console.error("admin-auth: ADMIN_ALLOWED_EMAILS is empty");
+        return jsonResponse(
+          req,
+          { ok: false, error: "admin allowlist is not configured" },
+          503
+        );
+      }
+      if (!allowed.includes(user.email.trim().toLowerCase())) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "email is not allowlisted for admin" },
+          403
+        );
       }
 
       const session = await createSession(supabase);

@@ -94,13 +94,47 @@ function SideUpload({
   onStage,
   onClear,
 }) {
+  const [dragging, setDragging] = useState(false);
   const hasSomething = Boolean(stagedFile || previewUrl);
   const kind = mediaKind || (stagedFile?.type?.startsWith("video/") ? "video" : "image");
+
+  function acceptDroppedFile(fileList) {
+    const file = Array.from(fileList ?? []).find(
+      (entry) =>
+        entry.type.startsWith("image/") || entry.type.startsWith("video/"),
+    );
+    if (file) onStage(file);
+  }
+
+  function handleFileInput(event) {
+    const file = event.target.files?.[0] ?? null;
+    onStage(file);
+    event.target.value = "";
+  }
 
   return (
     <div className="rounded-xl border border-ink/10 bg-night/20 p-3">
       <p className="text-xs font-bold uppercase tracking-wide text-ink/60">{label}</p>
-      <div className="mt-2 aspect-[3/4] overflow-hidden rounded-lg border border-ink/10 bg-night/30">
+      <div
+        className={`mt-2 aspect-[3/4] overflow-hidden rounded-lg border border-dashed transition ${
+          uploading
+            ? "opacity-60"
+            : dragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/15 bg-night/30"
+        }`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!uploading) setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          if (uploading) return;
+          acceptDroppedFile(event.dataTransfer.files);
+        }}
+      >
         {stagedFile ? (
           <ObjectPreview
             file={stagedFile}
@@ -125,9 +159,17 @@ function SideUpload({
             />
           )
         ) : (
-          <div className="flex h-full items-center justify-center text-xs text-ink/40">
-            No file
-          </div>
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-night/40 hover:text-ink/55">
+            <span>Drop image or video here</span>
+            <span className="text-ink/30">or click to browse</span>
+            <input
+              type="file"
+              accept="image/*,video/*"
+              className="sr-only"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -138,11 +180,7 @@ function SideUpload({
             accept="image/*,video/*"
             className="hidden"
             disabled={uploading}
-            onChange={(event) => {
-              const file = event.target.files?.[0] ?? null;
-              onStage(file);
-              event.target.value = "";
-            }}
+            onChange={handleFileInput}
           />
         </label>
         {hasSomething && (

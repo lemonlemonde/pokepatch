@@ -24,7 +24,41 @@ export function loadImage(file) {
   });
 }
 
-async function stitchComparison(leftFile, rightFile, leftLabel, rightLabel) {
+/**
+ * Resolve Studio overlay options into canvas overlay payload.
+ * @param {{
+ *   showCardInfo?: boolean,
+ *   showCaption?: boolean,
+ *   frontFile?: File | null,
+ *   card?: string,
+ *   set?: string,
+ *   restoration?: string,
+ * } | null} options
+ */
+export async function resolveOverlay(options) {
+  if (!options) return null;
+
+  const overlay = {};
+  if (options.showCardInfo && options.frontFile) {
+    overlay.cardInfo = {
+      frontImg: await loadImage(options.frontFile),
+      card: options.card ?? "",
+      set: options.set ?? "",
+    };
+  }
+  if (options.showCaption && options.restoration) {
+    overlay.caption = options.restoration;
+  }
+  return overlay.cardInfo || overlay.caption ? overlay : null;
+}
+
+async function stitchComparison(
+  leftFile,
+  rightFile,
+  leftLabel,
+  rightLabel,
+  overlay = null,
+) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
   const [leftImg, rightImg] = await Promise.all([
@@ -38,25 +72,38 @@ async function stitchComparison(leftFile, rightFile, leftLabel, rightLabel) {
 
   const ctx = canvas.getContext("2d");
   enableHighQuality(ctx);
-  drawComparisonFrame(ctx, leftImg, rightImg, leftLabel, rightLabel, logoImg);
+  drawComparisonFrame(
+    ctx,
+    leftImg,
+    rightImg,
+    leftLabel,
+    rightLabel,
+    logoImg,
+    overlay,
+  );
 
   return canvas;
 }
 
 /** Before-After Pair posts. Only stitches pairs that have both images. */
-export async function stitchBothPosts(files) {
+export async function stitchBothPosts(files, overlayOptions = null) {
   const [beforeFront, beforeBack, afterFront, afterBack] = files;
+  const overlay = await resolveOverlay(overlayOptions);
   const tasks = [];
   if (beforeFront && afterFront) {
     tasks.push(
-      stitchComparison(beforeFront, afterFront, "before", "after").then(
-        (canvas) => ["front", canvas],
-      ),
+      stitchComparison(
+        beforeFront,
+        afterFront,
+        "before",
+        "after",
+        overlay,
+      ).then((canvas) => ["front", canvas]),
     );
   }
   if (beforeBack && afterBack) {
     tasks.push(
-      stitchComparison(beforeBack, afterBack, "before", "after").then(
+      stitchComparison(beforeBack, afterBack, "before", "after", overlay).then(
         (canvas) => ["back", canvas],
       ),
     );
@@ -65,7 +112,7 @@ export async function stitchBothPosts(files) {
   return Object.fromEntries(entries);
 }
 
-async function stitchPairedSides(leftFile, rightFile, label) {
+async function stitchPairedSides(leftFile, rightFile, label, overlay = null) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
   const [leftImg, rightImg] = await Promise.all([
@@ -79,29 +126,28 @@ async function stitchPairedSides(leftFile, rightFile, label) {
 
   const ctx = canvas.getContext("2d");
   enableHighQuality(ctx);
-  drawPairedSidesFrame(ctx, leftImg, rightImg, label, logoImg);
+  drawPairedSidesFrame(ctx, leftImg, rightImg, label, logoImg, overlay);
 
   return canvas;
 }
 
 /** Front-Back Pair posts. Only stitches pairs that have both images. */
-export async function stitchBeforeAfterPosts(files) {
+export async function stitchBeforeAfterPosts(files, overlayOptions = null) {
   const [beforeFront, beforeBack, afterFront, afterBack] = files;
+  const overlay = await resolveOverlay(overlayOptions);
   const tasks = [];
   if (beforeFront && beforeBack) {
     tasks.push(
-      stitchPairedSides(beforeFront, beforeBack, "before").then((canvas) => [
-        "before",
-        canvas,
-      ]),
+      stitchPairedSides(beforeFront, beforeBack, "before", overlay).then(
+        (canvas) => ["before", canvas],
+      ),
     );
   }
   if (afterFront && afterBack) {
     tasks.push(
-      stitchPairedSides(afterFront, afterBack, "after").then((canvas) => [
-        "after",
-        canvas,
-      ]),
+      stitchPairedSides(afterFront, afterBack, "after", overlay).then(
+        (canvas) => ["after", canvas],
+      ),
     );
   }
   const entries = await Promise.all(tasks);
