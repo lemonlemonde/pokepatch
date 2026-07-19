@@ -3,6 +3,12 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { orderStatusLabel, orderStatusBadgeClass } from "@/lib/orderStatus";
+import {
+  bulkDiscountLines,
+  computeQuoteTotal,
+  formatMoney,
+  hasQuoteData,
+} from "@/lib/servicePricing";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 60; // 1 hour
 
@@ -307,6 +313,99 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   <p className="mt-1 text-sm text-ink/85">
                     {orderDetails.general_notes}
                   </p>
+                </div>
+              )}
+
+              {/* Quote from the team */}
+              {hasQuoteData({
+                items: orderDetails.quote_items,
+                bulkCounts: orderDetails.quote_bulk_counts,
+                overrideAmount: orderDetails.quote_override_amount,
+              }) && (
+                <div className="rounded-xl border border-peach/30 bg-peach/10 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-peach">
+                    Your quote
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {(orderDetails.quote_items ?? []).map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-lg border border-ink/10 bg-night/20 px-2.5 py-2"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-ink">
+                              {item.card_name}
+                              {item.set_name ? (
+                                <span className="font-normal text-ink/55">
+                                  {" "}
+                                  · {item.set_name}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-xs text-ink/60">
+                              {item.service_label}
+                            </p>
+                          </div>
+                          <p className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                            {formatMoney(item.quote_base_amount)}
+                          </p>
+                        </div>
+                        {item.high_value_surcharge != null &&
+                        Number(item.high_value_surcharge) !== 0 ? (
+                          <div className="mt-1 flex justify-between gap-2 text-xs text-ink/70">
+                            <span>High-value surcharge</span>
+                            <span className="tabular-nums">
+                              {formatMoney(item.high_value_surcharge)}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+
+                    {bulkDiscountLines(orderDetails.quote_bulk_counts).map(
+                      (line) => (
+                        <div
+                          key={line.serviceKey}
+                          className="flex justify-between gap-2 text-sm text-ink/80"
+                        >
+                          <span>
+                            {line.label} bulk · {line.count} × $
+                            {line.perCardOff} off
+                          </span>
+                          <span className="tabular-nums font-semibold">
+                            −{formatMoney(line.totalOff)}
+                          </span>
+                        </div>
+                      )
+                    )}
+
+                    {orderDetails.quote_override_label &&
+                    orderDetails.quote_override_amount != null ? (
+                      <div className="flex justify-between gap-2 text-sm text-ink/80">
+                        <span>{orderDetails.quote_override_label}</span>
+                        <span className="tabular-nums font-semibold">
+                          {formatMoney(orderDetails.quote_override_amount)}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-between border-t border-ink/10 pt-2">
+                      <span className="text-sm font-semibold text-ink">
+                        Total
+                      </span>
+                      <span className="text-base font-bold tabular-nums text-ink">
+                        {formatMoney(
+                          computeQuoteTotal({
+                            items: orderDetails.quote_items,
+                            bulkCounts: orderDetails.quote_bulk_counts,
+                            overrideAmount:
+                              orderDetails.quote_override_amount,
+                          })
+                        )}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               )}
 

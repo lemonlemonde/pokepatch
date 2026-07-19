@@ -149,7 +149,10 @@ export async function adminGetOrder(orderId) {
   return payload.order;
 }
 
-export async function adminSaveOrder(orderId, { order, contacts, cards }) {
+export async function adminSaveOrder(
+  orderId,
+  { order, contacts, cards, quote_items }
+) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body: {
@@ -158,6 +161,7 @@ export async function adminSaveOrder(orderId, { order, contacts, cards }) {
       order,
       contacts,
       cards,
+      quote_items,
     },
   });
   return payload.full ?? payload.order;

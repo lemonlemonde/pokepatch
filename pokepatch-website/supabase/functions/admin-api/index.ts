@@ -269,7 +269,7 @@ async function fetchOrderGraph(
   let ordersQuery = supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at"
+      "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
 
@@ -286,6 +286,7 @@ async function fetchOrderGraph(
   const [
     { data: contacts, error: contactsError },
     { data: cards, error: cardsError },
+    { data: quoteItems, error: quoteItemsError },
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -295,9 +296,17 @@ async function fetchOrderGraph(
       .from("cards")
       .select("id, order_id, card_name, set_name, description")
       .in("order_id", orderIds),
+    supabase
+      .from("order_quote_items")
+      .select(
+        "id, order_id, sort_order, card_name, set_name, service_key, service_label, quote_base_amount, high_value_surcharge"
+      )
+      .in("order_id", orderIds)
+      .order("sort_order", { ascending: true }),
   ]);
   if (contactsError) throw contactsError;
   if (cardsError) throw cardsError;
+  if (quoteItemsError) throw quoteItemsError;
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
   let images: { id: number; card_id: string; image_type: string; storage_path: string }[] = [];
@@ -327,6 +336,13 @@ async function fetchOrderGraph(
     cardsByOrder.set(card.order_id as string, list);
   }
 
+  const quoteItemsByOrder = new Map<string, typeof quoteItems>();
+  for (const item of quoteItems ?? []) {
+    const list = quoteItemsByOrder.get(item.order_id as string) ?? [];
+    list.push(item);
+    quoteItemsByOrder.set(item.order_id as string, list);
+  }
+
   const imagesByCard = new Map<string, typeof images>();
   for (const img of images) {
     const list = imagesByCard.get(img.card_id) ?? [];
@@ -344,6 +360,7 @@ async function fetchOrderGraph(
         signed_url: signedMap.get(img.storage_path) ?? null,
       })),
     })),
+    quote_items: quoteItemsByOrder.get(order.id as string) ?? [],
   }));
 
   return orderId ? enriched[0] ?? null : enriched;
@@ -617,9 +634,13 @@ Deno.serve(async (req) => {
         return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
       }
 
-      const orderPatch = body.order ?? null;
+      const orderPatch =
+        body.order && typeof body.order === "object" ? { ...body.order } : {};
       const contacts = Array.isArray(body.contacts) ? body.contacts : null;
       const cards = Array.isArray(body.cards) ? body.cards : null;
+      if (Array.isArray(body.quote_items)) {
+        orderPatch.quote_items = body.quote_items;
+      }
 
       const { error: rpcError } = await supabase.rpc("update_order", {
         p_order_id: orderId,

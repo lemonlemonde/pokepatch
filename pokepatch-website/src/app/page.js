@@ -5,6 +5,7 @@ import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
+import { marketingServices } from "@/lib/servicePricing";
 
 const steps = [
   {
@@ -25,49 +26,7 @@ const steps = [
   },
 ];
 
-const services = [
-  {
-    title: "Surface Restoration",
-    price: "$9",
-    unit: "/ card",
-    features: [
-      "Surface cleaning",
-      "Scratch minimization",
-      "Shine enhancement",
-    ],
-    bulk: [
-      { label: "10+ cards", value: "$7 / card" },
-      { label: "25+ cards", value: "$6 / card" },
-    ],
-    accent: "blush",
-  },
-  {
-    title: "Precision Pressing & Flattening",
-    price: "$28",
-    unit: "/ card",
-    features: ["Minor bends", "Light warping", "Subtle edge lift"],
-    bulk: [{ label: "10+ cards", value: "$5 off / card" }],
-    accent: "lavender",
-  },
-  {
-    title: "Advanced Restoration",
-    price: "$45+",
-    unit: "/ card",
-    features: ["Creases", "Heavy dents", "Severe warping"],
-    bulk: [{ label: "25+ cards", value: "$10 off / card" }],
-    accent: "peach",
-  },
-  {
-    title: "High-Value Handling",
-    features: ["Added on top of restoration service"],
-    bulk: [
-      { label: "$200–$500", value: "+4%" },
-      { label: "$500+", value: "+8%" },
-    ],
-    bulkLabel: "Surcharge Tiers",
-    accent: "mint",
-  },
-];
+const services = marketingServices();
 
 const faqs = [
   {
