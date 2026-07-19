@@ -21,6 +21,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import StudioTool from "@/components/StudioTool";
+import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
@@ -37,9 +38,9 @@ import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
   HV_PERCENT_OPTIONS,
+  analyzeQuoteCardCoverage,
   bulkPerCardOff,
   bulkTotalOff,
-  computeQuoteTotal,
   defaultBaseAmount,
   defaultServiceLabel,
   formatMoney,
@@ -47,6 +48,7 @@ import {
   normalizeBulkCalcs,
   normalizeBulkEntry,
   parseMoneyInput,
+  quoteItemCardLabel,
   suggestBulkCalcsFromItems,
 } from "@/lib/servicePricing";
 
@@ -270,16 +272,26 @@ function draftPayload(draft) {
       set_name: card.set_name.trim(),
       description: card.description.trim(),
     })),
-    quote_items: (draft.quote_items ?? []).map((item, index) => ({
-      id: item.id,
-      sort_order: index,
-      card_name: item.card_name.trim(),
-      set_name: item.set_name.trim(),
-      service_key: item.service_key,
-      service_label: item.service_label.trim(),
-      quote_base_amount: moneyFieldToPayload(item.quote_base_amount),
-      high_value_surcharge: moneyFieldToPayload(item.high_value_surcharge),
-    })),
+    quote_items: (draft.quote_items ?? []).map((item, index) => {
+      const linked =
+        item.card_pick && item.card_pick !== "custom"
+          ? draft.cards.find(
+              (card) => String(card.id) === String(item.card_pick)
+            )
+          : null;
+      const card_name = (linked?.card_name ?? item.card_name).trim();
+      const set_name = (linked?.set_name ?? item.set_name).trim();
+      return {
+        id: item.id,
+        sort_order: index,
+        card_name,
+        set_name,
+        service_key: item.service_key,
+        service_label: item.service_label.trim(),
+        quote_base_amount: moneyFieldToPayload(item.quote_base_amount),
+        high_value_surcharge: moneyFieldToPayload(item.high_value_surcharge),
+      };
+    }),
   };
 }
 
@@ -1182,7 +1194,23 @@ function OrderEditor({
     const cards = draft.cards.map((card, i) =>
       i === index ? { ...card, ...patch } : card
     );
-    updateDraft({ cards });
+    const updated = cards[index];
+    const touchesName = "card_name" in patch || "set_name" in patch;
+    if (!touchesName || updated?.id == null) {
+      updateDraft({ cards });
+      return;
+    }
+    const cardId = String(updated.id);
+    const quote_items = (draft.quote_items ?? []).map((item) =>
+      item.card_pick && String(item.card_pick) === cardId
+        ? {
+            ...item,
+            card_name: updated.card_name ?? "",
+            set_name: updated.set_name ?? "",
+          }
+        : item
+    );
+    updateDraft({ cards, quote_items });
   }
 
   function updateQuoteItem(index, patch) {
@@ -1261,6 +1289,10 @@ function OrderEditor({
   }
 
   function applyHvSuggestion(index, percent) {
+    if (Number(percent) === 0) {
+      updateQuoteItem(index, { high_value_surcharge: "" });
+      return;
+    }
     const item = draft.quote_items[index];
     const amount = highValueSurchargeFromValue(
       item.quote_base_amount,
@@ -1317,16 +1349,18 @@ function OrderEditor({
   }
 
   const quoteItems = draft.quote_items ?? [];
-  const quoteTotal = computeQuoteTotal({
-    items: quoteItems.map((item) => ({
-      quote_base_amount: moneyFieldToPayload(item.quote_base_amount) ?? 0,
-      high_value_surcharge: moneyFieldToPayload(item.high_value_surcharge),
-    })),
-    bulkCounts: cleanBulkCalcs(draft.quote_bulk_counts),
-    overrideAmount: draft.quote_override_enabled
-      ? moneyFieldToPayload(draft.quote_override_amount)
-      : null,
-  });
+  const receiptItems = quoteItems.map((item) => ({
+    id: item.id,
+    card_name: item.card_name,
+    set_name: item.set_name,
+    service_label: item.service_label,
+    quote_base_amount: moneyFieldToPayload(item.quote_base_amount) ?? 0,
+    high_value_surcharge: moneyFieldToPayload(item.high_value_surcharge),
+  }));
+  const receiptBulkCounts = cleanBulkCalcs(draft.quote_bulk_counts);
+  const receiptOverrideAmount = draft.quote_override_enabled
+    ? moneyFieldToPayload(draft.quote_override_amount)
+    : null;
   const bulkServiceKeys = [
     ...new Set([
       ...Object.keys(draft.quote_bulk_counts ?? {}),
@@ -1335,6 +1369,7 @@ function OrderEditor({
         .filter((key) => key && key !== SERVICE_KEYS.CUSTOM),
     ]),
   ].filter((key) => key !== SERVICE_KEYS.CUSTOM);
+  const quoteCoverage = analyzeQuoteCardCoverage(draft.cards, quoteItems);
 
   const driveUrl = draft.photos_drive_url.trim();
 
@@ -1484,7 +1519,7 @@ function OrderEditor({
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {quoteItems.map((item, index) => {
               const base = moneyFieldToPayload(item.quote_base_amount) ?? 0;
               const hv = moneyFieldToPayload(item.high_value_surcharge) ?? 0;
@@ -1492,22 +1527,17 @@ function OrderEditor({
               return (
               <div
                 key={item.id ?? `quote-${index}`}
-                className="space-y-3 rounded-xl border border-ink/10 bg-night/5 p-3"
+                className="space-y-2 rounded-xl border border-ink/10 bg-night/5 px-3 py-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-ink">
+                  <p className="text-xs font-semibold uppercase tracking-[0.06em] text-ink/45">
                     Line {index + 1}
                   </p>
                   <div className="flex items-center gap-3">
                     <p className="text-right text-sm tabular-nums text-ink">
                       <span className="text-ink/65">
                         {formatMoney(base)}
-                        {hv !== 0 ? (
-                          <>
-                            {" "}
-                            + {formatMoney(hv)}
-                          </>
-                        ) : null}
+                        {hv !== 0 ? <> + {formatMoney(hv)}</> : null}
                         {" "}
                         =
                       </span>{" "}
@@ -1516,16 +1546,18 @@ function OrderEditor({
                     <button
                       type="button"
                       onClick={() => removeQuoteItem(index)}
-                      className="text-sm font-semibold text-ink/40 transition hover:text-berry"
+                      className="text-xs font-semibold text-ink/40 transition hover:text-berry"
                     >
                       Remove
                     </button>
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block sm:col-span-2">
-                    <EditorLabel>Card</EditorLabel>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <label className="block min-w-0">
+                    <span className="mb-1 block text-xs font-medium text-ink/55">
+                      Card
+                    </span>
                     {draft.cards.length > 0 ? (
                       <select
                         className={editorFieldClass()}
@@ -1537,19 +1569,20 @@ function OrderEditor({
                         <option value="">Select a card…</option>
                         {draft.cards.map((card) => (
                           <option key={card.id} value={card.id}>
-                            {card.card_name}
-                            {card.set_name ? ` · ${card.set_name}` : ""}
+                            {quoteItemCardLabel(card)}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <p className="rounded-xl border border-ink/10 bg-night/10 px-3.5 py-2.5 text-sm text-ink/50">
+                      <p className="rounded-xl border border-ink/10 bg-night/10 px-3 py-2 text-xs text-ink/50">
                         No cards on this order yet.
                       </p>
                     )}
                   </label>
-                  <label className="block">
-                    <EditorLabel>Service</EditorLabel>
+                  <label className="block min-w-0">
+                    <span className="mb-1 block text-xs font-medium text-ink/55">
+                      Service
+                    </span>
                     <select
                       className={editorFieldClass()}
                       value={item.service_key}
@@ -1565,8 +1598,10 @@ function OrderEditor({
                     </select>
                   </label>
                   {item.service_key === SERVICE_KEYS.CUSTOM ? (
-                    <label className="block">
-                      <EditorLabel>Service label</EditorLabel>
+                    <label className="block min-w-0 sm:col-span-2">
+                      <span className="mb-1 block text-xs font-medium text-ink/55">
+                        Service label
+                      </span>
                       <input
                         className={editorFieldClass()}
                         value={item.service_label}
@@ -1579,8 +1614,13 @@ function OrderEditor({
                       />
                     </label>
                   ) : null}
-                  <label className="block">
-                    <EditorLabel>Quote base amount ($)</EditorLabel>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <label className="block min-w-0 sm:w-32">
+                    <span className="mb-1 block text-xs font-medium text-ink/55">
+                      Base ($)
+                    </span>
                     <input
                       className={editorFieldClass()}
                       inputMode="decimal"
@@ -1592,36 +1632,36 @@ function OrderEditor({
                       }
                     />
                   </label>
-                  <div className="block sm:col-span-2">
-                    <EditorLabel>High-value surcharge ($)</EditorLabel>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                      <input
-                        className={`${editorFieldClass()} sm:max-w-xs`}
-                        inputMode="decimal"
-                        value={item.high_value_surcharge}
-                        onChange={(event) =>
-                          updateQuoteItem(index, {
-                            high_value_surcharge: event.target.value,
-                          })
+                  <label className="block min-w-0 sm:w-32">
+                    <span className="mb-1 block text-xs font-medium text-ink/55">
+                      HV surcharge ($)
+                    </span>
+                    <input
+                      className={editorFieldClass()}
+                      inputMode="decimal"
+                      value={item.high_value_surcharge}
+                      onChange={(event) =>
+                        updateQuoteItem(index, {
+                          high_value_surcharge: event.target.value,
+                        })
+                      }
+                      placeholder="0"
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 pb-0.5">
+                    {HV_PERCENT_OPTIONS.map((option) => (
+                      <button
+                        key={option.percent}
+                        type="button"
+                        onClick={() =>
+                          applyHvSuggestion(index, option.percent)
                         }
-                        placeholder="Optional"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        {HV_PERCENT_OPTIONS.map((option) => (
-                          <button
-                            key={option.percent}
-                            type="button"
-                            onClick={() =>
-                              applyHvSuggestion(index, option.percent)
-                            }
-                            className="rounded-xl border border-ink/15 bg-cream px-3 py-2 text-xs font-semibold text-ink transition hover:border-berry"
-                            title={`${option.percent}% of quote base amount`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                        className="rounded-lg border border-ink/15 bg-cream px-2.5 py-1.5 text-xs font-semibold text-ink transition hover:border-berry"
+                        title={`${option.percent}% of quote base amount`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1629,6 +1669,71 @@ function OrderEditor({
             })}
           </div>
         )}
+
+        {quoteItems.length > 0 || (draft.cards ?? []).length > 0 ? (
+          <div className="mt-4 space-y-2 rounded-xl border border-lavender/40 bg-lavender/20 px-3 py-3">
+            <EditorLabel>Service coverage</EditorLabel>
+            {quoteCoverage.assignments.length > 0 ? (
+              <ul className="space-y-1 text-sm text-ink/80">
+                {quoteCoverage.assignments.map((row) => (
+                  <li key={`${row.number}-${row.label}`}>
+                    <span className="font-semibold text-ink">
+                      {row.number}. {row.label}
+                    </span>
+                    <span className="text-ink/50"> — </span>
+                    {row.services
+                      .map((service) =>
+                        service.count > 1
+                          ? `${service.label} (×${service.count})`
+                          : service.label
+                      )
+                      .join(", ")}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-ink/45">
+                No services assigned to cards yet.
+              </p>
+            )}
+
+            {quoteCoverage.uncoveredCards.length > 0 ? (
+              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+                <span className="font-semibold text-berry">
+                  Missing service:
+                </span>{" "}
+                {quoteCoverage.uncoveredCards
+                  .map((row) => `${row.number}. ${row.label}`)
+                  .join(", ")}
+              </p>
+            ) : null}
+
+            {quoteCoverage.duplicateServiceCards.length > 0 ? (
+              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+                <span className="font-semibold text-berry">
+                  Same service more than once:
+                </span>{" "}
+                {quoteCoverage.duplicateServiceCards
+                  .map(
+                    (row) =>
+                      `${row.number}. ${row.label} (${row.services
+                        .map((s) => `${s.label} ×${s.count}`)
+                        .join(", ")})`
+                  )
+                  .join("; ")}
+              </p>
+            ) : null}
+
+            {quoteCoverage.uncoveredCards.length === 0 &&
+            quoteCoverage.duplicateServiceCards.length === 0 &&
+            quoteCoverage.assignments.length > 0 &&
+            (draft.cards ?? []).length > 0 ? (
+              <p className="text-xs text-ink/45">
+                Every order card has a service, with no duplicates.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-5 space-y-3 border-t border-ink/10 pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1653,74 +1758,97 @@ function OrderEditor({
             </p>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-ink/10">
-              <div className="grid min-w-[28rem] grid-cols-[minmax(8rem,1.4fr)_4.5rem_auto_5.5rem_auto_5.5rem] items-center gap-x-2 gap-y-2 px-3 py-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
-                  Service
-                </span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
-                  Count
-                </span>
-                <span className="text-[11px] font-semibold text-ink/35">×</span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
-                  Discount (−$/card)
-                </span>
-                <span className="text-[11px] font-semibold text-ink/35">=</span>
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
-                  Result
-                </span>
+              <div className="min-w-[28rem] px-3 py-2">
+                <div className="grid grid-cols-[minmax(8rem,1.4fr)_4.5rem_auto_5.5rem_auto_5.5rem] items-center gap-x-2 border-b border-ink/10 pb-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
+                    Service
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
+                    Count
+                  </span>
+                  <span className="text-[11px] font-semibold text-ink/35">
+                    ×
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
+                    Discount (−$/card)
+                  </span>
+                  <span className="text-[11px] font-semibold text-ink/35">
+                    =
+                  </span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink/45">
+                    Result
+                  </span>
+                </div>
 
-                {bulkServiceKeys.map((serviceKey) => {
-                  const service = QUOTE_SERVICES.find(
-                    (s) => s.key === serviceKey
-                  );
-                  const entry = normalizeBulkEntry(
-                    draft.quote_bulk_counts?.[serviceKey],
-                    serviceKey
-                  );
-                  const totalOff = bulkTotalOff(
-                    serviceKey,
-                    entry.count,
-                    entry.per_card_off
-                  );
-                  return (
-                    <div key={serviceKey} className="contents">
-                      <span className="truncate text-sm font-semibold text-ink">
-                        {service?.title ?? serviceKey}
-                      </span>
-                      <input
-                        className={`${editorFieldClass()} w-full`}
-                        inputMode="numeric"
-                        value={entry.count || ""}
-                        onChange={(event) =>
-                          setBulkCount(serviceKey, event.target.value)
-                        }
-                        placeholder="0"
-                        aria-label={`${service?.title ?? serviceKey} card count`}
-                      />
-                      <span className="text-sm text-ink/45">×</span>
-                      <input
-                        className={`${editorFieldClass()} w-full`}
-                        inputMode="decimal"
-                        value={
-                          entry.count > 0 || entry.per_card_off
-                            ? entry.per_card_off
-                            : ""
-                        }
-                        onChange={(event) =>
-                          setBulkPerCardOff(serviceKey, event.target.value)
-                        }
-                        placeholder="0"
-                        aria-label={`${service?.title ?? serviceKey} per-card discount`}
-                      />
-                      <span className="text-sm text-ink/45">=</span>
-                      <span className="text-sm font-semibold tabular-nums text-ink">
-                        {totalOff > 0
-                          ? `−${formatMoney(totalOff)}`
-                          : formatMoney(0)}
-                      </span>
-                    </div>
-                  );
-                })}
+                <div className="divide-y divide-ink/10">
+                  {bulkServiceKeys.map((serviceKey) => {
+                    const service = QUOTE_SERVICES.find(
+                      (s) => s.key === serviceKey
+                    );
+                    const entry = normalizeBulkEntry(
+                      draft.quote_bulk_counts?.[serviceKey],
+                      serviceKey
+                    );
+                    const totalOff = bulkTotalOff(
+                      serviceKey,
+                      entry.count,
+                      entry.per_card_off
+                    );
+                    return (
+                      <div
+                        key={serviceKey}
+                        className="grid grid-cols-[minmax(8rem,1.4fr)_4.5rem_auto_5.5rem_auto_5.5rem] items-center gap-x-2 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-ink">
+                            {service?.title ?? serviceKey}
+                          </span>
+                          <p className="mt-0.5 pl-2 text-[11px] leading-snug text-ink/40">
+                            {(service?.bulkTiers ?? []).length > 0
+                              ? (service.bulkTiers ?? [])
+                                  .map(
+                                    (tier) =>
+                                      `${tier.minCount}+ → −$${tier.perCardOff}/card`
+                                  )
+                                  .join(" · ")
+                              : "No bulk tiers."}
+                          </p>
+                        </div>
+                        <input
+                          className={`${editorFieldClass()} w-full`}
+                          inputMode="numeric"
+                          value={entry.count || ""}
+                          onChange={(event) =>
+                            setBulkCount(serviceKey, event.target.value)
+                          }
+                          placeholder="0"
+                          aria-label={`${service?.title ?? serviceKey} card count`}
+                        />
+                        <span className="text-sm text-ink/45">×</span>
+                        <input
+                          className={`${editorFieldClass()} w-full`}
+                          inputMode="decimal"
+                          value={
+                            entry.count > 0 || entry.per_card_off
+                              ? entry.per_card_off
+                              : ""
+                          }
+                          onChange={(event) =>
+                            setBulkPerCardOff(serviceKey, event.target.value)
+                          }
+                          placeholder="0"
+                          aria-label={`${service?.title ?? serviceKey} per-card discount`}
+                        />
+                        <span className="text-sm text-ink/45">=</span>
+                        <span className="text-sm font-semibold tabular-nums text-ink">
+                          {totalOff > 0
+                            ? `−${formatMoney(totalOff)}`
+                            : formatMoney(0)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
@@ -1771,12 +1899,17 @@ function OrderEditor({
           ) : null}
         </div>
 
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-berry/25 bg-berry/10 px-3 py-2.5">
-          <span className="text-sm font-semibold text-ink">Quote total</span>
-          <span className="text-base font-bold tabular-nums text-ink">
-            {formatMoney(quoteTotal)}
-          </span>
-        </div>
+        <QuoteReceipt
+          className="mt-4"
+          items={receiptItems}
+          bulkCounts={receiptBulkCounts}
+          overrideLabel={
+            draft.quote_override_enabled
+              ? draft.quote_override_label.trim()
+              : ""
+          }
+          overrideAmount={receiptOverrideAmount}
+        />
       </EditorSection>
 
       <EditorSection

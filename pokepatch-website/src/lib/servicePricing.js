@@ -80,6 +80,7 @@ const HIGH_VALUE_MARKETING = {
 };
 
 export const HV_PERCENT_OPTIONS = [
+  { percent: 0, label: "0%" },
   { percent: 4, label: "4%" },
   { percent: 8, label: "8%" },
 ];
@@ -275,4 +276,118 @@ export function hasQuoteData({
     return true;
   }
   return false;
+}
+
+export function quoteItemCardLabel(item) {
+  const name = (item?.card_name || "").trim() || "Card";
+  const set = (item?.set_name || "").trim();
+  return set ? `${name} (${set})` : name;
+}
+
+export function quoteItemLineTotal(item) {
+  const base = Number(item?.quote_base_amount) || 0;
+  const hv = Number(item?.high_value_surcharge) || 0;
+  return Math.round((base + hv) * 100) / 100;
+}
+
+function normalizeCardKey(name, setName) {
+  return `${(name || "").trim().toLowerCase()}|${(setName || "").trim().toLowerCase()}`;
+}
+
+/**
+ * Summarize which services are on which order cards, plus coverage warnings.
+ */
+export function analyzeQuoteCardCoverage(orderCards = [], quoteItems = []) {
+  const cards = orderCards ?? [];
+  const items = quoteItems ?? [];
+
+  const cardNumberById = new Map(
+    cards.map((card, index) => [String(card.id), index + 1])
+  );
+  const cardById = new Map(cards.map((card) => [String(card.id), card]));
+  const cardByNameSet = new Map(
+    cards.map((card) => [
+      normalizeCardKey(card.card_name, card.set_name),
+      card,
+    ])
+  );
+
+  /** @type {Map<string, { card: object|null, number: number|null, label: string, services: { key: string, label: string, count: number }[] }>} */
+  const byCard = new Map();
+  let unmatchedIndex = 0;
+
+  function ensureCardEntry(key, card, label) {
+    if (!byCard.has(key)) {
+      const number = card
+        ? cardNumberById.get(String(card.id)) ?? null
+        : null;
+      byCard.set(key, { card, number, label, services: [] });
+    }
+    return byCard.get(key);
+  }
+
+  for (const item of items) {
+    const pick =
+      item.card_pick && item.card_pick !== "custom"
+        ? String(item.card_pick)
+        : "";
+    const matched =
+      (pick && cardById.get(pick)) ||
+      cardByNameSet.get(normalizeCardKey(item.card_name, item.set_name)) ||
+      null;
+
+    const key = matched
+      ? `id:${matched.id}`
+      : `name:${normalizeCardKey(item.card_name, item.set_name)}`;
+    const label = matched
+      ? quoteItemCardLabel(matched)
+      : quoteItemCardLabel(item);
+    const entry = ensureCardEntry(key, matched, label);
+    if (entry.number == null) {
+      unmatchedIndex += 1;
+      entry.number = cards.length + unmatchedIndex;
+    }
+    const serviceKey = item.service_key || SERVICE_KEYS.CUSTOM;
+    const serviceLabel =
+      (item.service_label || "").trim() ||
+      defaultServiceLabel(serviceKey) ||
+      serviceKey;
+    const existing = entry.services.find((s) => s.key === serviceKey);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      entry.services.push({ key: serviceKey, label: serviceLabel, count: 1 });
+    }
+  }
+
+  const assignments = [...byCard.values()]
+    .map((entry) => ({
+      number: entry.number,
+      label: entry.label,
+      services: entry.services,
+    }))
+    .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+  const coveredIds = new Set(
+    [...byCard.values()]
+      .filter((entry) => entry.card)
+      .map((entry) => String(entry.card.id))
+  );
+  const uncoveredCards = cards
+    .filter((card) => !coveredIds.has(String(card.id)))
+    .map((card) => ({
+      number: cardNumberById.get(String(card.id)),
+      label: quoteItemCardLabel(card),
+    }));
+
+  const duplicateServiceCards = [...byCard.values()]
+    .filter((entry) => entry.services.some((s) => s.count > 1))
+    .map((entry) => ({
+      number: entry.number,
+      label: entry.label,
+      services: entry.services.filter((s) => s.count > 1),
+    }))
+    .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+  return { assignments, uncoveredCards, duplicateServiceCards };
 }
