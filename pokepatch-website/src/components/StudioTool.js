@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, {
@@ -10,6 +10,9 @@ import StudioMediaBank, {
 } from "@/components/StudioMediaBank";
 import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import StudioAnnotatedPreview, {
+  downloadBlob,
+} from "@/components/StudioAnnotatedPreview";
 import {
   canvasToBlob,
   stitchBeforeAfterPosts,
@@ -380,7 +383,7 @@ function BackButton({ onClick }) {
   );
 }
 
-function downloadAll(outputs) {
+function downloadAllFromUrls(outputs) {
   outputs.forEach((output, index) => {
     setTimeout(() => {
       const anchor = document.createElement("a");
@@ -393,14 +396,42 @@ function downloadAll(outputs) {
   });
 }
 
-function OutputGrid({ outputs, renderPreview }) {
+function OutputGrid({ outputs, renderPreview, annotated = false }) {
+  const exportersRef = useRef(new Map());
+
+  const setExporter = useCallback((key, exporter) => {
+    if (exporter) exportersRef.current.set(key, exporter);
+    else exportersRef.current.delete(key);
+  }, []);
+
+  async function downloadAllAnnotated() {
+    for (let index = 0; index < outputs.length; index += 1) {
+      const output = outputs[index];
+      const exporter = exportersRef.current.get(output.key);
+      if (exporter) {
+        const { blob, filename } = await exporter();
+        downloadBlob(blob, filename);
+      } else {
+        downloadBlob(
+          await fetch(output.url).then((res) => res.blob()),
+          output.filename,
+        );
+      }
+      if (index < outputs.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+    }
+  }
+
   return (
     <div className="mt-10 space-y-8">
       {outputs.length > 1 && (
         <div className="flex justify-center">
           <button
             type="button"
-            onClick={() => downloadAll(outputs)}
+            onClick={() =>
+              annotated ? downloadAllAnnotated() : downloadAllFromUrls(outputs)
+            }
             className="rounded-xl bg-berry px-6 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110"
           >
             Download all ({outputs.length})
@@ -413,29 +444,29 @@ function OutputGrid({ outputs, renderPreview }) {
             <p className="font-secondary text-sm text-ink/60">
               {output.label} (1080×1080)
             </p>
-            {renderPreview(output)}
-            <a
-              href={output.url}
-              download={output.filename}
-              className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-            >
-              Download {output.label.toLowerCase()}
-            </a>
+            {annotated ? (
+              <StudioAnnotatedPreview
+                label={output.label}
+                url={output.url}
+                filename={output.filename}
+                onExporterChange={(exporter) => setExporter(output.key, exporter)}
+              />
+            ) : (
+              <>
+                {renderPreview(output)}
+                <a
+                  href={output.url}
+                  download={output.filename}
+                  className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                >
+                  Download {output.label.toLowerCase()}
+                </a>
+              </>
+            )}
           </div>
         ))}
       </div>
     </div>
-  );
-}
-
-function ImagePreview({ label, url }) {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt={`${label} preview`}
-      className="mx-auto max-w-full rounded-xl border border-ink/15 shadow-cozy-sm"
-    />
   );
 }
 
@@ -449,6 +480,7 @@ function MediaFormatter({
   onBack,
   onGenerate,
   renderPreview,
+  annotated = false,
   controls = null,
   afterBank = null,
   resetKey = null,
@@ -554,7 +586,13 @@ function MediaFormatter({
         </button>
       </form>
 
-      {outputs && <OutputGrid outputs={outputs} renderPreview={renderPreview} />}
+      {outputs && (
+        <OutputGrid
+          outputs={outputs}
+          renderPreview={renderPreview}
+          annotated={annotated}
+        />
+      )}
     </div>
   );
 }
@@ -706,7 +744,7 @@ function PhotoFormatter({ onBack }) {
       }
       validateFiles={(files) => validatePhotoPairFiles(files, groupBy)}
       validateExtra={() => validateCardMeta(cardMeta)}
-      renderPreview={ImagePreview}
+      annotated
       resetKey={groupBy}
       slotGroups={activeMode.slotGroups}
       controls={
@@ -857,7 +895,7 @@ function GridFormatter({ onBack }) {
 
       {outputs && (
         <div className="mx-auto max-w-3xl">
-          <OutputGrid outputs={outputs} renderPreview={ImagePreview} />
+          <OutputGrid outputs={outputs} annotated />
         </div>
       )}
     </div>

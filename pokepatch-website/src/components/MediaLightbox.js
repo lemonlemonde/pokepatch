@@ -55,21 +55,28 @@ export const MutedVideo = forwardRef(function MutedVideo(
   );
 });
 
+export const LIGHTBOX_MEDIA_CLASSNAME =
+  "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
+
 /**
  * Fullscreen media viewer used by the public Gallery and Studio tools.
  * `media`: { type: "image"|"video", src, alt, label, sectionTitle? }
  * `position`/`total`: optional 1-based counter within the opened set,
  * e.g. "3 of 4" for the clicked card's own photos.
+ * `children`: optional custom media body (replaces default img/video).
+ * `onEscape`: optional Escape handler; defaults to `onClose`.
  */
 export default function MediaLightbox({
   media,
   onClose,
+  onEscape,
   onPrevious,
   onNext,
   hasPrevious = false,
   hasNext = false,
   position = null,
   total = null,
+  children = null,
 }) {
   const containerRef = useRef(null);
 
@@ -78,7 +85,7 @@ export default function MediaLightbox({
 
     const handleKey = (event) => {
       if (event.key === "Escape") {
-        onClose();
+        (onEscape ?? onClose)();
       } else if (event.key === "ArrowLeft" && hasPrevious) {
         onPrevious?.();
       } else if (event.key === "ArrowRight" && hasNext) {
@@ -108,7 +115,7 @@ export default function MediaLightbox({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKey);
     };
-  }, [onClose, onPrevious, onNext, hasPrevious, hasNext]);
+  }, [onClose, onEscape, onPrevious, onNext, hasPrevious, hasNext]);
 
   // Move focus into the dialog on open and hand it back on close.
   useEffect(() => {
@@ -121,8 +128,6 @@ export default function MediaLightbox({
     };
   }, []);
 
-  const mediaClassName =
-    "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
   const caption = [media.sectionTitle, media.label].filter(Boolean).join(" — ");
 
   const counter =
@@ -208,23 +213,24 @@ export default function MediaLightbox({
           className="flex flex-shrink-0 flex-col items-center"
           onClick={(event) => event.stopPropagation()}
         >
-          {media.type === "image" ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={media.src}
-              src={media.src}
-              alt={media.alt || media.label || ""}
-              className={mediaClassName}
-            />
-          ) : (
-            <MutedVideo
-              key={media.src}
-              src={media.src}
-              loop
-              controls
-              className={mediaClassName}
-            />
-          )}
+          {children ??
+            (media.type === "image" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={media.src}
+                src={media.src}
+                alt={media.alt || media.label || ""}
+                className={LIGHTBOX_MEDIA_CLASSNAME}
+              />
+            ) : (
+              <MutedVideo
+                key={media.src}
+                src={media.src}
+                loop
+                controls
+                className={LIGHTBOX_MEDIA_CLASSNAME}
+              />
+            ))}
           {caption ? (
             <p className="mt-3 text-center text-sm font-bold uppercase tracking-wide text-ink/80">
               {caption}
