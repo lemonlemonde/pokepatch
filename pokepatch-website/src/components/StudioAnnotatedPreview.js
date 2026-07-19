@@ -12,6 +12,8 @@ const SHAPE_STROKE_WIDTH = 3;
 const DEFAULT_SIZE = 0.22;
 const MIN_SIZE = 0.04;
 const HANDLE_SIZE = 8;
+const ROTATE_HANDLE_OFFSET = 0.05;
+const ROTATE_SNAP_DEG = 15;
 
 function createId() {
   return `shape-${Math.random().toString(36).slice(2, 10)}`;
@@ -19,6 +21,35 @@ function createId() {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function shapeCenter(shape) {
+  return {
+    cx: shape.x + shape.w / 2,
+    cy: shape.y + shape.h / 2,
+  };
+}
+
+function shapeRotation(shape) {
+  return shape.rotation || 0;
+}
+
+function rotatePoint(x, y, cx, cy, degrees) {
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const dx = x - cx;
+  const dy = y - cy;
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+}
+
+/** Map a world point into the shape's unrotated local frame. */
+function toLocalPoint(shape, nx, ny) {
+  const { cx, cy } = shapeCenter(shape);
+  return rotatePoint(nx, ny, cx, cy, -shapeRotation(shape));
 }
 
 function createShape(type, index = 0) {
@@ -30,10 +61,11 @@ function createShape(type, index = 0) {
     y: clamp(0.39 + offset, 0, 1 - DEFAULT_SIZE),
     w: DEFAULT_SIZE,
     h: DEFAULT_SIZE,
+    rotation: 0,
   };
 }
 
-function normalizeShape(shape) {
+function finalizeShapeSize(shape) {
   let { x, y, w, h } = shape;
   if (w < 0) {
     x += w;
@@ -45,12 +77,23 @@ function normalizeShape(shape) {
   }
   w = Math.max(MIN_SIZE, w);
   h = Math.max(MIN_SIZE, h);
-  x = clamp(x, 0, 1 - w);
-  y = clamp(y, 0, 1 - h);
-  return { ...shape, x, y, w, h };
+  return { ...shape, x, y, w, h, rotation: shapeRotation(shape) };
+}
+
+function clampShapePosition(shape) {
+  return {
+    ...shape,
+    x: clamp(shape.x, 0, 1 - shape.w),
+    y: clamp(shape.y, 0, 1 - shape.h),
+  };
+}
+
+function normalizeShape(shape) {
+  return clampShapePosition(finalizeShapeSize(shape));
 }
 
 function hitTest(shape, nx, ny) {
+  const local = toLocalPoint(shape, nx, ny);
   const { x, y, w, h, type } = shape;
   if (type === "circle") {
     const cx = x + w / 2;
@@ -58,34 +101,39 @@ function hitTest(shape, nx, ny) {
     const rx = w / 2;
     const ry = h / 2;
     if (rx <= 0 || ry <= 0) return false;
-    const dx = (nx - cx) / rx;
-    const dy = (ny - cy) / ry;
+    const dx = (local.x - cx) / rx;
+    const dy = (local.y - cy) / ry;
     return dx * dx + dy * dy <= 1;
   }
-  return nx >= x && nx <= x + w && ny >= y && ny <= y + h;
+  return (
+    local.x >= x && local.x <= x + w && local.y >= y && local.y <= y + h
+  );
 }
 
 function drawShapesOnCanvas(ctx, shapes, width, height) {
-  ctx.save();
-  ctx.lineWidth = Math.max(2, (SHAPE_STROKE_WIDTH * width) / 480);
-  ctx.strokeStyle = SHAPE_STROKE;
-
   for (const shape of shapes) {
     const x = shape.x * width;
     const y = shape.y * height;
     const w = shape.w * width;
     const h = shape.h * height;
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const rotationRad = (shapeRotation(shape) * Math.PI) / 180;
 
+    ctx.save();
+    ctx.lineWidth = Math.max(2, (SHAPE_STROKE_WIDTH * width) / 480);
+    ctx.strokeStyle = SHAPE_STROKE;
+    ctx.translate(cx, cy);
+    ctx.rotate(rotationRad);
     ctx.beginPath();
     if (shape.type === "circle") {
-      ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
     } else {
-      ctx.rect(x, y, w, h);
+      ctx.rect(-w / 2, -h / 2, w, h);
     }
     ctx.stroke();
+    ctx.restore();
   }
-
-  ctx.restore();
 }
 
 export async function compositeImageWithShapes(imageUrl, shapes) {
@@ -129,7 +177,7 @@ const HANDLES = [
   { id: "w", cursor: "ew-resize" },
 ];
 
-function handlePosition(shape, handleId) {
+function localHandlePosition(shape, handleId) {
   const { x, y, w, h } = shape;
   switch (handleId) {
     case "nw":
@@ -152,6 +200,29 @@ function handlePosition(shape, handleId) {
       return { x, y };
   }
 }
+
+function handlePosition(shape, handleId) {
+  const local = localHandlePosition(shape, handleId);
+  const { cx, cy } = shapeCenter(shape);
+  return rotatePoint(local.x, local.y, cx, cy, shapeRotation(shape));
+}
+
+function rotateHandlePosition(shape) {
+  const { cx, cy } = shapeCenter(shape);
+  const local = { x: cx, y: shape.y - ROTATE_HANDLE_OFFSET };
+  return rotatePoint(local.x, local.y, cx, cy, shapeRotation(shape));
+}
+
+const OPPOSITE_HANDLE = {
+  nw: "se",
+  n: "s",
+  ne: "sw",
+  e: "w",
+  se: "nw",
+  s: "n",
+  sw: "ne",
+  w: "e",
+};
 
 function resizeFromHandle(shape, handleId, nx, ny, constrainSquare = false) {
   let { x, y, w, h } = shape;
@@ -252,7 +323,30 @@ function resizeFromHandle(shape, handleId, nx, ny, constrainSquare = false) {
     }
   }
 
-  return normalizeShape({ ...shape, x, y, w, h });
+  return { ...shape, x, y, w, h };
+}
+
+/**
+ * Resize in local space, then keep the opposite edge/corner fixed in world
+ * space so rotation-around-center doesn't make side drags feel like sliding.
+ */
+function resizeRotatedShape(shape, handleId, worldX, worldY, constrainSquare) {
+  const oppositeId = OPPOSITE_HANDLE[handleId];
+  const anchorWorld = handlePosition(shape, oppositeId);
+  const local = toLocalPoint(shape, worldX, worldY);
+
+  let next = finalizeShapeSize(
+    resizeFromHandle(shape, handleId, local.x, local.y, constrainSquare),
+  );
+
+  const nextAnchor = handlePosition(next, oppositeId);
+  next = {
+    ...next,
+    x: next.x + (anchorWorld.x - nextAnchor.x),
+    y: next.y + (anchorWorld.y - nextAnchor.y),
+  };
+
+  return clampShapePosition(next);
 }
 
 function ShapeToolbar({ selectedId, onAdd, onDelete }) {
@@ -342,12 +436,23 @@ function ShapeSurface({
     if (!interactive || !selected || event.button !== 0) return;
     const point = clientToNormalized(event.clientX, event.clientY);
     if (!point) return;
-    setDrag({
-      mode: "resize",
-      id: selected.id,
-      handleId,
-      origin: { ...selected },
-    });
+
+    if (handleId === "rotate") {
+      const { cx, cy } = shapeCenter(selected);
+      setDrag({
+        mode: "rotate",
+        id: selected.id,
+        origin: { ...selected },
+        startAngle: Math.atan2(point.y - cy, point.x - cx),
+      });
+    } else {
+      setDrag({
+        mode: "resize",
+        id: selected.id,
+        handleId,
+        origin: { ...selected },
+      });
+    }
     surfaceRef.current?.setPointerCapture(event.pointerId);
   }
 
@@ -359,18 +464,30 @@ function ShapeSurface({
     onShapesChange((prev) =>
       prev.map((shape) => {
         if (shape.id !== drag.id) return shape;
+
         if (drag.mode === "move") {
           const dx = point.x - drag.startX;
           const dy = point.y - drag.startY;
           return normalizeShape({
-            ...shape,
+            ...drag.origin,
             x: drag.origin.x + dx,
             y: drag.origin.y + dy,
-            w: drag.origin.w,
-            h: drag.origin.h,
           });
         }
-        return resizeFromHandle(
+
+        if (drag.mode === "rotate") {
+          const { cx, cy } = shapeCenter(drag.origin);
+          const angle = Math.atan2(point.y - cy, point.x - cx);
+          let degrees =
+            shapeRotation(drag.origin) +
+            ((angle - drag.startAngle) * 180) / Math.PI;
+          if (event.shiftKey) {
+            degrees = Math.round(degrees / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG;
+          }
+          return { ...drag.origin, rotation: degrees };
+        }
+
+        return resizeRotatedShape(
           drag.origin,
           drag.handleId,
           point.x,
@@ -390,6 +507,9 @@ function ShapeSurface({
       // already released
     }
   }
+
+  const rotatePos = selected ? rotateHandlePosition(selected) : null;
+  const topCenter = selected ? handlePosition(selected, "n") : null;
 
   return (
     <div
@@ -417,17 +537,20 @@ function ShapeSurface({
       >
         {shapes.map((shape) => {
           const isSelected = interactive && shape.id === selectedId;
+          const { cx, cy } = shapeCenter(shape);
+          const rotation = shapeRotation(shape);
           const common = {
             fill: "none",
             stroke: SHAPE_STROKE,
             strokeWidth: isSelected ? 3.5 : SHAPE_STROKE_WIDTH,
             vectorEffect: "non-scaling-stroke",
+            transform: rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined,
           };
           return shape.type === "circle" ? (
             <ellipse
               key={shape.id}
-              cx={shape.x + shape.w / 2}
-              cy={shape.y + shape.h / 2}
+              cx={cx}
+              cy={cy}
               rx={shape.w / 2}
               ry={shape.h / 2}
               {...common}
@@ -443,6 +566,17 @@ function ShapeSurface({
             />
           );
         })}
+        {interactive && selected && rotatePos && topCenter ? (
+          <line
+            x1={topCenter.x}
+            y1={topCenter.y}
+            x2={rotatePos.x}
+            y2={rotatePos.y}
+            stroke={SHAPE_STROKE}
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
       </svg>
 
       {interactive && selected ? (
@@ -467,6 +601,22 @@ function ShapeSurface({
               />
             );
           })}
+          {rotatePos ? (
+            <button
+              type="button"
+              aria-label="Rotate"
+              className="pointer-events-auto absolute rounded-full border-2 border-cream bg-[#f87171] shadow-sm"
+              style={{
+                width: HANDLE_SIZE + 2,
+                height: HANDLE_SIZE + 2,
+                left: `${rotatePos.x * 100}%`,
+                top: `${rotatePos.y * 100}%`,
+                transform: "translate(-50%, -50%)",
+                cursor: drag?.mode === "rotate" ? "grabbing" : "grab",
+              }}
+              onPointerDown={(event) => onPointerDownHandle(event, "rotate")}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
