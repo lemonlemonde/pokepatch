@@ -80,8 +80,8 @@ const HIGH_VALUE_MARKETING = {
 };
 
 export const HV_PERCENT_OPTIONS = [
-  { percent: 4, label: "4% ($200–$500)" },
-  { percent: 8, label: "8% ($500+)" },
+  { percent: 4, label: "4%" },
+  { percent: 8, label: "8%" },
 ];
 
 function serviceByKey(key) {
@@ -132,9 +132,30 @@ export function bulkPerCardOff(serviceKey, count) {
   return best;
 }
 
-export function bulkTotalOff(serviceKey, count) {
+export function bulkTotalOff(serviceKey, count, perCardOff = null) {
   const n = Number(count) || 0;
-  return n * bulkPerCardOff(serviceKey, n);
+  const off =
+    perCardOff != null && Number.isFinite(Number(perCardOff))
+      ? Number(perCardOff)
+      : bulkPerCardOff(serviceKey, n);
+  return Math.round(n * off * 100) / 100;
+}
+
+/** Normalize stored bulk calc entry. Supports legacy `{ key: count }` maps. */
+export function normalizeBulkEntry(value, serviceKey) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const count = Math.max(0, Math.floor(Number(value.count) || 0));
+    const hasOff =
+      value.per_card_off != null &&
+      value.per_card_off !== "" &&
+      Number.isFinite(Number(value.per_card_off));
+    const per_card_off = hasOff
+      ? Number(value.per_card_off)
+      : bulkPerCardOff(serviceKey, count);
+    return { count, per_card_off };
+  }
+  const count = Math.max(0, Math.floor(Number(value) || 0));
+  return { count, per_card_off: bulkPerCardOff(serviceKey, count) };
 }
 
 export function suggestBulkCountsFromItems(items) {
@@ -145,6 +166,29 @@ export function suggestBulkCountsFromItems(items) {
     counts[key] = (counts[key] ?? 0) + 1;
   }
   return counts;
+}
+
+/** Map of service_key → { count, per_card_off } with tier defaults. */
+export function suggestBulkCalcsFromItems(items) {
+  const counts = suggestBulkCountsFromItems(items);
+  const out = {};
+  for (const [key, count] of Object.entries(counts)) {
+    out[key] = {
+      count,
+      per_card_off: bulkPerCardOff(key, count),
+    };
+  }
+  return out;
+}
+
+export function normalizeBulkCalcs(bulkCalcs) {
+  const out = {};
+  for (const [key, value] of Object.entries(bulkCalcs ?? {})) {
+    if (key === SERVICE_KEYS.CUSTOM) continue;
+    const entry = normalizeBulkEntry(value, key);
+    if (entry.count > 0) out[key] = entry;
+  }
+  return out;
 }
 
 export function highValueSurchargeFromValue(cardValue, percent) {
@@ -169,20 +213,23 @@ export function parseMoneyInput(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Bulk discount rows for display (only services with off > 0). */
-export function bulkDiscountLines(bulkCounts) {
+/** Bulk discount rows for display (count > 0 and per-card off > 0). */
+export function bulkDiscountLines(bulkCalcs) {
   const lines = [];
   for (const service of QUOTE_SERVICES) {
     if (service.key === SERVICE_KEYS.CUSTOM) continue;
-    const count = Number(bulkCounts?.[service.key]) || 0;
-    const perCard = bulkPerCardOff(service.key, count);
-    const total = bulkTotalOff(service.key, count);
-    if (total <= 0) continue;
+    const entry = normalizeBulkEntry(bulkCalcs?.[service.key], service.key);
+    const total = bulkTotalOff(
+      service.key,
+      entry.count,
+      entry.per_card_off
+    );
+    if (entry.count <= 0 || entry.per_card_off <= 0) continue;
     lines.push({
       serviceKey: service.key,
       label: service.title,
-      count,
-      perCardOff: perCard,
+      count: entry.count,
+      perCardOff: entry.per_card_off,
       totalOff: total,
     });
   }

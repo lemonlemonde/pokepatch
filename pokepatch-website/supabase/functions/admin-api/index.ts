@@ -262,22 +262,37 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   });
 }
 
+const ORDER_SELECT_WITH_QUOTE =
+  "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
+const ORDER_SELECT_BASE =
+  "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at";
+
 async function fetchOrderGraph(
   supabase: ReturnType<typeof getServiceClient>,
   orderId?: string
 ) {
   let ordersQuery = supabase
     .from("orders")
-    .select(
-      "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
-    )
+    .select(ORDER_SELECT_WITH_QUOTE)
     .order("created_at", { ascending: false });
 
   if (orderId) {
     ordersQuery = ordersQuery.eq("id", orderId);
   }
 
-  const { data: orders, error: ordersError } = await ordersQuery;
+  let { data: orders, error: ordersError } = await ordersQuery;
+  // Quote columns may be missing until the order_quotes migration is applied.
+  if (ordersError) {
+    let fallback = supabase
+      .from("orders")
+      .select(ORDER_SELECT_BASE)
+      .order("created_at", { ascending: false });
+    if (orderId) fallback = fallback.eq("id", orderId);
+    const retry = await fallback;
+    if (retry.error) throw ordersError;
+    orders = retry.data;
+    ordersError = null;
+  }
   if (ordersError) throw ordersError;
   if (!orders?.length) return orderId ? null : [];
 
@@ -286,7 +301,7 @@ async function fetchOrderGraph(
   const [
     { data: contacts, error: contactsError },
     { data: cards, error: cardsError },
-    { data: quoteItems, error: quoteItemsError },
+    quoteItemsResult,
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -306,7 +321,8 @@ async function fetchOrderGraph(
   ]);
   if (contactsError) throw contactsError;
   if (cardsError) throw cardsError;
-  if (quoteItemsError) throw quoteItemsError;
+  // Table may not exist until migration; treat as empty quote list.
+  const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
   let images: { id: number; card_id: string; image_type: string; storage_path: string }[] = [];

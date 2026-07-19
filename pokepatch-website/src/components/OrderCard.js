@@ -327,7 +327,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                     Your quote
                   </p>
                   <div className="mt-2 space-y-2">
-                    {(orderDetails.quote_items ?? []).map((item) => (
+                    {(orderDetails.quote_items ?? []).map((item) => {
+                      const base = Number(item.quote_base_amount) || 0;
+                      const hv = Number(item.high_value_surcharge) || 0;
+                      const lineTotal = base + hv;
+                      return (
                       <div
                         key={item.id}
                         className="rounded-lg border border-ink/10 bg-night/20 px-2.5 py-2"
@@ -347,21 +351,21 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                               {item.service_label}
                             </p>
                           </div>
-                          <p className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-                            {formatMoney(item.quote_base_amount)}
+                          <p className="shrink-0 text-right text-sm tabular-nums text-ink">
+                            <span className="text-ink/65">
+                              {formatMoney(base)}
+                              {hv !== 0 ? <> + {formatMoney(hv)}</> : null}
+                              {" "}
+                              =
+                            </span>{" "}
+                            <span className="font-bold">
+                              {formatMoney(lineTotal)}
+                            </span>
                           </p>
                         </div>
-                        {item.high_value_surcharge != null &&
-                        Number(item.high_value_surcharge) !== 0 ? (
-                          <div className="mt-1 flex justify-between gap-2 text-xs text-ink/70">
-                            <span>High-value surcharge</span>
-                            <span className="tabular-nums">
-                              {formatMoney(item.high_value_surcharge)}
-                            </span>
-                          </div>
-                        ) : null}
                       </div>
-                    ))}
+                      );
+                    })}
 
                     {bulkDiscountLines(orderDetails.quote_bulk_counts).map(
                       (line) => (
@@ -370,8 +374,8 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                           className="flex justify-between gap-2 text-sm text-ink/80"
                         >
                           <span>
-                            {line.label} bulk · {line.count} × $
-                            {line.perCardOff} off
+                            {line.label} × {line.count} × (−$
+                            {Number(line.perCardOff).toFixed(2)}/card)
                           </span>
                           <span className="tabular-nums font-semibold">
                             −{formatMoney(line.totalOff)}
