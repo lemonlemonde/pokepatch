@@ -6,7 +6,10 @@ import Link from "next/link";
 import Button from "@/components/Button";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
-import { isCustomerAuthEnabled } from "@/lib/customerAuth";
+import {
+  getAuthEmailRedirectTo,
+  isCustomerAuthEnabled,
+} from "@/lib/customerAuth";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 const RESEND_COOLDOWN_SECONDS = 60;
@@ -47,6 +50,9 @@ function VerifyEmailContent() {
       const { error: resendError } = await supabase.auth.resend({
         type: "signup",
         email,
+        options: {
+          emailRedirectTo: getAuthEmailRedirectTo("/my-orders"),
+        },
       });
       if (resendError) throw resendError;
       setStatus("sent");

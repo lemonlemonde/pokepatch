@@ -53,18 +53,48 @@ supabase db push
 3. Copy the contents of `supabase/migrations/20260716000000_customer_accounts.sql`
 4. Paste and run in the SQL Editor
 
-### 2. Configure Email Settings (Optional)
+### 2. Configure Email Settings (Resend SMTP)
 
-If you want to require email verification:
+Supabase’s built-in mailer is rate-limited (~2 emails/hour) and only delivers to project team addresses. For production signup confirmation, send Auth emails through **Resend** via custom SMTP. The app still uses `supabase.auth.signUp` / `auth.resend`; Resend only delivers the message.
 
-1. Go to Supabase Dashboard → Authentication → Email Templates
-2. Customize the confirmation email template
-3. Go to Authentication → Settings
-4. Enable "Confirm email" under Email auth
+#### A. Resend + Porkbun DNS
+
+1. Create a [Resend](https://resend.com) account and an API key.
+2. In Resend → **Domains** → **Add Domain**, enter your root domain (e.g. `pokepatch.com`).
+3. In Porkbun → your domain → **DNS**, add the records Resend shows (typically DKIM TXT, SPF TXT on the `send` subdomain, and MX for that subdomain). Optionally add DMARC at `_dmarc` if you do not already have one.
+4. Watch for doubled hostnames in Porkbun (e.g. `resend._domainkey.yourdomain.com.yourdomain.com`). Use the host Resend lists without appending the domain twice.
+5. Click **Verify** in Resend until the domain is verified.
+6. Choose a From address on that domain, e.g. `noreply@yourdomain.com` or `auth@yourdomain.com`.
+
+#### B. Supabase SMTP
+
+1. Supabase Dashboard → **Authentication** → **Email** (Notifications) → **SMTP Settings**.
+2. Enable custom SMTP and set:
+
+| Setting | Value |
+|---------|--------|
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | Resend API key |
+| Sender email | your verified From address |
+| Sender name | e.g. `Pokepatch` |
+
+Alternatively: Resend → **Integrations** → Connect to Supabase (writes the same SMTP config).
+
+3. Under Auth email settings, keep **Confirm email** enabled (the site’s `/verify-email` flow expects this).
+4. Under **Authentication → Rate Limits**, raise the email rate limit above the default (~30/hour) so signup volume is not capped by Auth after SMTP is connected.
+5. Under **Authentication → URL Configuration**:
+   - Set **Site URL** to your production site (e.g. `https://yourdomain.com`).
+   - Add redirect allowlist entries for confirmation links, e.g. `https://yourdomain.com/**` and `http://localhost:3000/**` for local dev.
+
+Signup and resend already pass `emailRedirectTo` to `/my-orders` on the current origin.
 
 If you want immediate login after signup (no email verification):
 1. Go to Authentication → Settings
 2. Disable "Confirm email" under Email auth
+
+(You can skip Resend SMTP in that case, but production apps should keep confirmation on.)
 
 ### 3. Storage Bucket Permissions
 
@@ -129,6 +159,7 @@ on conflict (id) do update set public = true;
 ### New Files
 - `src/contexts/AuthContext.js` - Authentication state management
 - `src/app/login/page.js` - Login/signup page
+- `src/app/verify-email/page.js` - Post-signup confirm-email + resend UI
 - `src/app/my-orders/page.js` - Customer order portal
 - `src/components/OrderCard.js` - Order display component
 - `supabase/migrations/20260716000000_customer_accounts.sql` - Database schema
@@ -137,6 +168,7 @@ on conflict (id) do update set public = true;
 - `src/app/layout.js` - Added AuthProvider wrapper
 - `src/app/thank-you/page.js` - Added optional account creation
 - `src/components/Navbar.js` - Added conditional login/logout links
+- `src/lib/customerAuth.js` - Feature flag + `getAuthEmailRedirectTo` for confirmation links
 
 ## Admin Workflow Updates
 
@@ -188,6 +220,12 @@ Consider adding these features in future iterations:
 NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-anon-key
 ```
+
+### Issue: Confirmation emails not arriving / "Email address not authorized"
+**Solution:** Configure custom SMTP with Resend (see **Configure Email Settings** above). Until SMTP is set, Supabase only sends to project team emails and rate-limits heavily. Check the Resend dashboard **Emails** log after signup.
+
+### Issue: Confirmation link lands on wrong host or errors
+**Solution:** Set Site URL and Redirect URLs in Supabase Auth URL Configuration to match your site (and localhost for dev). Confirmation emails use `emailRedirectTo` → `/my-orders`.
 
 ### Issue: Orders not auto-linking
 **Solution:** Ensure the email used for signup matches exactly with the email in order contacts (case-insensitive comparison is already implemented)

@@ -1,7 +1,10 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { isCustomerAuthEnabled } from "@/lib/customerAuth";
+import {
+  getAuthEmailRedirectTo,
+  isCustomerAuthEnabled,
+} from "@/lib/customerAuth";
 import { supabase } from "@/lib/supabaseClient";
 
 const AuthContext = createContext({});
@@ -117,6 +120,9 @@ export function AuthProvider({ children }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo: getAuthEmailRedirectTo("/my-orders"),
+      },
     });
 
     if (error) throw error;
