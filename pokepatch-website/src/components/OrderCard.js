@@ -3,7 +3,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { orderStatusLabel, orderStatusBadgeClass } from "@/lib/orderStatus";
-import { hasQuoteData } from "@/lib/servicePricing";
+import {
+  cardsWithQuoteHv,
+  formatMoney,
+  hasQuoteData,
+  unpackQuoteAdjustments,
+  unpackQuoteCardHv,
+} from "@/lib/servicePricing";
 import QuoteReceipt from "@/components/QuoteReceipt";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 60; // 1 hour
@@ -168,6 +174,18 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const delivery = orderDetails
     ? deliveryLabel(orderDetails.delivery_method)
     : null;
+  const quoteAdjustments = orderDetails
+    ? unpackQuoteAdjustments(orderDetails.quote_bulk_counts, {
+        overrideLabel: orderDetails.quote_override_label ?? "",
+        overrideAmount: orderDetails.quote_override_amount,
+      })
+    : [];
+  const quoteCards = orderDetails
+    ? cardsWithQuoteHv(
+        orderDetails.cards,
+        unpackQuoteCardHv(orderDetails.quote_bulk_counts)
+      )
+    : [];
 
   return (
     <div
@@ -315,18 +333,17 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {/* Quote from the team */}
               {hasQuoteData({
                 items: orderDetails.quote_items,
-                bulkCounts: orderDetails.quote_bulk_counts,
-                overrideAmount: orderDetails.quote_override_amount,
-              }) && (
+                cards: quoteCards,
+                adjustments: quoteAdjustments,
+              }) ? (
                 <QuoteReceipt
                   title="Your quote"
                   items={orderDetails.quote_items}
-                  bulkCounts={orderDetails.quote_bulk_counts}
-                  overrideLabel={orderDetails.quote_override_label ?? ""}
-                  overrideAmount={orderDetails.quote_override_amount}
+                  cards={quoteCards}
+                  adjustments={quoteAdjustments}
                   className="border-peach/30 bg-peach/10"
                 />
-              )}
+              ) : null}
 
               {/* Cards */}
               <div>
@@ -388,16 +405,29 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         {isCardOpen && (
                           <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
                             <div className="min-w-0 flex-1 space-y-2">
-                              <p className={LABEL_CLS}>Description</p>
-                              {card.description ? (
-                                <p className="text-sm text-ink/80">
-                                  {card.description}
-                                </p>
-                              ) : (
-                                <p className="text-sm italic text-ink/60">
-                                  No description provided.
-                                </p>
-                              )}
+                              {card.market_value_raw_nm != null &&
+                              Number.isFinite(Number(card.market_value_raw_nm)) ? (
+                                <div>
+                                  <p className={LABEL_CLS}>
+                                    Market value (Raw NM)
+                                  </p>
+                                  <p className="mt-1 text-sm font-semibold text-ink">
+                                    {formatMoney(card.market_value_raw_nm)}
+                                  </p>
+                                </div>
+                              ) : null}
+                              <div>
+                                <p className={LABEL_CLS}>Description</p>
+                                {card.description ? (
+                                  <p className="mt-1 text-sm text-ink/80">
+                                    {card.description}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1 text-sm italic text-ink/60">
+                                    No description provided.
+                                  </p>
+                                )}
+                              </div>
                             </div>
 
                             <div className="sm:w-1/2 sm:shrink-0">

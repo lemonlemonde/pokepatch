@@ -24,6 +24,7 @@ export default {
         mint: "#B8E8D0",
         lavender: "#D4C5F9",
         peach: "#FFDAB9",
+        sky: "#B8D9F5",
         status: {
           red: "#EF4444",
           yellow: "#EAB308",

@@ -13,6 +13,7 @@ export default function ServiceCard({
     mint: "bg-mint/30 border-mint/10",
     lavender: "bg-lavender/30 border-lavender/10",
     peach: "bg-peach/30 border-peach/10",
+    sky: "bg-sky/30 border-sky/10",
   };
 
   return (

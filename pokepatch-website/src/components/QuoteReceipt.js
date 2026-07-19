@@ -1,39 +1,36 @@
 import {
-  bulkDiscountLines,
   computeQuoteTotal,
   formatMoney,
-  quoteItemCardLabel,
+  groupQuoteItemsByCard,
+  quoteAdjustmentLines,
   quoteItemLineTotal,
 } from "@/lib/servicePricing";
 
 /**
  * Receipt-style quote summary:
- * card (set) line amounts, then bulk discounts, optional override, total.
+ * per-card subsections with nested services + card-level HV + card subtotal,
+ * then order-level adjustments, total.
  */
 export default function QuoteReceipt({
   items = [],
-  bulkCounts = null,
-  overrideLabel = "",
-  overrideAmount = null,
+  cards = null,
+  adjustments = null,
   title = "Quote total",
   className = "",
 }) {
   const lines = items ?? [];
-  const bulkLines = bulkDiscountLines(bulkCounts);
-  const override =
-    overrideAmount != null && Number.isFinite(Number(overrideAmount))
-      ? Number(overrideAmount)
-      : null;
+  const cardGroups = groupQuoteItemsByCard(lines, cards);
+  const adjustmentLines = quoteAdjustmentLines(adjustments, lines);
   const total = computeQuoteTotal({
     items: lines,
-    bulkCounts,
-    overrideAmount: override,
+    cards,
+    adjustments,
   });
 
   if (
     lines.length === 0 &&
-    bulkLines.length === 0 &&
-    override == null
+    cardGroups.length === 0 &&
+    adjustmentLines.length === 0
   ) {
     return null;
   }
@@ -45,74 +42,103 @@ export default function QuoteReceipt({
       <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/55">
         {title}
       </p>
-      <div className="space-y-2.5">
-        {lines.map((item, index) => {
-          const base = Number(item.quote_base_amount) || 0;
-          const hv = Number(item.high_value_surcharge) || 0;
-          const amount = quoteItemLineTotal(item);
-          const service =
-            (item.service_label || "").trim() || "Service";
-          return (
-            <div
-              key={item.id ?? `receipt-line-${index}`}
-              className="space-y-0.5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span className="min-w-0 text-ink/80">
-                  {index > 0 ? (
-                    <span className="text-ink/45">+ </span>
-                  ) : null}
-                  <span className="break-words">
-                    {quoteItemCardLabel(item)}
-                  </span>
+      <div className="space-y-3">
+        {cardGroups.map((group, groupIndex) => (
+          <div
+            key={group.key || `card-group-${groupIndex}`}
+            className="rounded-lg border border-ink/10 bg-cream/40 px-2.5 py-2"
+          >
+            <div className="flex items-start justify-between gap-3 font-sans">
+              <span className="min-w-0 break-words text-sm font-semibold text-ink">
+                {groupIndex > 0 ? (
+                  <span className="font-mono font-normal text-ink/45">+ </span>
+                ) : null}
+                {group.label}
+              </span>
+              <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+                {formatMoney(group.subtotal)}
+              </span>
+            </div>
+
+            <div className="mt-1.5 space-y-1.5 border-t border-ink/10 pt-1.5 pl-2">
+              {group.items.map((item, itemIndex) => {
+                const amount = quoteItemLineTotal(item);
+                const service =
+                  (item.service_label || "").trim() || "Service";
+                return (
+                  <div
+                    key={item.id ?? `${group.key}-svc-${itemIndex}`}
+                    className="flex items-start justify-between gap-3"
+                  >
+                    <span className="min-w-0 break-words text-ink/80">
+                      {service}
+                    </span>
+                    <span className="shrink-0 tabular-nums font-semibold text-ink">
+                      {formatMoney(amount)}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {group.highValueSurcharge > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 break-words text-ink/80">
+                      High-value surcharge
+                    </span>
+                    <span className="shrink-0 tabular-nums font-semibold text-ink">
+                      {formatMoney(group.highValueSurcharge)}
+                    </span>
+                  </div>
+                  <p className="text-xs tabular-nums text-ink/45">
+                    {Number.isFinite(group.marketValue)
+                      ? `market ${formatMoney(group.marketValue)}`
+                      : "market —"}
+                    {group.hvPercent != null &&
+                    Number.isFinite(Number(group.hvPercent))
+                      ? ` · ${Number(group.hvPercent)}%`
+                      : null}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/15 pt-1.5 font-sans text-xs">
+                <span className="font-medium text-ink/55">Card subtotal</span>
+                <span className="font-semibold tabular-nums text-ink">
+                  {formatMoney(group.subtotal)}
                 </span>
-                <span className="shrink-0 tabular-nums font-semibold text-ink">
-                  {formatMoney(amount)}
-                </span>
-              </div>
-              <div className="pl-3 text-xs text-ink/55">
-                <p>{service}</p>
-                <p className="tabular-nums">
-                  base {formatMoney(base)}
-                  {hv !== 0 ? (
-                    <> + surcharge {formatMoney(hv)}</>
-                  ) : null}
-                </p>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
 
-        {bulkLines.map((line) => (
+        {adjustmentLines.map((line) => (
           <div
-            key={line.serviceKey}
+            key={line.id}
             className="flex items-start justify-between gap-3 text-ink/80"
           >
             <span className="min-w-0">
-              <span className="text-ink/45">− </span>
-              {line.label} bulk ({line.count} × ${Number(line.perCardOff).toFixed(2)}/card)
+              <span className="text-ink/45">
+                {line.amount >= 0 ? "+ " : "− "}
+              </span>
+              {line.description}
+              {line.amountPercent != null && line.amountPercent > 0 ? (
+                <span className="text-ink/45">
+                  {" "}
+                  ({Number(line.amountPercent).toFixed(
+                    Number(line.amountPercent) % 1 === 0 ? 0 : 2
+                  )}
+                  %)
+                </span>
+              ) : null}
             </span>
             <span className="shrink-0 tabular-nums">
-              −{formatMoney(line.totalOff)}
+              {formatMoney(line.amount)}
             </span>
           </div>
         ))}
 
-        {override != null && overrideLabel ? (
-          <div className="flex items-start justify-between gap-3 text-ink/80">
-            <span className="min-w-0">
-              <span className="text-ink/45">
-                {override >= 0 ? "+ " : "− "}
-              </span>
-              {overrideLabel}
-            </span>
-            <span className="shrink-0 tabular-nums">
-              {formatMoney(override)}
-            </span>
-          </div>
-        ) : null}
-
-        <div className="mt-2 flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
+        <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
           <span className="font-semibold text-ink">= Total</span>
           <span className="text-base font-bold tabular-nums text-ink">
             {formatMoney(total)}
