@@ -1755,11 +1755,8 @@ function OrderEditor({
           <button
             type="button"
             onClick={() => setExpandedQuoteLineId(lineId)}
-            className={`${editorFieldClass()} flex min-w-0 flex-1 items-center gap-2 py-2 text-left`}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-peach/35 bg-peach/20 px-3 py-2 text-left transition hover:border-peach/55"
           >
-            <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-[#3ecf7a] text-night shadow-sm ring-1 ring-[#3ecf7a]/55">
-              <CheckIcon className="h-2.5 w-2.5" />
-            </span>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
               {summaryLabel}
             </span>
@@ -1783,7 +1780,7 @@ function OrderEditor({
       <div
         key={lineId}
         data-quote-line-id={lineId}
-        className="space-y-2 rounded-lg border border-ink/10 bg-cream px-3 py-2.5"
+        className="space-y-2 rounded-lg border border-peach/40 bg-peach/15 px-3 py-2.5"
       >
         <div className="flex items-center justify-between gap-2">
           <button
@@ -1791,15 +1788,10 @@ function OrderEditor({
             onClick={() =>
               setExpandedQuoteLineId(hvReady ? null : lineId)
             }
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
             disabled={!hvReady}
           >
-            {hvReady ? (
-              <span className="grid h-[11px] w-[11px] shrink-0 place-items-center rounded-full bg-[#3ecf7a] text-night shadow-sm ring-1 ring-[#3ecf7a]/55">
-                <CheckIcon className="h-2 w-2" />
-              </span>
-            ) : null}
-            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/45">
+            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
               High-value surcharge
             </span>
             {hvReady ? (
@@ -1898,11 +1890,8 @@ function OrderEditor({
           <button
             type="button"
             onClick={() => setExpandedQuoteLineId(lineId)}
-            className={`${editorFieldClass()} flex min-w-0 flex-1 items-center gap-2 py-2 text-left`}
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-sky/30 bg-sky/15 px-3 py-2 text-left transition hover:border-sky/50"
           >
-            <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-[#3ecf7a] text-night shadow-sm ring-1 ring-[#3ecf7a]/55">
-              <CheckIcon className="h-2.5 w-2.5" />
-            </span>
             <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
               {serviceName}
             </span>
@@ -1926,7 +1915,7 @@ function OrderEditor({
       <div
         key={lineId}
         data-quote-line-id={lineId}
-        className={`space-y-2 rounded-lg border border-ink/10 bg-cream px-3 py-2.5 ${
+        className={`space-y-2 rounded-lg border border-sky/35 bg-sky/15 px-3 py-2.5 ${
           serviceReady ? "" : "opacity-90"
         }`}
       >
@@ -1936,15 +1925,10 @@ function OrderEditor({
             onClick={() =>
               setExpandedQuoteLineId(serviceReady ? null : lineId)
             }
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            className="flex min-w-0 flex-1 items-center gap-2 text-left"
             disabled={!serviceReady}
           >
-            {serviceReady ? (
-              <span className="grid h-[11px] w-[11px] shrink-0 place-items-center rounded-full bg-[#3ecf7a] text-night shadow-sm ring-1 ring-[#3ecf7a]/55">
-                <CheckIcon className="h-2 w-2" />
-              </span>
-            ) : null}
-            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/45">
+            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
               {serviceReady ? serviceName : "Select a service"}
             </span>
             {serviceReady ? (
@@ -2192,9 +2176,9 @@ function OrderEditor({
                     return (
                       <div
                         key={key}
-                        className="rounded-xl border border-ink/10 bg-night/[0.04] px-3 py-3"
+                        className="overflow-hidden rounded-xl border border-ink/15 bg-cream shadow-cozy-sm"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 bg-night/25 px-3.5 py-3">
                           <div className="flex min-w-0 items-center gap-3">
                             <div className="min-w-0">
                               <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink">
@@ -2259,12 +2243,33 @@ function OrderEditor({
                           </div>
                         </div>
 
-                        <div className="mt-2.5 space-y-2 border-t border-ink/10 pt-2.5 pl-1 sm:pl-2">
-                          {indices.map((index) =>
-                            renderQuoteServiceLine(quoteItems[index], index)
+                        <div className="space-y-2 bg-night/15 px-3.5 py-3">
+                          {indices.length > 0 ? (
+                            <div className="space-y-2">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
+                                Services
+                              </p>
+                              {indices.map((index) =>
+                                renderQuoteServiceLine(
+                                  quoteItems[index],
+                                  index
+                                )
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-ink/45">
+                              No services yet — add one above.
+                            </p>
                           )}
-                          {renderQuoteHvLine(card)}
-                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-dashed border-ink/15 pt-2 text-xs">
+                          {hasHv ? (
+                            <div className="space-y-2 border-t border-ink/10 pt-2">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-peach">
+                                High-value
+                              </p>
+                              {renderQuoteHvLine(card)}
+                            </div>
+                          ) : null}
+                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
                             <span className="font-medium text-ink/55">
                               Card subtotal
                             </span>

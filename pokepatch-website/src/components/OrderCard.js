@@ -345,6 +345,8 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   cards={quoteCards}
                   adjustments={quoteAdjustments}
                   className="border-peach/30 bg-peach/10"
+                  collapsible
+                  defaultOpen={false}
                 />
               ) : null}
 

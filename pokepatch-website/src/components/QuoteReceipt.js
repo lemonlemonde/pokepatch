@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import {
   computeQuoteTotal,
   formatMoney,
@@ -5,6 +8,25 @@ import {
   quoteAdjustmentLines,
   quoteItemLineTotal,
 } from "@/lib/servicePricing";
+
+function Chevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+        open ? "rotate-180" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
 
 /**
  * Receipt-style quote summary:
@@ -17,7 +39,10 @@ export default function QuoteReceipt({
   adjustments = null,
   title = "Quote total",
   className = "",
+  collapsible = false,
+  defaultOpen = true,
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   const lines = items ?? [];
   const cardGroups = groupQuoteItemsByCard(lines, cards);
   const adjustmentLines = quoteAdjustmentLines(adjustments, lines);
@@ -26,6 +51,7 @@ export default function QuoteReceipt({
     cards,
     adjustments,
   });
+  const showBody = !collapsible || open;
 
   if (
     lines.length === 0 &&
@@ -39,10 +65,32 @@ export default function QuoteReceipt({
     <div
       className={`rounded-xl border border-berry/25 bg-berry/10 px-3 py-3 font-mono text-sm ${className}`}
     >
-      <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/55">
-        {title}
-      </p>
-      <div className="space-y-3">
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          className="flex w-full items-center gap-3 text-left"
+        >
+          <span className="min-w-0 flex-1 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/55">
+            {title}
+          </span>
+          {!open ? (
+            <span className="shrink-0 font-sans text-sm font-bold tabular-nums text-ink">
+              {formatMoney(total)}
+            </span>
+          ) : null}
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-night/40 text-ink/60">
+            <Chevron open={open} />
+          </span>
+        </button>
+      ) : (
+        <p className="mb-2 font-sans text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/55">
+          {title}
+        </p>
+      )}
+      {showBody ? (
+      <div className={`space-y-3 ${collapsible ? "mt-2" : ""}`}>
         {cardGroups.map((group, groupIndex) => (
           <div
             key={group.key || `card-group-${groupIndex}`}
@@ -145,6 +193,7 @@ export default function QuoteReceipt({
           </span>
         </div>
       </div>
+      ) : null}
     </div>
   );
 }
