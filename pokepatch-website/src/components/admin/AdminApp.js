@@ -46,7 +46,6 @@ import {
   formatMoney,
   highValueSurchargeFromValue,
   hvPercentFromMarketValue,
-  hvSurchargeFromMarketValue,
   HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
@@ -2538,42 +2537,6 @@ function OrderEditor({
                       updateCard(cardIndex, { set_name: event.target.value })
                     }
                   />
-                </label>
-                <label className="block sm:col-span-2">
-                  <EditorLabel>Market value (Raw Near Mint)</EditorLabel>
-                  <input
-                    className={editorFieldClass()}
-                    inputMode="decimal"
-                    value={card.market_value_raw_nm ?? ""}
-                    onChange={(event) =>
-                      updateCard(cardIndex, {
-                        market_value_raw_nm: event.target.value,
-                      })
-                    }
-                    placeholder="e.g. 250"
-                  />
-                  {(() => {
-                    const marketValue = moneyFieldToPayload(
-                      card.market_value_raw_nm
-                    );
-                    if (marketValue == null) {
-                      return (
-                        <p className="mt-1 text-[11px] text-ink/45">
-                          Used when you add HV under Quote. Default tiers:{" "}
-                          {HV_TIER_RANGES_LABEL}.
-                        </p>
-                      );
-                    }
-                    const pct = hvPercentFromMarketValue(marketValue);
-                    const hv = hvSurchargeFromMarketValue(marketValue);
-                    return (
-                      <p className="mt-1 text-[11px] text-ink/45">
-                        Default HV if added in Quote: {pct}% of{" "}
-                        {formatMoney(marketValue)}
-                        {hv != null ? ` = ${formatMoney(hv)}` : " (none)"}
-                      </p>
-                    );
-                  })()}
                 </label>
                 <label className="block sm:col-span-2">
                   <EditorLabel>Description</EditorLabel>
