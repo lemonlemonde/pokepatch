@@ -37,24 +37,21 @@ import {
 import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
+  ADJUSTMENT_KIND_OPTIONS,
   analyzeQuoteCardCoverage,
   cardsWithQuoteHv,
   defaultBaseAmount,
   defaultServiceLabel,
-  dollarsToPercent,
   emptyQuoteAdjustment,
   formatMoney,
   highValueSurchargeFromValue,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
-  HV_PERCENT_OPTIONS,
   HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
-  percentToDollars,
   quoteCardHvAmount,
   quoteItemCardLabel,
-  quoteItemsSubtotal,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
 } from "@/lib/servicePricing";
@@ -401,27 +398,13 @@ function validateDraftForSave(draft) {
     const row = draft.quote_adjustments[index];
     const hasDescription = Boolean((row.description ?? "").trim());
     const dollars = moneyFieldToPayload(row.amount_dollars);
-    const percent =
-      row.amount_percent === "" || row.amount_percent == null
-        ? null
-        : Number.isFinite(Number(row.amount_percent))
-          ? Number(row.amount_percent)
-          : NaN;
-    const hasAmount =
-      (dollars != null && dollars !== 0) ||
-      (percent != null && !Number.isNaN(percent) && percent !== 0);
+    const hasAmount = dollars != null && dollars !== 0;
     if (!hasDescription && !hasAmount) continue;
-    if (!hasDescription) {
-      return `Adjustment ${index + 1} needs a description.`;
-    }
     if (!hasAmount) {
-      return `Adjustment ${index + 1} needs a $ or % amount.`;
+      return `Adjustment ${index + 1} needs a $ amount.`;
     }
-    if (dollars != null && dollars < 0) {
+    if (dollars < 0) {
       return `Adjustment ${index + 1}: use Discount type instead of a negative $.`;
-    }
-    if (percent != null && Number.isNaN(percent)) {
-      return `Adjustment ${index + 1} has an invalid % amount.`;
     }
   }
   return null;
@@ -1537,27 +1520,6 @@ function OrderEditor({
     });
   }
 
-  function setCardHvPercent(cardId, value) {
-    const id = String(cardId);
-    const card = (draft.cards ?? []).find((entry) => String(entry.id) === id);
-    const marketValue = moneyFieldToPayload(card?.market_value_raw_nm);
-    const pct =
-      value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
-    let amount_dollars = draft.quote_card_hv?.[id]?.amount_dollars ?? "";
-    if (pct == null || pct === 0) {
-      amount_dollars = "";
-    } else if (marketValue != null) {
-      const amount = highValueSurchargeFromValue(marketValue, pct);
-      amount_dollars = amount != null ? String(amount) : "";
-    }
-    updateDraft({
-      quote_card_hv: {
-        ...(draft.quote_card_hv ?? {}),
-        [id]: { percent: value, amount_dollars },
-      },
-    });
-  }
-
   function setCardHvAmount(cardId, value) {
     const id = String(cardId);
     const card = (draft.cards ?? []).find((entry) => String(entry.id) === id);
@@ -1644,16 +1606,6 @@ function OrderEditor({
     updateDraft({ quote_items });
   }
 
-  function adjustmentSubtotal() {
-    return quoteItemsSubtotal(
-      (draft.quote_items ?? [])
-        .filter(quoteItemIsReady)
-        .map((item) => ({
-          quote_base_amount: moneyFieldToPayload(item.quote_base_amount) ?? 0,
-        }))
-    );
-  }
-
   function addQuoteAdjustment() {
     updateDraft({
       quote_adjustments: [
@@ -1671,32 +1623,9 @@ function OrderEditor({
   }
 
   function setAdjustmentDollars(index, value) {
-    const subtotal = adjustmentSubtotal();
-    const dollars =
-      value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
-    const percent =
-      dollars == null || dollars === 0
-        ? ""
-        : dollarsToPercent(dollars, subtotal);
     updateQuoteAdjustment(index, {
       amount_dollars: value,
-      amount_percent:
-        percent == null || percent === "" ? "" : String(percent),
-    });
-  }
-
-  function setAdjustmentPercent(index, value) {
-    const subtotal = adjustmentSubtotal();
-    const percent =
-      value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
-    const dollars =
-      percent == null || percent === 0
-        ? ""
-        : percentToDollars(percent, subtotal);
-    updateQuoteAdjustment(index, {
-      amount_percent: value,
-      amount_dollars:
-        dollars == null || dollars === "" ? "" : String(dollars),
+      amount_percent: "",
     });
   }
 
@@ -1770,12 +1699,7 @@ function OrderEditor({
       (entry) => String(entry.id) === cardId
     );
     const amount = moneyFieldToPayload(hv.amount_dollars) ?? 0;
-    const summaryLabel = [
-      "High-value surcharge",
-      hv.percent ? `${hv.percent}%` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const summaryLabel = "High-value surcharge";
 
     if (hvReady && !isExpanded) {
       return (
@@ -1848,7 +1772,7 @@ function OrderEditor({
             </button>
           </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-ink/55">
               Market ($)
@@ -1867,49 +1791,7 @@ function OrderEditor({
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-ink/55">
-              Percent (%)
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <input
-                className={`${editorFieldClass()} min-w-0 flex-1`}
-                inputMode="decimal"
-                value={hv.percent ?? ""}
-                onChange={(event) =>
-                  setCardHvPercent(cardId, event.target.value)
-                }
-                onFocus={() => setExpandedQuoteLineId(lineId)}
-                placeholder="e.g. 4"
-              />
-              <div className="flex shrink-0 gap-1">
-                {HV_PERCENT_OPTIONS.map((option) => {
-                  const selected =
-                    Number(hv.percent) === option.percent &&
-                    hv.percent !== "" &&
-                    hv.percent != null;
-                  return (
-                    <button
-                      key={option.percent}
-                      type="button"
-                      onClick={() =>
-                        setCardHvPercent(cardId, String(option.percent))
-                      }
-                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
-                        selected
-                          ? "border-peach bg-peach/50 text-ink"
-                          : "border-ink/15 bg-cream text-ink/70 hover:border-peach/60 hover:text-ink"
-                      }`}
-                      title={`${option.percent}% of market value`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Total ($)
+              Custom
             </span>
             <input
               className={editorFieldClass()}
@@ -2437,7 +2319,7 @@ function OrderEditor({
 
           <EditorSubsection
             title="Adjustments"
-            description="Add discounts or surcharges. $ and % stay linked from the current card subtotal."
+            description="Add discounts, delivery, or shipping as straight dollar amounts."
             action={
               <button
                 type="button"
@@ -2450,7 +2332,7 @@ function OrderEditor({
           >
             {(draft.quote_adjustments ?? []).length === 0 ? (
               <p className="text-sm text-ink/45">
-                No adjustments yet. Add a row for a discount or surcharge.
+                No adjustments yet. Add a row for a discount, delivery, or shipping.
               </p>
             ) : (
               <div className="space-y-2">
@@ -2471,8 +2353,14 @@ function OrderEditor({
                             })
                           }
                         >
-                          <option value="discount">Discount</option>
-                          <option value="surcharge">Surcharge</option>
+                          {ADJUSTMENT_KIND_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                          {row.kind === "surcharge" ? (
+                            <option value="surcharge">Surcharge</option>
+                          ) : null}
                         </select>
                       </label>
                       <label className="block min-w-0 sm:col-span-1">
@@ -2485,7 +2373,7 @@ function OrderEditor({
                               description: event.target.value,
                             })
                           }
-                          placeholder="Bulk discount / rush / loyalty…"
+                          placeholder="Optional note…"
                         />
                       </label>
                       <div className="flex items-end justify-end">
@@ -2498,8 +2386,8 @@ function OrderEditor({
                         </button>
                       </div>
                     </div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <label className="block">
+                    <div className="mt-3">
+                      <label className="block max-w-xs">
                         <EditorLabel>Amount ($)</EditorLabel>
                         <input
                           className={editorFieldClass()}
@@ -2509,18 +2397,6 @@ function OrderEditor({
                             setAdjustmentDollars(index, event.target.value)
                           }
                           placeholder="0.00"
-                        />
-                      </label>
-                      <label className="block">
-                        <EditorLabel>Amount (%)</EditorLabel>
-                        <input
-                          className={editorFieldClass()}
-                          inputMode="decimal"
-                          value={row.amount_percent ?? ""}
-                          onChange={(event) =>
-                            setAdjustmentPercent(index, event.target.value)
-                          }
-                          placeholder="0"
                         />
                       </label>
                     </div>

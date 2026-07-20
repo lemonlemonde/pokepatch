@@ -129,24 +129,13 @@ export default function QuoteReceipt({
               })}
 
               {group.highValueSurcharge > 0 ? (
-                <div className="space-y-0.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="min-w-0 break-words text-ink/80">
-                      High-value surcharge
-                    </span>
-                    <span className="shrink-0 tabular-nums font-semibold text-ink">
-                      {formatMoney(group.highValueSurcharge)}
-                    </span>
-                  </div>
-                  <p className="text-xs tabular-nums text-ink/45">
-                    {Number.isFinite(group.marketValue)
-                      ? `market ${formatMoney(group.marketValue)}`
-                      : "market —"}
-                    {group.hvPercent != null &&
-                    Number.isFinite(Number(group.hvPercent))
-                      ? ` · ${Number(group.hvPercent)}%`
-                      : null}
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0 break-words text-ink/80">
+                    High-value surcharge
+                  </span>
+                  <span className="shrink-0 tabular-nums font-semibold text-ink">
+                    {formatMoney(group.highValueSurcharge)}
+                  </span>
                 </div>
               ) : null}
 
