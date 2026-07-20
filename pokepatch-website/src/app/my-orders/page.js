@@ -14,6 +14,7 @@ import {
   ORDER_STATUSES,
   groupOrdersByStatus,
   orderStatusHeadingClass,
+  customerOrderStatusLabel,
   filterOrdersByCompletedVisibility,
 } from "@/lib/orderStatus";
 
@@ -129,7 +130,7 @@ const visibleOrders = useMemo(
                         section.id
                       )}`}
                     >
-                      {section.label}
+                      {customerOrderStatusLabel(section.id)}
                     </h2>
                     <span className="text-xs text-ink/60">
                       {section.orders.length}{" "}

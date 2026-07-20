@@ -1,5 +1,5 @@
 export const ORDER_STATUSES = [
-  { id: "new", label: "To do" },
+  { id: "new", label: "To do", customerLabel: "In queue" },
   { id: "in_progress", label: "In progress" },
   { id: "completed", label: "Completed" },
   { id: "canceled", label: "Canceled" },
@@ -24,8 +24,25 @@ const LABEL_BY_ID = Object.fromEntries(
   ORDER_STATUSES.map((status) => [status.id, status.label]),
 );
 
+const CUSTOMER_LABEL_BY_ID = Object.fromEntries(
+  ORDER_STATUSES.map((status) => [
+    status.id,
+    status.customerLabel ?? status.label,
+  ]),
+);
+
 export function orderStatusLabel(statusId) {
   return LABEL_BY_ID[normalizeOrderStatus(statusId)] ?? LABEL_BY_ID[DEFAULT_ORDER_STATUS];
+}
+
+/** Customer-facing label (e.g. "In queue" instead of admin "To do"). */
+export function customerOrderStatusLabel(statusId) {
+  const status = normalizeOrderStatus(statusId);
+  return (
+    CUSTOMER_LABEL_BY_ID[status] ??
+    LABEL_BY_ID[status] ??
+    CUSTOMER_LABEL_BY_ID[DEFAULT_ORDER_STATUS]
+  );
 }
 
 export function normalizeOrderStatus(statusId) {
@@ -42,7 +59,7 @@ export function isClosedOrderStatus(statusId) {
   return status === "completed" || status === "canceled";
 }
 
-/** Red = not started, yellow = in progress, green = done, muted = canceled. */
+/** Blue = not started, yellow = in progress, green = done, muted = canceled. */
 export function orderStatusBadgeClass(statusId) {
   switch (normalizeOrderStatus(statusId)) {
     case "in_progress":
@@ -53,7 +70,7 @@ export function orderStatusBadgeClass(statusId) {
       return "bg-ink/25 text-ink/80";
     case "new":
     default:
-      return "bg-status-red text-white";
+      return "bg-status-blue text-white";
   }
 }
 
@@ -67,7 +84,7 @@ export function orderStatusHeadingClass(statusId) {
       return "text-ink/55";
     case "new":
     default:
-      return "text-status-red";
+      return "text-status-blue";
   }
 }
 

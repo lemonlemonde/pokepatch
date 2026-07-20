@@ -8,9 +8,11 @@ export default {
   ],
   safelist: [
     "bg-status-red",
+    "bg-status-blue",
     "bg-status-yellow",
     "bg-status-green",
     "text-status-red",
+    "text-status-blue",
     "text-status-yellow",
     "text-status-green",
   ],
@@ -24,8 +26,10 @@ export default {
         mint: "#B8E8D0",
         lavender: "#D4C5F9",
         peach: "#FFDAB9",
+        sky: "#B8D9F5",
         status: {
           red: "#EF4444",
+          blue: "#3B82F6",
           yellow: "#EAB308",
           green: "#22C55E",
         },

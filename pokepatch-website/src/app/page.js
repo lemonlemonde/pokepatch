@@ -143,6 +143,11 @@ export default function Home() {
           {services.map((service) => (
             <ServiceCard key={service.title} {...service} />
           ))}
+          <div className="pixel-border flex items-center justify-center rounded-2xl border-sky/10 bg-sky/30 px-6 py-4 text-center sm:col-span-2 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]">
+            <p className="text-sm font-semibold text-ink/70">
+              DM for bulk pricing of large orders
+            </p>
+          </div>
         </div>
       </section>
 

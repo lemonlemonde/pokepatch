@@ -11,7 +11,7 @@ export const SERVICE_KEYS = {
 export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.SURFACE,
-    title: "Surface Restoration",
+    title: "Surface Cleaning",
     listPrice: 9,
     priceDisplay: "$9",
     unit: "/ card",
@@ -29,7 +29,7 @@ export const QUOTE_SERVICES = [
   },
   {
     key: SERVICE_KEYS.PRESSING,
-    title: "Precision Pressing & Flattening",
+    title: "Flattening",
     listPrice: 28,
     priceDisplay: "$28",
     unit: "/ card",
@@ -41,7 +41,7 @@ export const QUOTE_SERVICES = [
   },
   {
     key: SERVICE_KEYS.ADVANCED,
-    title: "Advanced Restoration",
+    title: "Heavy Damage",
     listPrice: 45,
     priceDisplay: "$45+",
     unit: "/ card",
@@ -73,16 +73,20 @@ const HIGH_VALUE_MARKETING = {
   features: ["Added on top of restoration service"],
   bulk: [
     { label: "$200–$500", value: "+4%" },
-    { label: "$500+", value: "+8%" },
+    { label: "$500.01+", value: "+8%" },
   ],
   bulkLabel: "Surcharge Tiers",
   accent: "mint",
 };
 
 export const HV_PERCENT_OPTIONS = [
-  { percent: 4, label: "4% ($200–$500)" },
-  { percent: 8, label: "8% ($500+)" },
+  { percent: 0, label: "0%" },
+  { percent: 4, label: "4%" },
+  { percent: 8, label: "8%" },
 ];
+
+/** Short admin/customer hint for default HV market-value tiers. */
+export const HV_TIER_RANGES_LABEL = "$200–$500 → 4%, $500.01+ → 8%";
 
 function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
@@ -97,10 +101,6 @@ export function marketingServices() {
         price: service.priceDisplay,
         unit: service.unit,
         features: service.features,
-        bulk: service.bulkTiers.map((tier) => ({
-          label: tier.label,
-          value: tier.value,
-        })),
         accent: service.accent,
       })
     ),
@@ -119,34 +119,6 @@ export function defaultServiceLabel(serviceKey) {
   return service.title;
 }
 
-export function bulkPerCardOff(serviceKey, count) {
-  const n = Number(count) || 0;
-  const service = serviceByKey(serviceKey);
-  if (!service?.bulkTiers?.length || n <= 0) return 0;
-  let best = 0;
-  for (const tier of service.bulkTiers) {
-    if (n >= tier.minCount && tier.perCardOff > best) {
-      best = tier.perCardOff;
-    }
-  }
-  return best;
-}
-
-export function bulkTotalOff(serviceKey, count) {
-  const n = Number(count) || 0;
-  return n * bulkPerCardOff(serviceKey, n);
-}
-
-export function suggestBulkCountsFromItems(items) {
-  const counts = {};
-  for (const item of items ?? []) {
-    const key = item?.service_key;
-    if (!key || key === SERVICE_KEYS.CUSTOM) continue;
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  return counts;
-}
-
 export function highValueSurchargeFromValue(cardValue, percent) {
   const value = Number(cardValue);
   const pct = Number(percent);
@@ -154,6 +126,24 @@ export function highValueSurchargeFromValue(cardValue, percent) {
     return null;
   }
   return Math.round(value * (pct / 100) * 100) / 100;
+}
+
+/**
+ * HV tiers from Raw NM market value:
+ * under $200 → 0%, $200–$500 → 4%, $500.01+ → 8%.
+ */
+export function hvPercentFromMarketValue(marketValue) {
+  const value = Number(marketValue);
+  if (!Number.isFinite(value) || value < 200) return 0;
+  if (value <= 500) return 4;
+  return 8;
+}
+
+/** Dollar HV from market value using tier percent; null when 0% or invalid. */
+export function hvSurchargeFromMarketValue(marketValue) {
+  const percent = hvPercentFromMarketValue(marketValue);
+  if (percent <= 0) return null;
+  return highValueSurchargeFromValue(marketValue, percent);
 }
 
 export function formatMoney(amount) {
@@ -169,63 +159,563 @@ export function parseMoneyInput(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Bulk discount rows for display (only services with off > 0). */
-export function bulkDiscountLines(bulkCounts) {
+export function quoteItemsSubtotal(items) {
+  let sum = 0;
+  for (const item of items ?? []) {
+    sum += Number(item.quote_base_amount) || 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/**
+ * Card-level HV dollar amount from an explicit quote HV entry on the card
+ * (`hv_amount`), not auto-derived unless that entry exists.
+ */
+export function quoteCardHvAmount(card) {
+  if (!card) return 0;
+  if (card.hv_amount == null || card.hv_amount === "") return 0;
+  const n = Number(card.hv_amount);
+  return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+}
+
+export function quoteCardsHvTotal(cards = []) {
+  return Math.round(
+    (cards ?? []).reduce((sum, card) => sum + quoteCardHvAmount(card), 0) * 100
+  ) / 100;
+}
+
+/** Normalize one stored card HV row from quote_bulk_counts.card_hv. */
+export function normalizeCardHvEntry(row) {
+  if (!row || typeof row !== "object") return null;
+  const card_id = row.card_id != null ? String(row.card_id) : "";
+  if (!card_id) return null;
+  const percent =
+    row.percent === "" || row.percent == null
+      ? null
+      : Number.isFinite(Number(row.percent))
+        ? Math.abs(Number(row.percent))
+        : null;
+  const amount_dollars =
+    row.amount_dollars === "" || row.amount_dollars == null
+      ? null
+      : Number.isFinite(Number(row.amount_dollars))
+        ? Math.abs(Number(row.amount_dollars))
+        : null;
+  if (amount_dollars == null || amount_dollars <= 0) return null;
+  return { card_id, percent, amount_dollars };
+}
+
+const ADJUSTMENT_KINDS = new Set(["discount", "surcharge"]);
+
+function newAdjustmentId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `adj-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function emptyQuoteAdjustment(kind = "discount") {
+  return {
+    id: newAdjustmentId(),
+    kind: ADJUSTMENT_KINDS.has(kind) ? kind : "discount",
+    description: "",
+    amount_dollars: "",
+    amount_percent: "",
+  };
+}
+
+export function dollarsToPercent(dollars, subtotal) {
+  const amount = Math.abs(Number(dollars));
+  const base = Number(subtotal);
+  if (!Number.isFinite(amount) || !Number.isFinite(base) || base <= 0) {
+    return null;
+  }
+  return Math.round((amount / base) * 10000) / 100;
+}
+
+export function percentToDollars(percent, subtotal) {
+  const pct = Math.abs(Number(percent));
+  const base = Number(subtotal);
+  if (!Number.isFinite(pct) || !Number.isFinite(base) || base < 0) {
+    return null;
+  }
+  return Math.round(base * (pct / 100) * 100) / 100;
+}
+
+/** Normalize one editor/storage adjustment row. */
+export function normalizeQuoteAdjustment(row) {
+  if (!row || typeof row !== "object") return null;
+  const kind = ADJUSTMENT_KINDS.has(row.kind) ? row.kind : "discount";
+  const description =
+    row.description != null ? String(row.description).trim() : "";
+  const dollarsRaw = row.amount_dollars;
+  const percentRaw = row.amount_percent;
+  const dollars =
+    dollarsRaw === "" || dollarsRaw == null
+      ? null
+      : Number.isFinite(Number(dollarsRaw))
+        ? Math.abs(Number(dollarsRaw))
+        : null;
+  const percent =
+    percentRaw === "" || percentRaw == null
+      ? null
+      : Number.isFinite(Number(percentRaw))
+        ? Math.abs(Number(percentRaw))
+        : null;
+  return {
+    id: row.id != null ? String(row.id) : newAdjustmentId(),
+    kind,
+    description,
+    amount_dollars: dollars,
+    amount_percent: percent,
+  };
+}
+
+export function quoteAdjustmentHasContent(row) {
+  const normalized = normalizeQuoteAdjustment(row);
+  if (!normalized) return false;
+  if (normalized.description) return true;
+  if (normalized.amount_dollars != null && normalized.amount_dollars > 0) {
+    return true;
+  }
+  if (normalized.amount_percent != null && normalized.amount_percent > 0) {
+    return true;
+  }
+  return false;
+}
+
+/** Signed $ applied to the total (discount negative, surcharge positive). */
+export function quoteAdjustmentSignedAmount(row, subtotal = null) {
+  const normalized = normalizeQuoteAdjustment(row);
+  if (!normalized) return 0;
+  let dollars = normalized.amount_dollars;
+  if (
+    (dollars == null || dollars === 0) &&
+    normalized.amount_percent != null &&
+    subtotal != null
+  ) {
+    dollars = percentToDollars(normalized.amount_percent, subtotal) ?? 0;
+  }
+  if (dollars == null || !Number.isFinite(dollars) || dollars === 0) return 0;
+  const signed = normalized.kind === "surcharge" ? dollars : -dollars;
+  return Math.round(signed * 100) / 100;
+}
+
+export function quoteAdjustmentsTotal(adjustments, items = []) {
+  const subtotal = quoteItemsSubtotal(items);
+  return Math.round(
+    (adjustments ?? []).reduce(
+      (sum, row) => sum + quoteAdjustmentSignedAmount(row, subtotal),
+      0
+    ) * 100
+  ) / 100;
+}
+
+/** Receipt-ready rows with non-zero signed amounts. */
+export function quoteAdjustmentLines(adjustments, items = []) {
+  const subtotal = quoteItemsSubtotal(items);
   const lines = [];
-  for (const service of QUOTE_SERVICES) {
-    if (service.key === SERVICE_KEYS.CUSTOM) continue;
-    const count = Number(bulkCounts?.[service.key]) || 0;
-    const perCard = bulkPerCardOff(service.key, count);
-    const total = bulkTotalOff(service.key, count);
-    if (total <= 0) continue;
+  for (const row of adjustments ?? []) {
+    const normalized = normalizeQuoteAdjustment(row);
+    if (!normalized) continue;
+    const signed = quoteAdjustmentSignedAmount(normalized, subtotal);
+    if (signed === 0 && !normalized.description) continue;
+    if (signed === 0) continue;
     lines.push({
-      serviceKey: service.key,
-      label: service.title,
-      count,
-      perCardOff: perCard,
-      totalOff: total,
+      id: normalized.id,
+      kind: normalized.kind,
+      description:
+        normalized.description ||
+        (normalized.kind === "surcharge" ? "Surcharge" : "Discount"),
+      amount: signed,
+      amountDollars: Math.abs(signed),
+      amountPercent: normalized.amount_percent,
     });
   }
   return lines;
 }
 
-export function quoteItemsSubtotal(items) {
-  let sum = 0;
-  for (const item of items ?? []) {
-    const base = Number(item.quote_base_amount) || 0;
-    const hv = Number(item.high_value_surcharge) || 0;
-    sum += base + hv;
+/**
+ * Persist shape stored in orders.quote_bulk_counts (jsonb object).
+ * New format: { version: 2, adjustments: [...], card_hv: [...] }
+ * Legacy format: { service_key: { count, per_card_off, enabled } }
+ */
+export function packQuoteAdjustments(adjustments, cardHv = null) {
+  const rows = (adjustments ?? [])
+    .map((row) => normalizeQuoteAdjustment(row))
+    .filter((row) => row && quoteAdjustmentHasContent(row))
+    .map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      description: row.description,
+      amount_dollars: row.amount_dollars,
+      amount_percent: row.amount_percent,
+    }));
+
+  const hvRows = [];
+  if (cardHv && typeof cardHv === "object" && !Array.isArray(cardHv)) {
+    for (const [card_id, entry] of Object.entries(cardHv)) {
+      const normalized = normalizeCardHvEntry({
+        card_id,
+        percent: entry?.percent,
+        amount_dollars: entry?.amount_dollars,
+      });
+      if (normalized) hvRows.push(normalized);
+    }
   }
-  return sum;
+
+  if (rows.length === 0 && hvRows.length === 0) return null;
+  return {
+    version: 2,
+    adjustments: rows,
+    ...(hvRows.length > 0 ? { card_hv: hvRows } : {}),
+  };
 }
 
-export function quoteBulkTotalOff(bulkCounts) {
-  return bulkDiscountLines(bulkCounts).reduce(
-    (sum, line) => sum + line.totalOff,
-    0
+/** Editor map: cardId → { percent, amount_dollars } as strings. */
+export function unpackQuoteCardHv(stored) {
+  if (
+    !stored ||
+    typeof stored !== "object" ||
+    Array.isArray(stored) ||
+    stored.version !== 2 ||
+    !Array.isArray(stored.card_hv)
+  ) {
+    return {};
+  }
+  const out = {};
+  for (const row of stored.card_hv) {
+    const normalized = normalizeCardHvEntry(row);
+    if (!normalized) continue;
+    out[normalized.card_id] = {
+      percent:
+        normalized.percent != null ? String(normalized.percent) : "",
+      amount_dollars: String(normalized.amount_dollars),
+    };
+  }
+  return out;
+}
+
+/** Attach quote HV fields onto cards for receipt/total helpers. */
+export function cardsWithQuoteHv(cards = [], cardHv = {}) {
+  return (cards ?? []).map((card) => {
+    const entry = cardHv?.[String(card.id)];
+    if (!entry) return { ...card, hv_percent: null, hv_amount: null };
+    return {
+      ...card,
+      hv_percent:
+        entry.percent === "" || entry.percent == null
+          ? null
+          : Number(entry.percent),
+      hv_amount:
+        entry.amount_dollars === "" || entry.amount_dollars == null
+          ? null
+          : Number(entry.amount_dollars),
+    };
+  });
+}
+
+function legacyBulkEntry(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const count = Math.max(0, Math.floor(Number(value.count) || 0));
+    const per_card_off = Number(value.per_card_off) || 0;
+    const enabled = value.enabled !== false;
+    return { count, per_card_off, enabled };
+  }
+  const count = Math.max(0, Math.floor(Number(value) || 0));
+  return { count, per_card_off: 0, enabled: true };
+}
+
+/** Convert legacy per-service bulk map into adjustment rows. */
+export function legacyBulkToAdjustments(bulkCalcs) {
+  if (!bulkCalcs || typeof bulkCalcs !== "object" || Array.isArray(bulkCalcs)) {
+    return [];
+  }
+  if (bulkCalcs.version === 2) return [];
+  const rows = [];
+  for (const service of QUOTE_SERVICES) {
+    if (service.key === SERVICE_KEYS.CUSTOM) continue;
+    const entry = legacyBulkEntry(bulkCalcs[service.key]);
+    if (!entry.enabled || entry.count <= 0 || entry.per_card_off <= 0) {
+      continue;
+    }
+    const total =
+      Math.round(entry.count * entry.per_card_off * 100) / 100;
+    if (total <= 0) continue;
+    rows.push({
+      id: newAdjustmentId(),
+      kind: "discount",
+      description: `${service.title} bulk (${entry.count} × $${Number(
+        entry.per_card_off
+      ).toFixed(2)}/card)`,
+      amount_dollars: total,
+      amount_percent: null,
+    });
+  }
+  return rows;
+}
+
+export function legacyOverrideToAdjustment(label, amount) {
+  if (amount == null || !Number.isFinite(Number(amount))) return null;
+  const n = Number(amount);
+  if (n === 0) return null;
+  const text = label != null ? String(label).trim() : "";
+  return {
+    id: newAdjustmentId(),
+    kind: n >= 0 ? "surcharge" : "discount",
+    description: text || (n >= 0 ? "Surcharge" : "Discount"),
+    amount_dollars: Math.abs(n),
+    amount_percent: null,
+  };
+}
+
+/**
+ * Load adjustments from stored quote_bulk_counts (+ optional legacy override).
+ * Returns editor-ready rows (string money fields).
+ */
+export function unpackQuoteAdjustments(
+  stored,
+  { overrideLabel = "", overrideAmount = null } = {}
+) {
+  const fromOverride = legacyOverrideToAdjustment(
+    overrideLabel,
+    overrideAmount
   );
+  let rows = [];
+
+  if (
+    stored &&
+    typeof stored === "object" &&
+    !Array.isArray(stored) &&
+    stored.version === 2
+  ) {
+    rows = (Array.isArray(stored.adjustments) ? stored.adjustments : [])
+      .map((row) => normalizeQuoteAdjustment(row))
+      .filter(Boolean);
+    // Only fold leftover override columns when v2 payload is empty.
+    if (rows.length === 0 && fromOverride) {
+      rows = [normalizeQuoteAdjustment(fromOverride)];
+    }
+  } else if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+    rows = legacyBulkToAdjustments(stored)
+      .map((row) => normalizeQuoteAdjustment(row))
+      .filter(Boolean);
+    if (fromOverride) {
+      rows = [...rows, normalizeQuoteAdjustment(fromOverride)];
+    }
+  } else if (fromOverride) {
+    rows = [normalizeQuoteAdjustment(fromOverride)];
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    description: row.description,
+    amount_dollars:
+      row.amount_dollars != null ? String(row.amount_dollars) : "",
+    amount_percent:
+      row.amount_percent != null ? String(row.amount_percent) : "",
+  }));
 }
 
 export function computeQuoteTotal({
   items,
-  bulkCounts,
-  overrideAmount = null,
+  cards = null,
+  adjustments = null,
 } = {}) {
   const subtotal = quoteItemsSubtotal(items);
-  const bulkOff = quoteBulkTotalOff(bulkCounts);
-  const override = Number(overrideAmount) || 0;
-  return Math.round((subtotal - bulkOff + override) * 100) / 100;
+  const cardHv = quoteCardsHvTotal(cards);
+  const adjustmentTotal = quoteAdjustmentsTotal(adjustments, items);
+  return Math.round((subtotal + cardHv + adjustmentTotal) * 100) / 100;
 }
 
 export function hasQuoteData({
   items,
-  bulkCounts,
-  overrideAmount = null,
+  cards = null,
+  adjustments = null,
 } = {}) {
   if ((items ?? []).length > 0) return true;
-  if (quoteBulkTotalOff(bulkCounts) > 0) return true;
-  if (overrideAmount != null && Number.isFinite(Number(overrideAmount))) {
-    return true;
-  }
+  if (quoteCardsHvTotal(cards) > 0) return true;
+  if (quoteAdjustmentLines(adjustments, items).length > 0) return true;
   return false;
+}
+
+export function quoteItemCardLabel(item) {
+  const name = (item?.card_name || "").trim() || "Card";
+  const set = (item?.set_name || "").trim();
+  return set ? `${name} (${set})` : name;
+}
+
+export function quoteItemLineTotal(item) {
+  return Math.round((Number(item?.quote_base_amount) || 0) * 100) / 100;
+}
+
+/** Group quote lines by card name/set, preserving first-seen order. */
+export function groupQuoteItemsByCard(items = [], cards = []) {
+  const cardByKey = new Map(
+    (cards ?? []).map((card) => [
+      normalizeCardKey(card.card_name, card.set_name),
+      card,
+    ])
+  );
+  const groups = [];
+  const indexByKey = new Map();
+  for (const item of items ?? []) {
+    const key = normalizeCardKey(item?.card_name, item?.set_name);
+    let group = indexByKey.get(key);
+    if (!group) {
+      const card = cardByKey.get(key) ?? null;
+      const highValueSurcharge = quoteCardHvAmount(card);
+      group = {
+        key,
+        label: quoteItemCardLabel(item),
+        items: [],
+        servicesSubtotal: 0,
+        highValueSurcharge,
+        hvPercent: card?.hv_percent ?? null,
+        marketValue:
+          card?.market_value_raw_nm != null
+            ? Number(card.market_value_raw_nm)
+            : null,
+        subtotal: highValueSurcharge,
+        card,
+      };
+      indexByKey.set(key, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+    group.servicesSubtotal =
+      Math.round((group.servicesSubtotal + quoteItemLineTotal(item)) * 100) /
+      100;
+    group.subtotal =
+      Math.round((group.servicesSubtotal + group.highValueSurcharge) * 100) /
+      100;
+  }
+
+  // Cards with HV but no quote services still need a receipt row.
+  for (const card of cards ?? []) {
+    const key = normalizeCardKey(card.card_name, card.set_name);
+    if (indexByKey.has(key)) continue;
+    const highValueSurcharge = quoteCardHvAmount(card);
+    if (highValueSurcharge <= 0) continue;
+    groups.push({
+      key,
+      label: quoteItemCardLabel(card),
+      items: [],
+      servicesSubtotal: 0,
+      highValueSurcharge,
+      hvPercent: card?.hv_percent ?? null,
+      marketValue:
+        card?.market_value_raw_nm != null
+          ? Number(card.market_value_raw_nm)
+          : null,
+      subtotal: highValueSurcharge,
+      card,
+    });
+  }
+
+  return groups;
+}
+
+function normalizeCardKey(name, setName) {
+  return `${(name || "").trim().toLowerCase()}|${(setName || "").trim().toLowerCase()}`;
+}
+
+/**
+ * Summarize which services are on which order cards, plus coverage warnings.
+ */
+export function analyzeQuoteCardCoverage(orderCards = [], quoteItems = []) {
+  const cards = orderCards ?? [];
+  const items = quoteItems ?? [];
+
+  const cardNumberById = new Map(
+    cards.map((card, index) => [String(card.id), index + 1])
+  );
+  const cardById = new Map(cards.map((card) => [String(card.id), card]));
+  const cardByNameSet = new Map(
+    cards.map((card) => [
+      normalizeCardKey(card.card_name, card.set_name),
+      card,
+    ])
+  );
+
+  /** @type {Map<string, { card: object|null, number: number|null, label: string, services: { key: string, label: string, count: number }[] }>} */
+  const byCard = new Map();
+  let unmatchedIndex = 0;
+
+  function ensureCardEntry(key, card, label) {
+    if (!byCard.has(key)) {
+      const number = card
+        ? cardNumberById.get(String(card.id)) ?? null
+        : null;
+      byCard.set(key, { card, number, label, services: [] });
+    }
+    return byCard.get(key);
+  }
+
+  for (const item of items) {
+    if (!item?.service_key) continue;
+    const pick =
+      item.card_pick && item.card_pick !== "custom"
+        ? String(item.card_pick)
+        : "";
+    const matched =
+      (pick && cardById.get(pick)) ||
+      cardByNameSet.get(normalizeCardKey(item.card_name, item.set_name)) ||
+      null;
+
+    const key = matched
+      ? `id:${matched.id}`
+      : `name:${normalizeCardKey(item.card_name, item.set_name)}`;
+    const label = matched
+      ? quoteItemCardLabel(matched)
+      : quoteItemCardLabel(item);
+    const entry = ensureCardEntry(key, matched, label);
+    if (entry.number == null) {
+      unmatchedIndex += 1;
+      entry.number = cards.length + unmatchedIndex;
+    }
+    const serviceKey = item.service_key || SERVICE_KEYS.CUSTOM;
+    const serviceLabel =
+      (item.service_label || "").trim() ||
+      defaultServiceLabel(serviceKey) ||
+      serviceKey;
+    const existing = entry.services.find((s) => s.key === serviceKey);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      entry.services.push({ key: serviceKey, label: serviceLabel, count: 1 });
+    }
+  }
+
+  const assignments = [...byCard.values()]
+    .map((entry) => ({
+      number: entry.number,
+      label: entry.label,
+      services: entry.services,
+    }))
+    .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+  const coveredIds = new Set(
+    [...byCard.values()]
+      .filter((entry) => entry.card)
+      .map((entry) => String(entry.card.id))
+  );
+  const uncoveredCards = cards
+    .filter((card) => !coveredIds.has(String(card.id)))
+    .map((card) => ({
+      number: cardNumberById.get(String(card.id)),
+      label: quoteItemCardLabel(card),
+    }));
+
+  const duplicateServiceCards = [...byCard.values()]
+    .filter((entry) => entry.services.some((s) => s.count > 1))
+    .map((entry) => ({
+      number: entry.number,
+      label: entry.label,
+      services: entry.services.filter((s) => s.count > 1),
+    }))
+    .sort((a, b) => (a.number ?? 999) - (b.number ?? 999));
+
+  return { assignments, uncoveredCards, duplicateServiceCards };
 }
