@@ -79,12 +79,6 @@ const HIGH_VALUE_MARKETING = {
   accent: "mint",
 };
 
-export const HV_PERCENT_OPTIONS = [
-  { percent: 0, label: "0%" },
-  { percent: 4, label: "4%" },
-  { percent: 8, label: "8%" },
-];
-
 /** Short admin/customer hint for default HV market-value tiers. */
 export const HV_TIER_RANGES_LABEL = "$200–$500 → 4%, $500.01+ → 8%";
 
@@ -220,17 +214,15 @@ export const ADJUSTMENT_KIND_OPTIONS = [
   { value: "shipping", label: "Shipping" },
 ];
 
+const ADJUSTMENT_KIND_LABELS = {
+  discount: "Discount",
+  delivery: "Delivery",
+  shipping: "Shipping",
+  surcharge: "Surcharge",
+};
+
 export function adjustmentKindLabel(kind) {
-  switch (kind) {
-    case "delivery":
-      return "Delivery";
-    case "shipping":
-      return "Shipping";
-    case "surcharge":
-      return "Surcharge";
-    default:
-      return "Discount";
-  }
+  return ADJUSTMENT_KIND_LABELS[kind] ?? "Discount";
 }
 
 function newAdjustmentId() {
@@ -248,15 +240,6 @@ export function emptyQuoteAdjustment(kind = "discount") {
     amount_dollars: "",
     amount_percent: "",
   };
-}
-
-export function dollarsToPercent(dollars, subtotal) {
-  const amount = Math.abs(Number(dollars));
-  const base = Number(subtotal);
-  if (!Number.isFinite(amount) || !Number.isFinite(base) || base <= 0) {
-    return null;
-  }
-  return Math.round((amount / base) * 10000) / 100;
 }
 
 export function percentToDollars(percent, subtotal) {

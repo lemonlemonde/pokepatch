@@ -1699,12 +1699,7 @@ function OrderEditor({
       (entry) => String(entry.id) === cardId
     );
     const amount = moneyFieldToPayload(hv.amount_dollars) ?? 0;
-    const summaryLabel = [
-      "High-value surcharge",
-      hv.percent ? `${hv.percent}%` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const summaryLabel = "High-value surcharge";
 
     if (hvReady && !isExpanded) {
       return (
