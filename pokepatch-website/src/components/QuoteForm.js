@@ -11,7 +11,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import { capture } from "@/lib/posthog";
 
-const MAX_CARDS = 10;
+const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
 const MAX_FILE_MB = 50;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
@@ -793,8 +793,9 @@ export default function QuoteForm() {
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
           <p className="mt-1 text-sm text-ink/70">
-            Add up to 10 cards. For more than 10 cards, submit as 1 card entry
-            with a photo of the entire bulk lot and a combined description.
+            Add up to {MAX_CARDS} cards. For more than {MAX_CARDS} cards,
+            submit as 1 card entry with a photo of the entire bulk lot and a
+            combined description, submit a separate order, or reach out.
           </p>
         </div>
 
@@ -952,7 +953,8 @@ export default function QuoteForm() {
           {cards.length >= MAX_CARDS && (
             <p className="text-sm text-ink/70">
               Maximum of {MAX_CARDS} cards. For larger lots, use one card entry
-              with a photo of the entire lot and a description.
+              with a photo of the entire lot and a description, submit a
+              separate order, or reach out.
             </p>
           )}
         </div>
