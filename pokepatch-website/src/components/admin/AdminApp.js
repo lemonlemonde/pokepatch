@@ -20,6 +20,7 @@ import {
 } from "@/lib/adminApi";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
+import BroadcastMessages from "@/components/admin/BroadcastMessages";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
@@ -189,6 +190,14 @@ const ADMIN_TABS = [
     title: "Gallery admin",
     subtitle:
       "Upload and manage restorations shown on the public Gallery page.",
+  },
+  {
+    id: "messages",
+    label: "Messages",
+    path: "/admin/messages/",
+    title: "Broadcast messages",
+    subtitle:
+      "Email one or many customers. Messages also appear on their Messages page.",
   },
   {
     id: "studio",
@@ -2773,6 +2782,7 @@ export default function AdminApp() {
       </div>
 
       {tab === "gallery" && <GalleryManager />}
+      {tab === "messages" && <BroadcastMessages />}
       {tab === "studio" && <StudioTool />}
       {ordersSectionActive && (
         <>

@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
+import { supabase } from "@/lib/supabaseClient";
 import logo from "../app/pokepatch_icon.png";
 
 const BASE_LINKS = [
@@ -44,6 +45,7 @@ function MenuIcon({ open }) {
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const pathname = usePathname();
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user } = useAuth();
@@ -61,11 +63,46 @@ export default function Navbar() {
     setMenuOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!customerAuthEnabled || !user || !supabase) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function refreshUnread() {
+      try {
+        const { data, error } = await supabase.rpc("get_my_unread_message_count");
+        if (error) throw error;
+        if (!cancelled) {
+          setUnreadCount(Number(data) || 0);
+        }
+      } catch {
+        if (!cancelled) setUnreadCount(0);
+      }
+    }
+
+    refreshUnread();
+
+    const onFocus = () => refreshUnread();
+    const onRead = () => setUnreadCount(0);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pokepatch:messages-read", onRead);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pokepatch:messages-read", onRead);
+    };
+  }, [customerAuthEnabled, user, pathname]);
+
   const links = [...BASE_LINKS];
   if (customerAuthEnabled) {
     if (user) {
       links.push(
         { href: "/my-orders", label: "My Orders" },
+        { href: "/messages", label: "Messages", badge: unreadCount },
         { href: "/account", label: "Account" },
       );
       if (showAdmin) {
@@ -120,14 +157,19 @@ export default function Navbar() {
           </Link>
 
           <ul className="hidden items-center gap-1 sm:flex sm:gap-2">
-            {links.map(({ href, label }) => (
+            {links.map(({ href, label, badge }) => (
               <li key={href}>
                 <Link
                   href={href}
                   aria-current={isActive(href) ? "page" : undefined}
-                  className={linkClassName(href)}
+                  className={`${linkClassName(href)} inline-flex items-center gap-1.5`}
                 >
                   {label}
+                  {badge > 0 ? (
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}
@@ -146,15 +188,20 @@ export default function Navbar() {
 
         {menuOpen && (
           <ul className="mt-2 space-y-1 border-t border-ink/10 pt-2 sm:hidden">
-            {links.map(({ href, label }) => (
+            {links.map(({ href, label, badge }) => (
               <li key={href}>
                 <Link
                   href={href}
                   aria-current={isActive(href) ? "page" : undefined}
                   onClick={() => setMenuOpen(false)}
-                  className={linkClassName(href)}
+                  className={`${linkClassName(href)} inline-flex items-center gap-1.5`}
                 >
                   {label}
+                  {badge > 0 ? (
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
+                      {badge > 99 ? "99+" : badge}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}

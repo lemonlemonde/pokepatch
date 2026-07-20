@@ -4,6 +4,7 @@ import {
   jsonResponse,
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
+import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -558,6 +559,87 @@ function normalizeGalleryPatch(body: Record<string, unknown>) {
   return patch;
 }
 
+function normalizeEmail(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+type AuthUserRow = { id: string; email: string };
+
+async function listAllAuthUsers(
+  supabase: ReturnType<typeof getServiceClient>
+): Promise<AuthUserRow[]> {
+  const users: AuthUserRow[] = [];
+  const perPage = 200;
+  let page = 1;
+
+  while (true) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (error) throw error;
+
+    for (const user of data?.users ?? []) {
+      const email = normalizeEmail(user.email);
+      if (!email || !user.id) continue;
+      users.push({ id: user.id, email });
+    }
+
+    const count = data?.users?.length ?? 0;
+    if (count < perPage) break;
+    page += 1;
+    if (page > 50) break;
+  }
+
+  return users;
+}
+
+async function listMessageRecipients(
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const authUsers = await listAllAuthUsers(supabase);
+  const userIds = authUsers.map((user) => user.id);
+  const nameById = new Map<string, string | null>();
+
+  if (userIds.length > 0) {
+    const { data: profiles, error } = await supabase
+      .from("customer_profiles")
+      .select("user_id, full_name")
+      .in("user_id", userIds);
+    if (error) throw error;
+    for (const profile of profiles ?? []) {
+      nameById.set(
+        profile.user_id as string,
+        (profile.full_name as string | null) ?? null
+      );
+    }
+  }
+
+  return authUsers
+    .map((user) => ({
+      user_id: user.id,
+      email: user.email,
+      full_name: nameById.get(user.id) ?? null,
+    }))
+    .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+async function resolveUserIdByEmail(
+  supabase: ReturnType<typeof getServiceClient>,
+  email: string,
+  authUsers?: AuthUserRow[]
+): Promise<string | null> {
+  const users = authUsers ?? (await listAllAuthUsers(supabase));
+  const match = users.find((user) => user.email === email);
+  return match?.id ?? null;
+}
+
 Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
@@ -958,6 +1040,208 @@ Deno.serve(async (req) => {
 
       const item = await getGalleryItem(supabase, existing.item_id as string);
       return jsonResponse(req, { ok: true, item });
+    }
+
+    if (action === "messages_list_recipients") {
+      const recipients = await listMessageRecipients(supabase);
+      return jsonResponse(req, { ok: true, recipients });
+    }
+
+    if (action === "messages_list_orders_for_email") {
+      const email = normalizeEmail(body.email);
+      if (!email || !isValidEmail(email)) {
+        return jsonResponse(req, { ok: false, error: "valid email required" }, 400);
+      }
+
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id, display_id, status, customer_name, customer_email, created_at")
+        .ilike("customer_email", email)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+
+      return jsonResponse(req, { ok: true, orders: data ?? [] });
+    }
+
+    if (action === "messages_history") {
+      const emailFilter = normalizeEmail(body.email);
+      const rawLimit = Number(body.limit ?? 100);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
+        : 100;
+
+      let query = supabase
+        .from("customer_messages")
+        .select(
+          "id, recipient_email, user_id, subject, body, sent_at, email_status, email_error, read_at, batch_id"
+        )
+        .order("sent_at", { ascending: false })
+        .limit(limit);
+
+      if (emailFilter) {
+        query = query.eq("recipient_email", emailFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return jsonResponse(req, { ok: true, messages: data ?? [] });
+    }
+
+    if (action === "messages_send") {
+      const subject =
+        typeof body.subject === "string" ? body.subject.trim() : "";
+      const messageBody = typeof body.body === "string" ? body.body : "";
+      if (!subject) {
+        return jsonResponse(req, { ok: false, error: "subject required" }, 400);
+      }
+      if (!messageBody.trim()) {
+        return jsonResponse(req, { ok: false, error: "body required" }, 400);
+      }
+
+      const authUsers = await listAllAuthUsers(supabase);
+      const emailSet = new Set<string>();
+
+      if (body.all_users === true) {
+        for (const user of authUsers) {
+          emailSet.add(user.email);
+        }
+      }
+
+      const rawEmails = Array.isArray(body.emails) ? body.emails : [];
+      for (const value of rawEmails) {
+        const email = normalizeEmail(value);
+        if (email) emailSet.add(email);
+      }
+
+      const emails = [...emailSet].filter(isValidEmail);
+      if (emails.length === 0) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "at least one valid recipient email required" },
+          400
+        );
+      }
+
+      let orderDisplayId: number | string | null = null;
+      const orderId =
+        typeof body.order_id === "string" ? body.order_id.trim() : "";
+      if (orderId) {
+        if (emails.length !== 1) {
+          return jsonResponse(
+            req,
+            {
+              ok: false,
+              error: "order can only be linked when sending to one recipient",
+            },
+            400
+          );
+        }
+
+        const recipientEmail = emails[0];
+        const { data: orderRow, error: orderError } = await supabase
+          .from("orders")
+          .select("id, display_id, customer_email")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (orderError) throw orderError;
+        if (!orderRow) {
+          return jsonResponse(req, { ok: false, error: "order not found" }, 404);
+        }
+        if (normalizeEmail(orderRow.customer_email) !== recipientEmail) {
+          return jsonResponse(
+            req,
+            { ok: false, error: "order does not belong to that recipient" },
+            400
+          );
+        }
+        orderDisplayId = orderRow.display_id as number | string;
+      }
+
+      const storedBody = buildStoredMessageBody(messageBody, orderDisplayId);
+      const batchId = crypto.randomUUID();
+      const results: {
+        email: string;
+        user_id: string | null;
+        message_id: string | null;
+        email_status: string;
+        email_error: string | null;
+      }[] = [];
+
+      for (const email of emails) {
+        const userId = await resolveUserIdByEmail(supabase, email, authUsers);
+        const { data: inserted, error: insertError } = await supabase
+          .from("customer_messages")
+          .insert({
+            recipient_email: email,
+            user_id: userId,
+            subject,
+            body: storedBody,
+            email_status: "pending",
+            batch_id: batchId,
+          })
+          .select("id")
+          .single();
+
+        if (insertError) {
+          results.push({
+            email,
+            user_id: userId,
+            message_id: null,
+            email_status: "failed",
+            email_error: insertError.message,
+          });
+          continue;
+        }
+
+        const messageId = inserted.id as string;
+        const sendResult = await sendResendEmail({
+          to: email,
+          subject,
+          body: messageBody,
+          orderDisplayId,
+        });
+
+        const emailStatus = sendResult.ok ? "sent" : "failed";
+        const emailError = sendResult.ok ? null : sendResult.error;
+
+        const { error: updateError } = await supabase
+          .from("customer_messages")
+          .update({
+            email_status: emailStatus,
+            email_error: emailError,
+          })
+          .eq("id", messageId);
+        if (updateError) {
+          results.push({
+            email,
+            user_id: userId,
+            message_id: messageId,
+            email_status: "failed",
+            email_error: updateError.message,
+          });
+          continue;
+        }
+
+        results.push({
+          email,
+          user_id: userId,
+          message_id: messageId,
+          email_status: emailStatus,
+          email_error: emailError,
+        });
+      }
+
+      const sent = results.filter((row) => row.email_status === "sent").length;
+      const failed = results.length - sent;
+
+      return jsonResponse(req, {
+        ok: true,
+        batch_id: batchId,
+        sent,
+        failed,
+        results,
+      });
     }
 
     return jsonResponse(req, { ok: false, error: "unknown action" }, 400);

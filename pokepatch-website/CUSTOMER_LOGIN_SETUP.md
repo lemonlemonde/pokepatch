@@ -200,6 +200,33 @@ When you want to update customers:
   - [ ] Customer sees update badge
   - [ ] Sign out and sign in works
 
+## Admin broadcast messages (Resend API)
+
+Admins can email customers from **Admin → Messages**. Sends go through the
+`admin-api` edge function (admin session required) using Resend’s HTTP API —
+not Auth SMTP. Messages are also stored in `customer_messages` and shown on
+`/messages`.
+
+### Apply the migration (manual)
+
+Run [`supabase/migrations/20260720093000_customer_messages.sql`](supabase/migrations/20260720093000_customer_messages.sql)
+in the Supabase SQL editor (or your usual migration workflow). Do not skip this
+before deploying the updated `admin-api`.
+
+### Edge function secrets
+
+Set these on the project (same Resend account/domain as Auth SMTP is fine):
+
+```bash
+supabase secrets set RESEND_API_KEY="re_..." RESEND_FROM_EMAIL="PokePatch <noreply@pokepatch.cards>"
+```
+
+`RESEND_FROM_EMAIL` must use a verified Resend domain. Redeploy `admin-api`
+after setting secrets and after pulling the Messages actions.
+
+Confirm `ADMIN_ALLOWED_EMAILS` is still set — only allowlisted admins can mint
+an admin session, and every send goes through that session gate.
+
 ## Future Enhancements
 
 Consider adding these features in future iterations:

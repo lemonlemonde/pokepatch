@@ -9,7 +9,7 @@ token after login.
 | Function | Path | Role |
 |----------|------|------|
 | `admin-auth` | `/functions/v1/admin-auth` | Login, logout, validate session |
-| `admin-api` | `/functions/v1/admin-api` | List/get/save/delete orders, set status, upload admin photos, gallery CMS |
+| `admin-api` | `/functions/v1/admin-api` | List/get/save/delete orders, set status, upload admin photos, gallery CMS, broadcast messages |
 
 Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests still send the Supabase anon `apikey` header; admin actions also send `X-Admin-Token`.
 
@@ -18,6 +18,9 @@ Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests st
 | Secret | Purpose |
 |--------|---------|
 | `ADMIN_ALLOWED_EMAILS` | Comma-separated emails allowed to mint an admin session via customer JWT |
+| `RESEND_API_KEY` | Resend API key for admin broadcast emails (`messages_send`) |
+| `RESEND_FROM_EMAIL` | Verified From address, e.g. `PokePatch <noreply@pokepatch.cards>` |
+| `RESEND_LOGO_URL` | Optional override for the email header logo (default `https://pokepatch.cards/email/pokepatch-icon.png`) |
 
 Auto-injected by Supabase (do not set manually):
 
@@ -30,6 +33,7 @@ Run migrations before deploying:
 
 - [`supabase/migrations/20260704120000_admin_orders.sql`](../migrations/20260704120000_admin_orders.sql) — orders status, sessions, image types
 - Gallery migrations under [`supabase/migrations/`](../migrations/) (`20260714000000` … `20260714040000`) — gallery CMS table, pairs, set, damage tags, `gallery` bucket; items ordered by `created_at`
+- [`supabase/migrations/20260720093000_customer_messages.sql`](../migrations/20260720093000_customer_messages.sql) — admin broadcast message history + customer inbox RLS
 
 Admin orders migration adds:
 
@@ -66,6 +70,7 @@ From `pokepatch-website/`:
 
 ```bash
 supabase secrets set ADMIN_ALLOWED_EMAILS="you@example.com"
+supabase secrets set RESEND_API_KEY="re_..." RESEND_FROM_EMAIL="PokePatch <noreply@pokepatch.cards>"
 supabase functions deploy admin-auth --no-verify-jwt
 supabase functions deploy admin-api --no-verify-jwt
 ```
@@ -81,10 +86,11 @@ Then deploy the static site so `/admin/` is available.
 
 ## Frontend
 
-- Route: `/admin/` — Orders + Gallery tabs; **Admin** appears in the main navbar for allowlisted signed-in emails
+- Route: `/admin/` — Orders, Gallery, Messages, Studio tabs; **Admin** appears in the main navbar for allowlisted signed-in emails
 - Client: [`src/lib/adminApi.js`](../../src/lib/adminApi.js)
 - UI: [`src/components/admin/AdminApp.js`](../../src/components/admin/AdminApp.js)
 - Gallery UI: [`src/components/admin/GalleryManager.js`](../../src/components/admin/GalleryManager.js)
+- Messages UI: [`src/components/admin/BroadcastMessages.js`](../../src/components/admin/BroadcastMessages.js)
 
 Session token is stored in `sessionStorage` under `pokepatch-admin-token`.
 
@@ -118,6 +124,10 @@ JSON POST (requires `X-Admin-Token`):
 | `gallery_pair_delete` | `pair_id` |
 | `gallery_pair_reorder` | `item_id`, `ordered_ids` |
 | `gallery_pair_clear_side` | `pair_id`, `side` (`before` \| `after`) |
+| `messages_list_recipients` | — (signed-up Auth users + profile names) |
+| `messages_list_orders_for_email` | `email` — orders for that `customer_email` |
+| `messages_history` | optional `email`, `limit` |
+| `messages_send` | `subject`, `body`, optional `emails[]`, optional `all_users`, optional `order_id` (single recipient only) |
 
 Multipart POST (requires `X-Admin-Token`):
 
