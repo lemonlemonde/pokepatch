@@ -2610,7 +2610,11 @@ export default function AdminApp() {
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const pathTab = tabFromPathname(pathname);
-  const routeOrderId = searchParams.get("edit");
+  const searchEditId = searchParams.get("edit");
+  // Static export can no-op same-path query clears via router.push. Dismiss the
+  // editor in React state first so "Back to board" never lands on a blank page.
+  const [editorDismissed, setEditorDismissed] = useState(false);
+  const routeOrderId = editorDismissed ? null : searchEditId;
   const tab = routeOrderId ? "orders-edit" : pathTab;
   const editReturnPath =
     searchParams.get("from") === "all" ? "/admin/orders/all/" : "/admin/orders/";
@@ -2733,6 +2737,10 @@ export default function AdminApp() {
   }, [tab, clearEditor]);
 
   useEffect(() => {
+    if (!searchEditId) setEditorDismissed(false);
+  }, [searchEditId]);
+
+  useEffect(() => {
     if (!authed || tab !== "orders-edit" || !routeOrderId) return undefined;
 
     let cancelled = false;
@@ -2835,8 +2843,7 @@ export default function AdminApp() {
       const deleted = new Set(ids);
       setOrders((current) => current.filter((order) => !deleted.has(order.id)));
       if (selectedOrderId && deleted.has(selectedOrderId)) {
-        clearEditor();
-        router.push(editReturnPath);
+        leaveEditor();
       }
       setDeleteTargets(null);
     } catch (err) {
@@ -2847,14 +2854,20 @@ export default function AdminApp() {
   }
 
   function openOrder(orderId, { from } = {}) {
+    setEditorDismissed(false);
     const params = new URLSearchParams({ edit: String(orderId) });
     if (from === "all") params.set("from", "all");
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
   function leaveEditor() {
-    clearEditor();
-    router.push(editReturnPath);
+    setEditorDismissed(true);
+    // Same-path ?edit= clears can no-op in the static-export App Router; keep the
+    // address bar in sync while React state already shows the board.
+    if (typeof window !== "undefined" && editReturnPath === "/admin/orders/") {
+      window.history.replaceState(window.history.state, "", editReturnPath);
+    }
+    router.replace(editReturnPath);
   }
 
   async function handleCancel() {
@@ -3004,17 +3017,26 @@ export default function AdminApp() {
                 </p>
               )}
 
-              {routeOrderId && loadingOrderId && !draft && (
+              {routeOrderId && !draft && !editorError && (
                 <LoadingIndicator label="Loading order…" />
               )}
 
-              {routeOrderId && editorError && !draft && !loadingOrderId && (
-                <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
-                  {editorError}
-                </p>
+              {routeOrderId && editorError && !draft && (
+                <div className="space-y-3">
+                  <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+                    {editorError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={leaveEditor}
+                    className="text-sm font-medium text-ink/55 transition hover:text-ink"
+                  >
+                    ← Back to board
+                  </button>
+                </div>
               )}
 
-              {selectedOrderId && draft && (
+              {routeOrderId && draft && (
                 <OrderEditor
                   displayId={selectedDisplayId}
                   draft={draft}

@@ -16,7 +16,13 @@ export const metadata = {
 export default function AdminLayout({ children }) {
   return (
     <div className="admin-plain-type">
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-6xl px-4 py-16 text-sm text-ink/60">
+            Loading admin…
+          </div>
+        }
+      >
         <AdminApp />
       </Suspense>
       {children}
