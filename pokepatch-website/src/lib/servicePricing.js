@@ -655,6 +655,12 @@ export function analyzeQuoteCardCoverage(orderCards = [], quoteItems = []) {
 
   for (const item of items) {
     if (!item?.service_key) continue;
+    if (
+      item.service_key === SERVICE_KEYS.CUSTOM &&
+      !(item.service_label || "").trim()
+    ) {
+      continue;
+    }
     const pick =
       item.card_pick && item.card_pick !== "custom"
         ? String(item.card_pick)

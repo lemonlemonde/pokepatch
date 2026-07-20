@@ -47,6 +47,7 @@ import {
   highValueSurchargeFromValue,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
+  HV_PERCENT_OPTIONS,
   HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
@@ -91,6 +92,28 @@ function emptyQuoteItem(card = null) {
 
 function quoteItemHasService(item) {
   return Boolean(item?.service_key);
+}
+
+/** True when a quote line is complete enough to collapse / count as priced. */
+function quoteItemIsReady(item) {
+  if (!quoteItemHasService(item)) return false;
+  if (item.service_key === SERVICE_KEYS.CUSTOM) {
+    return Boolean((item.service_label ?? "").trim());
+  }
+  return true;
+}
+
+function quoteItemCardRef(item, cards = [], index = 0) {
+  const linked =
+    item?.card_pick && item.card_pick !== "custom"
+      ? (cards ?? []).find(
+          (card) => String(card.id) === String(item.card_pick)
+        )
+      : null;
+  const name = (linked?.card_name ?? item?.card_name ?? "").trim();
+  const set = (linked?.set_name ?? item?.set_name ?? "").trim();
+  if (name) return set ? `${name} (${set})` : name;
+  return `quote line ${index + 1}`;
 }
 
 function quoteHvLineId(cardId) {
@@ -356,14 +379,22 @@ function validateDraftForSave(draft) {
   for (let index = 0; index < (draft.quote_items ?? []).length; index += 1) {
     const item = draft.quote_items[index];
     if (!quoteItemHasService(item)) continue;
-    if (!item.card_name.trim()) {
-      return `Quote line ${index + 1} needs a card name.`;
+    const linked =
+      item.card_pick && item.card_pick !== "custom"
+        ? draft.cards.find(
+            (card) => String(card.id) === String(item.card_pick)
+          )
+        : null;
+    const cardName = (linked?.card_name ?? item.card_name ?? "").trim();
+    const cardRef = quoteItemCardRef(item, draft.cards, index);
+    if (!cardName) {
+      return `Quote for ${cardRef} needs a card name.`;
     }
     if (!item.service_label.trim()) {
-      return `Quote line ${index + 1} needs a service label.`;
+      return `Quote for ${cardRef} needs a service name.`;
     }
     if (moneyFieldToPayload(item.quote_base_amount) == null) {
-      return `Quote line ${index + 1} needs a valid base amount.`;
+      return `Quote for ${cardRef} needs a valid base amount.`;
     }
   }
   for (let index = 0; index < (draft.quote_adjustments ?? []).length; index += 1) {
@@ -1335,7 +1366,7 @@ function OrderEditor({
       const item = (draft.quote_items ?? []).find(
         (entry) => String(entry.id) === expandedId
       );
-      if (item && quoteItemHasService(item)) {
+      if (item && quoteItemIsReady(item)) {
         setExpandedQuoteLineId(null);
       }
     }
@@ -1616,7 +1647,7 @@ function OrderEditor({
   function adjustmentSubtotal() {
     return quoteItemsSubtotal(
       (draft.quote_items ?? [])
-        .filter(quoteItemHasService)
+        .filter(quoteItemIsReady)
         .map((item) => ({
           quote_base_amount: moneyFieldToPayload(item.quote_base_amount) ?? 0,
         }))
@@ -1678,7 +1709,7 @@ function OrderEditor({
   }
 
   const quoteItems = draft.quote_items ?? [];
-  const receiptItems = quoteItems.filter(quoteItemHasService).map((item) => ({
+  const receiptItems = quoteItems.filter(quoteItemIsReady).map((item) => ({
     id: item.id,
     card_name: item.card_name,
     set_name: item.set_name,
@@ -1838,16 +1869,43 @@ function OrderEditor({
             <span className="mb-1 block text-xs font-medium text-ink/55">
               Percent (%)
             </span>
-            <input
-              className={editorFieldClass()}
-              inputMode="decimal"
-              value={hv.percent ?? ""}
-              onChange={(event) =>
-                setCardHvPercent(cardId, event.target.value)
-              }
-              onFocus={() => setExpandedQuoteLineId(lineId)}
-              placeholder="e.g., '4%'"
-            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <input
+                className={`${editorFieldClass()} min-w-0 flex-1`}
+                inputMode="decimal"
+                value={hv.percent ?? ""}
+                onChange={(event) =>
+                  setCardHvPercent(cardId, event.target.value)
+                }
+                onFocus={() => setExpandedQuoteLineId(lineId)}
+                placeholder="e.g. 4"
+              />
+              <div className="flex shrink-0 gap-1">
+                {HV_PERCENT_OPTIONS.map((option) => {
+                  const selected =
+                    Number(hv.percent) === option.percent &&
+                    hv.percent !== "" &&
+                    hv.percent != null;
+                  return (
+                    <button
+                      key={option.percent}
+                      type="button"
+                      onClick={() =>
+                        setCardHvPercent(cardId, String(option.percent))
+                      }
+                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
+                        selected
+                          ? "border-peach bg-peach/50 text-ink"
+                          : "border-ink/15 bg-cream text-ink/70 hover:border-peach/60 hover:text-ink"
+                      }`}
+                      title={`${option.percent}% of market value`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-ink/55">
@@ -1870,7 +1928,8 @@ function OrderEditor({
   }
 
   function renderQuoteServiceLine(item, index) {
-    const serviceReady = quoteItemHasService(item);
+    const hasService = quoteItemHasService(item);
+    const serviceReady = quoteItemIsReady(item);
     const lineId = String(item.id ?? `quote-${index}`);
     const isExpanded =
       !serviceReady || String(expandedQuoteLineId) === lineId;
@@ -1879,9 +1938,9 @@ function OrderEditor({
     const serviceName =
       item.service_label?.trim() ||
       defaultServiceLabel(item.service_key) ||
-      "Service";
+      (item.service_key === SERVICE_KEYS.CUSTOM ? "Custom" : "Service");
     const fieldClass = `${editorFieldClass()}${
-      serviceReady ? "" : " cursor-not-allowed opacity-45"
+      hasService ? "" : " cursor-not-allowed opacity-45"
     }`;
 
     if (serviceReady && !isExpanded) {
@@ -1920,7 +1979,7 @@ function OrderEditor({
         key={lineId}
         data-quote-line-id={lineId}
         className={`space-y-2 rounded-lg border border-sky/35 bg-sky/15 px-3 py-2.5 ${
-          serviceReady ? "" : "opacity-90"
+          hasService ? "" : "opacity-90"
         }`}
       >
         <div className="flex items-center justify-between gap-2">
@@ -1933,7 +1992,9 @@ function OrderEditor({
             disabled={!serviceReady}
           >
             <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
-              {serviceReady ? serviceName : "Select a service"}
+              {hasService
+                ? serviceName
+                : "Select a service"}
             </span>
             {serviceReady ? (
               <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 rotate-180 text-ink/40" />
@@ -1999,7 +2060,7 @@ function OrderEditor({
 
         <div
           className={`flex flex-col gap-2 sm:flex-row sm:items-end ${
-            serviceReady ? "" : "pointer-events-none"
+            hasService ? "" : "pointer-events-none"
           }`}
         >
           <label className="block min-w-0 sm:w-32">
@@ -2009,15 +2070,15 @@ function OrderEditor({
             <input
               className={fieldClass}
               inputMode="decimal"
-              value={serviceReady ? item.quote_base_amount : ""}
+              value={hasService ? item.quote_base_amount : ""}
               onChange={(event) =>
                 updateQuoteItem(index, {
                   quote_base_amount: event.target.value,
                 })
               }
               onFocus={() => setExpandedQuoteLineId(lineId)}
-              disabled={!serviceReady}
-              placeholder={serviceReady ? "" : "—"}
+              disabled={!hasService}
+              placeholder={hasService ? "" : "—"}
             />
           </label>
         </div>
@@ -2160,7 +2221,7 @@ function OrderEditor({
                 {quoteLinesByCard.groups.map(
                   ({ key, card, label, indices }) => {
                     const pricedIndices = indices.filter((index) =>
-                      quoteItemHasService(quoteItems[index])
+                      quoteItemIsReady(quoteItems[index])
                     );
                     const lineAmounts = pricedIndices.map((index) => {
                       const item = quoteItems[index];
@@ -2191,7 +2252,7 @@ function OrderEditor({
                                     <CheckIcon className="h-2.5 w-2.5" />
                                   </span>
                                 ) : (
-                                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-[#f5a3a3] text-[#8b2e2e] shadow-sm ring-1 ring-[#f5a3a3]/60">
+                                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-status-red text-white shadow-sm ring-1 ring-status-red/55">
                                     <XIcon className="h-2.5 w-2.5" />
                                   </span>
                                 )}
