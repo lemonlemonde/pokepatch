@@ -2,7 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { orderStatusLabel, orderStatusBadgeClass } from "@/lib/orderStatus";
+import {
+  customerOrderStatusLabel,
+  orderStatusBadgeClass,
+} from "@/lib/orderStatus";
 import {
   cardsWithQuoteHv,
   formatMoney,
@@ -208,7 +211,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 order.status
               )}`}
             >
-              {orderStatusLabel(order.status)}
+              {customerOrderStatusLabel(order.status)}
             </span>
             {hasUpdates && (
               <span className="inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[11px] font-bold text-night">

@@ -1,5 +1,5 @@
 export const ORDER_STATUSES = [
-  { id: "new", label: "To do" },
+  { id: "new", label: "To do", customerLabel: "In queue" },
   { id: "in_progress", label: "In progress" },
   { id: "completed", label: "Completed" },
   { id: "canceled", label: "Canceled" },
@@ -24,8 +24,25 @@ const LABEL_BY_ID = Object.fromEntries(
   ORDER_STATUSES.map((status) => [status.id, status.label]),
 );
 
+const CUSTOMER_LABEL_BY_ID = Object.fromEntries(
+  ORDER_STATUSES.map((status) => [
+    status.id,
+    status.customerLabel ?? status.label,
+  ]),
+);
+
 export function orderStatusLabel(statusId) {
   return LABEL_BY_ID[normalizeOrderStatus(statusId)] ?? LABEL_BY_ID[DEFAULT_ORDER_STATUS];
+}
+
+/** Customer-facing label (e.g. "In queue" instead of admin "To do"). */
+export function customerOrderStatusLabel(statusId) {
+  const status = normalizeOrderStatus(statusId);
+  return (
+    CUSTOMER_LABEL_BY_ID[status] ??
+    LABEL_BY_ID[status] ??
+    CUSTOMER_LABEL_BY_ID[DEFAULT_ORDER_STATUS]
+  );
 }
 
 export function normalizeOrderStatus(statusId) {
