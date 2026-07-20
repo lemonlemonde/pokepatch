@@ -81,17 +81,26 @@ function createBankId() {
   return crypto.randomUUID();
 }
 
-function BankThumbnail({ item, previewUrl, onRemove, mediaType }) {
+function BankThumbnail({
+  item,
+  previewUrl,
+  onRemove,
+  mediaType,
+  enableDrag = true,
+}) {
   function handleDragStart(event) {
+    if (!enableDrag) return;
     event.dataTransfer.setData(DRAG_TYPE, item.id);
     event.dataTransfer.effectAllowed = "move";
   }
 
   return (
     <div
-      draggable
+      draggable={enableDrag}
       onDragStart={handleDragStart}
-      className="group relative w-24 shrink-0 cursor-grab active:cursor-grabbing"
+      className={`group relative w-24 shrink-0 ${
+        enableDrag ? "cursor-grab active:cursor-grabbing" : ""
+      }`}
     >
       <StudioOpenableThumb
         src={previewUrl}
@@ -138,29 +147,38 @@ export default function StudioMediaBank({
   mediaType,
   bank,
   setBank,
-  slots,
-  setSlots,
+  slots = EMPTY_SLOTS,
+  setSlots = null,
   onError,
   slotGroups = SLOT_GROUPS,
+  hideSlots = false,
+  /** When provided, parent owns object-URL lifecycle (e.g. annotate formatter). */
+  previewUrls: controlledPreviewUrls = null,
+  inputId = null,
+  bankLabel = null,
 }) {
   const config = MEDIA_CONFIG[mediaType];
+  const fileInputId = inputId ?? config.inputId;
+  const label = bankLabel ?? config.bankLabel;
   const [uploadDragging, setUploadDragging] = useState(false);
   const [bankDragging, setBankDragging] = useState(false);
   const [activeSlot, setActiveSlot] = useState(null);
-  const [previewUrls, setPreviewUrls] = useState({});
+  const [internalPreviewUrls, setInternalPreviewUrls] = useState({});
 
-  const placedIds = new Set(slots.filter(Boolean));
+  const previewUrls = controlledPreviewUrls ?? internalPreviewUrls;
+  const placedIds = hideSlots ? new Set() : new Set(slots.filter(Boolean));
   const availableBank = bank.filter((item) => !placedIds.has(item.id));
 
   useEffect(() => {
+    if (controlledPreviewUrls) return undefined;
     const urls = Object.fromEntries(
       bank.map((item) => [item.id, URL.createObjectURL(item.file)]),
     );
-    setPreviewUrls(urls);
+    setInternalPreviewUrls(urls);
     return () => {
       Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [bank]);
+  }, [bank, controlledPreviewUrls]);
 
   function addToBank(fileList) {
     const files = config.pickFiles(fileList);
@@ -174,7 +192,7 @@ export default function StudioMediaBank({
   }
 
   function assignToSlot(slotIndex, bankId) {
-    if (!bank.some((item) => item.id === bankId)) return;
+    if (!setSlots || !bank.some((item) => item.id === bankId)) return;
 
     setSlots((prev) => {
       const next = prev.map((id, index) => {
@@ -188,6 +206,7 @@ export default function StudioMediaBank({
   }
 
   function clearSlot(slotIndex) {
+    if (!setSlots) return;
     setSlots((prev) => {
       const next = [...prev];
       next[slotIndex] = null;
@@ -197,10 +216,13 @@ export default function StudioMediaBank({
 
   function removeFromBank(bankId) {
     setBank((prev) => prev.filter((item) => item.id !== bankId));
-    setSlots((prev) => prev.map((id) => (id === bankId ? null : id)));
+    if (setSlots) {
+      setSlots((prev) => prev.map((id) => (id === bankId ? null : id)));
+    }
   }
 
   function returnToBank(bankId) {
+    if (!setSlots) return;
     setSlots((prev) => prev.map((id) => (id === bankId ? null : id)));
   }
 
@@ -217,6 +239,7 @@ export default function StudioMediaBank({
   function handleBankDrop(event) {
     event.preventDefault();
     setBankDragging(false);
+    if (hideSlots) return;
     const bankId = readDragId(event);
     if (bankId) returnToBank(bankId);
   }
@@ -251,10 +274,10 @@ export default function StudioMediaBank({
     <div className="space-y-6" onPaste={handlePaste}>
       <div className="space-y-3">
         <p className="font-secondary text-sm font-semibold text-blush/90">
-          {config.bankLabel}
+          {label}
         </p>
         <label
-          htmlFor={config.inputId}
+          htmlFor={fileInputId}
           onDragOver={(event) => {
             event.preventDefault();
             setUploadDragging(true);
@@ -269,7 +292,7 @@ export default function StudioMediaBank({
         >
           <p className="text-sm text-ink/70">{config.uploadHint}</p>
           <input
-            id={config.inputId}
+            id={fileInputId}
             type="file"
             accept={config.accept}
             multiple
@@ -283,6 +306,7 @@ export default function StudioMediaBank({
 
         <div
           onDragOver={(event) => {
+            if (hideSlots) return;
             event.preventDefault();
             setBankDragging(true);
           }}
@@ -303,124 +327,129 @@ export default function StudioMediaBank({
                   previewUrl={previewUrls[item.id]}
                   onRemove={removeFromBank}
                   mediaType={mediaType}
+                  enableDrag={!hideSlots}
                 />
               ))}
             </div>
           ) : (
             <p className="flex h-full min-h-[5rem] items-center justify-center text-center text-sm text-ink/40">
-              {bank.length > 0 ? config.allPlaced : config.emptyBank}
+              {bank.length > 0 && !hideSlots
+                ? config.allPlaced
+                : config.emptyBank}
             </p>
           )}
         </div>
       </div>
 
-      <div className="space-y-4">
-        <p className="font-secondary text-sm font-semibold text-blush/90">
-          Drag into slots
-        </p>
-        {slotGroups.map((group) => (
-          <div key={group.title} className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-              {group.title}
-              {group.optional ? (
-                <span className="ml-1 font-normal normal-case text-ink/35">
-                  (optional)
-                </span>
-              ) : null}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              {group.slots.map(({ index: slotIndex, label }) => {
-                const bankId = slots[slotIndex];
-                const item = bank.find((entry) => entry.id === bankId);
-                const preview = bankId ? previewUrls[bankId] : null;
-                const isActive = activeSlot === slotIndex;
+      {!hideSlots ? (
+        <div className="space-y-4">
+          <p className="font-secondary text-sm font-semibold text-blush/90">
+            Drag into slots
+          </p>
+          {slotGroups.map((group) => (
+            <div key={group.title} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                {group.title}
+                {group.optional ? (
+                  <span className="ml-1 font-normal normal-case text-ink/35">
+                    (optional)
+                  </span>
+                ) : null}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {group.slots.map(({ index: slotIndex, label: slotLabel }) => {
+                  const bankId = slots[slotIndex];
+                  const item = bank.find((entry) => entry.id === bankId);
+                  const preview = bankId ? previewUrls[bankId] : null;
+                  const isActive = activeSlot === slotIndex;
 
-                return (
-                  <div
-                    key={slotIndex}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setActiveSlot(slotIndex);
-                    }}
-                    onDragLeave={() =>
-                      setActiveSlot((prev) =>
-                        prev === slotIndex ? null : prev,
-                      )
-                    }
-                    onDrop={(event) => handleSlotDrop(event, slotIndex)}
-                    className={`overflow-hidden rounded-xl border bg-night/50 transition ${
-                      isActive
-                        ? "border-berry bg-berry/10"
-                        : item
-                          ? "border-ink/15"
-                          : "border-dashed border-ink/10"
-                    }`}
-                  >
-                    <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
-                      {label}
-                    </p>
-                    {item && preview ? (
-                      <div
-                        draggable
-                        onDragStart={(event) => {
-                          event.dataTransfer.setData(DRAG_TYPE, item.id);
-                          event.dataTransfer.effectAllowed = "move";
-                        }}
-                        className="cursor-grab p-3 active:cursor-grabbing"
-                      >
-                        <StudioOpenableThumb
-                          src={preview}
-                          alt={`${group.title} ${label} — ${item.file.name}`}
-                          label={`${group.title} · ${label}`}
-                          mediaType={mediaType}
-                        >
-                          {mediaType === "video" ? (
-                            <video
-                              src={preview}
-                              muted
-                              playsInline
-                              preload="metadata"
-                              className="mx-auto max-h-36 w-full object-contain"
-                              draggable={false}
-                            />
-                          ) : (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={preview}
-                              alt={`${group.title} ${label} preview`}
-                              className="mx-auto max-h-36 w-full object-contain"
-                              draggable={false}
-                            />
-                          )}
-                        </StudioOpenableThumb>
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <p className="truncate text-xs text-ink/50">
-                            {item.file.name}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              clearSlot(slotIndex);
-                            }}
-                            className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="px-3 py-10 text-center text-xs text-ink/30">
-                        {config.dropSlot}
+                  return (
+                    <div
+                      key={slotIndex}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setActiveSlot(slotIndex);
+                      }}
+                      onDragLeave={() =>
+                        setActiveSlot((prev) =>
+                          prev === slotIndex ? null : prev,
+                        )
+                      }
+                      onDrop={(event) => handleSlotDrop(event, slotIndex)}
+                      className={`overflow-hidden rounded-xl border bg-night/50 transition ${
+                        isActive
+                          ? "border-berry bg-berry/10"
+                          : item
+                            ? "border-ink/15"
+                            : "border-dashed border-ink/10"
+                      }`}
+                    >
+                      <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                        {slotLabel}
                       </p>
-                    )}
-                  </div>
-                );
-              })}
+                      {item && preview ? (
+                        <div
+                          draggable
+                          onDragStart={(event) => {
+                            event.dataTransfer.setData(DRAG_TYPE, item.id);
+                            event.dataTransfer.effectAllowed = "move";
+                          }}
+                          className="cursor-grab p-3 active:cursor-grabbing"
+                        >
+                          <StudioOpenableThumb
+                            src={preview}
+                            alt={`${group.title} ${slotLabel} — ${item.file.name}`}
+                            label={`${group.title} · ${slotLabel}`}
+                            mediaType={mediaType}
+                          >
+                            {mediaType === "video" ? (
+                              <video
+                                src={preview}
+                                muted
+                                playsInline
+                                preload="metadata"
+                                className="mx-auto max-h-36 w-full object-contain"
+                                draggable={false}
+                              />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={preview}
+                                alt={`${group.title} ${slotLabel} preview`}
+                                className="mx-auto max-h-36 w-full object-contain"
+                                draggable={false}
+                              />
+                            )}
+                          </StudioOpenableThumb>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <p className="truncate text-xs text-ink/50">
+                              {item.file.name}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                clearSlot(slotIndex);
+                              }}
+                              className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="px-3 py-10 text-center text-xs text-ink/30">
+                          {config.dropSlot}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

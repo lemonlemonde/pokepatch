@@ -177,7 +177,7 @@ const ADMIN_TABS = [
     path: "/admin/studio/",
     title: "Studio",
     subtitle:
-      "1×2, 2×2 grid, and video before & after formatters for Instagram posts.",
+      "Annotate photos, or format 1×2, 2×2 grid, and video before & after Instagram posts.",
   },
 ];
 

@@ -317,6 +317,13 @@ const STUDIO_BASE = "/admin/studio/";
 
 const STUDIO_OPTIONS = [
   {
+    id: "annotate",
+    slug: "annotate",
+    title: "Annotate photos",
+    description:
+      "Upload regular photos and draw circles or rectangles on them. No grid, labels, or branding — just annotations.",
+  },
+  {
     id: "photo",
     slug: "front-back",
     title: "1×2 formatter",
@@ -354,7 +361,7 @@ function modeFromPathname(pathname) {
 function StudioSelector({ onSelect }) {
   return (
     <div className="mx-auto max-w-3xl animate-fade-up">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         {STUDIO_OPTIONS.map((option) => (
           <button
             key={option.id}
@@ -442,7 +449,9 @@ function OutputGrid({ outputs, renderPreview, annotated = false }) {
         {outputs.map((output) => (
           <div key={output.key} className="space-y-4 text-center">
             <p className="font-secondary text-sm text-ink/60">
-              {output.label} (1080×1080)
+              {output.sizeHint
+                ? `${output.label} (${output.sizeHint})`
+                : output.label}
             </p>
             {annotated ? (
               <StudioAnnotatedPreview
@@ -604,6 +613,7 @@ async function canvasOutputsFromPairs(pairs) {
       return {
         key,
         label,
+        sizeHint: "1080×1080",
         url: URL.createObjectURL(blob),
         filename: `pokepatch-${key}.png`,
       };
@@ -685,6 +695,7 @@ async function generateVideoOutputs(files) {
     return {
       key,
       label,
+      sizeHint: "1080×1080",
       url: URL.createObjectURL(result.blob),
       filename: `pokepatch-${key}.${ext}`,
     };
@@ -838,6 +849,7 @@ function GridFormatter({ onBack }) {
           return {
             key: `post-${index + 1}`,
             label: `Post ${index + 1}`,
+            sizeHint: "1080×1080",
             url: URL.createObjectURL(blob),
             filename: `pokepatch-grid-${index + 1}.png`,
           };
@@ -902,11 +914,112 @@ function GridFormatter({ onBack }) {
   );
 }
 
+function annotatedFilename(name) {
+  const base = name.replace(/\.[^.]+$/, "") || "photo";
+  return `${base}-annotated.png`;
+}
+
+function AnnotateFormatter({ onBack }) {
+  const [bank, setBank] = useState([]);
+  const [error, setError] = useState("");
+  const [previewUrls, setPreviewUrls] = useState({});
+  const previewUrlsRef = useRef(previewUrls);
+  previewUrlsRef.current = previewUrls;
+
+  // Keep each item's object URL stable across bank updates so annotations
+  // (which reset when `url` changes) aren't wiped when another photo is added.
+  useEffect(() => {
+    const ids = new Set(bank.map((item) => item.id));
+    setPreviewUrls((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      for (const [id, url] of Object.entries(prev)) {
+        if (!ids.has(id)) {
+          URL.revokeObjectURL(url);
+          delete next[id];
+          changed = true;
+        }
+      }
+
+      for (const item of bank) {
+        if (!next[item.id]) {
+          next[item.id] = URL.createObjectURL(item.file);
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [bank]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(previewUrlsRef.current).forEach((url) =>
+        URL.revokeObjectURL(url),
+      );
+    };
+  }, []);
+
+  const outputs = bank
+    .map((item) => {
+      const url = previewUrls[item.id];
+      if (!url) return null;
+      return {
+        key: item.id,
+        label: item.file.name,
+        url,
+        filename: annotatedFilename(item.file.name),
+      };
+    })
+    .filter(Boolean);
+
+  return (
+    <div className="mx-auto max-w-3xl animate-fade-up">
+      <BackButton onClick={onBack} />
+      <SectionHeading subtitle="Upload any photos and mark them with circles or rectangles. Original size is kept — no grid, labels, or branding.">
+        Annotate photos
+      </SectionHeading>
+
+      <div className="space-y-6">
+        <StudioMediaBank
+          mediaType="image"
+          bank={bank}
+          setBank={setBank}
+          onError={setError}
+          hideSlots
+          previewUrls={previewUrls}
+          inputId="annotate-images"
+          bankLabel="Photo bank"
+        />
+
+        {error ? (
+          <p className="text-center text-sm text-berry" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        {outputs.length > 0 ? (
+          <OutputGrid outputs={outputs} annotated />
+        ) : (
+          <p className="text-center text-sm text-ink/50">
+            Upload one or more photos to start annotating.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StudioTool() {
   const router = useRouter();
   const pathname = usePathname();
   const mode = modeFromPathname(pathname);
   const goBack = () => router.push(STUDIO_BASE);
+
+  if (mode === "annotate") {
+    return <AnnotateFormatter onBack={goBack} />;
+  }
 
   if (mode === "photo") {
     return <PhotoFormatter onBack={goBack} />;
