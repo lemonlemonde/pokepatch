@@ -310,7 +310,8 @@ async function fetchOrderGraph(
     supabase
       .from("cards")
       .select("id, order_id, card_name, set_name, description, market_value_raw_nm")
-      .in("order_id", orderIds),
+      .in("order_id", orderIds)
+      .order("id", { ascending: true }),
     supabase
       .from("order_quote_items")
       .select(
