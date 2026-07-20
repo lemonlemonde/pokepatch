@@ -8,7 +8,6 @@ import {
 } from "@/lib/orderStatus";
 import {
   cardsWithQuoteHv,
-  formatMoney,
   hasQuoteData,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
@@ -410,17 +409,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         {isCardOpen && (
                           <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
                             <div className="min-w-0 flex-1 space-y-2">
-                              {card.market_value_raw_nm != null &&
-                              Number.isFinite(Number(card.market_value_raw_nm)) ? (
-                                <div>
-                                  <p className={LABEL_CLS}>
-                                    Market value (Raw NM)
-                                  </p>
-                                  <p className="mt-1 text-sm font-semibold text-ink">
-                                    {formatMoney(card.market_value_raw_nm)}
-                                  </p>
-                                </div>
-                              ) : null}
                               <div>
                                 <p className={LABEL_CLS}>Description</p>
                                 {card.description ? (

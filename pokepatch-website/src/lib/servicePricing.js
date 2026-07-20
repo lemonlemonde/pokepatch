@@ -580,11 +580,6 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
         items: [],
         servicesSubtotal: 0,
         highValueSurcharge,
-        hvPercent: card?.hv_percent ?? null,
-        marketValue:
-          card?.market_value_raw_nm != null
-            ? Number(card.market_value_raw_nm)
-            : null,
         subtotal: highValueSurcharge,
         card,
       };
@@ -612,11 +607,6 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
       items: [],
       servicesSubtotal: 0,
       highValueSurcharge,
-      hvPercent: card?.hv_percent ?? null,
-      marketValue:
-        card?.market_value_raw_nm != null
-          ? Number(card.market_value_raw_nm)
-          : null,
       subtotal: highValueSurcharge,
       card,
     });
