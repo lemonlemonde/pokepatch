@@ -47,6 +47,7 @@ import {
   highValueSurchargeFromValue,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
+  HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
   percentToDollars,
@@ -1794,6 +1795,9 @@ function OrderEditor({
             <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
               High-value surcharge
             </span>
+            <span className="hidden min-w-0 truncate text-[10px] font-medium normal-case tracking-normal text-ink/40 sm:inline">
+              {HV_TIER_RANGES_LABEL}
+            </span>
             {hvReady ? (
               <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 rotate-180 text-ink/40" />
             ) : null}
@@ -2263,8 +2267,11 @@ function OrderEditor({
                           )}
                           {hasHv ? (
                             <div className="space-y-2 border-t border-ink/10 pt-2">
-                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-peach">
-                                High-value
+                              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-peach">
+                                <span>High-value</span>
+                                <span className="font-medium normal-case tracking-normal text-ink/45">
+                                  {HV_TIER_RANGES_LABEL}
+                                </span>
                               </p>
                               {renderQuoteHvLine(card)}
                             </div>
@@ -2615,8 +2622,8 @@ function OrderEditor({
                     if (marketValue == null) {
                       return (
                         <p className="mt-1 text-[11px] text-ink/45">
-                          Used when you add HV under Quote. Default tiers:
-                          $200–$500 → 4%, $500.01+ → 8%.
+                          Used when you add HV under Quote. Default tiers:{" "}
+                          {HV_TIER_RANGES_LABEL}.
                         </p>
                       );
                     }

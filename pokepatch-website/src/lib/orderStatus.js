@@ -59,7 +59,7 @@ export function isClosedOrderStatus(statusId) {
   return status === "completed" || status === "canceled";
 }
 
-/** Red = not started, yellow = in progress, green = done, muted = canceled. */
+/** Blue = not started, yellow = in progress, green = done, muted = canceled. */
 export function orderStatusBadgeClass(statusId) {
   switch (normalizeOrderStatus(statusId)) {
     case "in_progress":
@@ -70,7 +70,7 @@ export function orderStatusBadgeClass(statusId) {
       return "bg-ink/25 text-ink/80";
     case "new":
     default:
-      return "bg-status-red text-white";
+      return "bg-status-blue text-white";
   }
 }
 
@@ -84,7 +84,7 @@ export function orderStatusHeadingClass(statusId) {
       return "text-ink/55";
     case "new":
     default:
-      return "text-status-red";
+      return "text-status-blue";
   }
 }
 

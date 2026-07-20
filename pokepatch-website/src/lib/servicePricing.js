@@ -85,6 +85,9 @@ export const HV_PERCENT_OPTIONS = [
   { percent: 8, label: "8%" },
 ];
 
+/** Short admin/customer hint for default HV market-value tiers. */
+export const HV_TIER_RANGES_LABEL = "$200–$500 → 4%, $500.01+ → 8%";
+
 function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
 }
