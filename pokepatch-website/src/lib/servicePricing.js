@@ -72,15 +72,15 @@ const HIGH_VALUE_MARKETING = {
   title: "High-Value Handling",
   features: ["Added on top of restoration service"],
   bulk: [
-    { label: "$200–$500", value: "+4%" },
-    { label: "$500.01+", value: "+8%" },
+    { label: "$200–$499", value: "+4%" },
+    { label: "$500+", value: "+8%" },
   ],
   bulkLabel: "Surcharge Tiers",
   accent: "mint",
 };
 
 /** Short admin/customer hint for default HV market-value tiers. */
-export const HV_TIER_RANGES_LABEL = "$200–$500 → 4%, $500.01+ → 8%";
+export const HV_TIER_RANGES_LABEL = "$200–$499 → 4%, $500+ → 8%";
 
 function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
@@ -124,12 +124,12 @@ export function highValueSurchargeFromValue(cardValue, percent) {
 
 /**
  * HV tiers from Raw NM market value:
- * under $200 → 0%, $200–$500 → 4%, $500.01+ → 8%.
+ * under $200 → 0%, $200–$499 → 4%, $500+ → 8%.
  */
 export function hvPercentFromMarketValue(marketValue) {
   const value = Number(marketValue);
   if (!Number.isFinite(value) || value < 200) return 0;
-  if (value <= 500) return 4;
+  if (value < 500) return 4;
   return 8;
 }
 

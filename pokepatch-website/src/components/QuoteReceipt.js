@@ -131,7 +131,7 @@ export default function QuoteReceipt({
               {group.highValueSurcharge > 0 ? (
                 <div className="flex items-start justify-between gap-3">
                   <span className="min-w-0 break-words text-ink/80">
-                    High-value surcharge
+                    High-value fee
                   </span>
                   <span className="shrink-0 tabular-nums font-semibold text-ink">
                     {formatMoney(group.highValueSurcharge)}

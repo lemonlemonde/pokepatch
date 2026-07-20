@@ -44,15 +44,14 @@ import {
   defaultServiceLabel,
   emptyQuoteAdjustment,
   formatMoney,
-  highValueSurchargeFromValue,
   hvPercentFromMarketValue,
+  hvSurchargeFromMarketValue,
   HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
   quoteCardHvAmount,
   quoteItemCardLabel,
   unpackQuoteAdjustments,
-  unpackQuoteCardHv,
 } from "@/lib/servicePricing";
 
 function newClientId() {
@@ -112,16 +111,6 @@ function quoteItemCardRef(item, cards = [], index = 0) {
   return `quote line ${index + 1}`;
 }
 
-function quoteHvLineId(cardId) {
-  return `hv:${String(cardId)}`;
-}
-
-function quoteHvIsReady(hv) {
-  if (!hv) return false;
-  const amount = Number(hv.amount_dollars);
-  return Number.isFinite(amount) && amount > 0;
-}
-
 function quoteItemBelongsToCard(item, card, cards = null) {
   if (!card) return false;
   const cardId = String(card.id);
@@ -148,6 +137,40 @@ function ensureQuoteItemsForCards(cards, quoteItems) {
 function moneyFieldToPayload(value) {
   const parsed = parseMoneyInput(value);
   return parsed;
+}
+
+/** One card HV entry from market value (tier %); null when under threshold / empty. */
+function cardHvEntryFromMarket(marketValue) {
+  const amount = hvSurchargeFromMarketValue(marketValue);
+  if (amount == null) return null;
+  return {
+    percent: String(hvPercentFromMarketValue(marketValue)),
+    amount_dollars: String(amount),
+  };
+}
+
+/** Build card HV map from market values only (tier %). */
+function quoteCardHvFromMarkets(cards) {
+  const out = {};
+  for (const card of cards ?? []) {
+    if (card?.id == null) continue;
+    const entry = cardHvEntryFromMarket(
+      moneyFieldToPayload(card.market_value_raw_nm)
+    );
+    if (entry) out[String(card.id)] = entry;
+  }
+  return out;
+}
+
+function applyCardHvFromMarket(quoteCardHv, cardId, marketValue) {
+  const next = { ...(quoteCardHv ?? {}) };
+  const hv = cardHvEntryFromMarket(marketValue);
+  if (hv) {
+    next[cardId] = hv;
+  } else {
+    delete next[cardId];
+  }
+  return next;
 }
 
 const ADMIN_TABS = [
@@ -253,7 +276,18 @@ function orderToDraft(order) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
-  const quote_card_hv = unpackQuoteCardHv(order.quote_bulk_counts);
+  const cards = (order.cards ?? []).map((card) => ({
+    id: card.id,
+    card_name: card.card_name ?? "",
+    set_name: card.set_name ?? "",
+    description: card.description ?? "",
+    market_value_raw_nm:
+      card.market_value_raw_nm != null
+        ? String(card.market_value_raw_nm)
+        : "",
+    images: card.images ?? [],
+  }));
+  const quote_card_hv = quoteCardHvFromMarkets(cards);
 
   return {
     customer_name: order.customer_name ?? "",
@@ -267,17 +301,7 @@ function orderToDraft(order) {
       contact_type: contact.contact_type,
       value: contact.value ?? "",
     })),
-    cards: (order.cards ?? []).map((card) => ({
-      id: card.id,
-      card_name: card.card_name ?? "",
-      set_name: card.set_name ?? "",
-      description: card.description ?? "",
-      market_value_raw_nm:
-        card.market_value_raw_nm != null
-          ? String(card.market_value_raw_nm)
-          : "",
-      images: card.images ?? [],
-    })),
+    cards,
     quote_items: ensuredQuoteItems,
     quote_adjustments,
     quote_card_hv,
@@ -1335,18 +1359,8 @@ function OrderEditor({
       );
       if (root && root.contains(event.target)) return;
 
-      const expandedId = String(expandedQuoteLineId);
-      if (expandedId.startsWith("hv:")) {
-        const cardId = expandedId.slice(3);
-        const hv = draft.quote_card_hv?.[cardId];
-        if (hv && quoteHvIsReady(hv)) {
-          setExpandedQuoteLineId(null);
-        }
-        return;
-      }
-
       const item = (draft.quote_items ?? []).find(
-        (entry) => String(entry.id) === expandedId
+        (entry) => String(entry.id) === String(expandedQuoteLineId)
       );
       if (item && quoteItemIsReady(item)) {
         setExpandedQuoteLineId(null);
@@ -1354,7 +1368,7 @@ function OrderEditor({
     }
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [expandedQuoteLineId, draft.quote_items, draft.quote_card_hv]);
+  }, [expandedQuoteLineId, draft.quote_items]);
 
   function updateContact(index, patch) {
     const contacts = draft.contacts.map((contact, i) =>
@@ -1373,34 +1387,6 @@ function OrderEditor({
     updateDraft({
       contacts: draft.contacts.filter((_, i) => i !== index),
     });
-  }
-
-  function syncCardHvAmountFromMarket(cardId, marketValue, percentStr) {
-    const pct =
-      percentStr === "" || percentStr == null
-        ? null
-        : Number.isFinite(Number(percentStr))
-          ? Number(percentStr)
-          : null;
-    if (marketValue == null) {
-      return { percent: percentStr ?? "", amount_dollars: "" };
-    }
-    if (pct != null && pct > 0) {
-      const amount = highValueSurchargeFromValue(marketValue, pct);
-      return {
-        percent: String(pct),
-        amount_dollars: amount != null ? String(amount) : "",
-      };
-    }
-    const tier = hvPercentFromMarketValue(marketValue);
-    if (tier <= 0) {
-      return { percent: percentStr ?? "", amount_dollars: "" };
-    }
-    const amount = highValueSurchargeFromValue(marketValue, tier);
-    return {
-      percent: String(tier),
-      amount_dollars: amount != null ? String(amount) : "",
-    };
   }
 
   function updateCard(index, patch) {
@@ -1429,37 +1415,11 @@ function OrderEditor({
     if (touchesMarket && updated?.id != null) {
       const cardId = String(updated.id);
       const marketValue = moneyFieldToPayload(patch.market_value_raw_nm);
-      const tierPercent =
-        marketValue != null ? hvPercentFromMarketValue(marketValue) : 0;
-      if (marketValue != null && tierPercent > 0) {
-        // Autopopulate an HV quote row from market price (draft-only until save).
-        const existingPercent = quote_card_hv[cardId]?.percent ?? "";
-        quote_card_hv = {
-          ...quote_card_hv,
-          [cardId]: syncCardHvAmountFromMarket(
-            cardId,
-            marketValue,
-            existingPercent
-          ),
-        };
-      } else if (
-        quote_card_hv[cardId] &&
-        (marketValue == null || marketValue <= 0)
-      ) {
-        // Market cleared — drop the HV row.
-        quote_card_hv = { ...quote_card_hv };
-        delete quote_card_hv[cardId];
-      } else if (quote_card_hv[cardId]) {
-        // Market still set but under HV tier — keep row, refresh linked fields.
-        quote_card_hv = {
-          ...quote_card_hv,
-          [cardId]: syncCardHvAmountFromMarket(
-            cardId,
-            marketValue,
-            quote_card_hv[cardId].percent
-          ),
-        };
-      }
+      quote_card_hv = applyCardHvFromMarket(
+        quote_card_hv,
+        cardId,
+        marketValue
+      );
     }
 
     if (touchesName || touchesMarket) {
@@ -1469,75 +1429,21 @@ function OrderEditor({
     updateDraft({ cards });
   }
 
-  function addCardHv(card) {
-    if (!card?.id) return;
-    const cardId = String(card.id);
-    if (draft.quote_card_hv?.[cardId]) {
-      setExpandedQuoteLineId(quoteHvLineId(cardId));
-      return;
-    }
-    const marketValue = moneyFieldToPayload(card.market_value_raw_nm);
-    const next = syncCardHvAmountFromMarket(cardId, marketValue, "");
-    setExpandedQuoteLineId(quoteHvLineId(cardId));
-    updateDraft({
-      quote_card_hv: {
-        ...(draft.quote_card_hv ?? {}),
-        [cardId]: next,
-      },
-    });
-  }
-
-  function removeCardHv(cardId) {
-    const next = { ...(draft.quote_card_hv ?? {}) };
-    delete next[String(cardId)];
-    updateDraft({ quote_card_hv: next });
-  }
-
   function setCardHvMarket(cardIndex, value) {
     const card = draft.cards[cardIndex];
     if (!card?.id) return;
     const cardId = String(card.id);
-    const existing = draft.quote_card_hv?.[cardId] ?? {
-      percent: "",
-      amount_dollars: "",
-    };
     const marketValue = moneyFieldToPayload(value);
-    const hv = syncCardHvAmountFromMarket(
-      cardId,
-      marketValue,
-      existing.percent
-    );
     const cards = draft.cards.map((entry, i) =>
       i === cardIndex ? { ...entry, market_value_raw_nm: value } : entry
     );
     updateDraft({
       cards,
-      quote_card_hv: {
-        ...(draft.quote_card_hv ?? {}),
-        [cardId]: hv,
-      },
-    });
-  }
-
-  function setCardHvAmount(cardId, value) {
-    const id = String(cardId);
-    const card = (draft.cards ?? []).find((entry) => String(entry.id) === id);
-    const marketValue = moneyFieldToPayload(card?.market_value_raw_nm);
-    const amount =
-      value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
-    let percent = draft.quote_card_hv?.[id]?.percent ?? "";
-    if (amount == null || amount === 0) {
-      percent = "";
-    } else if (marketValue != null && marketValue > 0) {
-      percent = String(
-        Math.round((amount / marketValue) * 10000) / 100
-      );
-    }
-    updateDraft({
-      quote_card_hv: {
-        ...(draft.quote_card_hv ?? {}),
-        [id]: { percent, amount_dollars: value },
-      },
+      quote_card_hv: applyCardHvFromMarket(
+        draft.quote_card_hv,
+        cardId,
+        marketValue
+      ),
     });
   }
 
@@ -1689,121 +1595,43 @@ function OrderEditor({
     if (!card?.id) return null;
     const cardId = String(card.id);
     const hv = draft.quote_card_hv?.[cardId];
-    if (!hv) return null;
-    const lineId = quoteHvLineId(cardId);
-    const hvReady = quoteHvIsReady(hv);
-    const isExpanded =
-      !hvReady || String(expandedQuoteLineId) === lineId;
     const cardIndex = (draft.cards ?? []).findIndex(
       (entry) => String(entry.id) === cardId
     );
-    const amount = moneyFieldToPayload(hv.amount_dollars) ?? 0;
-    const summaryLabel = "High-value surcharge";
-
-    if (hvReady && !isExpanded) {
-      return (
-        <div
-          key={lineId}
-          data-quote-line-id={lineId}
-          className="flex items-center gap-2"
-        >
-          <button
-            type="button"
-            onClick={() => setExpandedQuoteLineId(lineId)}
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-peach/35 bg-peach/20 px-3 py-2 text-left transition hover:border-peach/55"
-          >
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-              {summaryLabel}
-            </span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-              {formatMoney(amount)}
-            </span>
-            <ChevronDownIcon className="h-4 w-4 shrink-0 text-ink/40" />
-          </button>
-          <button
-            type="button"
-            onClick={() => removeCardHv(cardId)}
-            className="shrink-0 text-xs font-semibold text-ink/40 transition hover:text-berry"
-          >
-            Remove
-          </button>
-        </div>
-      );
-    }
+    const amount = moneyFieldToPayload(hv?.amount_dollars) ?? 0;
 
     return (
-      <div
-        key={lineId}
-        data-quote-line-id={lineId}
-        className="space-y-2 rounded-lg border border-peach/40 bg-peach/15 px-3 py-2.5"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setExpandedQuoteLineId(hvReady ? null : lineId)
-            }
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-            disabled={!hvReady}
-          >
-            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
-              High-value surcharge
+      <div className="space-y-2 rounded-lg border border-peach/40 bg-peach/15 px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
+              High-value fee
             </span>
-            <span className="hidden min-w-0 truncate text-[10px] font-medium normal-case tracking-normal text-ink/40 sm:inline">
+            <span className="text-[10px] font-medium text-ink/40">
               {HV_TIER_RANGES_LABEL}
             </span>
-            {hvReady ? (
-              <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 rotate-180 text-ink/40" />
-            ) : null}
-          </button>
-          <div className="flex items-center gap-3">
-            {hvReady ? (
-              <p className="text-right text-sm font-bold tabular-nums text-ink">
-                {formatMoney(amount)}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => removeCardHv(cardId)}
-              className="text-xs font-semibold text-ink/40 transition hover:text-berry"
-            >
-              Remove
-            </button>
           </div>
+          {amount > 0 ? (
+            <p className="text-right text-sm font-bold tabular-nums text-ink">
+              {formatMoney(amount)}
+            </p>
+          ) : null}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="block min-w-0">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Market ($)
-            </span>
-            <input
-              className={editorFieldClass()}
-              inputMode="decimal"
-              value={card.market_value_raw_nm ?? ""}
-              onChange={(event) => {
-                if (cardIndex < 0) return;
-                setCardHvMarket(cardIndex, event.target.value);
-              }}
-              onFocus={() => setExpandedQuoteLineId(lineId)}
-              placeholder="e.g. 250"
-            />
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Custom
-            </span>
-            <input
-              className={editorFieldClass()}
-              inputMode="decimal"
-              value={hv.amount_dollars ?? ""}
-              onChange={(event) =>
-                setCardHvAmount(cardId, event.target.value)
-              }
-              onFocus={() => setExpandedQuoteLineId(lineId)}
-              placeholder="0.00"
-            />
-          </label>
-        </div>
+        <label className="block min-w-0">
+          <span className="mb-1 block text-xs font-medium text-ink/55">
+            Market ($)
+          </span>
+          <input
+            className={editorFieldClass()}
+            inputMode="decimal"
+            value={card.market_value_raw_nm ?? ""}
+            onChange={(event) => {
+              if (cardIndex < 0) return;
+              setCardHvMarket(cardIndex, event.target.value);
+            }}
+            placeholder="e.g. 250"
+          />
+        </label>
       </div>
     );
   }
@@ -2088,7 +1916,7 @@ function OrderEditor({
         <div className="space-y-4">
           <EditorSubsection
             title="Cards"
-            description="Every order card appears here. Add services or an HV surcharge under each card. Customers see these under My Orders after you save."
+            description="Every order card appears here. Add services under each card and enter market price for the high-value fee. Customers see these under My Orders after you save."
           >
             {quoteLinesByCard.groups.length === 0 ? (
               <div className="rounded-xl border border-dashed border-berry/40 bg-berry/5 px-4 py-5 text-center">
@@ -2113,7 +1941,6 @@ function OrderEditor({
                       0
                     );
                     const cardId = String(card?.id ?? "");
-                    const hasHv = Boolean(draft.quote_card_hv?.[cardId]);
                     const cardHv = quoteCardHvAmount({
                       hv_amount: draft.quote_card_hv?.[cardId]?.amount_dollars,
                     });
@@ -2145,7 +1972,7 @@ function OrderEditor({
                                   : `${pricedIndices.length} service${
                                       pricedIndices.length === 1 ? "" : "s"
                                     }`}
-                                {hasHv ? " · HV" : ""}
+                                {cardHv > 0 ? " · HV fee" : ""}
                               </p>
                             </div>
                             {thumbUrls.length > 0 ? (
@@ -2177,15 +2004,6 @@ function OrderEditor({
                             >
                               Add service
                             </button>
-                            {!hasHv ? (
-                              <button
-                                type="button"
-                                onClick={() => addCardHv(card)}
-                                className="text-sm font-semibold text-berry transition hover:underline"
-                              >
-                                Add HV surcharge
-                              </button>
-                            ) : null}
                           </div>
                         </div>
 
@@ -2207,17 +2025,9 @@ function OrderEditor({
                               No services yet — add one above.
                             </p>
                           )}
-                          {hasHv ? (
-                            <div className="space-y-2 border-t border-ink/10 pt-2">
-                              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-peach">
-                                <span>High-value</span>
-                                <span className="font-medium normal-case tracking-normal text-ink/45">
-                                  {HV_TIER_RANGES_LABEL}
-                                </span>
-                              </p>
-                              {renderQuoteHvLine(card)}
-                            </div>
-                          ) : null}
+                          <div className="space-y-2 border-t border-ink/10 pt-2">
+                            {renderQuoteHvLine(card)}
+                          </div>
                           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
                             <span className="font-medium text-ink/55">
                               Card subtotal
@@ -2244,10 +2054,10 @@ function OrderEditor({
                                           +{" "}
                                         </span>
                                       ) : null}
-                                      <span title="High-value surcharge">
+                                      <span title="High-value fee">
                                         {formatMoney(cardHv)}
                                       </span>
-                                      <span className="text-ink/40"> HV</span>
+                                      <span className="text-ink/40"> HV fee</span>
                                     </span>
                                   ) : null}
                                   <span className="text-ink/40"> = </span>
