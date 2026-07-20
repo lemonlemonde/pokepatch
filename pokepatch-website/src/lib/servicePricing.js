@@ -205,7 +205,33 @@ export function normalizeCardHvEntry(row) {
   return { card_id, percent, amount_dollars };
 }
 
-const ADJUSTMENT_KINDS = new Set(["discount", "surcharge"]);
+const ADJUSTMENT_KINDS = new Set([
+  "discount",
+  "delivery",
+  "shipping",
+  // Legacy kind kept for stored rows; not offered in the admin UI.
+  "surcharge",
+]);
+
+/** Admin type dropdown options (excludes legacy surcharge). */
+export const ADJUSTMENT_KIND_OPTIONS = [
+  { value: "discount", label: "Discount" },
+  { value: "delivery", label: "Delivery" },
+  { value: "shipping", label: "Shipping" },
+];
+
+export function adjustmentKindLabel(kind) {
+  switch (kind) {
+    case "delivery":
+      return "Delivery";
+    case "shipping":
+      return "Shipping";
+    case "surcharge":
+      return "Surcharge";
+    default:
+      return "Discount";
+  }
+}
 
 function newAdjustmentId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -284,7 +310,7 @@ export function quoteAdjustmentHasContent(row) {
   return false;
 }
 
-/** Signed $ applied to the total (discount negative, surcharge positive). */
+/** Signed $ applied to the total (discount negative; all other kinds positive). */
 export function quoteAdjustmentSignedAmount(row, subtotal = null) {
   const normalized = normalizeQuoteAdjustment(row);
   if (!normalized) return 0;
@@ -297,7 +323,7 @@ export function quoteAdjustmentSignedAmount(row, subtotal = null) {
     dollars = percentToDollars(normalized.amount_percent, subtotal) ?? 0;
   }
   if (dollars == null || !Number.isFinite(dollars) || dollars === 0) return 0;
-  const signed = normalized.kind === "surcharge" ? dollars : -dollars;
+  const signed = normalized.kind === "discount" ? -dollars : dollars;
   return Math.round(signed * 100) / 100;
 }
 
@@ -325,8 +351,7 @@ export function quoteAdjustmentLines(adjustments, items = []) {
       id: normalized.id,
       kind: normalized.kind,
       description:
-        normalized.description ||
-        (normalized.kind === "surcharge" ? "Surcharge" : "Discount"),
+        normalized.description || adjustmentKindLabel(normalized.kind),
       amount: signed,
       amountDollars: Math.abs(signed),
       amountPercent: normalized.amount_percent,
