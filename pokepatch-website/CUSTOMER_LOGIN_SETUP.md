@@ -37,21 +37,21 @@ This implementation adds an optional customer login system that allows users to 
 
 ## Setup Instructions
 
-### 1. Apply Database Migration
+### 1. Database prerequisites
 
-The database migration must be applied to your Supabase database:
+Customer accounts schema is already applied on the live Supabase project
+(`orders.user_id`, `get_my_orders` / `get_my_order`, related RLS, etc.).
 
-**Option A: Using Supabase CLI**
+Future schema changes use **CLI-managed migrations** from `pokepatch-website/`:
+
 ```bash
-cd pokepatch-website
+supabase link --project-ref <ref>   # once per machine
+supabase migration new <short_name>
+# edit the new file under supabase/migrations/
 supabase db push
 ```
 
-**Option B: Using Supabase Dashboard**
-1. Go to your Supabase project dashboard
-2. Navigate to SQL Editor
-3. Copy the contents of `supabase/migrations/20260716000000_customer_accounts.sql`
-4. Paste and run in the SQL Editor
+See the root [README → Schema changes (CLI-managed)](../README.md#schema-changes-cli-managed).
 
 ### 2. Configure Email Settings (Resend SMTP)
 
@@ -162,7 +162,6 @@ on conflict (id) do update set public = true;
 - `src/app/verify-email/page.js` - Post-signup confirm-email + resend UI
 - `src/app/my-orders/page.js` - Customer order portal
 - `src/components/OrderCard.js` - Order display component
-- `supabase/migrations/20260716000000_customer_accounts.sql` - Database schema
 
 ### Modified Files
 - `src/app/layout.js` - Added AuthProvider wrapper
@@ -185,7 +184,7 @@ When you want to update customers:
 ## Testing Checklist
 
 - [x] Project builds successfully without errors
-- [x] Database migration created and validated
+- [x] Database prerequisites confirmed on live
 - [x] Auth context provider created
 - [x] Login/signup page created with Suspense boundary
 - [x] My Orders page created
@@ -207,11 +206,11 @@ Admins can email customers from **Admin → Messages**. Sends go through the
 not Auth SMTP. Messages are also stored in `customer_messages` and shown on
 `/messages`.
 
-### Apply the migration (manual)
+### Database
 
-Run [`supabase/migrations/20260720093000_customer_messages.sql`](supabase/migrations/20260720093000_customer_messages.sql)
-in the Supabase SQL editor (or your usual migration workflow). Do not skip this
-before deploying the updated `admin-api`.
+`customer_messages` (and related RLS / RPCs) is already on live. Future message
+schema changes: `supabase migration new` → `supabase db push`, then deploy
+`admin-api`.
 
 ### Edge function secrets
 

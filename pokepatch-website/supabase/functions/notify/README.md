@@ -18,13 +18,19 @@ Admin `update_order` calls do **not** notify (no webhook on UPDATE).
 
 ---
 
-## 1. Apply database migration
+## 1. Database prerequisites
 
-In Supabase SQL Editor, run:
+The orders schema (`orders`, `contacts`, `cards`, `card_images`, related RPCs)
+is already on live. Do **not** drop `quote_requests` (legacy path still used).
 
-- [`supabase/migrations/20260704000000_orders_schema.sql`](../../migrations/20260704000000_orders_schema.sql)
+Future schema changes use CLI-managed migrations from `pokepatch-website/`:
 
-Do **not** drop `quote_requests`.
+```bash
+supabase migration new <short_name>
+supabase db push
+```
+
+See the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 Optional storage policies (if bucket/policies are missing):
 

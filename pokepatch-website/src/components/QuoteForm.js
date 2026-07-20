@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
+import { compressImageForUpload } from "@/lib/imageCompression";
 import { capture } from "@/lib/posthog";
 
 const MAX_CARDS = 25;
@@ -462,10 +463,11 @@ export default function QuoteForm() {
 
         for (let i = 0; i < card.files.length; i += 1) {
           const { file } = card.files[i];
-          const path = `order-${orderId}/card-${cardId}/customer-${i + 1}-${sanitizeFilename(file.name)}`;
+          const uploadFile = await compressImageForUpload(file);
+          const path = `order-${orderId}/card-${cardId}/customer-${i + 1}-${sanitizeFilename(uploadFile.name)}`;
           const { error: uploadError } = await supabase.storage
             .from("card-photos")
-            .upload(path, file, { upsert: false });
+            .upload(path, uploadFile, { upsert: false });
 
           if (uploadError) throw uploadError;
           images.push({ storage_path: path, image_type: "customer" });

@@ -188,7 +188,26 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 
 RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
 
-Schema reference: [`pokepatch-website/supabase/schema.sql`](pokepatch-website/supabase/schema.sql)
+Schema reference (informational, may lag live): [`pokepatch-website/supabase/schema.sql`](pokepatch-website/supabase/schema.sql)
+
+### Schema changes (CLI-managed)
+
+Live production is the baseline. Historical migration files were cleared; `supabase_migrations.schema_migrations` on live starts empty. From now on, all schema changes go through Supabase CLI migrations:
+
+```bash
+cd pokepatch-website
+supabase link --project-ref <ref>   # once per machine
+supabase migration new <short_name>
+# edit supabase/migrations/<timestamp>_<short_name>.sql
+supabase db push                    # applies pending migrations to the linked project
+```
+
+Rules:
+
+- Put **only the delta** in each new migration (never re-apply the whole live schema).
+- Prefer `supabase migration new` over inventing filenames by hand.
+- Do not paste ad-hoc schema SQL in the dashboard unless you immediately capture the same change as a migration and mark it applied (or re-apply via `db push` on a fresh branch DB).
+- Keep `schema.sql` as a human reference if useful; it is not what the CLI applies.
 
 ---
 
@@ -211,18 +230,19 @@ Each card has a title, set name, damage-tag checklist (`crease`, `scratching`, `
 
 ### Setup
 
-1. Run gallery migrations in order under [`pokepatch-website/supabase/migrations/`](pokepatch-website/supabase/migrations/) (`20260714000000` … `20260714040000`) in the Supabase SQL Editor.
-2. Redeploy `admin-api`:
+Gallery tables, storage, and RLS are already on live. For future gallery schema changes, use CLI migrations (`supabase migration new` → `supabase db push`) as described under [Schema changes (CLI-managed)](#schema-changes-cli-managed).
+
+1. Redeploy `admin-api` if the edge function changed:
    ```bash
    cd pokepatch-website
    supabase functions deploy admin-api --no-verify-jwt --project-ref <ref>
    ```
-3. (Optional) One-time seed of existing `public/gallery` assets into Supabase:
+2. (Optional) One-time seed of existing `public/gallery` assets into Supabase:
    ```bash
    # needs SUPABASE_SERVICE_ROLE_KEY in .env.local (service role — never commit)
    node --env-file=.env.local scripts/seed-gallery.mjs
    ```
-4. Deploy the static site so the admin Gallery tab and client fetch are live.
+3. Deploy the static site so the admin Gallery tab and client fetch are live.
 
 Until published rows exist in `gallery_items`, `/gallery` still shows the built-in static assets. Once any published DB row exists, the page uses Supabase only.
 
@@ -360,9 +380,8 @@ pokepatch-website/
       posthog.js                 # PostHog init + capture helper
       adminApi.js                # Admin edge function client
   supabase/
-    schema.sql                   # Schema reference
-    migrations/
-      20260714000000_gallery_items.sql
+    schema.sql                   # Schema reference (may lag live)
+    migrations/                  # CLI-managed deltas (empty until next change)
     functions/
       notify/                    # Discord + Sheets on INSERT
       admin-auth/

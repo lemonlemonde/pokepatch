@@ -29,25 +29,32 @@ Auto-injected by Supabase (do not set manually):
 
 ## Database prerequisites
 
-Run migrations before deploying:
+Live Supabase is the source of truth. These objects must already exist before
+deploying admin functions (they do on production):
 
-- [`supabase/migrations/20260704120000_admin_orders.sql`](../migrations/20260704120000_admin_orders.sql) — orders status, sessions, image types
-- Gallery migrations under [`supabase/migrations/`](../migrations/) (`20260714000000` … `20260714040000`) — gallery CMS table, pairs, set, damage tags, `gallery` bucket; items ordered by `created_at`
-- [`supabase/migrations/20260720093000_customer_messages.sql`](../migrations/20260720093000_customer_messages.sql) — admin broadcast message history + customer inbox RLS
-
-Admin orders migration adds:
-
+**Admin orders**
 - `orders.status` (`new`, `in_progress`, `completed`, `canceled`)
 - Expanded `card_images.image_type` values for admin uploads
 - `admin_sessions` table
 - `update_order` status support
 
-Gallery migration adds:
-
+**Gallery CMS**
 - `gallery_items` table (anon can SELECT published rows; ordered by `created_at` desc)
 - `gallery_pairs` before/after media rows
 - Public `gallery` storage bucket + read policy
 - `set_name` and `damage_tags` on `gallery_items`
+
+**Customer messages**
+- `customer_messages` table + customer inbox RLS / related RPCs
+
+Future schema changes use CLI-managed migrations from `pokepatch-website/`:
+
+```bash
+supabase migration new <short_name>
+supabase db push
+```
+
+See the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed). Apply pending migrations before deploying if the function depends on new schema.
 
 Optional one-time seed of existing `public/gallery` files:
 
@@ -55,14 +62,6 @@ Optional one-time seed of existing `public/gallery` files:
 # from pokepatch-website/; requires SUPABASE_SERVICE_ROLE_KEY in .env.local
 node --env-file=.env.local scripts/seed-gallery.mjs
 ```
-
-Migrations (run in order in the SQL Editor):
-
-- [`20260714000000_gallery_items.sql`](../migrations/20260714000000_gallery_items.sql)
-- [`20260714010000_gallery_pairs.sql`](../migrations/20260714010000_gallery_pairs.sql)
-- [`20260714020000_gallery_set_name.sql`](../migrations/20260714020000_gallery_set_name.sql)
-- [`20260714030000_gallery_damage_tags.sql`](../migrations/20260714030000_gallery_damage_tags.sql)
-- [`20260714040000_gallery_drop_item_sort_order.sql`](../migrations/20260714040000_gallery_drop_item_sort_order.sql)
 
 ## Deploy (manual)
 
