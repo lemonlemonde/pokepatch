@@ -47,7 +47,6 @@ import {
   highValueSurchargeFromValue,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
-  HV_PERCENT_OPTIONS,
   HV_TIER_RANGES_LABEL,
   packQuoteAdjustments,
   parseMoneyInput,
@@ -1537,27 +1536,6 @@ function OrderEditor({
     });
   }
 
-  function setCardHvPercent(cardId, value) {
-    const id = String(cardId);
-    const card = (draft.cards ?? []).find((entry) => String(entry.id) === id);
-    const marketValue = moneyFieldToPayload(card?.market_value_raw_nm);
-    const pct =
-      value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
-    let amount_dollars = draft.quote_card_hv?.[id]?.amount_dollars ?? "";
-    if (pct == null || pct === 0) {
-      amount_dollars = "";
-    } else if (marketValue != null) {
-      const amount = highValueSurchargeFromValue(marketValue, pct);
-      amount_dollars = amount != null ? String(amount) : "";
-    }
-    updateDraft({
-      quote_card_hv: {
-        ...(draft.quote_card_hv ?? {}),
-        [id]: { percent: value, amount_dollars },
-      },
-    });
-  }
-
   function setCardHvAmount(cardId, value) {
     const id = String(cardId);
     const card = (draft.cards ?? []).find((entry) => String(entry.id) === id);
@@ -1848,7 +1826,7 @@ function OrderEditor({
             </button>
           </div>
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-ink/55">
               Market ($)
@@ -1867,49 +1845,7 @@ function OrderEditor({
           </label>
           <label className="block min-w-0">
             <span className="mb-1 block text-xs font-medium text-ink/55">
-              Percent (%)
-            </span>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <input
-                className={`${editorFieldClass()} min-w-0 flex-1`}
-                inputMode="decimal"
-                value={hv.percent ?? ""}
-                onChange={(event) =>
-                  setCardHvPercent(cardId, event.target.value)
-                }
-                onFocus={() => setExpandedQuoteLineId(lineId)}
-                placeholder="e.g. 4"
-              />
-              <div className="flex shrink-0 gap-1">
-                {HV_PERCENT_OPTIONS.map((option) => {
-                  const selected =
-                    Number(hv.percent) === option.percent &&
-                    hv.percent !== "" &&
-                    hv.percent != null;
-                  return (
-                    <button
-                      key={option.percent}
-                      type="button"
-                      onClick={() =>
-                        setCardHvPercent(cardId, String(option.percent))
-                      }
-                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${
-                        selected
-                          ? "border-peach bg-peach/50 text-ink"
-                          : "border-ink/15 bg-cream text-ink/70 hover:border-peach/60 hover:text-ink"
-                      }`}
-                      title={`${option.percent}% of market value`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Total ($)
+              Custom
             </span>
             <input
               className={editorFieldClass()}
