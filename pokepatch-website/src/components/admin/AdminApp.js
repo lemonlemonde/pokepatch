@@ -2611,7 +2611,7 @@ export default function AdminApp() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const pathTab = tabFromPathname(pathname);
   const searchEditId = searchParams.get("edit");
   // Static export can no-op same-path query clears via router.push. Dismiss the
@@ -2787,9 +2787,14 @@ export default function AdminApp() {
 
   async function handleLogout() {
     await adminLogout();
-    setAuthed(false);
     setOrders([]);
     clearEditor();
+    try {
+      await signOut();
+    } catch {
+      // Admin token is already cleared; still leave the page.
+    }
+    router.replace("/");
   }
 
   async function handleStatusChange(orderId, status) {
