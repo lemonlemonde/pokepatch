@@ -1,0 +1,17 @@
+---
+description: Keep Supabase local and remote migration history in lockstep
+alwaysApply: true
+---
+
+# Supabase migrations
+
+Follow root [README → Schema changes (CLI-managed)](../../README.md#schema-changes-cli-managed).
+
+## Required workflow
+
+1. Prefer: `cd pokepatch-website` → `supabase migration new <name>` → edit the generated file → `supabase db push` → `supabase migration list` (Local === Remote).
+2. **Never** invent or hand-rename migration timestamps. The CLI keys history by the filename version prefix.
+3. **Never** apply DDL via MCP `apply_migration`, dashboard SQL, or ad-hoc SQL **and also** add a differently named local migration for the same change.
+4. If remote was updated first: run `supabase migration fetch --linked`, confirm `supabase migration list` is clean, then commit those files. Do not invent a second local version.
+
+Dirty history = Local and Remote version columns disagree. Fix alignment before the next schema change.

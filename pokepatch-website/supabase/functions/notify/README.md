@@ -23,14 +23,13 @@ Admin `update_order` calls do **not** notify (no webhook on UPDATE).
 The orders schema (`orders`, `contacts`, `cards`, `card_images`, related RPCs)
 is already on live. Do **not** drop `quote_requests` (legacy path still used).
 
-Future schema changes use CLI-managed migrations from `pokepatch-website/`:
+Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → `db push`). Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 ```bash
 supabase migration new <short_name>
 supabase db push
+supabase migration list
 ```
-
-See the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 Optional storage policies (if bucket/policies are missing):
 

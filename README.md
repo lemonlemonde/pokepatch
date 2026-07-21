@@ -192,22 +192,46 @@ Schema reference (informational, may lag live): [`pokepatch-website/supabase/sch
 
 ### Schema changes (CLI-managed)
 
-Live production is the baseline. Historical migration files were cleared; `supabase_migrations.schema_migrations` on live starts empty. From now on, all schema changes go through Supabase CLI migrations:
+Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
+
+#### Happy path (preferred)
 
 ```bash
 cd pokepatch-website
 supabase link --project-ref <ref>   # once per machine
-supabase migration new <short_name>
-# edit supabase/migrations/<timestamp>_<short_name>.sql
+supabase migration new <short_name> # creates supabase/migrations/<timestamp>_<short_name>.sql
+# edit only that new file (delta only)
 supabase db push                    # applies pending migrations to the linked project
+supabase migration list             # confirm Local and Remote versions match
 ```
 
-Rules:
+#### Rules
 
 - Put **only the delta** in each new migration (never re-apply the whole live schema).
-- Prefer `supabase migration new` over inventing filenames by hand.
-- Do not paste ad-hoc schema SQL in the dashboard unless you immediately capture the same change as a migration and mark it applied (or re-apply via `db push` on a fresh branch DB).
+- **Always** create files with `supabase migration new`. Never invent or rename migration timestamps by hand.
+- Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer `db push` instead.
 - Keep `schema.sql` as a human reference if useful; it is not what the CLI applies.
+- Before committing migration changes, run `supabase migration list` and fix any Local/Remote mismatch.
+
+#### If something was applied on remote first (MCP / dashboard)
+
+Do **not** also create a differently named local file for the same change. Sync local from live history:
+
+```bash
+cd pokepatch-website
+supabase migration fetch --linked   # writes/updates files to match remote versions
+supabase migration list             # Local and Remote columns should align
+```
+
+If you already added a wrong local filename, delete or replace it so versions match remote, then commit the aligned files. Do not `db push` a duplicate under a new timestamp.
+
+#### Sanity check
+
+```bash
+supabase migration list
+```
+
+Every row should show the **same version** in both Local and Remote. Any version only on one side means history is dirty — fix that before the next schema change.
 
 ---
 
@@ -381,7 +405,7 @@ pokepatch-website/
       adminApi.js                # Admin edge function client
   supabase/
     schema.sql                   # Schema reference (may lag live)
-    migrations/                  # CLI-managed deltas (empty until next change)
+    migrations/                  # CLI deltas; versions must match remote (see Schema changes)
     functions/
       notify/                    # Discord + Sheets on INSERT
       admin-auth/

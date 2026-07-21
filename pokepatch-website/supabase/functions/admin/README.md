@@ -47,14 +47,15 @@ deploying admin functions (they do on production):
 **Customer messages**
 - `customer_messages` table + customer inbox RLS / related RPCs
 
-Future schema changes use CLI-managed migrations from `pokepatch-website/`:
+Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → `db push`). Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 ```bash
 supabase migration new <short_name>
 supabase db push
+supabase migration list
 ```
 
-See the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed). Apply pending migrations before deploying if the function depends on new schema.
+Apply pending migrations before deploying if the function depends on new schema.
 
 Optional one-time seed of existing `public/gallery` files:
 

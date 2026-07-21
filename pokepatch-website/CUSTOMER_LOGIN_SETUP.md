@@ -42,16 +42,15 @@ This implementation adds an optional customer login system that allows users to 
 Customer accounts schema is already applied on the live Supabase project
 (`orders.user_id`, `get_my_orders` / `get_my_order`, related RLS, etc.).
 
-Future schema changes use **CLI-managed migrations** from `pokepatch-website/`:
+Future schema changes use **CLI-managed migrations** from `pokepatch-website/` (`supabase migration new` → `supabase db push`). Never hand-name migration files or apply remote DDL without syncing local — see root [README → Schema changes (CLI-managed)](../README.md#schema-changes-cli-managed).
 
 ```bash
 supabase link --project-ref <ref>   # once per machine
 supabase migration new <short_name>
 # edit the new file under supabase/migrations/
 supabase db push
+supabase migration list             # Local and Remote must match
 ```
-
-See the root [README → Schema changes (CLI-managed)](../README.md#schema-changes-cli-managed).
 
 ### 2. Configure Email Settings (Resend SMTP)
 
