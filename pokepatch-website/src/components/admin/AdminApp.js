@@ -1116,16 +1116,16 @@ function KanbanBoard({
   const [contextMenu, setContextMenu] = useState(null);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
-  const revenue = useMemo(() => {
-    const byStatus = groupOrdersByStatus(orders);
-    return {
-      completed: sumOrderAmounts(byStatus.completed),
+  const revenue = useMemo(
+    () => ({
+      completed: sumOrderAmounts(columns.completed),
       pipeline: sumOrderAmounts([
-        ...(byStatus.new ?? []),
-        ...(byStatus.in_progress ?? []),
+        ...(columns.new ?? []),
+        ...(columns.in_progress ?? []),
       ]),
-    };
-  }, [orders]);
+    }),
+    [columns]
+  );
   const dragOrder = useMemo(
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
@@ -2697,11 +2697,12 @@ export default function AdminApp() {
     try {
       const rows = await adminListOrders();
       setOrders(
-        rows.map((order) => ({
-          ...order,
-          status: normalizeOrderStatus(order.status),
-          quote_total: orderQuoteTotalFromStored(order),
-        }))
+        rows.map((order) =>
+          orderToKanbanSummary({
+            ...order,
+            quote_total: orderQuoteTotalFromStored(order),
+          })
+        )
       );
     } catch (err) {
       setListError(err.message || "Could not load orders.");
