@@ -9,13 +9,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
-import { compressImageForUpload } from "@/lib/imageCompression";
+import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
+import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
-const MAX_FILE_MB = 50;
-const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 
 function copyFileList(fileList) {
   if (!fileList) return [];
@@ -326,13 +325,16 @@ export default function QuoteForm() {
     const selected = copyFileList(input.files);
     if (selected.length === 0) return;
 
-    const valid = selected.filter((file) => file.size <= MAX_FILE_BYTES);
-    const skipped = selected.length - valid.length;
+    // Accept any image; compression runs on submit. Reject only non-images.
+    const images = selected.filter(
+      (file) => file.type && file.type.startsWith("image/")
+    );
+    const skipped = selected.length - images.length;
 
-    if (valid.length === 0) {
+    if (images.length === 0) {
       setCardFileErrors((prev) => ({
         ...prev,
-        [cardId]: `Each image must be ${MAX_FILE_MB}MB or smaller.`,
+        [cardId]: "Please choose image files (JPEG, PNG, or WebP).",
       }));
       input.value = "";
       return;
@@ -347,7 +349,7 @@ export default function QuoteForm() {
         if (card.id !== cardId) return card;
         const nextFiles = [
           ...card.files,
-          ...valid.map((file) => ({ id: crypto.randomUUID(), file })),
+          ...images.map((file) => ({ id: crypto.randomUUID(), file })),
         ];
         if (nextFiles.length > MAX_PHOTOS_PER_CARD) {
           trimmed = true;
@@ -360,7 +362,7 @@ export default function QuoteForm() {
     if (skipped > 0) {
       setCardFileErrors((prev) => ({
         ...prev,
-        [cardId]: `${skipped} file${skipped === 1 ? "" : "s"} skipped (over ${MAX_FILE_MB}MB). ${valid.length} added.`,
+        [cardId]: `${skipped} file${skipped === 1 ? "" : "s"} skipped (not an image). ${images.length} added.`,
       }));
     } else if (trimmed) {
       setCardFileErrors((prev) => ({
@@ -463,13 +465,20 @@ export default function QuoteForm() {
 
         for (let i = 0; i < card.files.length; i += 1) {
           const { file } = card.files[i];
-          const uploadFile = await compressImageForUpload(file);
+          const { file: uploadFile, error: compressError } =
+            await compressImageForUpload(file);
+          if (compressError || !uploadFile) {
+            throw new Error(compressError || "Couldn't process this image.");
+          }
+          const { file: thumbFile } = await makeThumbForUpload(uploadFile);
           const path = `order-${orderId}/card-${cardId}/customer-${i + 1}-${sanitizeFilename(uploadFile.name)}`;
-          const { error: uploadError } = await supabase.storage
-            .from("card-photos")
-            .upload(path, uploadFile, { upsert: false });
-
-          if (uploadError) throw uploadError;
+          await uploadImageWithThumb(
+            supabase,
+            "card-photos",
+            path,
+            uploadFile,
+            thumbFile
+          );
           images.push({ storage_path: path, image_type: "customer" });
         }
 

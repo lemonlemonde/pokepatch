@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { galleryImageUrl } from "@/lib/gallery";
+import { galleryThumbPublicUrl } from "@/lib/gallery";
 
-// Renders a Supabase gallery image resized via the transform endpoint, falling
-// back to the original URL if the transform fails (e.g. source too large to
-// process). Fades in once loaded to smooth the lazy-load pop-in.
+/**
+ * Gallery still for list/grid UI. Prefers the stored .thumb.webp sibling
+ * (no Supabase Image Transformations). Falls back to the full URL if the
+ * thumb is missing (legacy objects before backfill).
+ */
 export default function GalleryImage({
   src,
   width,
@@ -17,7 +19,10 @@ export default function GalleryImage({
 }) {
   const [loaded, setLoaded] = useState(false);
   const [useOriginal, setUseOriginal] = useState(false);
-  const displaySrc = useOriginal ? src : galleryImageUrl(src, { width });
+  // width kept for call-site compatibility; thumbs are pre-sized at upload.
+  void width;
+  const thumbSrc = galleryThumbPublicUrl(src) || src;
+  const displaySrc = useOriginal ? src : thumbSrc;
 
   return (
     <Image
@@ -28,7 +33,7 @@ export default function GalleryImage({
       sizes={sizes}
       onLoad={() => setLoaded(true)}
       onError={() => {
-        if (!useOriginal) {
+        if (!useOriginal && displaySrc !== src) {
           setLoaded(false);
           setUseOriginal(true);
         }
