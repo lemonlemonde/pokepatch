@@ -330,23 +330,13 @@ export async function adminUploadGalleryPairSide(pairId, side, file) {
   return payload.item;
 }
 
-export async function adminListOrdersForMessages({ limit } = {}) {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: {
-      action: "messages_list_orders",
-      limit: limit || undefined,
-    },
-  });
-  return payload.orders ?? [];
-}
-
-export async function adminMessageHistory({ email, limit } = {}) {
+export async function adminMessageHistory({ email, order_id, limit } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body: {
       action: "messages_history",
       email: email || undefined,
+      order_id: order_id || undefined,
       limit: limit || undefined,
     },
   });

@@ -200,11 +200,11 @@ When you want to update customers:
 
 ## Admin broadcast messages (Resend API)
 
-Admins can email customers from **Admin → Send Updates**. Sends go through the
-`admin-api` edge function (admin session required) using Resend’s HTTP API —
-not Auth SMTP. Each send targets one or more **orders**; messages are stored in
-`customer_messages` (with `order_id`) and shown on My Orders under each order
-as **Updates from PokePatch**.
+Admins can email a customer from an order editor via **Open update**. Sends go
+through the `admin-api` edge function (admin session required) using Resend’s
+HTTP API — not Auth SMTP. Each send targets that order; messages are stored in
+`customer_messages` (with `order_id`) and shown on My Orders under the order as
+**Updates from PokePatch**.
 
 ### Database
 

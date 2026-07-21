@@ -1113,6 +1113,8 @@ Deno.serve(async (req) => {
 
     if (action === "messages_history") {
       const emailFilter = normalizeEmail(body.email);
+      const orderIdFilter =
+        typeof body.order_id === "string" ? body.order_id.trim() : "";
       const rawLimit = Number(body.limit ?? 100);
       const limit = Number.isFinite(rawLimit)
         ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
@@ -1128,6 +1130,9 @@ Deno.serve(async (req) => {
 
       if (emailFilter) {
         query = query.eq("recipient_email", emailFilter);
+      }
+      if (orderIdFilter) {
+        query = query.eq("order_id", orderIdFilter);
       }
 
       const { data, error } = await query;

@@ -10,7 +10,7 @@ export const metadata = {
 };
 
 // AdminApp lives in the layout so it stays mounted across the section routes
-// (/admin/orders, /admin/orders/all, /admin/gallery, /admin/messages, /admin/studio). The
+// (/admin/orders, /admin/orders/all, /admin/gallery, /admin/studio). The
 // per-section pages render nothing; the active view is derived from the URL
 // inside AdminApp (including ?edit=<orderId> for the order editor).
 export default function AdminLayout({ children }) {

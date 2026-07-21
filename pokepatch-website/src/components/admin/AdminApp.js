@@ -23,7 +23,9 @@ import {
 import { compressImageForUpload } from "@/lib/imageCompression";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
-import BroadcastMessages from "@/components/admin/BroadcastMessages";
+import OrderSendUpdatePanel, {
+  OrderSendUpdateButton,
+} from "@/components/admin/OrderSendUpdate";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
@@ -223,14 +225,6 @@ const ADMIN_TABS = [
     title: "Gallery admin",
     subtitle:
       "Upload and manage restorations shown on the public Gallery page.",
-  },
-  {
-    id: "messages",
-    label: "Send Updates",
-    path: "/admin/messages/",
-    title: "Send updates",
-    subtitle:
-      "Email customers about one or more orders. Updates also appear on each order in My Orders.",
   },
   {
     id: "studio",
@@ -1387,6 +1381,7 @@ function OrderEditor({
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [removingPhotoId, setRemovingPhotoId] = useState(null);
+  const [sendUpdateOpen, setSendUpdateOpen] = useState(false);
   const scrollToCardIdRef = useRef(null);
 
   function updateDraft(patch) {
@@ -1976,6 +1971,12 @@ function OrderEditor({
             >
               Discard
             </button>
+            <OrderSendUpdateButton
+              open={sendUpdateOpen}
+              onToggle={() => setSendUpdateOpen((current) => !current)}
+              disabled={saving}
+              canSend={Boolean(draft.customer_email?.trim())}
+            />
             <button
               type="button"
               onClick={onSave}
@@ -1987,6 +1988,41 @@ function OrderEditor({
           </div>
         </div>
       </div>
+
+      {sendUpdateOpen ? (
+        <div className="space-y-5">
+          <div
+            className="flex items-center gap-3"
+            role="separator"
+            aria-label="Open update"
+          >
+            <div className="h-px flex-1 bg-ink/15" />
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
+              Open update
+            </span>
+            <div className="h-px flex-1 bg-ink/15" />
+          </div>
+          <OrderSendUpdatePanel
+            open={sendUpdateOpen}
+            onClose={() => setSendUpdateOpen(false)}
+            orderId={orderId}
+            displayId={displayId}
+            customerEmail={draft.customer_email}
+            disabled={saving}
+          />
+          <div
+            className="flex items-center gap-3"
+            role="separator"
+            aria-label="Order details"
+          >
+            <div className="h-px flex-1 bg-ink/15" />
+            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
+              Order details
+            </span>
+            <div className="h-px flex-1 bg-ink/15" />
+          </div>
+        </div>
+      ) : null}
 
       {error && (
         <p className="rounded-xl border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
@@ -3009,7 +3045,6 @@ export default function AdminApp() {
       </div>
 
       {tab === "gallery" && <GalleryManager />}
-      {tab === "messages" && <BroadcastMessages />}
       {tab === "studio" && <StudioTool />}
       {ordersSectionActive && (
         <>

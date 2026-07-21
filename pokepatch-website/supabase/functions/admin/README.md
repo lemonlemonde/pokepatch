@@ -90,7 +90,7 @@ Then deploy the static site so `/admin/` is available.
 - Client: [`src/lib/adminApi.js`](../../src/lib/adminApi.js)
 - UI: [`src/components/admin/AdminApp.js`](../../src/components/admin/AdminApp.js)
 - Gallery UI: [`src/components/admin/GalleryManager.js`](../../src/components/admin/GalleryManager.js)
-- Messages UI: [`src/components/admin/BroadcastMessages.js`](../../src/components/admin/BroadcastMessages.js)
+- Order send-update UI: [`src/components/admin/OrderSendUpdate.js`](../../src/components/admin/OrderSendUpdate.js)
 
 Session token is stored in `sessionStorage` under `pokepatch-admin-token`.
 
@@ -125,9 +125,9 @@ JSON POST (requires `X-Admin-Token`):
 | `gallery_pair_delete` | `pair_id` |
 | `gallery_pair_reorder` | `item_id`, `ordered_ids` |
 | `gallery_pair_clear_side` | `pair_id`, `side` (`before` \| `after`) |
-| `messages_list_orders` | optional `limit` — recent orders for the picker |
-| `messages_history` | optional `email`, `limit` (includes `order_id` / `order_display_id`) |
-| `messages_send` | `subject`, `body`, `order_ids[]` (required; one email + row per order) |
+| `messages_list_orders` | optional `limit` — recent orders (legacy/helper) |
+| `messages_history` | optional `email`, optional `order_id`, `limit` (includes `order_display_id`) |
+| `messages_send` | `subject`, `body`, `order_ids[]` (required; typically one order from the editor) |
 
 Multipart POST (requires `X-Admin-Token`):
 
