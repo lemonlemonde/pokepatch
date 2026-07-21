@@ -218,7 +218,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
+      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
   // Quote columns may be missing until the order_quotes migration is applied.
@@ -226,7 +226,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const retry = await supabase
       .from("orders")
       .select(
-        "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at"
+        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at"
       )
       .order("created_at", { ascending: false });
     if (retry.error) throw ordersError;
@@ -240,6 +240,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const [
     { data: cards, error: cardsError },
     quoteItemsResult,
+    authUsers,
   ] = await Promise.all([
     supabase
       .from("cards")
@@ -250,9 +251,11 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       .from("order_quote_items")
       .select("order_id, quote_base_amount")
       .in("order_id", orderIds),
+    listAllAuthUsers(supabase),
   ]);
   if (cardsError) throw cardsError;
   const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
+  const emailSet = authEmailSet(authUsers);
 
   const countByOrder = new Map<string, number>();
   const cardOrderById = new Map<string, string>();
@@ -300,6 +303,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const paths = previewPathsByOrder.get(orderId) ?? [];
     return {
       ...order,
+      has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
       preview_urls: paths
@@ -310,9 +314,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, customer_name, customer_email, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at";
 
 async function fetchOrderGraph(
   supabase: ReturnType<typeof getServiceClient>,
@@ -349,6 +353,7 @@ async function fetchOrderGraph(
     { data: contacts, error: contactsError },
     { data: cards, error: cardsError },
     quoteItemsResult,
+    authUsers,
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -366,11 +371,13 @@ async function fetchOrderGraph(
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true }),
+    listAllAuthUsers(supabase),
   ]);
   if (contactsError) throw contactsError;
   if (cardsError) throw cardsError;
   // Table may not exist until migration; treat as empty quote list.
   const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
+  const emailSet = authEmailSet(authUsers);
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
   let images: { id: number; card_id: string; image_type: string; storage_path: string }[] = [];
@@ -416,6 +423,7 @@ async function fetchOrderGraph(
 
   const enriched = orders.map((order) => ({
     ...order,
+    has_account: orderHasAccount(order, emailSet),
     contacts: contactsByOrder.get(order.id as string) ?? [],
     cards: (cardsByOrder.get(order.id as string) ?? []).map((card) => ({
       ...card,
@@ -659,6 +667,20 @@ async function resolveUserIdByEmail(
   const users = authUsers ?? (await listAllAuthUsers(supabase));
   const match = users.find((user) => user.email === email);
   return match?.id ?? null;
+}
+
+function authEmailSet(authUsers: AuthUserRow[]): Set<string> {
+  return new Set(authUsers.map((user) => user.email));
+}
+
+/** True when the order email matches an Auth user, or the order is already linked. */
+function orderHasAccount(
+  order: { customer_email?: unknown; user_id?: unknown },
+  emailSet: Set<string>
+): boolean {
+  if (order.user_id) return true;
+  const email = normalizeEmail(order.customer_email);
+  return Boolean(email && emailSet.has(email));
 }
 
 Deno.serve(async (req) => {

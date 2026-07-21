@@ -329,6 +329,7 @@ function orderToDraft(order) {
   return {
     customer_name: order.customer_name ?? "",
     customer_email: order.customer_email ?? "",
+    has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
@@ -533,6 +534,18 @@ function sumOrderAmounts(orders) {
   ) / 100;
 }
 
+function AccountStatusBadge({ hasAccount, pill = false }) {
+  const shape = pill
+    ? "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
+    : "inline-block rounded px-1.5 py-0.5 text-xs font-semibold";
+  if (hasAccount) {
+    return <span className={`${shape} bg-mint text-night`}>Has account</span>;
+  }
+  return (
+    <span className={`${shape} bg-ink/10 text-ink/55`}>No account</span>
+  );
+}
+
 function orderToKanbanSummary(order) {
   const status = normalizeOrderStatus(order.status);
   const isClosed = isClosedOrderStatus(status);
@@ -541,6 +554,8 @@ function orderToKanbanSummary(order) {
     display_id: order.display_id,
     created_at: order.created_at,
     customer_name: order.customer_name,
+    customer_email: order.customer_email ?? "",
+    has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method,
     status,
     completed_at: isClosed ? (order.completed_at ?? null) : null,
@@ -808,6 +823,9 @@ function KanbanCard({
           <p className="mt-1 text-sm font-semibold text-ink">
             {order.customer_name}
           </p>
+          <div className="mt-1.5">
+            <AccountStatusBadge hasAccount={order.has_account} />
+          </div>
           <p className="mt-1 text-xs text-ink/60">
             {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
             {deliveryLabel(order.delivery_method)}
@@ -991,12 +1009,13 @@ function OrdersAllList({ orders, onOpenOrder }) {
 
   return (
     <div className="overflow-x-auto rounded border border-ink/20 bg-cream">
-      <table className="w-full min-w-[52rem] border-collapse text-left text-sm">
+      <table className="w-full min-w-[58rem] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-ink/20 bg-night/40 text-xs font-semibold uppercase tracking-wide text-ink/60">
             <th className="whitespace-nowrap px-3 py-2">#</th>
             <th className="whitespace-nowrap px-3 py-2">Customer</th>
             <th className="whitespace-nowrap px-3 py-2">Email</th>
+            <th className="whitespace-nowrap px-3 py-2">Account</th>
             <th className="whitespace-nowrap px-3 py-2">Status</th>
             <th className="whitespace-nowrap px-3 py-2">Cards</th>
             <th className="whitespace-nowrap px-3 py-2">Delivery</th>
@@ -1022,6 +1041,9 @@ function OrdersAllList({ orders, onOpenOrder }) {
                 </td>
                 <td className="max-w-[14rem] truncate px-3 py-1.5 text-ink/70">
                   {order.customer_email || "—"}
+                </td>
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  <AccountStatusBadge hasAccount={order.has_account} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5">
                   <span
@@ -1953,13 +1975,16 @@ function OrderEditor({
             <h2 className="text-2xl font-bold tabular-nums tracking-tight text-ink sm:text-3xl">
               Order #{displayId}
             </h2>
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
-                draft.status
-              )}`}
-            >
-              {orderStatusLabel(draft.status)}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
+                  draft.status
+                )}`}
+              >
+                {orderStatusLabel(draft.status)}
+              </span>
+              <AccountStatusBadge hasAccount={draft.has_account} pill />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
