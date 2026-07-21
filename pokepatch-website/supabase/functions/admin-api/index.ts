@@ -11,6 +11,7 @@ const GALLERY_BUCKET = "gallery";
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 
 const ADMIN_IMAGE_TYPES = new Set([
+  "customer",
   "progress_front",
   "progress_back",
   "final_front",
@@ -44,6 +45,20 @@ function sanitizeDamageTags(raw: unknown): string[] {
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+}
+
+/** Resurface the customer's "New updates" chip after any admin order change. */
+async function bumpOrderUpdatesAvailable(
+  supabase: ReturnType<typeof getServiceClient>,
+  orderId: string
+) {
+  const { error } = await supabase
+    .from("orders")
+    .update({ updates_available_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if (error) {
+    console.error("updates_available_at bump failed", error);
+  }
 }
 
 async function deleteOrderAndPhotos(
@@ -435,6 +450,11 @@ async function handleOrderUpload(
     .single();
   if (insertError) throw insertError;
 
+  // Team uploads should resurface the customer's "New updates" chip.
+  if (imageType !== "customer") {
+    await bumpOrderUpdatesAvailable(supabase, orderId);
+  }
+
   const signedMap = await signPaths(supabase, [path]);
 
   return jsonResponse(req, {
@@ -690,6 +710,7 @@ Deno.serve(async (req) => {
         p_order: { status },
       });
       if (error) throw error;
+      await bumpOrderUpdatesAvailable(supabase, orderId);
       return jsonResponse(req, { ok: true, order: data });
     }
 
@@ -727,6 +748,64 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, deleted });
     }
 
+    if (action === "delete_photo") {
+      const orderId = String(body.order_id ?? "");
+      const imageId = Number(body.image_id);
+      if (!orderId || !Number.isFinite(imageId)) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_id and image_id required" },
+          400
+        );
+      }
+
+      const { data: image, error: imageError } = await supabase
+        .from("card_images")
+        .select("id, card_id, image_type, storage_path")
+        .eq("id", imageId)
+        .maybeSingle();
+      if (imageError) throw imageError;
+      if (!image) {
+        return jsonResponse(req, { ok: false, error: "photo not found" }, 404);
+      }
+      if (image.image_type === "customer") {
+        return jsonResponse(
+          req,
+          { ok: false, error: "customer photos cannot be deleted" },
+          400
+        );
+      }
+
+      const { data: card, error: cardError } = await supabase
+        .from("cards")
+        .select("id, order_id")
+        .eq("id", image.card_id)
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (cardError) throw cardError;
+      if (!card) {
+        return jsonResponse(req, { ok: false, error: "photo not found" }, 404);
+      }
+
+      const { error: deleteRowError } = await supabase
+        .from("card_images")
+        .delete()
+        .eq("id", imageId);
+      if (deleteRowError) throw deleteRowError;
+
+      if (image.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from(BUCKET)
+          .remove([image.storage_path as string]);
+        if (storageError) {
+          console.error("admin photo storage cleanup failed", storageError);
+        }
+      }
+
+      await bumpOrderUpdatesAvailable(supabase, orderId);
+      return jsonResponse(req, { ok: true, deleted_image_id: imageId });
+    }
+
     if (action === "save") {
       const orderId = String(body.order_id ?? "");
       if (!orderId) {
@@ -748,6 +827,8 @@ Deno.serve(async (req) => {
         p_cards: cards,
       });
       if (rpcError) throw rpcError;
+
+      await bumpOrderUpdatesAvailable(supabase, orderId);
 
       const order = await fetchOrderGraph(supabase, orderId);
       if (!order) {

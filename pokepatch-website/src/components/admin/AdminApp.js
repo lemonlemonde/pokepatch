@@ -4,20 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
-import { CardPhotoPreviewGrid } from "@/components/CardPhotoPreviews";
+import { AdminOrderCardPhotoGroups } from "@/components/CardPhotoPreviews";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import {
   adminDeleteOrders,
+  adminDeletePhoto,
   adminGetOrder,
   adminListOrders,
   adminLoginWithSession,
   adminLogout,
   adminSaveOrder,
   adminSetStatus,
+  adminUploadPhoto,
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
+import { compressImageForUpload } from "@/lib/imageCompression";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import BroadcastMessages from "@/components/admin/BroadcastMessages";
@@ -55,11 +58,41 @@ import {
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 
+const MAX_ADMIN_PHOTO_MB = 50;
+const MAX_ADMIN_PHOTO_BYTES = MAX_ADMIN_PHOTO_MB * 1024 * 1024;
+
 function newClientId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
   return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function emptyAdminCard() {
+  return {
+    id: newClientId(),
+    card_name: "",
+    set_name: "",
+    description: "",
+    market_value_raw_nm: "",
+    images: [],
+    pending_files: [],
+  };
+}
+
+function draftHasPendingPhotos(draft) {
+  return (draft?.cards ?? []).some(
+    (card) => (card.pending_files ?? []).length > 0
+  );
+}
+
+function copyFileList(fileList) {
+  if (!fileList) return [];
+  const copied = [];
+  for (let i = 0; i < fileList.length; i += 1) {
+    copied.push(fileList[i]);
+  }
+  return copied;
 }
 
 function findMatchingOrderCardId(item, cards) {
@@ -285,7 +318,7 @@ function orderToDraft(order) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
-  const cards = (order.cards ?? []).map((card) => ({
+  const cards = orderCards.map((card) => ({
     id: card.id,
     card_name: card.card_name ?? "",
     set_name: card.set_name ?? "",
@@ -295,6 +328,7 @@ function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     images: card.images ?? [],
+    pending_files: [],
   }));
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
@@ -851,6 +885,7 @@ function savedPhotoItems(images) {
       alt: label,
       label,
       href: image.signed_url ?? undefined,
+      removeAriaLabel: `Remove ${label}`,
     };
   });
 }
@@ -1213,47 +1248,46 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
         {CLOSED_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: true })
         )}
-      </div>
-
-      <div
-        role="region"
-        aria-label="Delete order drop zone"
-        onDragOver={handleTrashDragOver}
-        onDragLeave={handleTrashDragLeave}
-        onDrop={handleTrashDrop}
-        className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
-          dragOrderId
-            ? trashArmed
-              ? "border-berry bg-berry/20 text-berry shadow-cozy"
-              : "border-berry/50 bg-berry/10 text-berry/90"
-            : "border-ink/15 bg-night/30 text-ink/45"
-        }`}
-      >
-        <TrashIcon
-          className={`h-6 w-6 transition ${
-            trashArmed ? "scale-110" : ""
+        <div
+          role="region"
+          aria-label="Delete order drop zone"
+          onDragOver={handleTrashDragOver}
+          onDragLeave={handleTrashDragLeave}
+          onDrop={handleTrashDrop}
+          className={`flex h-full min-h-0 min-w-0 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-6 transition ${
+            dragOrderId
+              ? trashArmed
+                ? "border-berry bg-berry/20 text-berry shadow-cozy"
+                : "border-berry/50 bg-berry/10 text-berry/90"
+              : "border-ink/15 bg-night/30 text-ink/45"
           }`}
-        />
-        <div className="text-center sm:text-left">
-          <p className="text-sm font-semibold">
-            {trashArmed
-              ? `Release to delete #${dragOrder?.display_id ?? ""}`
-              : dragOrderId
-                ? "Drop here to delete"
-                : "Recycling bin"}
-          </p>
-          <p className="mt-0.5 text-xs opacity-80">
-            {dragOrderId
-              ? "You’ll confirm before anything is deleted"
-              : "Right-click or drag here — always confirms first"}
-          </p>
+        >
+          <TrashIcon
+            className={`h-6 w-6 transition ${
+              trashArmed ? "scale-110" : ""
+            }`}
+          />
+          <div className="text-center">
+            <p className="text-sm font-semibold">
+              {trashArmed
+                ? `Release to delete #${dragOrder?.display_id ?? ""}`
+                : dragOrderId
+                  ? "Drop here to delete"
+                  : "Recycling bin"}
+            </p>
+            <p className="mt-0.5 text-xs opacity-80">
+              {dragOrderId
+                ? "You’ll confirm before anything is deleted"
+                : "Right-click or drag here — always confirms first"}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1287,9 +1321,22 @@ function editorFieldClass() {
   return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
 }
 
-function EditorSection({ title, action, children }) {
+function adminCardIsComplete(card) {
+  const hasName = Boolean((card?.card_name ?? "").trim());
+  const hasDescription = Boolean((card?.description ?? "").trim());
+  const photoCount =
+    (card?.images ?? []).length + (card?.pending_files ?? []).length;
+  return hasName && hasDescription && photoCount > 0;
+}
+
+function EditorSection({ title, action, children, className = "", id }) {
   return (
-    <section className="rounded-2xl border border-ink/10 bg-cream/80 p-5 shadow-cozy-sm sm:p-6">
+    <section
+      id={id}
+      className={`rounded-2xl border bg-cream/80 p-5 shadow-cozy-sm sm:p-6 ${
+        className || "border-ink/10"
+      }`}
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-ink">{title}</h3>
         {action ?? null}
@@ -1326,6 +1373,7 @@ function EditorLabel({ children }) {
 
 function OrderEditor({
   displayId,
+  orderId,
   draft,
   dirty,
   saving,
@@ -1335,26 +1383,43 @@ function OrderEditor({
   onChange,
   onCancel,
   onSave,
+  onError,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
+  const [removingPhotoId, setRemovingPhotoId] = useState(null);
+  const scrollToCardIdRef = useRef(null);
 
   function updateDraft(patch) {
-    onChange({ ...draft, ...patch });
+    // Functional update so quote-sync / rapid edits can't clobber a just-added card.
+    onChange((current) => ({ ...(current ?? draft), ...patch }));
   }
 
   const cardIdsKey = (draft.cards ?? []).map((card) => card.id).join("|");
   useEffect(() => {
-    const nextItems = ensureQuoteItemsForCards(draft.cards, draft.quote_items);
-    const missing = (draft.cards ?? []).some(
-      (card) =>
-        !(draft.quote_items ?? []).some((item) =>
-          quoteItemBelongsToCard(item, card, draft.cards)
-        )
-    );
-    if (!missing) return;
-    onChange({
-      ...draft,
-      quote_items: nextItems,
+    const cardId = scrollToCardIdRef.current;
+    if (!cardId) return;
+    if (!(draft.cards ?? []).some((card) => card.id === cardId)) return;
+    scrollToCardIdRef.current = null;
+    document
+      .getElementById(`admin-order-card-${cardId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [cardIdsKey, draft.cards]);
+
+  useEffect(() => {
+    onChange((current) => {
+      if (!current) return current;
+      const nextItems = ensureQuoteItemsForCards(
+        current.cards,
+        current.quote_items
+      );
+      const missing = (current.cards ?? []).some(
+        (card) =>
+          !(current.quote_items ?? []).some((item) =>
+            quoteItemBelongsToCard(item, card, current.cards)
+          )
+      );
+      if (!missing) return current;
+      return { ...current, quote_items: nextItems };
     });
     // Only re-run when the set of order cards changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1396,6 +1461,74 @@ function OrderEditor({
     updateDraft({
       contacts: draft.contacts.filter((_, i) => i !== index),
     });
+  }
+
+  function addCard() {
+    const card = emptyAdminCard();
+    scrollToCardIdRef.current = card.id;
+    onChange((current) => {
+      const base = current ?? draft;
+      return {
+        ...base,
+        cards: [...(base.cards ?? []), card],
+      };
+    });
+  }
+
+  function addCardPendingFiles(cardIndex, fileList) {
+    const card = draft.cards[cardIndex];
+    if (!card) return;
+    const incoming = copyFileList(fileList).filter(
+      (file) =>
+        file.type?.startsWith("image/") && file.size <= MAX_ADMIN_PHOTO_BYTES
+    );
+    if (incoming.length === 0) return;
+
+    updateCard(cardIndex, {
+      pending_files: [
+        ...(card.pending_files ?? []),
+        ...incoming.map((file) => ({ id: newClientId(), file })),
+      ],
+    });
+  }
+
+  function removeCardPendingFile(cardIndex, fileId) {
+    const card = draft.cards[cardIndex];
+    if (!card) return;
+    updateCard(cardIndex, {
+      pending_files: (card.pending_files ?? []).filter(
+        (entry) => entry.id !== fileId
+      ),
+    });
+  }
+
+  async function removeAdminPhoto(cardIndex, imageId) {
+    if (!orderId || removingPhotoId != null) return;
+    setRemovingPhotoId(imageId);
+    onError?.("");
+    try {
+      await adminDeletePhoto(orderId, imageId);
+      onChange((current) => {
+        const base = current ?? draft;
+        return {
+          ...base,
+          cards: (base.cards ?? []).map((card, index) =>
+            index === cardIndex
+              ? {
+                  ...card,
+                  images: (card.images ?? []).filter(
+                    (image) => String(image.id) !== String(imageId)
+                  ),
+                }
+              : card
+          ),
+        };
+      });
+    } catch (err) {
+      onError?.(err.message || "Could not remove photo.");
+    } finally {
+      setRemovingPhotoId(null);
+    }
   }
 
   function updateCard(index, patch) {
@@ -2326,61 +2459,128 @@ function OrderEditor({
       </EditorSection>
 
       <div className="space-y-4">
-        <h3 className="px-1 text-base font-semibold text-ink">Cards</h3>
-        {draft.cards.map((card, cardIndex) => {
-          const customerImages = (card.images ?? []).filter(
-            (image) => image.image_type === "customer"
-          );
+        <div className="flex items-center justify-between gap-3 px-1">
+          <h3 className="text-base font-semibold text-ink">Cards</h3>
+          <button
+            type="button"
+            onClick={addCard}
+            className="text-sm font-semibold text-berry transition hover:underline"
+          >
+            Add card
+          </button>
+        </div>
+        {draft.cards.length === 0 ? (
+          <p className="px-1 text-sm text-ink/45">
+            No cards yet. Add a card to quote services for this order.
+          </p>
+        ) : (
+          draft.cards.map((card, cardIndex) => {
+            const customerImages = (card.images ?? []).filter(
+              (image) => image.image_type === "customer"
+            );
+            const adminImages = (card.images ?? []).filter(
+              (image) => image.image_type !== "customer"
+            );
+            const pendingFiles = card.pending_files ?? [];
+            const photoInputId = `admin-card-photos-${card.id}`;
+            const incomplete = !adminCardIsComplete(card);
 
-          return (
-            <EditorSection key={card.id} title={`Card ${cardIndex + 1}`}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block">
-                  <EditorLabel>Card name</EditorLabel>
-                  <input
-                    className={editorFieldClass()}
-                    value={card.card_name}
-                    onChange={(event) =>
-                      updateCard(cardIndex, {
-                        card_name: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <label className="block">
-                  <EditorLabel>Set</EditorLabel>
-                  <input
-                    className={editorFieldClass()}
-                    value={card.set_name}
-                    onChange={(event) =>
-                      updateCard(cardIndex, { set_name: event.target.value })
-                    }
-                  />
-                </label>
-                <label className="block sm:col-span-2">
-                  <EditorLabel>Description</EditorLabel>
-                  <textarea
-                    className={`${editorFieldClass()} min-h-[72px]`}
-                    value={card.description}
-                    onChange={(event) =>
-                      updateCard(cardIndex, {
-                        description: event.target.value,
-                      })
-                    }
-                  />
-                </label>
-              </div>
-              {customerImages.length > 0 ? (
-                <div className="mt-4 border-t border-ink/10 pt-4">
-                  <CardPhotoPreviewGrid
-                    title="Customer photos"
-                    items={savedPhotoItems(customerImages)}
-                  />
+            return (
+              <EditorSection
+                key={card.id}
+                id={`admin-order-card-${card.id}`}
+                title={`Card ${cardIndex + 1}`}
+                className={
+                  incomplete
+                    ? "border-berry/55 ring-1 ring-berry/25"
+                    : undefined
+                }
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <EditorLabel>Card name</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.card_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          card_name: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block">
+                    <EditorLabel>Set</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.set_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, { set_name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <EditorLabel>Description</EditorLabel>
+                    <textarea
+                      className={`${editorFieldClass()} min-h-[72px]`}
+                      value={card.description}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          description: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
                 </div>
-              ) : null}
-            </EditorSection>
-          );
-        })}
+                <div className="mt-4 border-t border-ink/10 pt-4">
+                  <AdminOrderCardPhotoGroups
+                    customerItems={savedPhotoItems(customerImages)}
+                    updateItems={savedPhotoItems(adminImages)}
+                    pendingFiles={pendingFiles}
+                    onRemoveUpdate={
+                      removingPhotoId != null || saving
+                        ? undefined
+                        : (imageId) => removeAdminPhoto(cardIndex, imageId)
+                    }
+                    onRemovePending={
+                      saving
+                        ? undefined
+                        : (fileId) => removeCardPendingFile(cardIndex, fileId)
+                    }
+                  />
+                  <div className="mt-3">
+                    <input
+                      id={photoInputId}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={saving}
+                      onChange={(event) => {
+                        addCardPendingFiles(cardIndex, event.target.files);
+                        event.target.value = "";
+                      }}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor={photoInputId}
+                      className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                        saving
+                          ? "cursor-not-allowed bg-ink/10 text-ink/40"
+                          : "bg-berry/15 text-berry hover:bg-berry/25"
+                      }`}
+                    >
+                      Add photos
+                    </label>
+                    <p className="mt-1.5 text-xs text-ink/50">
+                      New photos upload when you save. Customer photos can’t be
+                      removed.
+                    </p>
+                  </div>
+                </div>
+              </EditorSection>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -2418,7 +2618,10 @@ export default function AdminApp() {
 
   const dirty = useMemo(() => {
     if (!draft) return false;
-    return JSON.stringify(draftPayload(draft)) !== savedSnapshot;
+    return (
+      JSON.stringify(draftPayload(draft)) !== savedSnapshot ||
+      draftHasPendingPhotos(draft)
+    );
   }, [draft, savedSnapshot]);
 
   const activeTab =
@@ -2677,11 +2880,35 @@ export default function AdminApp() {
       return;
     }
 
+    const pendingUploads = (draft.cards ?? [])
+      .map((card) => ({
+        cardId: card.id,
+        files: card.pending_files ?? [],
+      }))
+      .filter((entry) => entry.files.length > 0);
+
     setSaving(true);
     setEditorError("");
     try {
       const payload = draftPayload(draft);
-      const refreshed = await adminSaveOrder(selectedOrderId, payload);
+      let refreshed = await adminSaveOrder(selectedOrderId, payload);
+
+      for (const { cardId, files } of pendingUploads) {
+        for (const entry of files) {
+          const uploadFile = await compressImageForUpload(entry.file);
+          await adminUploadPhoto(
+            selectedOrderId,
+            cardId,
+            "admin",
+            uploadFile
+          );
+        }
+      }
+
+      if (pendingUploads.length > 0) {
+        refreshed = await adminGetOrder(selectedOrderId);
+      }
+
       const nextDraft = orderToDraft(refreshed);
       setDraft(nextDraft);
       setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
@@ -2822,6 +3049,7 @@ export default function AdminApp() {
               {routeOrderId && draft && (
                 <OrderEditor
                   displayId={selectedDisplayId}
+                  orderId={selectedOrderId}
                   draft={draft}
                   dirty={dirty}
                   saving={saving}
@@ -2832,9 +3060,14 @@ export default function AdminApp() {
                       ? "Back to all orders"
                       : "Back to board"
                   }
-                  onChange={setDraft}
+                  onChange={(next) =>
+                    setDraft((current) =>
+                      typeof next === "function" ? next(current) : next
+                    )
+                  }
                   onCancel={handleCancel}
                   onSave={handleSave}
+                  onError={setEditorError}
                 />
               )}
             </div>

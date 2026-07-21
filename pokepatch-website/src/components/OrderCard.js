@@ -50,10 +50,13 @@ function deliveryLabel(method) {
 }
 
 // Non-customer photos are the ones our team adds, so we badge them.
-function imageBadge(type) {
+// "Update" is temporary (unseen team changes); Progress/Final are permanent labels.
+function imageBadge(type, { showUpdateBadge = false } = {}) {
   switch (type) {
     case "admin":
-      return { label: "Update", cls: "bg-mint text-night" };
+      return showUpdateBadge
+        ? { label: "Update", cls: "bg-mint text-night" }
+        : null;
     case "progress_front":
     case "progress_back":
       return { label: "Progress", cls: "bg-lavender text-night" };
@@ -65,6 +68,27 @@ function imageBadge(type) {
   }
 }
 
+function UpdateChip({ className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-night ${className}`.trim()}
+    >
+      Update
+    </span>
+  );
+}
+
+function SectionLabel({ children, showUpdate = false, className = "" }) {
+  return (
+    <p
+      className={`${LABEL_CLS} flex flex-wrap items-center gap-2 ${className}`.trim()}
+    >
+      <span>{children}</span>
+      {showUpdate ? <UpdateChip /> : null}
+    </p>
+  );
+}
+
 function formatDate(dateString) {
   const date = new Date(dateString);
   return date.toLocaleDateString("en-US", {
@@ -72,6 +96,34 @@ function formatDate(dateString) {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatUpdateTime(dateString) {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** Latest activity: team updates, status changes, or order creation. */
+function latestActivityAt(order) {
+  let bestMs = null;
+  for (const value of [
+    order?.updates_available_at,
+    order?.status_changed_at,
+    order?.created_at,
+  ]) {
+    if (!value) continue;
+    const ms = new Date(value).getTime();
+    if (Number.isNaN(ms)) continue;
+    if (bestMs === null || ms > bestMs) bestMs = ms;
+  }
+  return bestMs === null ? null : new Date(bestMs).toISOString();
 }
 
 function Chevron({ open }) {
@@ -170,7 +222,14 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
-  const hasUpdates = order.has_admin_photos;
+  const hasUpdates = order.has_new_updates ?? order.has_admin_photos;
+  const lastUpdatedAt = latestActivityAt(order);
+  const lastUpdatedLabel = formatUpdateTime(lastUpdatedAt);
+  const isFirstActivityOnly =
+    Boolean(order.created_at) &&
+    lastUpdatedAt &&
+    new Date(lastUpdatedAt).getTime() === new Date(order.created_at).getTime();
+  const activityChipLabel = isFirstActivityOnly ? "Placed" : "Updated";
   const imageCount = order.image_count ?? previewPaths.length;
   const hasMore = imageCount > 4;
   const delivery = orderDetails
@@ -212,12 +271,27 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             >
               {customerOrderStatusLabel(order.status)}
             </span>
-            {hasUpdates && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[11px] font-bold text-night">
-                <span className="h-1.5 w-1.5 rounded-full bg-night/70" />
-                New updates
+            {lastUpdatedLabel ? (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  hasUpdates
+                    ? "bg-mint text-night"
+                    : "bg-night/30 text-ink/70"
+                }`}
+              >
+                {hasUpdates ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-night/70" />
+                ) : null}
+                {hasUpdates ? "New update" : activityChipLabel}
+                <span
+                  className={
+                    hasUpdates ? "font-semibold text-night/70" : "font-semibold"
+                  }
+                >
+                  · {lastUpdatedLabel}
+                </span>
               </span>
-            )}
+            ) : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/55">
             <span className="rounded-full bg-night/30 px-2 py-0.5">
@@ -323,9 +397,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {/* Notes from the team */}
               {orderDetails.general_notes && (
                 <div className="rounded-xl border border-mint/30 bg-mint/10 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
+                  <SectionLabel showUpdate={hasUpdates}>
                     Notes from our team
-                  </p>
+                  </SectionLabel>
                   <p className="mt-1 text-sm text-ink/85">
                     {orderDetails.general_notes}
                   </p>
@@ -335,7 +409,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {/* Google Drive folder from the team */}
               {orderDetails.photos_drive_url && (
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <p className={LABEL_CLS}>Photo folder</p>
+                  <SectionLabel showUpdate={hasUpdates}>
+                    Photo folder
+                  </SectionLabel>
                   <a
                     href={orderDetails.photos_drive_url}
                     target="_blank"
@@ -368,7 +444,12 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 adjustments: quoteAdjustments,
               }) ? (
                 <QuoteReceipt
-                  title="Your quote"
+                  title={
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      Your quote
+                      {hasUpdates ? <UpdateChip /> : null}
+                    </span>
+                  }
                   items={orderDetails.quote_items}
                   cards={quoteCards}
                   adjustments={quoteAdjustments}
@@ -380,9 +461,12 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
               {/* Cards */}
               <div>
-                <p className={`${LABEL_CLS} mb-2`}>
-                  Cards · {orderDetails.cards.length}
-                </p>
+                <SectionLabel
+                  showUpdate={hasUpdates}
+                  className="mb-2"
+                >
+                  {`Cards · ${orderDetails.cards.length}`}
+                </SectionLabel>
                 <div className="space-y-2">
                   {orderDetails.cards.map((card) => {
                     const isCardOpen = expandedCardId === card.id;
@@ -462,7 +546,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                     key={image.id}
                                     url={imageUrls[image.storage_path]}
                                     alt={`${card.card_name} - ${image.image_type}`}
-                                    badge={imageBadge(image.image_type)}
+                                    badge={imageBadge(image.image_type, {
+                                      showUpdateBadge: hasUpdates,
+                                    })}
                                   />
                                 ))}
                               </div>

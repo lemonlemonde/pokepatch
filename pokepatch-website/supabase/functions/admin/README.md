@@ -113,6 +113,7 @@ JSON POST (requires `X-Admin-Token`):
 | `get` | `order_id` |
 | `set_status` | `order_id`, `status` |
 | `delete` | `order_id` or `order_ids` (array) |
+| `delete_photo` | `order_id`, `image_id` — removes an admin-uploaded card photo (not `customer`) |
 | `save` | `order_id`, `order`, `contacts`, `cards` |
 | `gallery_list` | — |
 | `gallery_get` | `id` |
@@ -132,7 +133,7 @@ Multipart POST (requires `X-Admin-Token`):
 
 Order photos:
 
-- `kind=order` (default), `order_id`, `card_id`, `image_type` (`progress_front`, `progress_back`, `final_front`, `final_back`, `admin`), `file`
+- `kind=order` (default), `order_id`, `card_id`, `image_type` (`customer`, `progress_front`, `progress_back`, `final_front`, `final_back`, `admin`), `file`
 - Path: `order-{orderId}/card-{cardId}/{image_type}-{n}-{filename}`
 
 Gallery media:

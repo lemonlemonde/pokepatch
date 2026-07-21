@@ -202,6 +202,18 @@ export async function adminUploadPhoto(orderId, cardId, imageType, file) {
   return payload.image;
 }
 
+export async function adminDeletePhoto(orderId, imageId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "delete_photo",
+      order_id: orderId,
+      image_id: imageId,
+    },
+  });
+  return payload.deleted_image_id;
+}
+
 export async function adminListGallery() {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

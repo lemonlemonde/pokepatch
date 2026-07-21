@@ -142,11 +142,42 @@ const visibleOrders = useMemo(
                       <OrderCard
                         key={order.id}
                         order={order}
-                        onClick={() =>
-                          setExpandedOrderId((prev) =>
-                            prev === order.id ? null : order.id
-                          )
-                        }
+                        onClick={() => {
+                          setExpandedOrderId((prev) => {
+                            const next = prev === order.id ? null : order.id;
+                            if (
+                              next === order.id &&
+                              (order.has_new_updates || order.has_admin_photos)
+                            ) {
+                              // Opening the order clears "New updates" for this customer.
+                              supabase
+                                ?.rpc("mark_my_order_updates_seen", {
+                                  p_order_id: order.id,
+                                })
+                                .then(({ error: seenError }) => {
+                                  if (seenError) {
+                                    console.error(
+                                      "mark_my_order_updates_seen failed",
+                                      seenError
+                                    );
+                                    return;
+                                  }
+                                  setOrders((current) =>
+                                    current.map((entry) =>
+                                      entry.id === order.id
+                                        ? {
+                                            ...entry,
+                                            has_new_updates: false,
+                                            has_admin_photos: false,
+                                          }
+                                        : entry
+                                    )
+                                  );
+                                });
+                            }
+                            return next;
+                          });
+                        }}
                         isExpanded={expandedOrderId === order.id}
                       />
                     ))}
