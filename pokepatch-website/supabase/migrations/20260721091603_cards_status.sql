@@ -3,7 +3,6 @@
 
 ALTER TABLE public.cards
   ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'todo';
-
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -18,7 +17,6 @@ BEGIN
   END IF;
 END;
 $$;
-
 CREATE OR REPLACE FUNCTION public.update_order(p_order_id uuid, p_order jsonb DEFAULT NULL::jsonb, p_contacts jsonb DEFAULT NULL::jsonb, p_cards jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -512,10 +510,8 @@ begin
   );
 end;
 $$;
-
 REVOKE ALL ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) FROM public;
 GRANT EXECUTE ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) TO service_role;
-
 CREATE OR REPLACE FUNCTION public.get_my_order(p_order_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -614,6 +610,5 @@ begin
   );
 end;
 $$;
-
 REVOKE ALL ON FUNCTION public.get_my_order(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_my_order(uuid) TO authenticated;

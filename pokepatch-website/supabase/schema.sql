@@ -38,7 +38,9 @@
 -- RPCs:
 --   create_order(p_payload jsonb)  — public form; EXECUTE granted to anon
 --   update_order(...)              — admin only; EXECUTE granted to service_role
---   get_queue_card_count()         — public; count of todo/in_progress cards on open orders
+--   get_queue_card_count()         — public; { todo, in_progress } card counts by cards.status
+--   orders.queue_priority          — lower = sooner; admin Queue page reorders
+--   get_my_orders.queue_position   — 1-based place among status=new
 --   list_queue_orders() / reorder_queue_orders(uuid[]) — service_role; admin queue page
 --
 -- Webhook: orders INSERT → notify edge function (new path).

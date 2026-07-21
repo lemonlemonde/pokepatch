@@ -3,8 +3,14 @@
 import { useEffect, useState } from "react";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
+function parseCount(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function QueueCount() {
-  const [count, setCount] = useState(null);
+  const [todo, setTodo] = useState(null);
+  const [inProgress, setInProgress] = useState(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -16,13 +22,17 @@ export default function QueueCount() {
         const { data, error } = await supabase.rpc("get_queue_card_count");
         if (cancelled) return;
         if (error) {
-          setCount(null);
+          setTodo(null);
+          setInProgress(null);
           return;
         }
-        const value = Number(data?.count);
-        setCount(Number.isFinite(value) ? value : null);
+        setTodo(parseCount(data?.todo));
+        setInProgress(parseCount(data?.in_progress));
       } catch {
-        if (!cancelled) setCount(null);
+        if (!cancelled) {
+          setTodo(null);
+          setInProgress(null);
+        }
       }
     })();
 
@@ -31,17 +41,24 @@ export default function QueueCount() {
     };
   }, []);
 
-  if (count == null) return null;
+  if (todo == null || inProgress == null) return null;
 
-  const label =
-    count === 1 ? "1 card currently in queue" : `${count} cards currently in queue`;
+  const todoLabel = todo === 1 ? "1 card to-do" : `${todo} cards to-do`;
+  const progressLabel =
+    inProgress === 1
+      ? "1 card in progress"
+      : `${inProgress} cards in progress`;
 
   return (
     <p
       className="mt-4 text-sm font-semibold text-ink/65 md:text-base"
       aria-live="polite"
     >
-      {label}
+      {todoLabel}
+      <span className="mx-2 text-ink/35" aria-hidden="true">
+        ·
+      </span>
+      {progressLabel}
     </p>
   );
 }

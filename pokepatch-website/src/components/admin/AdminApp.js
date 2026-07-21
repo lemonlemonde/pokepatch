@@ -577,6 +577,8 @@ function orderToKanbanSummary(order) {
     completed_at: isClosed ? (order.completed_at ?? null) : null,
     status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
+    queue_priority: order.queue_priority ?? null,
+    queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
     quote_total: orderAmount(order),
   };
@@ -791,6 +793,14 @@ function KanbanCard({
         <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
           #{order.display_id}
         </span>
+        {order.queue_position != null && (
+          <span
+            className="shrink-0 rounded-full bg-status-blue/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white"
+            title="Place in queue"
+          >
+            Q#{order.queue_position}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
           {order.customer_name}
         </span>
@@ -835,6 +845,11 @@ function KanbanCard({
         >
           <p className="text-sm font-bold tabular-nums text-ink">
             #{order.display_id}
+            {order.queue_position != null ? (
+              <span className="ml-2 text-xs font-bold text-status-blue">
+                Q#{order.queue_position} in queue
+              </span>
+            ) : null}
           </p>
           <p className="mt-1 text-sm font-semibold text-ink">
             {order.customer_name}

@@ -373,6 +373,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             >
               {customerOrderStatusLabel(order.status)}
             </span>
+            {order.queue_position != null && (
+              <span className="inline-flex items-center rounded-full bg-night/30 px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink/75">
+                #{order.queue_position} in queue
+              </span>
+            )}
             {lastUpdatedLabel ? (
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
@@ -691,11 +696,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                               >
                                 {customerCardStatusLabel(card.status)}
                               </span>
-                              {card.queue_position != null && (
-                                <span className="shrink-0 rounded-full bg-night/10 px-2 py-0.5 text-[10px] font-semibold text-ink/75">
-                                  #{card.queue_position} in queue
-                                </span>
-                              )}
                             </div>
                             {card.set_name && (
                               <p className="truncate text-xs text-ink/60">

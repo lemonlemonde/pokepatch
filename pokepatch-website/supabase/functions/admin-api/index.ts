@@ -218,7 +218,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
+      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
   // Quote columns may be missing until the order_quotes migration is applied.
@@ -226,7 +226,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const retry = await supabase
       .from("orders")
       .select(
-        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at"
+        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority"
       )
       .order("created_at", { ascending: false });
     if (retry.error) throw ordersError;
@@ -235,6 +235,27 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   }
   if (ordersError) throw ordersError;
   if (!orders?.length) return [];
+
+  // 1-based place among status=new, same order as list_queue_orders / get_my_orders.
+  const queuePositionById = new Map<string, number>();
+  const newOrders = [...orders]
+    .filter((o) => o.status === "new")
+    .sort((a, b) => {
+      const ap = a.queue_priority;
+      const bp = b.queue_priority;
+      if (ap == null && bp == null) {
+        /* fall through */
+      } else if (ap == null) return 1;
+      else if (bp == null) return -1;
+      else if (ap !== bp) return Number(ap) - Number(bp);
+      const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at as string).getTime() : 0;
+      if (at !== bt) return at - bt;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  newOrders.forEach((o, index) => {
+    queuePositionById.set(o.id as string, index + 1);
+  });
 
   const orderIds = orders.map((o) => o.id as string);
   const [
@@ -306,6 +327,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
+      queue_position: queuePositionById.get(orderId) ?? null,
       preview_urls: paths
         .map((path) => signedMap.get(path))
         .filter((url): url is string => Boolean(url)),

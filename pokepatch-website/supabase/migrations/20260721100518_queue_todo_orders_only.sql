@@ -1,50 +1,7 @@
--- Order-level queue priority for open orders (new / in_progress).
--- Lower queue_priority = higher priority. Cards within an order stay sequential by id.
---
--- Safety:
--- - Additive column + RPCs; no destructive DDL.
--- - New orders get max(queue_priority)+1 via BEFORE INSERT trigger (covers create_order).
+-- Customer queue is order-level among To do (status = new) only.
+-- In-progress orders are out of the queue. Drop per-card queue_position.
 
--- 1) Column
-ALTER TABLE public.orders
-  ADD COLUMN IF NOT EXISTS queue_priority integer;
-COMMENT ON COLUMN public.orders.queue_priority IS
-  'Lower = higher priority in the global card queue. Only meaningful for open orders.';
--- 2) Backfill open orders by created_at (oldest first = higher priority)
-WITH ranked AS (
-  SELECT
-    id,
-    (ROW_NUMBER() OVER (ORDER BY created_at ASC NULLS LAST, id ASC) - 1)::integer AS rank
-  FROM public.orders
-  WHERE status IN ('new', 'in_progress')
-)
-UPDATE public.orders o
-SET queue_priority = ranked.rank
-FROM ranked
-WHERE o.id = ranked.id;
--- Closed / other orders: leave null (they are not in the active queue list).
-
--- 3) Auto-assign queue_priority on insert when not provided
-CREATE OR REPLACE FUNCTION public.orders_set_queue_priority()
-RETURNS trigger
-LANGUAGE plpgsql
-SET search_path TO 'public'
-AS $$
-BEGIN
-  IF NEW.queue_priority IS NULL THEN
-    SELECT COALESCE(MAX(queue_priority), -1) + 1
-      INTO NEW.queue_priority
-    FROM public.orders;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-DROP TRIGGER IF EXISTS orders_set_queue_priority_bi ON public.orders;
-CREATE TRIGGER orders_set_queue_priority_bi
-  BEFORE INSERT ON public.orders
-  FOR EACH ROW
-  EXECUTE FUNCTION public.orders_set_queue_priority();
--- 4) Public queue card count (todo + in_progress cards on open orders)
+-- Homepage / public count: cards on to-do orders only
 CREATE OR REPLACE FUNCTION public.get_queue_card_count()
 RETURNS jsonb
 LANGUAGE sql
@@ -58,7 +15,7 @@ AS $$
       SELECT COUNT(*)::integer
       FROM public.cards c
       INNER JOIN public.orders o ON o.id = c.order_id
-      WHERE o.status IN ('new', 'in_progress')
+      WHERE o.status = 'new'
         AND c.status IN ('todo', 'in_progress')
     )
   );
@@ -66,7 +23,103 @@ $$;
 REVOKE ALL ON FUNCTION public.get_queue_card_count() FROM public;
 GRANT EXECUTE ON FUNCTION public.get_queue_card_count() TO anon;
 GRANT EXECUTE ON FUNCTION public.get_queue_card_count() TO authenticated;
--- 5) get_my_order: attach queue_position for active cards
+-- My Orders list: order-level queue_position among to-do orders
+CREATE OR REPLACE FUNCTION public.get_my_orders()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+declare
+  v_user_id uuid;
+  v_orders jsonb;
+begin
+  v_user_id := auth.uid();
+  if v_user_id is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select jsonb_agg(
+    jsonb_build_object(
+      'id', o.id,
+      'display_id', o.display_id,
+      'created_at', o.created_at,
+      'customer_name', o.customer_name,
+      'delivery_method', o.delivery_method,
+      'status', o.status,
+      'completed_at', o.completed_at,
+      'status_changed_at', o.status_changed_at,
+      'card_count', (
+        select count(*)
+        from public.cards c
+        where c.order_id = o.id
+      ),
+      'queue_position', (
+        case
+          when o.status = 'new' then (
+            select q.queue_position
+            from (
+              select
+                o2.id as order_id,
+                row_number() over (
+                  order by
+                    o2.queue_priority asc nulls last,
+                    o2.created_at asc nulls last,
+                    o2.id asc
+                )::integer as queue_position
+              from public.orders o2
+              where o2.status = 'new'
+            ) q
+            where q.order_id = o.id
+          )
+          else null
+        end
+      ),
+      'updates_available_at', o.updates_available_at,
+      'has_new_updates', (
+        o.updates_available_at is not null
+        and (
+          o.customer_updates_seen_at is null
+          or o.updates_available_at > o.customer_updates_seen_at
+        )
+      ),
+      -- Keep legacy key for older clients; same meaning as has_new_updates.
+      'has_admin_photos', (
+        o.updates_available_at is not null
+        and (
+          o.customer_updates_seen_at is null
+          or o.updates_available_at > o.customer_updates_seen_at
+        )
+      ),
+      'preview_paths', (
+        select coalesce(jsonb_agg(t.storage_path order by t.rn), '[]'::jsonb)
+        from (
+          select ci.storage_path,
+                 row_number() over (order by c.id, ci.id) as rn
+          from public.cards c
+          join public.card_images ci on ci.card_id = c.id
+          where c.order_id = o.id and ci.image_type = 'customer'
+        ) t
+        where t.rn <= 4
+      ),
+      'image_count', (
+        select count(*)
+        from public.cards c
+        join public.card_images ci on ci.card_id = c.id
+        where c.order_id = o.id and ci.image_type = 'customer'
+      )
+    )
+    order by o.created_at desc
+  ) into v_orders
+  from public.orders o
+  where o.user_id = v_user_id;
+
+  return coalesce(v_orders, '[]'::jsonb);
+end;
+$function$;
+REVOKE ALL ON FUNCTION public.get_my_orders() FROM public;
+GRANT EXECUTE ON FUNCTION public.get_my_orders() TO authenticated;
+-- Detail: remove per-card queue_position (order place comes from get_my_orders)
 CREATE OR REPLACE FUNCTION public.get_my_order(p_order_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -112,26 +165,6 @@ begin
       'description', card.description,
       'market_value_raw_nm', card.market_value_raw_nm,
       'status', card.status,
-      'queue_position', (
-        SELECT q.queue_position
-        FROM (
-          SELECT
-            c2.id AS card_id,
-            ROW_NUMBER() OVER (
-              ORDER BY
-                o2.queue_priority ASC NULLS LAST,
-                o2.created_at ASC NULLS LAST,
-                c2.id ASC
-            )::integer AS queue_position
-          FROM public.cards c2
-          INNER JOIN public.orders o2 ON o2.id = c2.order_id
-          WHERE o2.status IN ('new', 'in_progress')
-            AND c2.status IN ('todo', 'in_progress')
-        ) q
-        WHERE q.card_id = card.id
-          AND card.status IN ('todo', 'in_progress')
-          AND v_order.status IN ('new', 'in_progress')
-      ),
       'images', (
         select jsonb_agg(
           jsonb_build_object(
@@ -179,6 +212,28 @@ begin
     'quote_bulk_counts', v_order.quote_bulk_counts,
     'quote_override_label', v_order.quote_override_label,
     'quote_override_amount', v_order.quote_override_amount,
+    'status', v_order.status,
+    'queue_position', (
+      case
+        when v_order.status = 'new' then (
+          select q.queue_position
+          from (
+            select
+              o2.id as order_id,
+              row_number() over (
+                order by
+                  o2.queue_priority asc nulls last,
+                  o2.created_at asc nulls last,
+                  o2.id asc
+              )::integer as queue_position
+            from public.orders o2
+            where o2.status = 'new'
+          ) q
+          where q.order_id = v_order.id
+        )
+        else null
+      end
+    ),
     'contacts', coalesce(v_contacts, '[]'::jsonb),
     'cards', coalesce(v_cards, '[]'::jsonb),
     'quote_items', coalesce(v_quote_items, '[]'::jsonb)
@@ -187,7 +242,7 @@ end;
 $$;
 REVOKE ALL ON FUNCTION public.get_my_order(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_my_order(uuid) TO authenticated;
--- 6) Admin: list open orders for the priority queue page
+-- Admin priority page: only to-do (new) orders are in the queue
 CREATE OR REPLACE FUNCTION public.list_queue_orders()
 RETURNS jsonb
 LANGUAGE sql
@@ -222,11 +277,10 @@ AS $$
     '[]'::jsonb
   )
   FROM public.orders o
-  WHERE o.status IN ('new', 'in_progress');
+  WHERE o.status = 'new';
 $$;
 REVOKE ALL ON FUNCTION public.list_queue_orders() FROM public;
 GRANT EXECUTE ON FUNCTION public.list_queue_orders() TO service_role;
--- 7) Admin: reorder open orders by writing sequential queue_priority
 CREATE OR REPLACE FUNCTION public.reorder_queue_orders(p_ordered_ids uuid[])
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -236,7 +290,6 @@ AS $$
 DECLARE
   v_id uuid;
   v_index integer := 0;
-  v_updated integer := 0;
 BEGIN
   IF p_ordered_ids IS NULL THEN
     RAISE EXCEPTION 'ordered_ids is required';
@@ -247,10 +300,7 @@ BEGIN
     UPDATE public.orders
     SET queue_priority = v_index
     WHERE id = v_id
-      AND status IN ('new', 'in_progress');
-    IF FOUND THEN
-      v_updated := v_updated + 1;
-    END IF;
+      AND status = 'new';
     v_index := v_index + 1;
   END LOOP;
 
