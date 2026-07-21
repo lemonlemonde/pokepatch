@@ -30,6 +30,7 @@
 --
 -- Working tables (admin edits these):
 --   orders, contacts, cards, card_images
+--   orders.queue_priority — lower = higher priority among open orders
 --
 -- Original backup (written once by create_order, never updated):
 --   orders_original, contacts_original, cards_original, card_images_original
@@ -37,6 +38,8 @@
 -- RPCs:
 --   create_order(p_payload jsonb)  — public form; EXECUTE granted to anon
 --   update_order(...)              — admin only; EXECUTE granted to service_role
+--   get_queue_card_count()         — public; count of todo/in_progress cards on open orders
+--   list_queue_orders() / reorder_queue_orders(uuid[]) — service_role; admin queue page
 --
 -- Webhook: orders INSERT → notify edge function (new path).
 --

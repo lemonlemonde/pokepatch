@@ -860,6 +860,37 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, order, full: order });
     }
 
+    if (action === "queue_list") {
+      const { data, error } = await supabase.rpc("list_queue_orders");
+      if (error) throw error;
+      return jsonResponse(req, {
+        ok: true,
+        orders: Array.isArray(data) ? data : [],
+      });
+    }
+
+    if (action === "queue_reorder") {
+      const orderedIds = Array.isArray(body.ordered_ids)
+        ? body.ordered_ids.map((id: unknown) => String(id ?? "")).filter(Boolean)
+        : null;
+      if (!orderedIds) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "ordered_ids required" },
+          400
+        );
+      }
+
+      const { data, error } = await supabase.rpc("reorder_queue_orders", {
+        p_ordered_ids: orderedIds,
+      });
+      if (error) throw error;
+      return jsonResponse(req, {
+        ok: true,
+        orders: Array.isArray(data) ? data : [],
+      });
+    }
+
     if (action === "gallery_list") {
       const items = await listGalleryItems(supabase);
       return jsonResponse(req, { ok: true, items });

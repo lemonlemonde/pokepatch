@@ -23,6 +23,7 @@ import {
 import { compressImageForUpload } from "@/lib/imageCompression";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
+import QueuePriorityBoard from "@/components/admin/QueuePriorityBoard";
 import OrderSendUpdatePanel, {
   OrderSendUpdateButton,
 } from "@/components/admin/OrderSendUpdate";
@@ -222,6 +223,14 @@ const ADMIN_TABS = [
     title: "Orders admin",
     subtitle:
       "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+  },
+  {
+    id: "queue",
+    label: "Queue",
+    path: "/admin/queue/",
+    title: "Queue priority",
+    subtitle:
+      "Drag open orders to set priority. All cards from a higher order run before cards from a lower order; within an order, cards stay sequential.",
   },
   {
     id: "gallery",
@@ -3036,6 +3045,7 @@ export default function AdminApp() {
         ))}
       </div>
 
+      {tab === "queue" && <QueuePriorityBoard />}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {ordersSectionActive && (

@@ -141,6 +141,25 @@ export async function adminListOrders() {
   return payload.orders ?? [];
 }
 
+export async function adminListQueueOrders() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "queue_list" },
+  });
+  return payload.orders ?? [];
+}
+
+export async function adminReorderQueueOrders(orderedIds) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "queue_reorder",
+      ordered_ids: orderedIds,
+    },
+  });
+  return payload.orders ?? [];
+}
+
 export async function adminGetOrder(orderId) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

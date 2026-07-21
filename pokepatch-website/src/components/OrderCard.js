@@ -691,6 +691,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                               >
                                 {customerCardStatusLabel(card.status)}
                               </span>
+                              {card.queue_position != null && (
+                                <span className="shrink-0 rounded-full bg-night/10 px-2 py-0.5 text-[10px] font-semibold text-ink/75">
+                                  #{card.queue_position} in queue
+                                </span>
+                              )}
                             </div>
                             {card.set_name && (
                               <p className="truncate text-xs text-ink/60">

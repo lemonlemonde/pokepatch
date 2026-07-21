@@ -5,6 +5,7 @@ import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
+import QueueCount from "@/components/QueueCount";
 import { marketingServices } from "@/lib/servicePricing";
 
 const steps = [
@@ -99,6 +100,7 @@ export default function Home() {
         <p className="mt-2 text-sm text-ink/70 md:text-base">
           Bay Area Drop-Off • Nationwide Mail-In
         </p>
+        <QueueCount />
         <Button href="/contact" className="mt-6">
           Get a Quote
         </Button>
