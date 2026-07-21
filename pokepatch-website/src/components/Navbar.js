@@ -86,7 +86,7 @@ export default function Navbar() {
     refreshUnread();
 
     const onFocus = () => refreshUnread();
-    const onRead = () => setUnreadCount(0);
+    const onRead = () => refreshUnread();
     window.addEventListener("focus", onFocus);
     window.addEventListener("pokepatch:messages-read", onRead);
 
@@ -101,8 +101,7 @@ export default function Navbar() {
   if (customerAuthEnabled) {
     if (user) {
       links.push(
-        { href: "/my-orders", label: "My Orders" },
-        { href: "/messages", label: "Messages", badge: unreadCount },
+        { href: "/my-orders", label: "My Orders", badge: unreadCount },
         { href: "/account", label: "Account" },
       );
       if (showAdmin) {
