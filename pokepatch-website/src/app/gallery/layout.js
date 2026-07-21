@@ -2,7 +2,7 @@
 export const metadata = {
   title: "Gallery",
   description:
-    "Before-and-after photos of real trading card restorations: creases, dents, scratches, edge lifts, and more.",
+    "Card restorations and updates from @pokepatch.cards on Instagram.",
 };
 
 export default function GalleryLayout({ children }) {
