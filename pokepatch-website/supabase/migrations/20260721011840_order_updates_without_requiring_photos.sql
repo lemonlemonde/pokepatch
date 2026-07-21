@@ -1,47 +1,3 @@
--- Track when team posted updates vs when the customer last opened the order.
-ALTER TABLE public.orders
-  ADD COLUMN IF NOT EXISTS updates_available_at timestamptz,
-  ADD COLUMN IF NOT EXISTS customer_updates_seen_at timestamptz;
-
--- Existing orders that already have team photos should show the chip until opened.
-UPDATE public.orders o
-SET updates_available_at = coalesce(o.updates_available_at, now())
-WHERE exists (
-  SELECT 1
-  FROM public.cards c
-  JOIN public.card_images ci ON ci.card_id = c.id
-  WHERE c.order_id = o.id
-    AND ci.image_type <> 'customer'
-);
-
-CREATE OR REPLACE FUNCTION public.mark_my_order_updates_seen(p_order_id uuid)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-declare
-  v_user_id uuid;
-begin
-  v_user_id := auth.uid();
-  if v_user_id is null then
-    raise exception 'not authenticated';
-  end if;
-
-  update public.orders
-  set customer_updates_seen_at = now()
-  where id = p_order_id
-    and user_id = v_user_id;
-
-  if not found then
-    raise exception 'order not found or access denied';
-  end if;
-end;
-$function$;
-
-REVOKE ALL ON FUNCTION public.mark_my_order_updates_seen(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.mark_my_order_updates_seen(uuid) TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.get_my_orders()
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -72,7 +28,6 @@ begin
         from public.cards c
         where c.order_id = o.id
       ),
-      'updates_available_at', o.updates_available_at,
       'has_new_updates', (
         o.updates_available_at is not null
         and (
@@ -80,7 +35,6 @@ begin
           or o.updates_available_at > o.customer_updates_seen_at
         )
       ),
-      -- Keep legacy key for older clients; same meaning as has_new_updates.
       'has_admin_photos', (
         o.updates_available_at is not null
         and (
@@ -114,3 +68,4 @@ begin
   return coalesce(v_orders, '[]'::jsonb);
 end;
 $function$;
+;
