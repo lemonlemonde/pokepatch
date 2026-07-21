@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
   customerOrderStatusLabel,
+  customerCardStatusLabel,
   orderStatusBadgeClass,
+  cardStatusBadgeClass,
 } from "@/lib/orderStatus";
 import {
   cardsWithQuoteHv,
@@ -678,9 +680,18 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h5 className="truncate text-sm font-bold text-ink">
-                              {card.card_name}
-                            </h5>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              <h5 className="truncate text-sm font-bold text-ink">
+                                {card.card_name}
+                              </h5>
+                              <span
+                                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
+                                  card.status
+                                )}`}
+                              >
+                                {customerCardStatusLabel(card.status)}
+                              </span>
+                            </div>
                             {card.set_name && (
                               <p className="truncate text-xs text-ink/60">
                                 {card.set_name}

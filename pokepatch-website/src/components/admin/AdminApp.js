@@ -32,11 +32,15 @@ import {
   ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
   CLOSED_ORDER_STATUSES,
+  CARD_STATUSES,
   groupOrdersByStatus,
   normalizeOrderStatus,
+  normalizeCardStatus,
+  DEFAULT_CARD_STATUS,
   orderStatusHeadingClass,
   orderStatusLabel,
   orderStatusBadgeClass,
+  cardStatusBadgeClass,
   isClosedOrderStatus,
   filterClosedColumnOrders,
 } from "@/lib/orderStatus";
@@ -77,6 +81,7 @@ function emptyAdminCard() {
     set_name: "",
     description: "",
     market_value_raw_nm: "",
+    status: DEFAULT_CARD_STATUS,
     images: [],
     pending_files: [],
   };
@@ -321,6 +326,7 @@ function orderToDraft(order) {
       card.market_value_raw_nm != null
         ? String(card.market_value_raw_nm)
         : "",
+    status: normalizeCardStatus(card.status),
     images: card.images ?? [],
     pending_files: [],
   }));
@@ -375,6 +381,7 @@ function draftPayload(draft) {
       set_name: card.set_name.trim(),
       description: card.description.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
+      status: normalizeCardStatus(card.status),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))
@@ -1351,7 +1358,7 @@ function adminCardIsComplete(card) {
   return hasName && hasDescription && photoCount > 0;
 }
 
-function EditorSection({ title, action, children, className = "", id }) {
+function EditorSection({ title, titleExtra, action, children, className = "", id }) {
   return (
     <section
       id={id}
@@ -1360,11 +1367,40 @@ function EditorSection({ title, action, children, className = "", id }) {
       }`}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-ink">{title}</h3>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="text-base font-semibold text-ink">{title}</h3>
+          {titleExtra ?? null}
+        </div>
         {action ?? null}
       </div>
       {children}
     </section>
+  );
+}
+
+function CardStatusPills({ value, onChange, ariaLabel }) {
+  const selectedId = normalizeCardStatus(value);
+  return (
+    <span className="flex flex-wrap gap-1" role="group" aria-label={ariaLabel}>
+      {CARD_STATUSES.map((status) => {
+        const selected = selectedId === status.id;
+        return (
+          <button
+            key={status.id}
+            type="button"
+            onClick={() => onChange(status.id)}
+            aria-pressed={selected}
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+              selected
+                ? cardStatusBadgeClass(status.id)
+                : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+            }`}
+          >
+            {status.label}
+          </button>
+        );
+      })}
+    </span>
   );
 }
 
@@ -2163,6 +2199,13 @@ function OrderEditor({
                 key={card.id}
                 id={`admin-order-card-${card.id}`}
                 title={`Card ${cardIndex + 1}`}
+                titleExtra={
+                  <CardStatusPills
+                    value={card.status}
+                    ariaLabel={`Card ${cardIndex + 1} status`}
+                    onChange={(status) => updateCard(cardIndex, { status })}
+                  />
+                }
                 className={
                   incomplete
                     ? "border-berry/55 ring-1 ring-berry/25"

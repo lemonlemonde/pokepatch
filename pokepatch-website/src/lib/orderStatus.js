@@ -5,6 +5,58 @@ export const ORDER_STATUSES = [
   { id: "canceled", label: "Canceled" },
 ];
 
+/** Per-card workflow status (independent from order status; uses `todo` not `new`). */
+export const CARD_STATUSES = [
+  { id: "todo", label: "To do", customerLabel: "In queue" },
+  { id: "in_progress", label: "In progress" },
+  { id: "completed", label: "Completed" },
+  { id: "canceled", label: "Canceled" },
+];
+
+export const DEFAULT_CARD_STATUS = "todo";
+
+const CARD_LABEL_BY_ID = Object.fromEntries(
+  CARD_STATUSES.map((status) => [status.id, status.label]),
+);
+
+const CARD_CUSTOMER_LABEL_BY_ID = Object.fromEntries(
+  CARD_STATUSES.map((status) => [
+    status.id,
+    status.customerLabel ?? status.label,
+  ]),
+);
+
+export function normalizeCardStatus(statusId) {
+  if (statusId && CARD_LABEL_BY_ID[statusId]) return statusId;
+  if (statusId === "new") return DEFAULT_CARD_STATUS;
+  if (statusId === "cancelled") return "canceled";
+  return DEFAULT_CARD_STATUS;
+}
+
+export function customerCardStatusLabel(statusId) {
+  const status = normalizeCardStatus(statusId);
+  return (
+    CARD_CUSTOMER_LABEL_BY_ID[status] ??
+    CARD_LABEL_BY_ID[status] ??
+    CARD_CUSTOMER_LABEL_BY_ID[DEFAULT_CARD_STATUS]
+  );
+}
+
+/** Same color language as order badges; maps `todo` like order `new`. */
+export function cardStatusBadgeClass(statusId) {
+  switch (normalizeCardStatus(statusId)) {
+    case "in_progress":
+      return "bg-status-yellow text-night";
+    case "completed":
+      return "bg-status-green text-night";
+    case "canceled":
+      return "bg-ink/25 text-ink/80";
+    case "todo":
+    default:
+      return "bg-status-blue text-white";
+  }
+}
+
 /** Statuses shown on the admin board by default. */
 export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "new" || status.id === "in_progress"
