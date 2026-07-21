@@ -53,6 +53,7 @@ import {
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
   HV_TIER_RANGES_LABEL,
+  orderQuoteTotalFromStored,
   packQuoteAdjustments,
   parseMoneyInput,
   quoteCardHvAmount,
@@ -520,6 +521,19 @@ function previewUrlsFromOrder(order) {
   return urls;
 }
 
+function orderAmount(order) {
+  if (order?.quote_total != null && Number.isFinite(Number(order.quote_total))) {
+    return Math.round(Number(order.quote_total) * 100) / 100;
+  }
+  return orderQuoteTotalFromStored(order);
+}
+
+function sumOrderAmounts(orders) {
+  return Math.round(
+    (orders ?? []).reduce((sum, order) => sum + orderAmount(order), 0) * 100
+  ) / 100;
+}
+
 function orderToKanbanSummary(order) {
   const status = normalizeOrderStatus(order.status);
   const isClosed = isClosedOrderStatus(status);
@@ -534,7 +548,27 @@ function orderToKanbanSummary(order) {
     status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
     preview_urls: previewUrlsFromOrder(order),
+    quote_total: orderAmount(order),
   };
+}
+
+function OrderRevenueSummary({ completedTotal, pipelineTotal }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
+      <p className="tabular-nums text-ink">
+        <span className="font-semibold text-ink/55">Completed</span>{" "}
+        <span className="font-bold text-status-green">
+          {formatMoney(completedTotal)}
+        </span>
+      </p>
+      <p className="tabular-nums text-ink">
+        <span className="font-semibold text-ink/55">Pipeline</span>{" "}
+        <span className="font-bold text-ink">
+          {formatMoney(pipelineTotal)}
+        </span>
+      </p>
+    </div>
+  );
 }
 
 function TrashIcon({ className = "h-5 w-5" }) {
@@ -1076,6 +1110,16 @@ function KanbanBoard({
   const [contextMenu, setContextMenu] = useState(null);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
+  const revenue = useMemo(
+    () => ({
+      completed: sumOrderAmounts(columns.completed),
+      pipeline: sumOrderAmounts([
+        ...(columns.new ?? []),
+        ...(columns.in_progress ?? []),
+      ]),
+    }),
+    [columns]
+  );
   const dragOrder = useMemo(
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
@@ -1232,7 +1276,11 @@ function KanbanBoard({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <OrderRevenueSummary
+          completedTotal={revenue.completed}
+          pipelineTotal={revenue.pipeline}
+        />
         <button
           type="button"
           onClick={onViewAllOrders}
@@ -2684,7 +2732,14 @@ export default function AdminApp() {
     setListError("");
     try {
       const rows = await adminListOrders();
-      setOrders(rows);
+      setOrders(
+        rows.map((order) =>
+          orderToKanbanSummary({
+            ...order,
+            quote_total: orderQuoteTotalFromStored(order),
+          })
+        )
+      );
     } catch (err) {
       setListError(err.message || "Could not load orders.");
     } finally {

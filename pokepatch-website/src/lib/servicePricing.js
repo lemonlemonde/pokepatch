@@ -537,6 +537,25 @@ export function computeQuoteTotal({
   return Math.round((subtotal + cardHv + adjustmentTotal) * 100) / 100;
 }
 
+/**
+ * Quote total from stored order fields (list rows or full order graphs).
+ * Uses quote_items + quote_bulk_counts (+ legacy override columns).
+ */
+export function orderQuoteTotalFromStored(order) {
+  if (!order) return 0;
+  const items = order.quote_items ?? [];
+  const adjustments = unpackQuoteAdjustments(order.quote_bulk_counts, {
+    overrideLabel: order.quote_override_label ?? "",
+    overrideAmount: order.quote_override_amount,
+  });
+  const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
+  const cards = cardsWithQuoteHv(
+    Object.keys(cardHvMap).map((id) => ({ id })),
+    cardHvMap
+  );
+  return computeQuoteTotal({ items, cards, adjustments });
+}
+
 export function hasQuoteData({
   items,
   cards = null,

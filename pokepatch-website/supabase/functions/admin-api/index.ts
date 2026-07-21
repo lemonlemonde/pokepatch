@@ -215,22 +215,44 @@ async function signPaths(
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
-  const { data: orders, error: ordersError } = await supabase
+  let { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at"
+      "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
+  // Quote columns may be missing until the order_quotes migration is applied.
+  if (ordersError) {
+    const retry = await supabase
+      .from("orders")
+      .select(
+        "id, display_id, created_at, customer_name, delivery_method, status, completed_at, status_changed_at"
+      )
+      .order("created_at", { ascending: false });
+    if (retry.error) throw ordersError;
+    orders = retry.data;
+    ordersError = null;
+  }
   if (ordersError) throw ordersError;
   if (!orders?.length) return [];
 
   const orderIds = orders.map((o) => o.id as string);
-  const { data: cards, error: cardsError } = await supabase
-    .from("cards")
-    .select("id, order_id")
-    .in("order_id", orderIds)
-    .order("id", { ascending: true });
+  const [
+    { data: cards, error: cardsError },
+    quoteItemsResult,
+  ] = await Promise.all([
+    supabase
+      .from("cards")
+      .select("id, order_id")
+      .in("order_id", orderIds)
+      .order("id", { ascending: true }),
+    supabase
+      .from("order_quote_items")
+      .select("order_id, quote_base_amount")
+      .in("order_id", orderIds),
+  ]);
   if (cardsError) throw cardsError;
+  const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
 
   const countByOrder = new Map<string, number>();
   const cardOrderById = new Map<string, string>();
@@ -239,6 +261,14 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const cardId = card.id as string;
     countByOrder.set(orderId, (countByOrder.get(orderId) ?? 0) + 1);
     cardOrderById.set(cardId, orderId);
+  }
+
+  const quoteItemsByOrder = new Map<string, typeof quoteItems>();
+  for (const item of quoteItems) {
+    const orderId = item.order_id as string;
+    const list = quoteItemsByOrder.get(orderId) ?? [];
+    list.push(item);
+    quoteItemsByOrder.set(orderId, list);
   }
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
@@ -270,6 +300,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const paths = previewPathsByOrder.get(orderId) ?? [];
     return {
       ...order,
+      quote_items: quoteItemsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
       preview_urls: paths
         .map((path) => signedMap.get(path))
