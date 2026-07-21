@@ -1248,46 +1248,47 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
         {CLOSED_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: true })
         )}
-        <div
-          role="region"
-          aria-label="Delete order drop zone"
-          onDragOver={handleTrashDragOver}
-          onDragLeave={handleTrashDragLeave}
-          onDrop={handleTrashDrop}
-          className={`flex h-full min-h-0 min-w-0 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-6 transition ${
-            dragOrderId
-              ? trashArmed
-                ? "border-berry bg-berry/20 text-berry shadow-cozy"
-                : "border-berry/50 bg-berry/10 text-berry/90"
-              : "border-ink/15 bg-night/30 text-ink/45"
+      </div>
+
+      <div
+        role="region"
+        aria-label="Delete order drop zone"
+        onDragOver={handleTrashDragOver}
+        onDragLeave={handleTrashDragLeave}
+        onDrop={handleTrashDrop}
+        className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
+          dragOrderId
+            ? trashArmed
+              ? "border-berry bg-berry/20 text-berry shadow-cozy"
+              : "border-berry/50 bg-berry/10 text-berry/90"
+            : "border-ink/15 bg-night/30 text-ink/45"
+        }`}
+      >
+        <TrashIcon
+          className={`h-6 w-6 transition ${
+            trashArmed ? "scale-110" : ""
           }`}
-        >
-          <TrashIcon
-            className={`h-6 w-6 transition ${
-              trashArmed ? "scale-110" : ""
-            }`}
-          />
-          <div className="text-center">
-            <p className="text-sm font-semibold">
-              {trashArmed
-                ? `Release to delete #${dragOrder?.display_id ?? ""}`
-                : dragOrderId
-                  ? "Drop here to delete"
-                  : "Recycling bin"}
-            </p>
-            <p className="mt-0.5 text-xs opacity-80">
-              {dragOrderId
-                ? "You’ll confirm before anything is deleted"
-                : "Right-click or drag here — always confirms first"}
-            </p>
-          </div>
+        />
+        <div className="text-center sm:text-left">
+          <p className="text-sm font-semibold">
+            {trashArmed
+              ? `Release to delete #${dragOrder?.display_id ?? ""}`
+              : dragOrderId
+                ? "Drop here to delete"
+                : "Recycling bin"}
+          </p>
+          <p className="mt-0.5 text-xs opacity-80">
+            {dragOrderId
+              ? "You’ll confirm before anything is deleted"
+              : "Right-click or drag here — always confirms first"}
+          </p>
         </div>
       </div>
 
