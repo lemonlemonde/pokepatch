@@ -57,7 +57,6 @@ import {
   packQuoteAdjustments,
   parseMoneyInput,
   quoteCardHvAmount,
-  quoteItemCardLabel,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 
@@ -591,40 +590,6 @@ function TrashIcon({ className = "h-5 w-5" }) {
   );
 }
 
-function CheckIcon({ className = "h-4 w-4" }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function XIcon({ className = "h-4 w-4" }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
-
 function ChevronDownIcon({ className = "h-4 w-4" }) {
   return (
     <svg
@@ -640,14 +605,6 @@ function ChevronDownIcon({ className = "h-4 w-4" }) {
       <path d="M6 9l6 6 6-6" />
     </svg>
   );
-}
-
-function cardThumbUrls(card) {
-  const images = card?.images ?? [];
-  const withUrl = images.filter((image) => image.signed_url);
-  const customer = withUrl.filter((image) => image.image_type === "customer");
-  const rest = withUrl.filter((image) => image.image_type !== "customer");
-  return [...customer, ...rest].map((image) => image.signed_url);
 }
 
 const INSPECT_OPEN_DELAY_MS = 150;
@@ -1749,15 +1706,8 @@ function OrderEditor({
   const quoteCoverage = analyzeQuoteCardCoverage(draft.cards, quoteItems);
   const quoteLinesByCard = useMemo(() => {
     const cards = draft.cards ?? [];
-    const groups = cards.map((card) => ({
-      key: String(card.id),
-      cardId: String(card.id),
-      card,
-      label: quoteItemCardLabel(card),
-      indices: [],
-    }));
-    const groupByCardId = new Map(
-      groups.map((group) => [group.cardId, group])
+    const indicesByCardId = new Map(
+      cards.map((card) => [String(card.id), []])
     );
     const orphans = [];
     quoteItems.forEach((item, index) => {
@@ -1765,14 +1715,14 @@ function OrderEditor({
         item.card_pick && item.card_pick !== "custom"
           ? String(item.card_pick)
           : findMatchingOrderCardId(item, cards);
-      const group = pickId ? groupByCardId.get(pickId) : null;
-      if (group) {
-        group.indices.push(index);
+      const indices = pickId ? indicesByCardId.get(pickId) : null;
+      if (indices) {
+        indices.push(index);
         return;
       }
       orphans.push(index);
     });
-    return { groups, orphans };
+    return { indicesByCardId, orphans };
   }, [draft.cards, quoteItems]);
 
   const driveUrl = draft.photos_drive_url.trim();
@@ -2139,220 +2089,262 @@ function OrderEditor({
         </div>
       </EditorSection>
 
-      <EditorSection title="Quote">
-        <div className="space-y-4">
-          <EditorSubsection
-            title="Cards"
-            description="Every order card appears here. Add services under each card and enter market price for the high-value fee. Customers see these under My Orders after you save."
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3 px-1">
+          <h3 className="text-base font-semibold text-ink">Cards</h3>
+          <button
+            type="button"
+            onClick={addCard}
+            className="text-sm font-semibold text-berry transition hover:underline"
           >
-            {quoteLinesByCard.groups.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-berry/40 bg-berry/5 px-4 py-5 text-center">
-                <p className="text-sm text-ink/70">
-                  Add order cards below — they’ll show up here automatically for
-                  quoting.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {quoteLinesByCard.groups.map(
-                  ({ key, card, label, indices }) => {
-                    const pricedIndices = indices.filter((index) =>
-                      quoteItemIsReady(quoteItems[index])
-                    );
-                    const lineAmounts = pricedIndices.map((index) => {
-                      const item = quoteItems[index];
-                      return moneyFieldToPayload(item.quote_base_amount) ?? 0;
-                    });
-                    const servicesSubtotal = lineAmounts.reduce(
-                      (sum, amount) => sum + amount,
-                      0
-                    );
-                    const cardId = String(card?.id ?? "");
-                    const cardHv = quoteCardHvAmount({
-                      hv_amount: draft.quote_card_hv?.[cardId]?.amount_dollars,
-                    });
-                    const subtotal = servicesSubtotal + cardHv;
-                    const thumbUrls = cardThumbUrls(card);
-                    return (
-                      <div
-                        key={key}
-                        className="overflow-hidden rounded-xl border border-ink/15 bg-cream shadow-cozy-sm"
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 bg-night/25 px-3.5 py-3">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <div className="min-w-0">
-                              <p className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink">
-                                {pricedIndices.length > 0 ? (
-                                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-[#3ecf7a] text-night shadow-sm ring-1 ring-[#3ecf7a]/55">
-                                    <CheckIcon className="h-2.5 w-2.5" />
-                                  </span>
-                                ) : (
-                                  <span className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full bg-status-red text-white shadow-sm ring-1 ring-status-red/55">
-                                    <XIcon className="h-2.5 w-2.5" />
-                                  </span>
-                                )}
-                                <span className="truncate">{label}</span>
-                              </p>
-                              <p className="pl-5 text-xs text-ink/45">
-                                {pricedIndices.length === 0
-                                  ? "No service selected yet"
-                                  : `${pricedIndices.length} service${
-                                      pricedIndices.length === 1 ? "" : "s"
-                                    }`}
-                                {cardHv > 0 ? " · HV fee" : ""}
-                              </p>
-                            </div>
-                            {thumbUrls.length > 0 ? (
-                              <div className="flex shrink-0 flex-wrap gap-1.5">
-                                {thumbUrls.map((url, thumbIndex) => (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    key={`${key}-thumb-${thumbIndex}`}
-                                    src={url}
-                                    alt=""
-                                    className="h-12 w-12 rounded-lg border border-ink/10 object-cover"
-                                  />
-                                ))}
-                              </div>
-                            ) : (
-                              <div
-                                className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border border-dashed border-ink/15 bg-night/10 text-[10px] font-semibold uppercase tracking-wide text-ink/35"
-                                aria-hidden="true"
-                              >
-                                No photo
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <button
-                              type="button"
-                              onClick={() => addQuoteItem(card)}
-                              className="text-sm font-semibold text-berry transition hover:underline"
-                            >
-                              Add service
-                            </button>
-                          </div>
-                        </div>
+            Add card
+          </button>
+        </div>
+        {draft.cards.length === 0 ? (
+          <p className="px-1 text-sm text-ink/45">
+            No cards yet. Add a card to quote services for this order.
+          </p>
+        ) : (
+          draft.cards.map((card, cardIndex) => {
+            const customerImages = (card.images ?? []).filter(
+              (image) => image.image_type === "customer"
+            );
+            const adminImages = (card.images ?? []).filter(
+              (image) => image.image_type !== "customer"
+            );
+            const pendingFiles = card.pending_files ?? [];
+            const photoInputId = `admin-card-photos-${card.id}`;
+            const incomplete = !adminCardIsComplete(card);
+            const cardId = String(card.id);
+            const indices =
+              quoteLinesByCard.indicesByCardId.get(cardId) ?? [];
+            const lineAmounts = indices
+              .filter((index) => quoteItemIsReady(quoteItems[index]))
+              .map((index) => {
+                const item = quoteItems[index];
+                return moneyFieldToPayload(item.quote_base_amount) ?? 0;
+              });
+            const servicesSubtotal = lineAmounts.reduce(
+              (sum, amount) => sum + amount,
+              0
+            );
+            const cardHv = quoteCardHvAmount({
+              hv_amount: draft.quote_card_hv?.[cardId]?.amount_dollars,
+            });
+            const subtotal = servicesSubtotal + cardHv;
 
-                        <div className="space-y-2 bg-night/15 px-3.5 py-3">
-                          {indices.length > 0 ? (
-                            <div className="space-y-2">
-                              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
-                                Services
-                              </p>
-                              {indices.map((index) =>
-                                renderQuoteServiceLine(
-                                  quoteItems[index],
-                                  index
-                                )
-                              )}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-ink/45">
-                              No services yet — add one above.
-                            </p>
-                          )}
-                          <div className="space-y-2 border-t border-ink/10 pt-2">
-                            {renderQuoteHvLine(card)}
-                          </div>
-                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
-                            <span className="font-medium text-ink/55">
-                              Card subtotal
-                            </span>
-                            <p className="text-right tabular-nums text-ink">
-                              {lineAmounts.length > 0 || cardHv > 0 ? (
-                                <>
-                                  {lineAmounts.map((amount, i) => (
-                                    <span key={`${key}-amt-${i}`}>
-                                      {i > 0 ? (
-                                        <span className="text-ink/40">
-                                          {" "}
-                                          +{" "}
-                                        </span>
-                                      ) : null}
-                                      <span>{formatMoney(amount)}</span>
-                                    </span>
-                                  ))}
-                                  {cardHv > 0 ? (
-                                    <span>
-                                      {lineAmounts.length > 0 ? (
-                                        <span className="text-ink/40">
-                                          {" "}
-                                          +{" "}
-                                        </span>
-                                      ) : null}
-                                      <span title="High-value fee">
-                                        {formatMoney(cardHv)}
-                                      </span>
-                                      <span className="text-ink/40"> HV fee</span>
-                                    </span>
-                                  ) : null}
-                                  <span className="text-ink/40"> = </span>
-                                  <span className="font-semibold">
-                                    {formatMoney(subtotal)}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="font-semibold text-ink/45">
-                                  {formatMoney(0)}
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  }
-                )}
-
-                {quoteLinesByCard.orphans.length > 0 ? (
-                  <div className="rounded-xl border border-dashed border-ink/20 px-3 py-3">
-                    <p className="mb-2 text-sm font-semibold text-ink/70">
-                      Unmatched quote lines
+            return (
+              <EditorSection
+                key={card.id}
+                id={`admin-order-card-${card.id}`}
+                title={`Card ${cardIndex + 1}`}
+                className={
+                  incomplete
+                    ? "border-berry/55 ring-1 ring-berry/25"
+                    : undefined
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => addQuoteItem(card)}
+                    className="text-sm font-semibold text-berry transition hover:underline"
+                  >
+                    Add service
+                  </button>
+                }
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <EditorLabel>Card name</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.card_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          card_name: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="block">
+                    <EditorLabel>Set</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.set_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, { set_name: event.target.value })
+                      }
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <EditorLabel>Description</EditorLabel>
+                    <textarea
+                      className={`${editorFieldClass()} min-h-[72px]`}
+                      value={card.description}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          description: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 border-t border-ink/10 pt-4">
+                  <AdminOrderCardPhotoGroups
+                    customerItems={savedPhotoItems(customerImages)}
+                    updateItems={savedPhotoItems(adminImages)}
+                    pendingFiles={pendingFiles}
+                    onRemoveUpdate={
+                      removingPhotoId != null || saving
+                        ? undefined
+                        : (imageId) => removeAdminPhoto(cardIndex, imageId)
+                    }
+                    onRemovePending={
+                      saving
+                        ? undefined
+                        : (fileId) => removeCardPendingFile(cardIndex, fileId)
+                    }
+                  />
+                  <div className="mt-3">
+                    <input
+                      id={photoInputId}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={saving}
+                      onChange={(event) => {
+                        addCardPendingFiles(cardIndex, event.target.files);
+                        event.target.value = "";
+                      }}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor={photoInputId}
+                      className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                        saving
+                          ? "cursor-not-allowed bg-ink/10 text-ink/40"
+                          : "bg-berry/15 text-berry hover:bg-berry/25"
+                      }`}
+                    >
+                      Add photos
+                    </label>
+                    <p className="mt-1.5 text-xs text-ink/50">
+                      New photos upload when you save. Customer photos can’t be
+                      removed.
                     </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2 border-t border-ink/10 pt-4">
+                  {indices.length > 0 ? (
                     <div className="space-y-2">
-                      {quoteLinesByCard.orphans.map((index) =>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
+                        Services
+                      </p>
+                      {indices.map((index) =>
                         renderQuoteServiceLine(quoteItems[index], index)
                       )}
                     </div>
+                  ) : (
+                    <p className="text-xs text-ink/45">
+                      No services yet — add one above.
+                    </p>
+                  )}
+                  <div className="space-y-2 border-t border-ink/10 pt-2">
+                    {renderQuoteHvLine(card)}
                   </div>
-                ) : null}
-              </div>
-            )}
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
+                    <span className="font-medium text-ink/55">
+                      Card subtotal
+                    </span>
+                    <p className="text-right tabular-nums text-ink">
+                      {lineAmounts.length > 0 || cardHv > 0 ? (
+                        <>
+                          {lineAmounts.map((amount, i) => (
+                            <span key={`${cardId}-amt-${i}`}>
+                              {i > 0 ? (
+                                <span className="text-ink/40"> + </span>
+                              ) : null}
+                              <span>{formatMoney(amount)}</span>
+                            </span>
+                          ))}
+                          {cardHv > 0 ? (
+                            <span>
+                              {lineAmounts.length > 0 ? (
+                                <span className="text-ink/40"> + </span>
+                              ) : null}
+                              <span title="High-value fee">
+                                {formatMoney(cardHv)}
+                              </span>
+                              <span className="text-ink/40"> HV fee</span>
+                            </span>
+                          ) : null}
+                          <span className="text-ink/40"> = </span>
+                          <span className="font-semibold">
+                            {formatMoney(subtotal)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-semibold text-ink/45">
+                          {formatMoney(0)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </EditorSection>
+            );
+          })
+        )}
 
-            {quoteCoverage.uncoveredCards.length > 0 ||
-            quoteCoverage.duplicateServiceCards.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {quoteCoverage.uncoveredCards.length > 0 ? (
-                  <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                    <span className="font-semibold text-berry">
-                      Missing service:
-                    </span>{" "}
-                    {quoteCoverage.uncoveredCards
-                      .map((row) => `${row.number}. ${row.label}`)
-                      .join(", ")}
-                  </p>
-                ) : null}
+        {quoteLinesByCard.orphans.length > 0 ? (
+          <div className="rounded-xl border border-dashed border-ink/20 px-3 py-3">
+            <p className="mb-2 text-sm font-semibold text-ink/70">
+              Unmatched quote lines
+            </p>
+            <div className="space-y-2">
+              {quoteLinesByCard.orphans.map((index) =>
+                renderQuoteServiceLine(quoteItems[index], index)
+              )}
+            </div>
+          </div>
+        ) : null}
 
-                {quoteCoverage.duplicateServiceCards.length > 0 ? (
-                  <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                    <span className="font-semibold text-berry">
-                      Same service more than once:
-                    </span>{" "}
-                    {quoteCoverage.duplicateServiceCards
-                      .map(
-                        (row) =>
-                          `${row.number}. ${row.label} (${row.services
-                            .map((s) => `${s.label} ×${s.count}`)
-                            .join(", ")})`
-                      )
-                      .join("; ")}
-                  </p>
-                ) : null}
-              </div>
+        {quoteCoverage.uncoveredCards.length > 0 ||
+        quoteCoverage.duplicateServiceCards.length > 0 ? (
+          <div className="space-y-2 px-1">
+            {quoteCoverage.uncoveredCards.length > 0 ? (
+              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+                <span className="font-semibold text-berry">
+                  Missing service:
+                </span>{" "}
+                {quoteCoverage.uncoveredCards
+                  .map((row) => `${row.number}. ${row.label}`)
+                  .join(", ")}
+              </p>
             ) : null}
-          </EditorSubsection>
 
+            {quoteCoverage.duplicateServiceCards.length > 0 ? (
+              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+                <span className="font-semibold text-berry">
+                  Same service more than once:
+                </span>{" "}
+                {quoteCoverage.duplicateServiceCards
+                  .map(
+                    (row) =>
+                      `${row.number}. ${row.label} (${row.services
+                        .map((s) => `${s.label} ×${s.count}`)
+                        .join(", ")})`
+                  )
+                  .join("; ")}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <EditorSection title="Quote">
+        <div className="space-y-4">
           <EditorSubsection
             title="Adjustments"
             description="Add discounts, delivery, or shipping as straight dollar amounts."
@@ -2368,7 +2360,8 @@ function OrderEditor({
           >
             {(draft.quote_adjustments ?? []).length === 0 ? (
               <p className="text-sm text-ink/45">
-                No adjustments yet. Add a row for a discount, delivery, or shipping.
+                No adjustments yet. Add a row for a discount, delivery, or
+                shipping.
               </p>
             ) : (
               <div className="space-y-2">
@@ -2542,131 +2535,6 @@ function OrderEditor({
           </div>
         )}
       </EditorSection>
-
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3 px-1">
-          <h3 className="text-base font-semibold text-ink">Cards</h3>
-          <button
-            type="button"
-            onClick={addCard}
-            className="text-sm font-semibold text-berry transition hover:underline"
-          >
-            Add card
-          </button>
-        </div>
-        {draft.cards.length === 0 ? (
-          <p className="px-1 text-sm text-ink/45">
-            No cards yet. Add a card to quote services for this order.
-          </p>
-        ) : (
-          draft.cards.map((card, cardIndex) => {
-            const customerImages = (card.images ?? []).filter(
-              (image) => image.image_type === "customer"
-            );
-            const adminImages = (card.images ?? []).filter(
-              (image) => image.image_type !== "customer"
-            );
-            const pendingFiles = card.pending_files ?? [];
-            const photoInputId = `admin-card-photos-${card.id}`;
-            const incomplete = !adminCardIsComplete(card);
-
-            return (
-              <EditorSection
-                key={card.id}
-                id={`admin-order-card-${card.id}`}
-                title={`Card ${cardIndex + 1}`}
-                className={
-                  incomplete
-                    ? "border-berry/55 ring-1 ring-berry/25"
-                    : undefined
-                }
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <EditorLabel>Card name</EditorLabel>
-                    <input
-                      className={editorFieldClass()}
-                      value={card.card_name}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          card_name: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="block">
-                    <EditorLabel>Set</EditorLabel>
-                    <input
-                      className={editorFieldClass()}
-                      value={card.set_name}
-                      onChange={(event) =>
-                        updateCard(cardIndex, { set_name: event.target.value })
-                      }
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <EditorLabel>Description</EditorLabel>
-                    <textarea
-                      className={`${editorFieldClass()} min-h-[72px]`}
-                      value={card.description}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          description: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <div className="mt-4 border-t border-ink/10 pt-4">
-                  <AdminOrderCardPhotoGroups
-                    customerItems={savedPhotoItems(customerImages)}
-                    updateItems={savedPhotoItems(adminImages)}
-                    pendingFiles={pendingFiles}
-                    onRemoveUpdate={
-                      removingPhotoId != null || saving
-                        ? undefined
-                        : (imageId) => removeAdminPhoto(cardIndex, imageId)
-                    }
-                    onRemovePending={
-                      saving
-                        ? undefined
-                        : (fileId) => removeCardPendingFile(cardIndex, fileId)
-                    }
-                  />
-                  <div className="mt-3">
-                    <input
-                      id={photoInputId}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={saving}
-                      onChange={(event) => {
-                        addCardPendingFiles(cardIndex, event.target.files);
-                        event.target.value = "";
-                      }}
-                      className="sr-only"
-                    />
-                    <label
-                      htmlFor={photoInputId}
-                      className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                        saving
-                          ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                          : "bg-berry/15 text-berry hover:bg-berry/25"
-                      }`}
-                    >
-                      Add photos
-                    </label>
-                    <p className="mt-1.5 text-xs text-ink/50">
-                      New photos upload when you save. Customer photos can’t be
-                      removed.
-                    </p>
-                  </div>
-                </div>
-              </EditorSection>
-            );
-          })
-        )}
-      </div>
     </div>
   );
 }
