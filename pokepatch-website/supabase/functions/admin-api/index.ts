@@ -620,36 +620,6 @@ async function listAllAuthUsers(
   return users;
 }
 
-async function listMessageRecipients(
-  supabase: ReturnType<typeof getServiceClient>
-) {
-  const authUsers = await listAllAuthUsers(supabase);
-  const userIds = authUsers.map((user) => user.id);
-  const nameById = new Map<string, string | null>();
-
-  if (userIds.length > 0) {
-    const { data: profiles, error } = await supabase
-      .from("customer_profiles")
-      .select("user_id, full_name")
-      .in("user_id", userIds);
-    if (error) throw error;
-    for (const profile of profiles ?? []) {
-      nameById.set(
-        profile.user_id as string,
-        (profile.full_name as string | null) ?? null
-      );
-    }
-  }
-
-  return authUsers
-    .map((user) => ({
-      user_id: user.id,
-      email: user.email,
-      full_name: nameById.get(user.id) ?? null,
-    }))
-    .sort((a, b) => a.email.localeCompare(b.email));
-}
-
 async function resolveUserIdByEmail(
   supabase: ReturnType<typeof getServiceClient>,
   email: string,
@@ -1123,23 +1093,19 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, item });
     }
 
-    if (action === "messages_list_recipients") {
-      const recipients = await listMessageRecipients(supabase);
-      return jsonResponse(req, { ok: true, recipients });
-    }
-
-    if (action === "messages_list_orders_for_email") {
-      const email = normalizeEmail(body.email);
-      if (!email || !isValidEmail(email)) {
-        return jsonResponse(req, { ok: false, error: "valid email required" }, 400);
-      }
+    if (action === "messages_list_orders") {
+      const rawLimit = Number(body.limit ?? 200);
+      const limit = Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
+        : 200;
 
       const { data, error } = await supabase
         .from("orders")
-        .select("id, display_id, status, customer_name, customer_email, created_at")
-        .ilike("customer_email", email)
+        .select(
+          "id, display_id, status, customer_name, customer_email, created_at"
+        )
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(limit);
       if (error) throw error;
 
       return jsonResponse(req, { ok: true, orders: data ?? [] });
@@ -1155,7 +1121,7 @@ Deno.serve(async (req) => {
       let query = supabase
         .from("customer_messages")
         .select(
-          "id, recipient_email, user_id, subject, body, sent_at, email_status, email_error, read_at, batch_id"
+          "id, recipient_email, user_id, order_id, subject, body, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)"
         )
         .order("sent_at", { ascending: false })
         .limit(limit);
@@ -1166,7 +1132,21 @@ Deno.serve(async (req) => {
 
       const { data, error } = await query;
       if (error) throw error;
-      return jsonResponse(req, { ok: true, messages: data ?? [] });
+
+      const messages = (data ?? []).map((row) => {
+        const orderRel = row.orders as
+          | { display_id?: number | string }
+          | { display_id?: number | string }[]
+          | null
+          | undefined;
+        const displayId = Array.isArray(orderRel)
+          ? orderRel[0]?.display_id ?? null
+          : orderRel?.display_id ?? null;
+        const { orders: _orders, ...rest } = row as Record<string, unknown>;
+        return { ...rest, order_display_id: displayId };
+      });
+
+      return jsonResponse(req, { ok: true, messages });
     }
 
     if (action === "messages_send") {
@@ -1180,68 +1160,44 @@ Deno.serve(async (req) => {
         return jsonResponse(req, { ok: false, error: "body required" }, 400);
       }
 
-      const authUsers = await listAllAuthUsers(supabase);
-      const emailSet = new Set<string>();
-
-      if (body.all_users === true) {
-        for (const user of authUsers) {
-          emailSet.add(user.email);
-        }
+      const rawOrderIds = Array.isArray(body.order_ids) ? body.order_ids : [];
+      const orderIdSet = new Set<string>();
+      for (const value of rawOrderIds) {
+        const id = typeof value === "string" ? value.trim() : "";
+        if (id) orderIdSet.add(id);
       }
-
-      const rawEmails = Array.isArray(body.emails) ? body.emails : [];
-      for (const value of rawEmails) {
-        const email = normalizeEmail(value);
-        if (email) emailSet.add(email);
-      }
-
-      const emails = [...emailSet].filter(isValidEmail);
-      if (emails.length === 0) {
+      const orderIds = [...orderIdSet];
+      if (orderIds.length === 0) {
         return jsonResponse(
           req,
-          { ok: false, error: "at least one valid recipient email required" },
+          { ok: false, error: "at least one order_id required" },
           400
         );
       }
 
-      let orderDisplayId: number | string | null = null;
-      const orderId =
-        typeof body.order_id === "string" ? body.order_id.trim() : "";
-      if (orderId) {
-        if (emails.length !== 1) {
-          return jsonResponse(
-            req,
-            {
-              ok: false,
-              error: "order can only be linked when sending to one recipient",
-            },
-            400
-          );
-        }
+      const { data: orderRows, error: ordersError } = await supabase
+        .from("orders")
+        .select("id, display_id, customer_email, user_id")
+        .in("id", orderIds);
+      if (ordersError) throw ordersError;
 
-        const recipientEmail = emails[0];
-        const { data: orderRow, error: orderError } = await supabase
-          .from("orders")
-          .select("id, display_id, customer_email")
-          .eq("id", orderId)
-          .maybeSingle();
-        if (orderError) throw orderError;
-        if (!orderRow) {
-          return jsonResponse(req, { ok: false, error: "order not found" }, 404);
-        }
-        if (normalizeEmail(orderRow.customer_email) !== recipientEmail) {
+      const orderById = new Map(
+        (orderRows ?? []).map((row) => [row.id as string, row])
+      );
+      for (const orderId of orderIds) {
+        if (!orderById.has(orderId)) {
           return jsonResponse(
             req,
-            { ok: false, error: "order does not belong to that recipient" },
-            400
+            { ok: false, error: `order not found: ${orderId}` },
+            404
           );
         }
-        orderDisplayId = orderRow.display_id as number | string;
       }
 
-      const storedBody = buildStoredMessageBody(messageBody, orderDisplayId);
+      const authUsers = await listAllAuthUsers(supabase);
       const batchId = crypto.randomUUID();
       const results: {
+        order_id: string;
         email: string;
         user_id: string | null;
         message_id: string | null;
@@ -1249,11 +1205,31 @@ Deno.serve(async (req) => {
         email_error: string | null;
       }[] = [];
 
-      for (const email of emails) {
-        const userId = await resolveUserIdByEmail(supabase, email, authUsers);
+      for (const orderId of orderIds) {
+        const orderRow = orderById.get(orderId)!;
+        const email = normalizeEmail(orderRow.customer_email);
+        if (!email || !isValidEmail(email)) {
+          results.push({
+            order_id: orderId,
+            email: email || "",
+            user_id: null,
+            message_id: null,
+            email_status: "failed",
+            email_error: "order has no valid customer_email",
+          });
+          continue;
+        }
+
+        const orderDisplayId = orderRow.display_id as number | string;
+        const userId =
+          (orderRow.user_id as string | null) ??
+          (await resolveUserIdByEmail(supabase, email, authUsers));
+        const storedBody = buildStoredMessageBody(messageBody, orderDisplayId);
+
         const { data: inserted, error: insertError } = await supabase
           .from("customer_messages")
           .insert({
+            order_id: orderId,
             recipient_email: email,
             user_id: userId,
             subject,
@@ -1266,6 +1242,7 @@ Deno.serve(async (req) => {
 
         if (insertError) {
           results.push({
+            order_id: orderId,
             email,
             user_id: userId,
             message_id: null,
@@ -1295,6 +1272,7 @@ Deno.serve(async (req) => {
           .eq("id", messageId);
         if (updateError) {
           results.push({
+            order_id: orderId,
             email,
             user_id: userId,
             message_id: messageId,
@@ -1304,7 +1282,10 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        await bumpOrderUpdatesAvailable(supabase, orderId);
+
         results.push({
+          order_id: orderId,
           email,
           user_id: userId,
           message_id: messageId,

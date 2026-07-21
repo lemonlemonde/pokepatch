@@ -226,11 +226,11 @@ const ADMIN_TABS = [
   },
   {
     id: "messages",
-    label: "Messages",
+    label: "Send Updates",
     path: "/admin/messages/",
-    title: "Broadcast messages",
+    title: "Send updates",
     subtitle:
-      "Email one or many customers. Messages also appear on their Messages page.",
+      "Email customers about one or more orders. Updates also appear on each order in My Orders.",
   },
   {
     id: "studio",

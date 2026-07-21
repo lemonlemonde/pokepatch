@@ -45,7 +45,7 @@ deploying admin functions (they do on production):
 - `set_name` and `damage_tags` on `gallery_items`
 
 **Customer messages**
-- `customer_messages` table + customer inbox RLS / related RPCs
+- `customer_messages` table + order-linked RLS / related RPCs (shown on My Orders)
 
 Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → `db push`). Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
@@ -125,10 +125,9 @@ JSON POST (requires `X-Admin-Token`):
 | `gallery_pair_delete` | `pair_id` |
 | `gallery_pair_reorder` | `item_id`, `ordered_ids` |
 | `gallery_pair_clear_side` | `pair_id`, `side` (`before` \| `after`) |
-| `messages_list_recipients` | — (signed-up Auth users + profile names) |
-| `messages_list_orders_for_email` | `email` — orders for that `customer_email` |
-| `messages_history` | optional `email`, `limit` |
-| `messages_send` | `subject`, `body`, optional `emails[]`, optional `all_users`, optional `order_id` (single recipient only) |
+| `messages_list_orders` | optional `limit` — recent orders for the picker |
+| `messages_history` | optional `email`, `limit` (includes `order_id` / `order_display_id`) |
+| `messages_send` | `subject`, `body`, `order_ids[]` (required; one email + row per order) |
 
 Multipart POST (requires `X-Admin-Token`):
 

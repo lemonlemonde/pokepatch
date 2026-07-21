@@ -330,20 +330,12 @@ export async function adminUploadGalleryPairSide(pairId, side, file) {
   return payload.item;
 }
 
-export async function adminListMessageRecipients() {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: { action: "messages_list_recipients" },
-  });
-  return payload.recipients ?? [];
-}
-
-export async function adminListOrdersForMessageEmail(email) {
+export async function adminListOrdersForMessages({ limit } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body: {
-      action: "messages_list_orders_for_email",
-      email,
+      action: "messages_list_orders",
+      limit: limit || undefined,
     },
   });
   return payload.orders ?? [];
@@ -362,21 +354,17 @@ export async function adminMessageHistory({ email, limit } = {}) {
 }
 
 export async function adminSendMessages({
-  emails = [],
+  order_ids = [],
   subject,
   body,
-  all_users = false,
-  order_id = null,
 } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body: {
       action: "messages_send",
-      emails,
+      order_ids,
       subject,
       body,
-      all_users,
-      order_id: order_id || undefined,
     },
   });
   return payload;

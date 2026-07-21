@@ -164,6 +164,26 @@ function Photo({ url, alt, badge }) {
   );
 }
 
+function formatMessageTime(value) {
+  if (!value) return "";
+  try {
+    return new Date(value).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return String(value);
+  }
+}
+
+function previewMessageBody(body, maxLen = 120) {
+  const text = String(body ?? "")
+    .replace(/^Regarding Order #\d+\s*/i, "")
+    .trim();
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen).trim()}…`;
+}
+
 export default function OrderCard({ order, onClick, isExpanded = false }) {
   const [orderDetails, setOrderDetails] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -171,6 +191,13 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const [expandedCardId, setExpandedCardId] = useState(null);
   const [previewUrls, setPreviewUrls] = useState({});
   const [imageUrls, setImageUrls] = useState({});
+  const [messages, setMessages] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [expandedMessageId, setExpandedMessageId] = useState(null);
+  const [highlightedMessageIds, setHighlightedMessageIds] = useState(
+    () => new Set()
+  );
 
   const previewPaths = Array.isArray(order.preview_paths)
     ? order.preview_paths
@@ -194,6 +221,43 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         });
     }
   }, [isExpanded, order.id, orderDetails]);
+
+  useEffect(() => {
+    if (!isExpanded || !supabase) return undefined;
+
+    let cancelled = false;
+    setMessagesLoading(true);
+
+    supabase
+      .from("customer_messages")
+      .select("id, subject, body, sent_at, read_at")
+      .eq("order_id", order.id)
+      .order("sent_at", { ascending: false })
+      .then(({ data, error: loadError }) => {
+        if (cancelled) return;
+        if (loadError) {
+          console.error("Failed to load order messages", loadError);
+          setMessages([]);
+          return;
+        }
+        setMessages(data ?? []);
+      })
+      .finally(() => {
+        if (!cancelled) setMessagesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isExpanded, order.id]);
+
+  useEffect(() => {
+    if (!isExpanded) {
+      setUpdatesOpen(false);
+      setExpandedMessageId(null);
+      setHighlightedMessageIds(new Set());
+    }
+  }, [isExpanded]);
 
   useEffect(() => {
     let active = true;
@@ -223,6 +287,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
   const hasUpdates = order.has_new_updates ?? order.has_admin_photos;
+  const hasUnreadMessages = messages.some((row) => !row.read_at);
   const lastUpdatedAt = latestActivityAt(order);
   const lastUpdatedLabel = formatUpdateTime(lastUpdatedAt);
   const isFirstActivityOnly =
@@ -247,6 +312,41 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         unpackQuoteCardHv(orderDetails.quote_bulk_counts)
       )
     : [];
+
+  async function handleOpenUpdates() {
+    const nextOpen = !updatesOpen;
+    setUpdatesOpen(nextOpen);
+    if (!nextOpen) {
+      setHighlightedMessageIds(new Set());
+      setExpandedMessageId(null);
+      return;
+    }
+    if (!supabase) return;
+
+    const unreadIds = messages
+      .filter((row) => !row.read_at)
+      .map((row) => row.id);
+    setHighlightedMessageIds(new Set(unreadIds));
+    if (unreadIds.length === 0) return;
+
+    try {
+      const { error: markError } = await supabase.rpc("mark_my_messages_read", {
+        p_ids: unreadIds,
+      });
+      if (markError) throw markError;
+      const now = new Date().toISOString();
+      setMessages((prev) =>
+        prev.map((row) =>
+          unreadIds.includes(row.id) ? { ...row, read_at: now } : row
+        )
+      );
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("pokepatch:messages-read"));
+      }
+    } catch (err) {
+      console.error("mark_my_messages_read failed", err);
+    }
+  }
 
   return (
     <div
@@ -343,6 +443,94 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       {/* Expanded */}
       {isExpanded && (
         <div className="border-t border-ink/10 p-4">
+          {(!messagesLoading && messages.length > 0) ||
+          orderDetails?.general_notes ? (
+            <div className="mb-5 space-y-3">
+              {!messagesLoading && messages.length > 0 ? (
+                <div className="rounded-xl border border-mint/30 bg-mint/10">
+                  <button
+                    type="button"
+                    onClick={handleOpenUpdates}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                  >
+                    <span>
+                      <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
+                        <span>Updates from PokePatch</span>
+                        {hasUnreadMessages ? <UpdateChip /> : null}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-ink/55">
+                        {messages.length}{" "}
+                        {messages.length === 1 ? "message" : "messages"}
+                      </span>
+                    </span>
+                    <Chevron open={updatesOpen} />
+                  </button>
+                  {updatesOpen ? (
+                    <ul className="space-y-2 border-t border-mint/20 px-3 py-3">
+                      {messages.map((message) => {
+                        const expanded = expandedMessageId === message.id;
+                        const isNew = highlightedMessageIds.has(message.id);
+                        return (
+                          <li key={message.id}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedMessageId((current) =>
+                                  current === message.id ? null : message.id
+                                )
+                              }
+                              className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                                isNew
+                                  ? "border-mint/50 bg-mint/20 ring-1 ring-mint/30"
+                                  : "border-mint/20 bg-cream/50 hover:border-mint/40"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                                  <span>{message.subject}</span>
+                                  {isNew ? <UpdateChip /> : null}
+                                </p>
+                                <time
+                                  dateTime={message.sent_at}
+                                  className="text-[11px] text-ink/55"
+                                >
+                                  {formatMessageTime(message.sent_at)}
+                                </time>
+                              </div>
+                              <p
+                                className={`mt-1 text-sm text-ink/80 ${
+                                  expanded
+                                    ? "whitespace-pre-wrap"
+                                    : "line-clamp-2"
+                                }`}
+                              >
+                                {expanded
+                                  ? message.body
+                                  : previewMessageBody(message.body)}
+                              </p>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {orderDetails?.general_notes ? (
+                <div className="rounded-xl border border-mint/30 bg-mint/10 p-3">
+                  <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
+                    <span>Notes from PokePatch</span>
+                    {hasUpdates ? <UpdateChip /> : null}
+                  </p>
+                  <p className="mt-1 text-sm text-ink/85">
+                    {orderDetails.general_notes}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           {loading && (
             <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink/60">
               <span className="h-2 w-2 animate-pulse rounded-full bg-blush" />
@@ -393,18 +581,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   )}
                 </div>
               </div>
-
-              {/* Notes from the team */}
-              {orderDetails.general_notes && (
-                <div className="rounded-xl border border-mint/30 bg-mint/10 p-3">
-                  <SectionLabel showUpdate={hasUpdates}>
-                    Notes from our team
-                  </SectionLabel>
-                  <p className="mt-1 text-sm text-ink/85">
-                    {orderDetails.general_notes}
-                  </p>
-                </div>
-              )}
 
               {/* Google Drive folder from the team */}
               {orderDetails.photos_drive_url && (

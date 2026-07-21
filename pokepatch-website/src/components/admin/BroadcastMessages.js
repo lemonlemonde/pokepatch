@@ -2,8 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
-  adminListMessageRecipients,
-  adminListOrdersForMessageEmail,
+  adminListOrdersForMessages,
   adminMessageHistory,
   adminSendMessages,
 } from "@/lib/adminApi";
@@ -41,23 +40,13 @@ function formatSentAt(value) {
   }
 }
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email ?? "").trim());
-}
-
-function formatOrderOption(order) {
-  const when = order.created_at
-    ? new Date(order.created_at).toLocaleDateString(undefined, {
-        dateStyle: "medium",
-      })
-    : "";
-  const status = orderStatusLabel(order.status);
+function formatOrderChip(order) {
   const name = order.customer_name ? ` · ${order.customer_name}` : "";
-  return `#${order.display_id}${name} · ${status}${when ? ` · ${when}` : ""}`;
+  return `#${order.display_id}${name}`;
 }
 
 export default function BroadcastMessages() {
-  const [recipients, setRecipients] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -67,25 +56,19 @@ export default function BroadcastMessages() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [search, setSearch] = useState("");
-  const [selectedEmails, setSelectedEmails] = useState(() => new Set());
-  const [allUsers, setAllUsers] = useState(false);
-  const [customEmail, setCustomEmail] = useState("");
+  const [selectedOrderIds, setSelectedOrderIds] = useState(() => new Set());
   const [historyFilter, setHistoryFilter] = useState("");
   const [expandedHistoryId, setExpandedHistoryId] = useState(null);
-
-  const [recipientOrders, setRecipientOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [nextRecipients, nextHistory] = await Promise.all([
-        adminListMessageRecipients(),
+      const [nextOrders, nextHistory] = await Promise.all([
+        adminListOrdersForMessages({ limit: 200 }),
         adminMessageHistory({ limit: 150 }),
       ]);
-      setRecipients(nextRecipients);
+      setOrders(nextOrders);
       setHistory(nextHistory);
     } catch (err) {
       setError(err.message || "Failed to load messages");
@@ -98,79 +81,37 @@ export default function BroadcastMessages() {
     load();
   }, [load]);
 
-  const singleRecipientEmail = useMemo(() => {
-    if (allUsers) return null;
-    if (selectedEmails.size !== 1) return null;
-    return [...selectedEmails][0];
-  }, [allUsers, selectedEmails]);
+  const orderById = useMemo(() => {
+    const map = new Map();
+    for (const order of orders) map.set(order.id, order);
+    return map;
+  }, [orders]);
 
-  useEffect(() => {
-    if (!singleRecipientEmail) {
-      setRecipientOrders([]);
-      setSelectedOrderId("");
-      setOrdersLoading(false);
-      return undefined;
-    }
-
-    let cancelled = false;
-    setOrdersLoading(true);
-    setSelectedOrderId("");
-
-    adminListOrdersForMessageEmail(singleRecipientEmail)
-      .then((orders) => {
-        if (!cancelled) setRecipientOrders(orders);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setRecipientOrders([]);
-          setError(err.message || "Failed to load orders for recipient");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setOrdersLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [singleRecipientEmail]);
-
-  const filteredRecipients = useMemo(() => {
+  const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return recipients;
-    return recipients.filter((row) => {
-      const email = String(row.email ?? "").toLowerCase();
-      const name = String(row.full_name ?? "").toLowerCase();
-      return email.includes(q) || name.includes(q);
+    if (!q) return orders;
+    return orders.filter((order) => {
+      const haystack = [
+        order.display_id,
+        order.customer_name,
+        order.customer_email,
+        orderStatusLabel(order.status),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
     });
-  }, [recipients, search]);
+  }, [orders, search]);
 
-  const selectedCount = allUsers ? recipients.length : selectedEmails.size;
-
-  function toggleEmail(email) {
-    const normalized = String(email ?? "")
-      .trim()
-      .toLowerCase();
-    if (!normalized) return;
-    setAllUsers(false);
-    setSelectedEmails((prev) => {
+  function toggleOrder(orderId) {
+    if (!orderId) return;
+    setSelectedOrderIds((prev) => {
       const next = new Set(prev);
-      if (next.has(normalized)) next.delete(normalized);
-      else next.add(normalized);
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
       return next;
     });
-  }
-
-  function addCustomEmail() {
-    const email = customEmail.trim().toLowerCase();
-    if (!isValidEmail(email)) {
-      setError("Enter a valid email address");
-      return;
-    }
-    setError("");
-    setAllUsers(false);
-    setSelectedEmails((prev) => new Set(prev).add(email));
-    setCustomEmail("");
   }
 
   async function handleSend(e) {
@@ -186,31 +127,22 @@ export default function BroadcastMessages() {
       setError("Message body is required");
       return;
     }
-    if (!allUsers && selectedEmails.size === 0) {
-      setError("Select at least one recipient, or choose all users");
-      return;
-    }
-    if (selectedOrderId && !singleRecipientEmail) {
-      setError("Pick a single recipient to link an order");
+    if (selectedOrderIds.size === 0) {
+      setError("Select at least one order");
       return;
     }
 
     setSending(true);
     try {
       const payload = await adminSendMessages({
-        emails: allUsers ? [] : [...selectedEmails],
+        order_ids: [...selectedOrderIds],
         subject: subject.trim(),
         body,
-        all_users: allUsers,
-        order_id: selectedOrderId || null,
       });
       setSendSummary(payload);
       setSubject("");
       setBody("");
-      setSelectedEmails(new Set());
-      setAllUsers(false);
-      setSelectedOrderId("");
-      setRecipientOrders([]);
+      setSelectedOrderIds(new Set());
       const nextHistory = await adminMessageHistory({ limit: 150 });
       setHistory(nextHistory);
     } catch (err) {
@@ -229,6 +161,9 @@ export default function BroadcastMessages() {
           .toLowerCase()
           .includes(q) ||
         String(row.subject ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(row.order_display_id ?? "")
           .toLowerCase()
           .includes(q)
       );
@@ -257,65 +192,63 @@ export default function BroadcastMessages() {
               .filter((row) => row.email_status === "failed")
               .slice(0, 5)
               .map((row) => (
-                <p key={`${row.email}-${row.message_id || "none"}`} className="mt-1 text-xs opacity-90">
-                  {row.email}: {row.email_error || "unknown error"}
+                <p
+                  key={`${row.order_id || row.email}-${row.message_id || "none"}`}
+                  className="mt-1 text-xs opacity-90"
+                >
+                  {row.email || row.order_id}: {row.email_error || "unknown error"}
                 </p>
               ))}
         </div>
       )}
 
-      <form onSubmit={handleSend} className="space-y-4 rounded-2xl border-2 border-ink/10 bg-cream/50 p-5">
+      <form
+        onSubmit={handleSend}
+        className="space-y-4 rounded-2xl border-2 border-ink/10 bg-cream/50 p-5"
+      >
         <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-bold text-ink">
-              Recipients ({selectedCount})
-            </p>
-            <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-              <input
-                type="checkbox"
-                checked={allUsers}
-                onChange={(e) => {
-                  setAllUsers(e.target.checked);
-                  if (e.target.checked) setSelectedEmails(new Set());
-                }}
-                disabled={sending || recipients.length === 0}
-              />
-              Select all signed-up users
-            </label>
-          </div>
+          <p className="text-sm font-bold text-ink">
+            Orders ({selectedOrderIds.size})
+          </p>
 
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search users by email or name"
+            placeholder="Search by order #, name, or email"
             className={fieldClassName()}
-            disabled={sending || allUsers}
+            disabled={sending}
           />
 
           <div className="max-h-56 overflow-y-auto rounded-xl border-2 border-ink/10 bg-cream">
-            {filteredRecipients.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-ink/60">No signed-up users found.</p>
+            {filteredOrders.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-ink/60">No orders found.</p>
             ) : (
               <ul className="divide-y divide-ink/10">
-                {filteredRecipients.map((row) => {
-                  const email = String(row.email ?? "").toLowerCase();
-                  const checked = allUsers || selectedEmails.has(email);
+                {filteredOrders.map((order) => {
+                  const checked = selectedOrderIds.has(order.id);
                   return (
-                    <li key={row.user_id || email}>
+                    <li key={order.id}>
                       <label className="flex cursor-pointer items-start gap-3 px-3 py-2 text-sm hover:bg-ink/5">
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={sending || allUsers}
-                          onChange={() => toggleEmail(email)}
+                          disabled={sending}
+                          onChange={() => toggleOrder(order.id)}
                           className="mt-0.5"
                         />
                         <span>
-                          <span className="block font-semibold text-ink">{email}</span>
-                          {row.full_name ? (
-                            <span className="block text-xs text-ink/60">{row.full_name}</span>
-                          ) : null}
+                          <span className="block font-semibold text-ink">
+                            #{order.display_id}
+                            {order.customer_name
+                              ? ` · ${order.customer_name}`
+                              : ""}
+                          </span>
+                          <span className="block text-xs text-ink/60">
+                            {order.customer_email || "No email"}
+                            {" · "}
+                            {orderStatusLabel(order.status)}
+                          </span>
                         </span>
                       </label>
                     </li>
@@ -325,81 +258,31 @@ export default function BroadcastMessages() {
             )}
           </div>
 
-          {!allUsers && selectedEmails.size > 0 && (
+          {selectedOrderIds.size > 0 && (
             <div className="flex flex-wrap gap-2">
-              {[...selectedEmails].map((email) => (
-                <button
-                  key={email}
-                  type="button"
-                  onClick={() => toggleEmail(email)}
-                  className="rounded-full border border-ink/20 bg-night/5 px-3 py-1 text-xs font-semibold text-ink hover:border-blush"
-                  disabled={sending}
-                >
-                  {email} ×
-                </button>
-              ))}
+              {[...selectedOrderIds].map((orderId) => {
+                const order = orderById.get(orderId);
+                return (
+                  <button
+                    key={orderId}
+                    type="button"
+                    onClick={() => toggleOrder(orderId)}
+                    className="rounded-full border border-ink/20 bg-night/5 px-3 py-1 text-xs font-semibold text-ink hover:border-blush"
+                    disabled={sending}
+                  >
+                    {order ? formatOrderChip(order) : orderId} ×
+                  </button>
+                );
+              })}
             </div>
           )}
-
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="email"
-              value={customEmail}
-              onChange={(e) => setCustomEmail(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCustomEmail();
-                }
-              }}
-              placeholder="Add any email…"
-              className={`${fieldClassName()} max-w-sm`}
-              disabled={sending || allUsers}
-            />
-            <button
-              type="button"
-              onClick={addCustomEmail}
-              disabled={sending || allUsers}
-              className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink hover:border-blush disabled:opacity-50"
-            >
-              Add email
-            </button>
-          </div>
         </div>
 
         <div>
-          <label htmlFor="broadcast_order" className="mb-1 block text-sm font-bold text-ink">
-            Regarding order
-          </label>
-          <select
-            id="broadcast_order"
-            value={selectedOrderId}
-            onChange={(e) => setSelectedOrderId(e.target.value)}
-            className={fieldClassName()}
-            disabled={sending || !singleRecipientEmail || ordersLoading}
+          <label
+            htmlFor="broadcast_subject"
+            className="mb-1 block text-sm font-bold text-ink"
           >
-            <option value="">
-              {!singleRecipientEmail
-                ? "Select one recipient to choose an order"
-                : ordersLoading
-                  ? "Loading orders…"
-                  : recipientOrders.length === 0
-                    ? "No orders for this recipient"
-                    : "None / general update"}
-            </option>
-            {recipientOrders.map((order) => (
-              <option key={order.id} value={order.id}>
-                {formatOrderOption(order)}
-              </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-ink/55">
-            Optional. Only available when messaging a single addressee — lists their orders.
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="broadcast_subject" className="mb-1 block text-sm font-bold text-ink">
             Subject
           </label>
           <input
@@ -414,7 +297,10 @@ export default function BroadcastMessages() {
         </div>
 
         <div>
-          <label htmlFor="broadcast_body" className="mb-1 block text-sm font-bold text-ink">
+          <label
+            htmlFor="broadcast_body"
+            className="mb-1 block text-sm font-bold text-ink"
+          >
             Message
           </label>
           <textarea
@@ -427,9 +313,9 @@ export default function BroadcastMessages() {
             disabled={sending}
           />
           <p className="mt-1 text-xs text-ink/55">
-            Emails show your subject once, then
-            {selectedOrderId ? " the order line," : ""} your message, then a PokePatch signature
-            with links to the site and Instagram.
+            Each selected order gets its own email (to that order&apos;s
+            customer email) with an order line, your message, and a PokePatch
+            signature.
           </p>
         </div>
 
@@ -444,12 +330,14 @@ export default function BroadcastMessages() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <h2 className="font-display text-lg font-bold text-ink">Send history</h2>
+          <h2 className="font-display text-lg font-bold text-ink">
+            Send history
+          </h2>
           <input
             type="search"
             value={historyFilter}
             onChange={(e) => setHistoryFilter(e.target.value)}
-            placeholder="Filter by email or subject"
+            placeholder="Filter by order, email, or subject"
             className={`${fieldClassName()} max-w-xs`}
           />
         </div>
@@ -462,6 +350,7 @@ export default function BroadcastMessages() {
               <thead className="bg-ink/5 text-xs uppercase tracking-wide text-ink/60">
                 <tr>
                   <th className="px-3 py-2 font-semibold">Sent</th>
+                  <th className="px-3 py-2 font-semibold">Order</th>
                   <th className="px-3 py-2 font-semibold">To</th>
                   <th className="px-3 py-2 font-semibold">Subject</th>
                   <th className="px-3 py-2 font-semibold">Email</th>
@@ -482,15 +371,26 @@ export default function BroadcastMessages() {
                         }
                       >
                         <td className="whitespace-nowrap px-3 py-2 text-ink/80">
-                          <span className="mr-1 inline-block w-3 text-ink/40" aria-hidden="true">
+                          <span
+                            className="mr-1 inline-block w-3 text-ink/40"
+                            aria-hidden="true"
+                          >
                             {expanded ? "▾" : "▸"}
                           </span>
                           {formatSentAt(row.sent_at)}
                         </td>
+                        <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
+                          {row.order_display_id != null
+                            ? `#${row.order_display_id}`
+                            : "—"}
+                        </td>
                         <td className="px-3 py-2 font-medium text-ink">
                           {row.recipient_email}
                         </td>
-                        <td className="max-w-xs truncate px-3 py-2 text-ink" title={row.subject}>
+                        <td
+                          className="max-w-xs truncate px-3 py-2 text-ink"
+                          title={row.subject}
+                        >
                           {row.subject}
                         </td>
                         <td className="px-3 py-2">
@@ -513,7 +413,7 @@ export default function BroadcastMessages() {
                       </tr>
                       {expanded && (
                         <tr className="bg-night/15">
-                          <td colSpan={5} className="px-3 py-3">
+                          <td colSpan={6} className="px-3 py-3">
                             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink/50">
                               Message
                             </p>
