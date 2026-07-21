@@ -534,18 +534,15 @@ function sumOrderAmounts(orders) {
   ) / 100;
 }
 
-function AccountStatusBadge({ hasAccount }) {
+function AccountStatusBadge({ hasAccount, pill = false }) {
+  const shape = pill
+    ? "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
+    : "inline-block rounded px-1.5 py-0.5 text-xs font-semibold";
   if (hasAccount) {
-    return (
-      <span className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-status-green text-night">
-        Has account
-      </span>
-    );
+    return <span className={`${shape} bg-mint text-night`}>Has account</span>;
   }
   return (
-    <span className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-ink/10 text-ink/55">
-      No account
-    </span>
+    <span className={`${shape} bg-ink/10 text-ink/55`}>No account</span>
   );
 }
 
@@ -1978,13 +1975,16 @@ function OrderEditor({
             <h2 className="text-2xl font-bold tabular-nums tracking-tight text-ink sm:text-3xl">
               Order #{displayId}
             </h2>
-            <span
-              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
-                draft.status
-              )}`}
-            >
-              {orderStatusLabel(draft.status)}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
+                  draft.status
+                )}`}
+              >
+                {orderStatusLabel(draft.status)}
+              </span>
+              <AccountStatusBadge hasAccount={draft.has_account} pill />
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -2074,12 +2074,6 @@ function OrderEditor({
               </p>
             </div>
           ) : null}
-          <div>
-            <EditorLabel>Account</EditorLabel>
-            <div className="px-3.5 py-2.5">
-              <AccountStatusBadge hasAccount={draft.has_account} />
-            </div>
-          </div>
           <label className="block">
             <EditorLabel>Delivery</EditorLabel>
             <select
