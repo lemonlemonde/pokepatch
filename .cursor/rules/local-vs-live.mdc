@@ -1,0 +1,29 @@
+---
+description: Keep work local; analyze breakage; ask before any live deploy
+alwaysApply: true
+---
+
+# Local vs live
+
+Follow root [README → Local vs live (deploy safety)](../../README.md#local-vs-live-deploy-safety).
+
+## Defaults
+
+1. **Everything stays local** unless the user explicitly asks to deploy or push to live.
+2. Treat these as live-affecting — **do not run them without permission**:
+   - Frontend publish (`npm run deploy`, or equivalent Pages publish)
+   - `supabase functions deploy …`
+   - Schema to remote (`supabase db push`, dashboard/MCP DDL)
+   - `git push` when it ships production
+3. Local frontend, local function files, and unpushed migrations are independent from what is live. Mixed versions are normal while developing.
+
+## Before asking to go live
+
+Give a short **deploy impact analysis**:
+
+- What would go live vs what would stay local
+- **Customer** impact (public site / quote / gallery / My Orders)
+- **Admin** impact (`/admin/`)
+- Cross-version risk (new API + old frontend, new frontend + old API, schema vs clients)
+
+Wait for an explicit yes before deploying or pushing anything to live.

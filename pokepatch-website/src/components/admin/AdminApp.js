@@ -16,6 +16,7 @@ import {
   adminLogout,
   adminReorderStatusOrders,
   adminSaveOrder,
+  adminSearchOrders,
   adminSetStatus,
   adminUploadPhoto,
   adminValidate,
@@ -224,7 +225,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag within a column to reorder, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+      "Search cards by name or set (scope with status chips). Drag within a column to reorder, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -889,14 +890,25 @@ function KanbanCard({
           width: INSPECT_PANEL_WIDTH,
         }}
       >
-        <p className="text-sm font-bold tabular-nums text-ink">
-          #{order.display_id}
-          {priorityElevated ? (
-            <span className="ml-2 text-xs font-bold text-berry">
-              ↑ ahead of #
-            </span>
-          ) : null}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="min-w-0 text-sm font-bold tabular-nums text-ink">
+            #{order.display_id}
+            {priorityElevated ? (
+              <span className="ml-2 text-xs font-bold text-berry">
+                ↑ ahead of #
+              </span>
+            ) : null}
+          </p>
+          <p
+            className={`shrink-0 text-sm font-bold tabular-nums ${
+              normalizeOrderStatus(order.status) === "completed"
+                ? "text-status-green"
+                : "text-ink"
+            }`}
+          >
+            {formatMoney(orderAmount(order))}
+          </p>
+        </div>
         <p className="mt-1 text-sm font-semibold text-ink">
           {order.customer_name}
         </p>
@@ -1069,6 +1081,278 @@ function formatDateShort(value) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function cardStatusLabel(statusId) {
+  const status = normalizeCardStatus(statusId);
+  return CARD_STATUSES.find((entry) => entry.id === status)?.label ?? "To do";
+}
+
+function truncateText(value, max = 140) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
+const DEFAULT_SEARCH_STATUSES = ACTIVE_ORDER_STATUSES.map((status) => status.id);
+
+function OrderCardSearch({ onOpenOrder }) {
+  const [query, setQuery] = useState("");
+  const [statuses, setStatuses] = useState(DEFAULT_SEARCH_STATUSES);
+  const [results, setResults] = useState([]);
+  const [truncated, setTruncated] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const requestIdRef = useRef(0);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2 || statuses.length === 0) {
+      requestIdRef.current += 1;
+      setResults([]);
+      setTruncated(false);
+      setSearching(false);
+      setError("");
+      return undefined;
+    }
+
+    const requestId = ++requestIdRef.current;
+    setSearching(true);
+    setError("");
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const payload = await adminSearchOrders(q, { statuses });
+          if (requestId !== requestIdRef.current) return;
+          setResults(payload.results ?? []);
+          setTruncated(Boolean(payload.truncated));
+          setOpen(true);
+        } catch (err) {
+          if (requestId !== requestIdRef.current) return;
+          setResults([]);
+          setTruncated(false);
+          setError(err.message || "Search failed.");
+          setOpen(true);
+        } finally {
+          if (requestId === requestIdRef.current) {
+            setSearching(false);
+          }
+        }
+      })();
+    }, 280);
+
+    return () => window.clearTimeout(timer);
+  }, [query, statuses]);
+
+  useEffect(() => {
+    function onPointerDown(event) {
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  function toggleStatus(statusId) {
+    setStatuses((current) => {
+      if (current.includes(statusId)) {
+        return current.filter((id) => id !== statusId);
+      }
+      return [...current, statusId];
+    });
+  }
+
+  const allStatusesSelected = statuses.length === ORDER_STATUSES.length;
+  const showPanel =
+    open && query.trim().length >= 2 && statuses.length > 0;
+
+  return (
+    <div ref={rootRef} className="relative z-20">
+      <div className="rounded-2xl border-2 border-ink/10 bg-night/30 p-3 sm:p-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <label className="relative min-w-[12rem] flex-1 basis-[14rem]">
+            <span className="sr-only">Search cards by name or set</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setOpen(true);
+              }}
+              onFocus={() => {
+                if (query.trim().length >= 2 && statuses.length > 0) {
+                  setOpen(true);
+                }
+              }}
+              placeholder="Search card name, set, or description…"
+              className="w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 pr-10 text-sm text-ink outline-none transition focus:border-blush"
+              autoComplete="off"
+            />
+            {searching && (
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-ink/45">
+                …
+              </span>
+            )}
+          </label>
+
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:ml-auto">
+            <p className="shrink-0 text-xs font-semibold text-ink/50">
+              Filter by column
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setStatuses(
+                  allStatusesSelected
+                    ? []
+                    : ORDER_STATUSES.map((status) => status.id)
+                )
+              }
+              className="relative shrink-0 rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+            >
+              <span className="invisible block" aria-hidden="true">
+                Deselect all columns
+              </span>
+              <span className="absolute inset-0 flex items-center justify-center px-3">
+                {allStatusesSelected
+                  ? "Deselect all columns"
+                  : "Select all columns"}
+              </span>
+            </button>
+            {ORDER_STATUSES.map((status) => {
+              const active = statuses.includes(status.id);
+              return (
+                <button
+                  key={status.id}
+                  type="button"
+                  onClick={() => toggleStatus(status.id)}
+                  aria-pressed={active}
+                  className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? orderStatusBadgeClass(status.id)
+                      : "border border-ink/15 bg-cream/60 text-ink/45 hover:border-ink/30 hover:text-ink/70"
+                  }`}
+                >
+                  {status.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {showPanel && (
+        <div className="absolute left-0 right-0 top-[calc(100%-0.5rem)] z-30 mt-2 max-h-[min(28rem,60vh)] overflow-y-auto rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy">
+          {error ? (
+            <p className="px-4 py-3 text-sm text-berry">{error}</p>
+          ) : searching && results.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-ink/50">Searching…</p>
+          ) : results.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-ink/50">
+              No cards matched in the selected columns.
+            </p>
+          ) : (
+            <ul className="divide-y divide-ink/10">
+              {results.map((hit) => {
+                const orderStatus = normalizeOrderStatus(hit.status);
+                const card = hit.card ?? {};
+                const description = truncateText(card.description);
+                const notes = truncateText(hit.general_notes, 100);
+                const previewUrl = card.preview_url ?? null;
+                const previewPath = card.preview_path ?? null;
+                return (
+                  <li key={`${hit.order_id}-${card.id}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        onOpenOrder(hit.order_id, { cardId: card.id });
+                      }}
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-blush/15"
+                    >
+                      <div className="relative aspect-[3/4] w-11 shrink-0 overflow-hidden rounded-md bg-night/50">
+                        {previewUrl ? (
+                          <KanbanThumbImg
+                            url={previewUrl}
+                            storagePath={previewPath}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-bold tabular-nums text-ink">
+                            #{hit.display_id}
+                          </span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${orderStatusBadgeClass(
+                              orderStatus
+                            )}`}
+                          >
+                            {orderStatusLabel(orderStatus)}
+                          </span>
+                          <span className="text-sm font-semibold text-ink">
+                            {hit.customer_name}
+                          </span>
+                          <span className="text-xs text-ink/50">
+                            {deliveryShortLabel(hit.delivery_method)}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-sm font-semibold text-ink">
+                            {card.card_name || "Untitled card"}
+                          </span>
+                          {card.set_name ? (
+                            <span className="text-xs text-ink/60">
+                              {card.set_name}
+                            </span>
+                          ) : null}
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${cardStatusBadgeClass(
+                              card.status
+                            )}`}
+                          >
+                            Card: {cardStatusLabel(card.status)}
+                          </span>
+                        </div>
+                        {description ? (
+                          <p className="text-xs leading-relaxed text-ink/65">
+                            {description}
+                          </p>
+                        ) : null}
+                        {notes ? (
+                          <p className="text-xs text-ink/45">
+                            Order notes: {notes}
+                          </p>
+                        ) : null}
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {truncated && !error && (
+            <p className="border-t border-ink/10 px-4 py-2 text-xs text-ink/45">
+              Showing the first matches — refine the query or column scope for
+              more precision.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function OrdersAllList({ orders, onOpenOrder }) {
@@ -1679,11 +1963,13 @@ function OrderEditor({
   onCancel,
   onSave,
   onError,
+  focusCardId = null,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [removingPhotoId, setRemovingPhotoId] = useState(null);
   const [sendUpdateOpen, setSendUpdateOpen] = useState(false);
-  const scrollToCardIdRef = useRef(null);
+  const [highlightedCardId, setHighlightedCardId] = useState(null);
+  const scrolledFocusKeyRef = useRef("");
 
   function updateDraft(patch) {
     // Functional update so quote-sync / rapid edits can't clobber a just-added card.
@@ -1691,15 +1977,50 @@ function OrderEditor({
   }
 
   const cardIdsKey = (draft.cards ?? []).map((card) => card.id).join("|");
+
   useEffect(() => {
-    const cardId = scrollToCardIdRef.current;
-    if (!cardId) return;
-    if (!(draft.cards ?? []).some((card) => card.id === cardId)) return;
-    scrollToCardIdRef.current = null;
-    document
-      .getElementById(`admin-order-card-${cardId}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [cardIdsKey, draft.cards]);
+    if (!focusCardId) {
+      setHighlightedCardId(null);
+      return;
+    }
+    setHighlightedCardId(String(focusCardId));
+  }, [focusCardId, orderId]);
+
+  useEffect(() => {
+    if (!highlightedCardId) return;
+    const focusKey = `${orderId}:${highlightedCardId}:${cardIdsKey}`;
+    if (scrolledFocusKeyRef.current === focusKey) return;
+    if (
+      !(draft.cards ?? []).some(
+        (card) => String(card.id) === String(highlightedCardId)
+      )
+    ) {
+      return;
+    }
+    scrolledFocusKeyRef.current = focusKey;
+    // Wait a frame so the card section is laid out before scrolling.
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .getElementById(`admin-order-card-${highlightedCardId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [highlightedCardId, cardIdsKey, draft.cards, orderId]);
+
+  useEffect(() => {
+    if (!highlightedCardId) return undefined;
+    function clearHighlight() {
+      setHighlightedCardId(null);
+    }
+    // Skip the opening click that navigated into the editor.
+    const timer = window.setTimeout(() => {
+      document.addEventListener("pointerdown", clearHighlight, true);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", clearHighlight, true);
+    };
+  }, [highlightedCardId]);
 
   useEffect(() => {
     onChange((current) => {
@@ -2458,9 +2779,11 @@ function OrderEditor({
                   />
                 }
                 className={
-                  incomplete
-                    ? "border-berry/55 ring-1 ring-berry/25"
-                    : undefined
+                  String(card.id) === String(highlightedCardId)
+                    ? "border-blush ring-2 ring-blush/45"
+                    : incomplete
+                      ? "border-berry/55 ring-1 ring-berry/25"
+                      : undefined
                 }
                 action={
                   <div className="flex shrink-0 items-center gap-3">
@@ -2876,6 +3199,7 @@ export default function AdminApp() {
   const { user, loading: authLoading, signOut } = useAuth();
   const pathTab = tabFromPathname(pathname);
   const searchEditId = searchParams.get("edit");
+  const searchFocusCardId = searchParams.get("card");
   // Static export can no-op same-path query clears via router.push. Dismiss the
   // editor in React state first so "Back to board" never lands on a blank page.
   const [editorDismissed, setEditorDismissed] = useState(false);
@@ -3190,10 +3514,11 @@ export default function AdminApp() {
     }
   }
 
-  function openOrder(orderId, { from } = {}) {
+  function openOrder(orderId, { from, cardId } = {}) {
     setEditorDismissed(false);
     const params = new URLSearchParams({ edit: String(orderId) });
     if (from === "all") params.set("from", "all");
+    if (cardId) params.set("card", String(cardId));
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
@@ -3411,6 +3736,7 @@ export default function AdminApp() {
                   dirty={dirty}
                   saving={saving}
                   error={editorError}
+                  focusCardId={searchFocusCardId}
                   onBack={leaveEditor}
                   backLabel={
                     searchParams.get("from") === "all"
@@ -3444,6 +3770,11 @@ export default function AdminApp() {
                   Back to board
                 </button>
               </div>
+              <OrderCardSearch
+                onOpenOrder={(orderId, options) =>
+                  openOrder(orderId, { from: "all", ...options })
+                }
+              />
               <OrdersAllList
                 orders={orders}
                 onOpenOrder={(orderId) => openOrder(orderId, { from: "all" })}
@@ -3451,6 +3782,9 @@ export default function AdminApp() {
             </div>
           ) : (
             <>
+              <div className="mb-4">
+                <OrderCardSearch onOpenOrder={openOrder} />
+              </div>
               <KanbanBoard
                 orders={orders}
                 onOpenOrder={openOrder}

@@ -285,6 +285,33 @@ async function signPathsPreferThumb(
   return result;
 }
 
+/** Sign only `.thumb.webp` siblings — never full-size objects. Keys = original paths. */
+async function signPathsThumbsOnly(
+  supabase: ReturnType<typeof getServiceClient>,
+  paths: string[]
+): Promise<Map<string, string>> {
+  const unique = [...new Set(paths.filter(Boolean))];
+  const result = new Map<string, string>();
+  if (unique.length === 0) return result;
+
+  const thumbPaths = unique.map((p) => thumbPath(p));
+  const { data: thumbData, error: thumbError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(thumbPaths, SIGNED_URL_EXPIRES_IN);
+  if (thumbError) {
+    console.error("createSignedUrls thumbs-only error", thumbError);
+    return result;
+  }
+
+  for (let i = 0; i < unique.length; i += 1) {
+    const item = thumbData?.[i];
+    if (item?.signedUrl && !(item as { error?: string }).error) {
+      result.set(unique[i], item.signedUrl);
+    }
+  }
+  return result;
+}
+
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
@@ -424,6 +451,226 @@ const ORDER_SELECT_WITH_QUOTE =
   "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
   "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at";
+
+const ORDER_STATUS_IDS = new Set([
+  "on_hold",
+  "new",
+  "in_progress",
+  "completed",
+  "canceled",
+]);
+
+const SEARCH_RESULT_LIMIT = 10;
+/** Pull extra matches so we can re-rank by order created_at before cutting to 10. */
+const SEARCH_CANDIDATE_LIMIT = 80;
+
+/** Escape `%` / `_` so user input is treated literally in ILIKE patterns. */
+function escapeIlikePattern(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
+
+/** Quote a PostgREST filter value (needed when the pattern contains `,` etc.). */
+function quotePostgrestValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+type SearchCardRow = {
+  id: string | number;
+  order_id: string;
+  card_name: string | null;
+  set_name: string | null;
+  description: string | null;
+  status: string | null;
+};
+
+type SearchOrderRow = {
+  id: string;
+  display_id: number | string | null;
+  created_at: string | null;
+  customer_name: string | null;
+  customer_email: string | null;
+  delivery_method: string | null;
+  status: string | null;
+  general_notes: string | null;
+  completed_at: string | null;
+};
+
+function orderCreatedMs(order: SearchOrderRow | undefined): number {
+  if (!order?.created_at) return 0;
+  const ms = new Date(order.created_at).getTime();
+  return Number.isNaN(ms) ? 0 : ms;
+}
+
+/**
+ * Search cards by name/set/description, optionally scoped to order statuses.
+ * Returns one hit per matching card with a compact order summary (newest orders first).
+ */
+async function searchOrdersByCardText(
+  supabase: ReturnType<typeof getServiceClient>,
+  rawQuery: string,
+  rawStatuses: unknown
+) {
+  const q = String(rawQuery ?? "").trim();
+  if (q.length < 2) {
+    return { results: [], query: q, truncated: false };
+  }
+
+  const statuses = (
+    Array.isArray(rawStatuses)
+      ? rawStatuses.map((value) => String(value ?? "").trim())
+      : []
+  ).filter((status) => ORDER_STATUS_IDS.has(status));
+
+  // Empty column scope means "search nothing", not "search all statuses".
+  if (statuses.length === 0) {
+    return { results: [], query: q, truncated: false };
+  }
+
+  const searchingAllStatuses = statuses.length === ORDER_STATUS_IDS.size;
+  let scopedOrderIds: string[] | null = null;
+  if (!searchingAllStatuses) {
+    const { data: scopedOrders, error: scopedError } = await supabase
+      .from("orders")
+      .select("id")
+      .in("status", statuses);
+    if (scopedError) throw scopedError;
+    scopedOrderIds = (scopedOrders ?? []).map((row) => row.id as string);
+    if (scopedOrderIds.length === 0) {
+      return { results: [], query: q, truncated: false };
+    }
+  }
+
+  const pattern = quotePostgrestValue(`%${escapeIlikePattern(q)}%`);
+  let cardsQuery = supabase
+    .from("cards")
+    .select("id, order_id, card_name, set_name, description, status")
+    .or(
+      `card_name.ilike.${pattern},set_name.ilike.${pattern},description.ilike.${pattern}`
+    )
+    .limit(SEARCH_CANDIDATE_LIMIT);
+  if (scopedOrderIds) {
+    cardsQuery = cardsQuery.in("order_id", scopedOrderIds);
+  }
+
+  const { data: cardRows, error: cardsError } = await cardsQuery;
+  if (cardsError) throw cardsError;
+
+  const matchedCards = (cardRows ?? []) as SearchCardRow[];
+  if (matchedCards.length === 0) {
+    return { results: [], query: q, truncated: false };
+  }
+
+  const orderIds = [
+    ...new Set(matchedCards.map((card) => card.order_id as string)),
+  ];
+  const { data: orders, error: ordersError } = await supabase
+    .from("orders")
+    .select(
+      "id, display_id, created_at, customer_name, customer_email, delivery_method, status, general_notes, completed_at"
+    )
+    .in("id", orderIds);
+  if (ordersError) throw ordersError;
+
+  const orderById = new Map(
+    ((orders ?? []) as SearchOrderRow[]).map((order) => [order.id, order])
+  );
+
+  // Newest orders first; tie-break by higher display_id, then card id.
+  const rankedCards = [...matchedCards].sort((a, b) => {
+    const orderA = orderById.get(a.order_id as string);
+    const orderB = orderById.get(b.order_id as string);
+    const byCreated = orderCreatedMs(orderB) - orderCreatedMs(orderA);
+    if (byCreated !== 0) return byCreated;
+    const displayA = Number(orderA?.display_id) || 0;
+    const displayB = Number(orderB?.display_id) || 0;
+    if (displayA !== displayB) return displayB - displayA;
+    return String(b.id).localeCompare(String(a.id));
+  });
+
+  const truncated =
+    rankedCards.length > SEARCH_RESULT_LIMIT ||
+    matchedCards.length >= SEARCH_CANDIDATE_LIMIT;
+  const limitedCards = rankedCards.slice(0, SEARCH_RESULT_LIMIT);
+  const cardIds = limitedCards.map((card) => card.id);
+
+  const { data: imageRows, error: imagesError } = await supabase
+    .from("card_images")
+    .select("id, card_id, image_type, storage_path")
+    .in("card_id", cardIds)
+    .order("id", { ascending: true });
+  if (imagesError) throw imagesError;
+
+  // Prefer first customer photo; otherwise first image for that card.
+  const previewPathByCard = new Map<string, string>();
+  const hasCustomerPreview = new Set<string>();
+  for (const image of imageRows ?? []) {
+    const cardId = String(image.card_id);
+    const path = image.storage_path as string;
+    if (!path) continue;
+    if (image.image_type === "customer") {
+      if (hasCustomerPreview.has(cardId)) continue;
+      hasCustomerPreview.add(cardId);
+      previewPathByCard.set(cardId, path);
+      continue;
+    }
+    if (!previewPathByCard.has(cardId)) {
+      previewPathByCard.set(cardId, path);
+    }
+  }
+
+  const signedMap = await signPathsThumbsOnly(
+    supabase,
+    [...previewPathByCard.values()]
+  );
+
+  const needle = q.toLowerCase();
+  const results = limitedCards
+    .map((card) => {
+      const order = orderById.get(card.order_id as string);
+      if (!order) return null;
+
+      const matchFields: string[] = [];
+      if (String(card.card_name ?? "").toLowerCase().includes(needle)) {
+        matchFields.push("card_name");
+      }
+      if (String(card.set_name ?? "").toLowerCase().includes(needle)) {
+        matchFields.push("set_name");
+      }
+      if (String(card.description ?? "").toLowerCase().includes(needle)) {
+        matchFields.push("description");
+      }
+
+      const previewPath = previewPathByCard.get(String(card.id)) ?? null;
+      const previewUrl = previewPath
+        ? signedMap.get(previewPath) ?? null
+        : null;
+
+      return {
+        order_id: order.id,
+        display_id: order.display_id,
+        customer_name: order.customer_name,
+        customer_email: order.customer_email,
+        delivery_method: order.delivery_method,
+        status: order.status,
+        general_notes: order.general_notes,
+        completed_at: order.completed_at,
+        created_at: order.created_at,
+        match_fields: matchFields,
+        card: {
+          id: card.id,
+          card_name: card.card_name,
+          set_name: card.set_name,
+          description: card.description,
+          status: card.status,
+          preview_path: previewPath,
+          preview_url: previewUrl,
+        },
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row));
+
+  return { results, query: q, truncated };
+}
 
 async function fetchOrderGraph(
   supabase: ReturnType<typeof getServiceClient>,
@@ -871,6 +1118,15 @@ Deno.serve(async (req) => {
     if (action === "list") {
       const orders = await fetchOrderListSummary(supabase);
       return jsonResponse(req, { ok: true, orders });
+    }
+
+    if (action === "search") {
+      const payload = await searchOrdersByCardText(
+        supabase,
+        body.q ?? body.query ?? "",
+        body.statuses
+      );
+      return jsonResponse(req, { ok: true, ...payload });
     }
 
     if (action === "get") {

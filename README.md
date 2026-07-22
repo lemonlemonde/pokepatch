@@ -22,6 +22,8 @@ Copy `.env.local.example` to `.env.local` and set:
 
 Repo: `lemonlemonde/pokepatch` → **https://lemonlemonde.github.io/pokepatch/**
 
+Before publishing, see [Local vs live (deploy safety)](#local-vs-live-deploy-safety) (impact analysis + explicit permission).
+
 ```bash
 cd pokepatch-website
 npm run deploy
@@ -95,6 +97,63 @@ The site is a **static frontend** on GitHub Pages. All backend logic runs in **S
 | Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
 
 New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history and still have their own notify path.
+
+---
+
+## Local vs live (deploy safety)
+
+Work stays **local by default**. Local edits (frontend, edge functions, migration files) do not affect production until something is explicitly pushed or deployed. Live is three independent surfaces that can drift from each other:
+
+| Surface | Local (working copy) | Live (production) | How it goes live |
+|---------|----------------------|-------------------|------------------|
+| **Frontend** | `npm run dev` / uncommitted or unreleased build | GitHub Pages (`pokepatch.cards`) | `npm run deploy` (and/or merging what that publish path uses) |
+| **Edge functions** | Files under `pokepatch-website/supabase/functions/` | Deployed Supabase functions (`admin-api`, `notify`, …) | `supabase functions deploy …` |
+| **Schema** | Pending files in `pokepatch-website/supabase/migrations/` | Remote Postgres + `schema_migrations` | `supabase db push` (or other remote DDL — avoid) |
+
+These can be mixed: e.g. **live API + old frontend**, or **local frontend + live API + unpushed migrations**. That is normal during development — and it is why every live action needs a breakage check first.
+
+### Default rules
+
+1. **Keep changes local** until the user explicitly asks to deploy or push to live.
+2. **Never** run live-affecting commands without asking first, including:
+   - `npm run deploy` / publishing the static site
+   - `supabase functions deploy …`
+   - `supabase db push` / remote DDL (dashboard SQL, MCP `apply_migration`, etc.)
+   - `git push` when that updates what production serves (or otherwise ships the change)
+3. Before asking, **give a short deploy impact analysis** (see below). Do not deploy “while you’re at it.”
+
+### Deploy impact analysis (required before any live action)
+
+Say clearly **what is going live** and **what stays local**, then answer:
+
+| Audience | Questions to answer |
+|----------|---------------------|
+| **Customers** (public site, quote form, gallery, thank-you, My Orders) | Will anything break, error, or change behavior if only this surface goes live? |
+| **Admins** (`/admin/`) | Same — board, editor, gallery CMS, studio, messaging. |
+
+Also call out **cross-version risk** when surfaces are not shipped together:
+
+| If you deploy… | While this is still old… | Typical risk |
+|----------------|--------------------------|--------------|
+| Edge function (additive: new action / optional fields) | Old frontend | Usually **safe** — old client never calls the new path |
+| Edge function (changed/removed response shape or existing action) | Old frontend | **Can break** admins or customers still on the old client |
+| Frontend that requires new API fields/actions | Old edge function | **Can break** the new UI until the function is deployed |
+| Schema that existing API/frontend assume is already live | Old API or old frontend | **Can break** both; coordinate or make migrations backward-compatible |
+| Schema only (local migration not pushed) | — | Live unchanged; local/dev may not match production data shape |
+
+**Example:** deploying an additive `admin-api` `search` action while production frontend has no search UI → **not broken**. Deploying a frontend that calls `search` before that function is deployed → **admin search broken**.
+
+### Suggested ship order
+
+When a feature needs more than one surface:
+
+1. **Schema** first if required (backward-compatible when possible).
+2. **Edge functions** next (additive/compatible with the currently live frontend).
+3. **Frontend** last (once live API/schema support it).
+
+Reverse or skip steps only when the impact analysis says it is safe (e.g. UI-only change, or additive API with no UI yet).
+
+Schema CLI workflow details: [Schema changes (CLI-managed)](#schema-changes-cli-managed).
 
 ---
 
@@ -194,6 +253,8 @@ Schema reference (informational, may lag live): [`pokepatch-website/supabase/sch
 
 Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
 
+Writing a migration file is local only. Applying it (`db push` / remote DDL) is a live action — see [Local vs live (deploy safety)](#local-vs-live-deploy-safety).
+
 #### Happy path (preferred)
 
 ```bash
@@ -201,6 +262,7 @@ cd pokepatch-website
 supabase link --project-ref <ref>   # once per machine
 supabase migration new <short_name> # creates supabase/migrations/<timestamp>_<short_name>.sql
 # edit only that new file (delta only)
+# after impact analysis + explicit permission:
 supabase db push                    # applies pending migrations to the linked project
 supabase migration list             # confirm Local and Remote versions match
 ```
@@ -209,7 +271,7 @@ supabase migration list             # confirm Local and Remote versions match
 
 - Put **only the delta** in each new migration (never re-apply the whole live schema).
 - **Always** create files with `supabase migration new`. Never invent or rename migration timestamps by hand.
-- Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer `db push` instead.
+- Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer `db push` instead — and only after permission.
 - Keep `schema.sql` as a human reference if useful; it is not what the CLI applies.
 - Before committing migration changes, run `supabase migration list` and fix any Local/Remote mismatch.
 

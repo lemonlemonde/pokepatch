@@ -214,6 +214,37 @@ export async function adminListOrders() {
   return (payload.orders ?? []).map(stabilizeOrderSummary);
 }
 
+/** Search cards by name/set/description; optionally scope to order statuses. */
+export async function adminSearchOrders(query, { statuses } = {}) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "search",
+      q: query,
+      statuses: statuses ?? [],
+    },
+  });
+  const results = (payload.results ?? []).map((hit) => {
+    const card = hit?.card;
+    if (!card?.preview_path || !card?.preview_url) return hit;
+    return {
+      ...hit,
+      card: {
+        ...card,
+        preview_url: stabilizeUrl(
+          thumbPath(card.preview_path),
+          card.preview_url
+        ),
+      },
+    };
+  });
+  return {
+    results,
+    query: payload.query ?? String(query ?? ""),
+    truncated: Boolean(payload.truncated),
+  };
+}
+
 export async function adminReorderStatusOrders(status, orderedIds) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
