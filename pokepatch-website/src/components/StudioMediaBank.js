@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import { StudioCroppableThumb } from "@/components/StudioCropLightbox";
 
 export const EMPTY_SLOTS = [null, null, null, null];
 const DRAG_TYPE = "text/pokepatch-bank-id";
 
-/** Default: before|after for front, then back (1×2 Before-After Pair / video). */
+/** Fixed Front + optional Back (video formatter). */
 export const BEFORE_AFTER_PAIR_SLOT_GROUPS = [
   {
     title: "Front / Any",
@@ -25,6 +26,26 @@ export const BEFORE_AFTER_PAIR_SLOT_GROUPS = [
     ],
   },
 ];
+
+/** Flat slot list for N before|after rows: [b0, a0, b1, a1, …]. */
+export function emptySlotsForPairRows(rowCount = 1) {
+  const n = Math.max(1, rowCount);
+  return Array.from({ length: n * 2 }, () => null);
+}
+
+/** Slot groups for dynamic 1×2 Before-After Pair rows. */
+export function beforeAfterPairSlotGroups(rowCount = 1) {
+  const n = Math.max(1, Math.floor(rowCount));
+  return Array.from({ length: n }, (_, index) => ({
+    title: n === 1 ? "Pair" : `Pair ${index + 1}`,
+    optional: index > 0,
+    removable: n > 1,
+    slots: [
+      { index: index * 2, label: "Before" },
+      { index: index * 2 + 1, label: "After" },
+    ],
+  }));
+}
 
 /** Front|back for before, then after (1×2 Front-Back Pair). */
 export const FRONT_BACK_PAIR_SLOT_GROUPS = [
@@ -55,7 +76,7 @@ const MEDIA_CONFIG = {
     uploadHint: "Drop images here, click to browse, or paste",
     emptyBank: "Uploaded images appear here",
     allPlaced: "All images placed — drag one back here to swap",
-    dropSlot: "Drop image here",
+    dropSlot: "Drop image or thumbnail here",
     unsupportedError: "Only image files (PNG, JPG, etc.) are supported.",
     inputId: "card-images",
     pickFiles: (fileList) =>
@@ -68,7 +89,7 @@ const MEDIA_CONFIG = {
     uploadHint: "Drop videos here or click to browse",
     emptyBank: "Uploaded videos appear here",
     allPlaced: "All videos placed — drag one back here to swap",
-    dropSlot: "Drop video here",
+    dropSlot: "Drop video or thumbnail here",
     unsupportedError: "Only MP4, MOV, and WebM videos are supported.",
     inputId: "card-videos",
     pickFiles: (fileList) =>
@@ -152,6 +173,10 @@ export default function StudioMediaBank({
   onError,
   slotGroups = SLOT_GROUPS,
   hideSlots = false,
+  /** When set, shows “+ Add pair” under the slot groups. */
+  onAddPairRow = null,
+  /** Called with pair row index (0-based) when Remove pair is clicked. */
+  onRemovePairRow = null,
   /** When provided, parent owns object-URL lifecycle (e.g. annotate formatter). */
   previewUrls: controlledPreviewUrls = null,
   inputId = null,
@@ -205,6 +230,30 @@ export default function StudioMediaBank({
     onError("");
   }
 
+  /** Add file(s) to the bank and place the first one into a slot. */
+  function dropFilesIntoSlot(slotIndex, fileList) {
+    if (!setSlots) return;
+    const files = config.pickFiles(fileList);
+    if (files.length === 0) {
+      if (fileList?.length) onError(config.unsupportedError);
+      return;
+    }
+
+    const primaryId = createBankId();
+    const newItems = files.map((file, index) => ({
+      id: index === 0 ? primaryId : createBankId(),
+      file,
+    }));
+
+    setBank((prev) => [...prev, ...newItems]);
+    setSlots((prev) => {
+      const next = [...prev];
+      next[slotIndex] = primaryId;
+      return next;
+    });
+    onError("");
+  }
+
   function clearSlot(slotIndex) {
     if (!setSlots) return;
     setSlots((prev) => {
@@ -219,6 +268,13 @@ export default function StudioMediaBank({
     if (setSlots) {
       setSlots((prev) => prev.map((id) => (id === bankId ? null : id)));
     }
+  }
+
+  function replaceBankFile(bankId, file) {
+    setBank((prev) =>
+      prev.map((item) => (item.id === bankId ? { ...item, file } : item)),
+    );
+    onError("");
   }
 
   function returnToBank(bankId) {
@@ -248,7 +304,13 @@ export default function StudioMediaBank({
     event.preventDefault();
     setActiveSlot(null);
     const bankId = readDragId(event);
-    if (bankId) assignToSlot(slotIndex, bankId);
+    if (bankId) {
+      assignToSlot(slotIndex, bankId);
+      return;
+    }
+    if (event.dataTransfer.files?.length) {
+      dropFilesIntoSlot(slotIndex, event.dataTransfer.files);
+    }
   }
 
   function handlePaste(event) {
@@ -344,18 +406,29 @@ export default function StudioMediaBank({
       {!hideSlots ? (
         <div className="space-y-4">
           <p className="font-secondary text-sm font-semibold text-blush/90">
-            Drag into slots
+            Drop into slots
           </p>
-          {slotGroups.map((group) => (
-            <div key={group.title} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                {group.title}
-                {group.optional ? (
-                  <span className="ml-1 font-normal normal-case text-ink/35">
-                    (optional)
-                  </span>
+          {slotGroups.map((group, groupIndex) => (
+            <div key={`${group.title}-${groupIndex}`} className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  {group.title}
+                  {group.optional ? (
+                    <span className="ml-1 font-normal normal-case text-ink/35">
+                      (optional)
+                    </span>
+                  ) : null}
+                </p>
+                {group.removable && onRemovePairRow ? (
+                  <button
+                    type="button"
+                    onClick={() => onRemovePairRow(groupIndex)}
+                    className="text-xs font-semibold text-berry/90 hover:text-berry"
+                  >
+                    Remove pair
+                  </button>
                 ) : null}
-              </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 {group.slots.map(({ index: slotIndex, label: slotLabel }) => {
                   const bankId = slots[slotIndex];
@@ -368,6 +441,12 @@ export default function StudioMediaBank({
                       key={slotIndex}
                       onDragOver={(event) => {
                         event.preventDefault();
+                        const isFileDrag = Array.from(
+                          event.dataTransfer.types,
+                        ).includes("Files");
+                        event.dataTransfer.dropEffect = isFileDrag
+                          ? "copy"
+                          : "move";
                         setActiveSlot(slotIndex);
                       }}
                       onDragLeave={() =>
@@ -396,13 +475,31 @@ export default function StudioMediaBank({
                           }}
                           className="cursor-grab p-3 active:cursor-grabbing"
                         >
-                          <StudioOpenableThumb
-                            src={preview}
-                            alt={`${group.title} ${slotLabel} — ${item.file.name}`}
-                            label={`${group.title} · ${slotLabel}`}
-                            mediaType={mediaType}
-                          >
-                            {mediaType === "video" ? (
+                          {mediaType === "image" ? (
+                            <StudioCroppableThumb
+                              src={preview}
+                              alt={`${group.title} ${slotLabel} — ${item.file.name}`}
+                              label={`${group.title} · ${slotLabel}`}
+                              originalFile={item.file}
+                              onCropped={(file) =>
+                                replaceBankFile(item.id, file)
+                              }
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={preview}
+                                alt={`${group.title} ${slotLabel} preview`}
+                                className="mx-auto max-h-36 w-full object-contain"
+                                draggable={false}
+                              />
+                            </StudioCroppableThumb>
+                          ) : (
+                            <StudioOpenableThumb
+                              src={preview}
+                              alt={`${group.title} ${slotLabel} — ${item.file.name}`}
+                              label={`${group.title} · ${slotLabel}`}
+                              mediaType={mediaType}
+                            >
                               <video
                                 src={preview}
                                 muted
@@ -411,16 +508,8 @@ export default function StudioMediaBank({
                                 className="mx-auto max-h-36 w-full object-contain"
                                 draggable={false}
                               />
-                            ) : (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={preview}
-                                alt={`${group.title} ${slotLabel} preview`}
-                                className="mx-auto max-h-36 w-full object-contain"
-                                draggable={false}
-                              />
-                            )}
-                          </StudioOpenableThumb>
+                            </StudioOpenableThumb>
+                          )}
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <p className="truncate text-xs text-ink/50">
                               {item.file.name}
@@ -436,6 +525,11 @@ export default function StudioMediaBank({
                               Remove
                             </button>
                           </div>
+                          {mediaType === "image" ? (
+                            <p className="mt-1 text-[10px] text-ink/35">
+                              Click to crop
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <p className="px-3 py-10 text-center text-xs text-ink/30">
@@ -448,6 +542,15 @@ export default function StudioMediaBank({
               </div>
             </div>
           ))}
+          {onAddPairRow ? (
+            <button
+              type="button"
+              onClick={onAddPairRow}
+              className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
+            >
+              + Add pair
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

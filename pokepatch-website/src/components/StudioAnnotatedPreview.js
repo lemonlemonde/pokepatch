@@ -34,22 +34,34 @@ function shapeRotation(shape) {
   return shape.rotation || 0;
 }
 
-function rotatePoint(x, y, cx, cy, degrees) {
+/**
+ * Rotate a normalized (0–1) point around a center in *visual* space.
+ * `aspect` is displayWidth/displayHeight — required because unit X ≠ unit Y
+ * on non-square images (SVG viewBox 0–1 is anisotropic).
+ */
+function rotateNormalized(x, y, cx, cy, degrees, aspect = 1) {
+  const a = aspect > 0 ? aspect : 1;
   const rad = (degrees * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
-  const dx = x - cx;
+  const dx = (x - cx) * a;
   const dy = y - cy;
   return {
-    x: cx + dx * cos - dy * sin,
+    x: cx + (dx * cos - dy * sin) / a,
     y: cy + dx * sin + dy * cos,
   };
 }
 
+/** Visual angle from center to point (matches on-screen geometry). */
+function visualAtan2(nx, ny, cx, cy, aspect = 1) {
+  const a = aspect > 0 ? aspect : 1;
+  return Math.atan2(ny - cy, (nx - cx) * a);
+}
+
 /** Map a world point into the shape's unrotated local frame. */
-function toLocalPoint(shape, nx, ny) {
+function toLocalPoint(shape, nx, ny, aspect = 1) {
   const { cx, cy } = shapeCenter(shape);
-  return rotatePoint(nx, ny, cx, cy, -shapeRotation(shape));
+  return rotateNormalized(nx, ny, cx, cy, -shapeRotation(shape), aspect);
 }
 
 function createShape(type, index = 0) {
@@ -92,8 +104,8 @@ function normalizeShape(shape) {
   return clampShapePosition(finalizeShapeSize(shape));
 }
 
-function hitTest(shape, nx, ny) {
-  const local = toLocalPoint(shape, nx, ny);
+function hitTest(shape, nx, ny, aspect = 1) {
+  const local = toLocalPoint(shape, nx, ny, aspect);
   const { x, y, w, h, type } = shape;
   if (type === "circle") {
     const cx = x + w / 2;
@@ -201,16 +213,30 @@ function localHandlePosition(shape, handleId) {
   }
 }
 
-function handlePosition(shape, handleId) {
+function handlePosition(shape, handleId, aspect = 1) {
   const local = localHandlePosition(shape, handleId);
   const { cx, cy } = shapeCenter(shape);
-  return rotatePoint(local.x, local.y, cx, cy, shapeRotation(shape));
+  return rotateNormalized(
+    local.x,
+    local.y,
+    cx,
+    cy,
+    shapeRotation(shape),
+    aspect,
+  );
 }
 
-function rotateHandlePosition(shape) {
+function rotateHandlePosition(shape, aspect = 1) {
   const { cx, cy } = shapeCenter(shape);
   const local = { x: cx, y: shape.y - ROTATE_HANDLE_OFFSET };
-  return rotatePoint(local.x, local.y, cx, cy, shapeRotation(shape));
+  return rotateNormalized(
+    local.x,
+    local.y,
+    cx,
+    cy,
+    shapeRotation(shape),
+    aspect,
+  );
 }
 
 const OPPOSITE_HANDLE = {
@@ -330,16 +356,23 @@ function resizeFromHandle(shape, handleId, nx, ny, constrainSquare = false) {
  * Resize in local space, then keep the opposite edge/corner fixed in world
  * space so rotation-around-center doesn't make side drags feel like sliding.
  */
-function resizeRotatedShape(shape, handleId, worldX, worldY, constrainSquare) {
+function resizeRotatedShape(
+  shape,
+  handleId,
+  worldX,
+  worldY,
+  constrainSquare,
+  aspect = 1,
+) {
   const oppositeId = OPPOSITE_HANDLE[handleId];
-  const anchorWorld = handlePosition(shape, oppositeId);
-  const local = toLocalPoint(shape, worldX, worldY);
+  const anchorWorld = handlePosition(shape, oppositeId, aspect);
+  const local = toLocalPoint(shape, worldX, worldY, aspect);
 
   let next = finalizeShapeSize(
     resizeFromHandle(shape, handleId, local.x, local.y, constrainSquare),
   );
 
-  const nextAnchor = handlePosition(next, oppositeId);
+  const nextAnchor = handlePosition(next, oppositeId, aspect);
   next = {
     ...next,
     x: next.x + (anchorWorld.x - nextAnchor.x),
@@ -382,6 +415,24 @@ function ShapeToolbar({ selectedId, onAdd, onDelete }) {
   );
 }
 
+function getImageContentMetrics(img) {
+  if (!img) return null;
+  const rect = img.getBoundingClientRect();
+  const width = img.clientWidth;
+  const height = img.clientHeight;
+  if (width <= 0 || height <= 0) return null;
+  return {
+    // Viewport rect of the content box (excludes CSS border).
+    left: rect.left + img.clientLeft,
+    top: rect.top + img.clientTop,
+    width,
+    height,
+    // Position of the content box inside the surface wrapper.
+    offsetLeft: img.offsetLeft + img.clientLeft,
+    offsetTop: img.offsetTop + img.clientTop,
+  };
+}
+
 function ShapeSurface({
   url,
   alt,
@@ -393,17 +444,50 @@ function ShapeSurface({
   onShapesChange,
 }) {
   const surfaceRef = useRef(null);
+  const imageRef = useRef(null);
   const [drag, setDrag] = useState(null);
+  const [contentBox, setContentBox] = useState({
+    offsetLeft: 0,
+    offsetTop: 0,
+    width: 0,
+    height: 0,
+  });
   const selected = shapes.find((shape) => shape.id === selectedId) ?? null;
+  const aspect =
+    contentBox.width > 0 && contentBox.height > 0
+      ? contentBox.width / contentBox.height
+      : 1;
+
+  const updateContentBox = useCallback(() => {
+    const metrics = getImageContentMetrics(imageRef.current);
+    if (!metrics) return;
+    setContentBox({
+      offsetLeft: metrics.offsetLeft,
+      offsetTop: metrics.offsetTop,
+      width: metrics.width,
+      height: metrics.height,
+    });
+  }, []);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) return undefined;
+    updateContentBox();
+    const observer = new ResizeObserver(() => updateContentBox());
+    observer.observe(img);
+    img.addEventListener("load", updateContentBox);
+    return () => {
+      observer.disconnect();
+      img.removeEventListener("load", updateContentBox);
+    };
+  }, [url, imageClassName, updateContentBox]);
 
   const clientToNormalized = useCallback((clientX, clientY) => {
-    const el = surfaceRef.current;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
+    const metrics = getImageContentMetrics(imageRef.current);
+    if (!metrics) return null;
     return {
-      x: clamp((clientX - rect.left) / rect.width, 0, 1),
-      y: clamp((clientY - rect.top) / rect.height, 0, 1),
+      x: clamp((clientX - metrics.left) / metrics.width, 0, 1),
+      y: clamp((clientY - metrics.top) / metrics.height, 0, 1),
     };
   }, []);
 
@@ -414,7 +498,7 @@ function ShapeSurface({
 
     for (let i = shapes.length - 1; i >= 0; i -= 1) {
       const shape = shapes[i];
-      if (hitTest(shape, point.x, point.y)) {
+      if (hitTest(shape, point.x, point.y, aspect)) {
         onSelect(shape.id);
         setDrag({
           mode: "move",
@@ -443,7 +527,7 @@ function ShapeSurface({
         mode: "rotate",
         id: selected.id,
         origin: { ...selected },
-        startAngle: Math.atan2(point.y - cy, point.x - cx),
+        startAngle: visualAtan2(point.x, point.y, cx, cy, aspect),
       });
     } else {
       setDrag({
@@ -477,7 +561,7 @@ function ShapeSurface({
 
         if (drag.mode === "rotate") {
           const { cx, cy } = shapeCenter(drag.origin);
-          const angle = Math.atan2(point.y - cy, point.x - cx);
+          const angle = visualAtan2(point.x, point.y, cx, cy, aspect);
           let degrees =
             shapeRotation(drag.origin) +
             ((angle - drag.startAngle) * 180) / Math.PI;
@@ -493,6 +577,7 @@ function ShapeSurface({
           point.x,
           point.y,
           event.shiftKey,
+          aspect,
         );
       }),
     );
@@ -508,8 +593,18 @@ function ShapeSurface({
     }
   }
 
-  const rotatePos = selected ? rotateHandlePosition(selected) : null;
-  const topCenter = selected ? handlePosition(selected, "n") : null;
+  const rotatePos = selected
+    ? rotateHandlePosition(selected, aspect)
+    : null;
+  const topCenter = selected ? handlePosition(selected, "n", aspect) : null;
+  const overlayStyle = {
+    left: contentBox.offsetLeft,
+    top: contentBox.offsetTop,
+    width: contentBox.width,
+    height: contentBox.height,
+  };
+  const viewW = Math.max(1, contentBox.width);
+  const viewH = Math.max(1, contentBox.height);
 
   return (
     <div
@@ -524,54 +619,63 @@ function ShapeSurface({
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imageRef}
         src={url}
         alt={alt}
         draggable={false}
         className={imageClassName}
       />
       <svg
-        className="pointer-events-none absolute inset-0 h-full w-full overflow-visible rounded-xl"
-        viewBox="0 0 1 1"
+        className="pointer-events-none absolute overflow-visible"
+        style={overlayStyle}
+        viewBox={`0 0 ${viewW} ${viewH}`}
         preserveAspectRatio="none"
         aria-hidden="true"
       >
         {shapes.map((shape) => {
           const isSelected = interactive && shape.id === selectedId;
-          const { cx, cy } = shapeCenter(shape);
+          const x = shape.x * viewW;
+          const y = shape.y * viewH;
+          const w = shape.w * viewW;
+          const h = shape.h * viewH;
+          const cx = x + w / 2;
+          const cy = y + h / 2;
           const rotation = shapeRotation(shape);
           const common = {
             fill: "none",
             stroke: SHAPE_STROKE,
             strokeWidth: isSelected ? 3.5 : SHAPE_STROKE_WIDTH,
             vectorEffect: "non-scaling-stroke",
-            transform: rotation ? `rotate(${rotation} ${cx} ${cy})` : undefined,
+            transform: rotation
+              ? `rotate(${rotation} ${cx} ${cy})`
+              : undefined,
           };
           return shape.type === "circle" ? (
             <ellipse
               key={shape.id}
               cx={cx}
               cy={cy}
-              rx={shape.w / 2}
-              ry={shape.h / 2}
+              rx={w / 2}
+              ry={h / 2}
               {...common}
             />
           ) : (
             <rect
               key={shape.id}
-              x={shape.x}
-              y={shape.y}
-              width={shape.w}
-              height={shape.h}
+              x={x}
+              y={y}
+              width={w}
+              height={h}
               {...common}
             />
           );
         })}
         {interactive && selected && rotatePos && topCenter ? (
           <line
-            x1={topCenter.x}
-            y1={topCenter.y}
-            x2={rotatePos.x}
-            y2={rotatePos.y}
+            x1={topCenter.x * viewW}
+            y1={topCenter.y * viewH}
+            x2={rotatePos.x * viewW}
+            y2={rotatePos.y * viewH}
             stroke={SHAPE_STROKE}
             strokeWidth={2}
             vectorEffect="non-scaling-stroke"
@@ -579,10 +683,10 @@ function ShapeSurface({
         ) : null}
       </svg>
 
-      {interactive && selected ? (
-        <div className="pointer-events-none absolute inset-0">
+      {interactive && selected && contentBox.width > 0 ? (
+        <div className="pointer-events-none absolute" style={overlayStyle}>
           {HANDLES.map((handle) => {
-            const pos = handlePosition(selected, handle.id);
+            const pos = handlePosition(selected, handle.id, aspect);
             return (
               <button
                 key={handle.id}

@@ -1,11 +1,10 @@
 import {
-  INSTAGRAM_HEIGHT,
-  INSTAGRAM_WIDTH,
   drawComparisonFrame,
   drawPairedSidesFrame,
   enableHighQuality,
   ensureLabelFont,
   ensureLogo,
+  getOutputCanvasSize,
 } from "@/lib/studioLayout";
 
 export function loadImage(file) {
@@ -58,6 +57,7 @@ async function stitchComparison(
   leftLabel,
   rightLabel,
   overlay = null,
+  format = "square",
 ) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
@@ -66,9 +66,10 @@ async function stitchComparison(
     loadImage(rightFile),
   ]);
 
+  const { width, height } = getOutputCanvasSize(format);
   const canvas = document.createElement("canvas");
-  canvas.width = INSTAGRAM_WIDTH;
-  canvas.height = INSTAGRAM_HEIGHT;
+  canvas.width = width;
+  canvas.height = height;
 
   const ctx = canvas.getContext("2d");
   enableHighQuality(ctx);
@@ -85,8 +86,52 @@ async function stitchComparison(
   return canvas;
 }
 
-/** Before-After Pair posts. Only stitches pairs that have both images. */
-export async function stitchBothPosts(files, overlayOptions = null) {
+/**
+ * Before-After Pair posts from a flat [before, after, before, after, …] list.
+ * Only stitches complete pairs. Returns [{ key, label, canvas }, …].
+ */
+export async function stitchBeforeAfterPairRows(
+  files,
+  overlayOptions = null,
+  format = "square",
+) {
+  const overlay = await resolveOverlay(overlayOptions);
+  const complete = [];
+  for (let i = 0; i + 1 < files.length; i += 2) {
+    const before = files[i];
+    const after = files[i + 1];
+    if (before && after) {
+      complete.push({ before, after, rowIndex: complete.length });
+    }
+  }
+
+  const solo = complete.length === 1;
+  return Promise.all(
+    complete.map(async ({ before, after, rowIndex }) => {
+      const canvas = await stitchComparison(
+        before,
+        after,
+        "before",
+        "after",
+        overlay,
+        format,
+      );
+      const n = rowIndex + 1;
+      return {
+        key: solo ? "any" : `pair-${n}`,
+        label: solo ? "Any" : `Pair ${n}`,
+        canvas,
+      };
+    }),
+  );
+}
+
+/** Legacy Front + Back before/after posts (video / fixed 4-slot layout). */
+export async function stitchBothPosts(
+  files,
+  overlayOptions = null,
+  format = "square",
+) {
   const [beforeFront, beforeBack, afterFront, afterBack] = files;
   const overlay = await resolveOverlay(overlayOptions);
   const tasks = [];
@@ -98,21 +143,33 @@ export async function stitchBothPosts(files, overlayOptions = null) {
         "before",
         "after",
         overlay,
+        format,
       ).then((canvas) => ["front", canvas]),
     );
   }
   if (beforeBack && afterBack) {
     tasks.push(
-      stitchComparison(beforeBack, afterBack, "before", "after", overlay).then(
-        (canvas) => ["back", canvas],
-      ),
+      stitchComparison(
+        beforeBack,
+        afterBack,
+        "before",
+        "after",
+        overlay,
+        format,
+      ).then((canvas) => ["back", canvas]),
     );
   }
   const entries = await Promise.all(tasks);
   return Object.fromEntries(entries);
 }
 
-async function stitchPairedSides(leftFile, rightFile, label, overlay = null) {
+async function stitchPairedSides(
+  leftFile,
+  rightFile,
+  label,
+  overlay = null,
+  format = "square",
+) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
   const [leftImg, rightImg] = await Promise.all([
@@ -120,9 +177,10 @@ async function stitchPairedSides(leftFile, rightFile, label, overlay = null) {
     loadImage(rightFile),
   ]);
 
+  const { width, height } = getOutputCanvasSize(format);
   const canvas = document.createElement("canvas");
-  canvas.width = INSTAGRAM_WIDTH;
-  canvas.height = INSTAGRAM_HEIGHT;
+  canvas.width = width;
+  canvas.height = height;
 
   const ctx = canvas.getContext("2d");
   enableHighQuality(ctx);
@@ -132,20 +190,28 @@ async function stitchPairedSides(leftFile, rightFile, label, overlay = null) {
 }
 
 /** Front-Back Pair posts. Only stitches pairs that have both images. */
-export async function stitchBeforeAfterPosts(files, overlayOptions = null) {
+export async function stitchBeforeAfterPosts(
+  files,
+  overlayOptions = null,
+  format = "square",
+) {
   const [beforeFront, beforeBack, afterFront, afterBack] = files;
   const overlay = await resolveOverlay(overlayOptions);
   const tasks = [];
   if (beforeFront && beforeBack) {
     tasks.push(
-      stitchPairedSides(beforeFront, beforeBack, "before", overlay).then(
-        (canvas) => ["before", canvas],
-      ),
+      stitchPairedSides(
+        beforeFront,
+        beforeBack,
+        "before",
+        overlay,
+        format,
+      ).then((canvas) => ["before", canvas]),
     );
   }
   if (afterFront && afterBack) {
     tasks.push(
-      stitchPairedSides(afterFront, afterBack, "after", overlay).then(
+      stitchPairedSides(afterFront, afterBack, "after", overlay, format).then(
         (canvas) => ["after", canvas],
       ),
     );

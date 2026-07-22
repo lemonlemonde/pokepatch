@@ -5,7 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioMediaBank, {
   BEFORE_AFTER_PAIR_SLOT_GROUPS,
+  beforeAfterPairSlotGroups,
   EMPTY_SLOTS,
+  emptySlotsForPairRows,
   FRONT_BACK_PAIR_SLOT_GROUPS,
 } from "@/components/StudioMediaBank";
 import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
@@ -15,8 +17,8 @@ import StudioAnnotatedPreview, {
 } from "@/components/StudioAnnotatedPreview";
 import {
   canvasToBlob,
+  stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
-  stitchBothPosts,
 } from "@/lib/instagramStitch";
 import { stitchGridPosts } from "@/lib/instagramGridStitch";
 import {
@@ -296,15 +298,29 @@ const PHOTO_GROUP_MODES = [
     id: "before-after-pair",
     label: "Before-After Pair",
     subtitle:
-      "Before & after side-by-side. Fill Front/Any for one post; Back is optional for a second. 1080×1080.",
-    slotGroups: BEFORE_AFTER_PAIR_SLOT_GROUPS,
+      "Before & after side-by-side. Add as many pair rows as you need — each complete pair becomes its own post.",
+    dynamicPairRows: true,
   },
   {
     id: "front-back-pair",
     label: "Front-Back Pair",
     subtitle:
-      "Front & back side-by-side. Fill Before for one post; After is optional for a second. 1080×1080.",
+      "Front & back side-by-side. Fill Before for one post; After is optional for a second.",
     slotGroups: FRONT_BACK_PAIR_SLOT_GROUPS,
+    dynamicPairRows: false,
+  },
+];
+
+const PHOTO_OUTPUT_FORMATS = [
+  {
+    id: "square",
+    label: "1:1 square",
+    sizeHint: "1080×1080",
+  },
+  {
+    id: "reel",
+    label: "9:16 Reels",
+    sizeHint: "1080×1920",
   },
 ];
 
@@ -328,7 +344,7 @@ const STUDIO_OPTIONS = [
     slug: "front-back",
     title: "1×2 formatter",
     description:
-      "Before-After or Front-Back pair posts. One complete pair is enough for a single output. 1080×1080.",
+      "Before-After or Front-Back pair posts. Square (1:1) or Reels (9:16). Before-After supports as many pair rows as you need.",
   },
   {
     id: "grid",
@@ -493,15 +509,22 @@ function MediaFormatter({
   controls = null,
   afterBank = null,
   resetKey = null,
-  slotGroups,
+  slotGroups = BEFORE_AFTER_PAIR_SLOT_GROUPS,
+  dynamicPairRows = false,
   validateFiles = null,
   validateExtra = null,
 }) {
   const [bank, setBank] = useState([]);
-  const [slots, setSlots] = useState(EMPTY_SLOTS);
+  const [slots, setSlots] = useState(() =>
+    dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS,
+  );
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const resolvedSlotGroups = dynamicPairRows
+    ? beforeAfterPairSlotGroups(Math.max(1, Math.floor(slots.length / 2)))
+    : slotGroups;
 
   useEffect(() => {
     return () => {
@@ -518,8 +541,30 @@ function MediaFormatter({
     setError("");
   }, [resetKey]);
 
+  // Resize the slot array when switching between fixed 4-slot and dynamic pair rows.
+  useEffect(() => {
+    setSlots(dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS);
+  }, [dynamicPairRows]);
+
   function getSlotFiles() {
     return slots.map((id) => bank.find((item) => item.id === id)?.file ?? null);
+  }
+
+  function addPairRow() {
+    setSlots((prev) => [...prev, null, null]);
+    setError("");
+  }
+
+  function removePairRow(groupIndex) {
+    setSlots((prev) => {
+      if (prev.length <= 2) return prev;
+      const next = prev.filter(
+        (_, index) =>
+          index !== groupIndex * 2 && index !== groupIndex * 2 + 1,
+      );
+      return next.length >= 2 ? next : emptySlotsForPairRows(1);
+    });
+    setError("");
   }
 
   async function handleGenerate(event) {
@@ -575,7 +620,9 @@ function MediaFormatter({
           slots={slots}
           setSlots={setSlots}
           onError={setError}
-          slotGroups={slotGroups}
+          slotGroups={resolvedSlotGroups}
+          onAddPairRow={dynamicPairRows ? addPairRow : null}
+          onRemovePairRow={dynamicPairRows ? removePairRow : null}
         />
 
         {afterBank}
@@ -606,14 +653,14 @@ function MediaFormatter({
   );
 }
 
-async function canvasOutputsFromPairs(pairs) {
+async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
       const blob = await canvasToBlob(canvas);
       return {
         key,
         label,
-        sizeHint: "1080×1080",
+        sizeHint,
         url: URL.createObjectURL(blob),
         filename: `pokepatch-${key}.png`,
       };
@@ -622,9 +669,8 @@ async function canvasOutputsFromPairs(pairs) {
 }
 
 function validatePhotoPairFiles(files, groupBy) {
-  const [beforeFront, beforeBack, afterFront, afterBack] = files;
-
   if (groupBy === "front-back-pair") {
+    const [beforeFront, beforeBack, afterFront, afterBack] = files;
     const beforeOk = Boolean(beforeFront && beforeBack);
     const afterOk = Boolean(afterFront && afterBack);
     if (!beforeOk && !afterOk) {
@@ -639,23 +685,40 @@ function validatePhotoPairFiles(files, groupBy) {
     return null;
   }
 
-  const frontOk = Boolean(beforeFront && afterFront);
-  const backOk = Boolean(beforeBack && afterBack);
-  if (!frontOk && !backOk) {
-    return "Fill at least one complete pair (Front/Any: before + after, and/or Back: before + after).";
+  // Flat [before, after, …] rows for Before-After Pair.
+  let complete = 0;
+  const rowCount = Math.ceil(files.length / 2);
+  for (let i = 0; i < rowCount; i += 1) {
+    const before = files[i * 2] ?? null;
+    const after = files[i * 2 + 1] ?? null;
+    if (before && after) {
+      complete += 1;
+    } else if (before || after) {
+      return `Pair ${i + 1} needs both Before and After.`;
+    }
   }
-  if ((beforeFront || afterFront) && !frontOk) {
-    return "Front/Any pair needs both Before and After.";
-  }
-  if ((beforeBack || afterBack) && !backOk) {
-    return "Back pair needs both Before and After.";
+  if (!complete) {
+    return "Fill at least one complete before & after pair.";
   }
   return null;
 }
 
-async function generatePhotoOutputs(files, groupBy, overlayOptions = null) {
+async function generatePhotoOutputs(
+  files,
+  groupBy,
+  overlayOptions = null,
+  format = "square",
+) {
+  const sizeHint =
+    PHOTO_OUTPUT_FORMATS.find((entry) => entry.id === format)?.sizeHint ??
+    "1080×1080";
+
   if (groupBy === "front-back-pair") {
-    const canvases = await stitchBeforeAfterPosts(files, overlayOptions);
+    const canvases = await stitchBeforeAfterPosts(
+      files,
+      overlayOptions,
+      format,
+    );
     const pairs = [];
     if (canvases.before) {
       pairs.push({ key: "before", label: "Before", canvas: canvases.before });
@@ -663,24 +726,11 @@ async function generatePhotoOutputs(files, groupBy, overlayOptions = null) {
     if (canvases.after) {
       pairs.push({ key: "after", label: "After", canvas: canvases.after });
     }
-    return canvasOutputsFromPairs(pairs);
+    return canvasOutputsFromPairs(pairs, sizeHint);
   }
 
-  const canvases = await stitchBothPosts(files, overlayOptions);
-  const pairs = [];
-  if (canvases.front) {
-    // Solo Front/Any pair → filename pokepatch-any.png; with Back → front/back.
-    const solo = !canvases.back;
-    pairs.push({
-      key: solo ? "any" : "front",
-      label: solo ? "Any" : "Front",
-      canvas: canvases.front,
-    });
-  }
-  if (canvases.back) {
-    pairs.push({ key: "back", label: "Back", canvas: canvases.back });
-  }
-  return canvasOutputsFromPairs(pairs);
+  const pairs = await stitchBeforeAfterPairRows(files, overlayOptions, format);
+  return canvasOutputsFromPairs(pairs, sizeHint);
 }
 
 async function generateVideoOutputs(files) {
@@ -734,32 +784,77 @@ function GroupModeToggle({ value, onChange }) {
   );
 }
 
+function OutputFormatToggle({ value, onChange }) {
+  return (
+    <div
+      className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+      role="group"
+      aria-label="Output format"
+    >
+      <p className="font-secondary text-sm text-ink/60">Output format</p>
+      <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
+        {PHOTO_OUTPUT_FORMATS.map((format) => {
+          const active = value === format.id;
+          return (
+            <button
+              key={format.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(format.id)}
+              className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
+                active
+                  ? "bg-berry text-night shadow-cozy-sm"
+                  : "text-ink/70 hover:text-ink"
+              }`}
+            >
+              {format.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
+  const [outputFormat, setOutputFormat] = useState("square");
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
   const activeMode =
     PHOTO_GROUP_MODES.find((mode) => mode.id === groupBy) ??
     PHOTO_GROUP_MODES[0];
+  const activeFormat =
+    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
+    PHOTO_OUTPUT_FORMATS[0];
 
   return (
     <MediaFormatter
       mediaType="image"
       title="1×2 formatter"
-      subtitle={activeMode.subtitle}
+      subtitle={`${activeMode.subtitle} Output: ${activeFormat.sizeHint}.`}
       emptySlotMessage="Fill at least one complete pair."
       generateLabel="Generate images"
       busyLabel="Generating…"
       onBack={onBack}
       onGenerate={(files) =>
-        generatePhotoOutputs(files, groupBy, cardMetaToOverlayOptions(cardMeta))
+        generatePhotoOutputs(
+          files,
+          groupBy,
+          cardMetaToOverlayOptions(cardMeta),
+          outputFormat,
+        )
       }
       validateFiles={(files) => validatePhotoPairFiles(files, groupBy)}
       validateExtra={() => validateCardMeta(cardMeta)}
       annotated
-      resetKey={groupBy}
+      resetKey={`${groupBy}:${outputFormat}`}
       slotGroups={activeMode.slotGroups}
+      dynamicPairRows={Boolean(activeMode.dynamicPairRows)}
       controls={
-        <GroupModeToggle value={groupBy} onChange={setGroupBy} />
+        <div className="space-y-3">
+          <GroupModeToggle value={groupBy} onChange={setGroupBy} />
+          <OutputFormatToggle value={outputFormat} onChange={setOutputFormat} />
+        </div>
       }
       afterBank={
         <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
