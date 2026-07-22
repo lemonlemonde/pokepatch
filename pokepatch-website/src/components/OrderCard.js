@@ -504,7 +504,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 order.status
               )}`}
             >
-              {customerOrderStatusLabel(order.status)}
+              {order.queue_position != null
+                ? `#${order.queue_position} in queue`
+                : customerOrderStatusLabel(order.status)}
             </span>
             {lastUpdatedLabel ? (
               <span

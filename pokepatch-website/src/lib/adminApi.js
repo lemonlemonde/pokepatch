@@ -214,6 +214,18 @@ export async function adminListOrders() {
   return (payload.orders ?? []).map(stabilizeOrderSummary);
 }
 
+export async function adminReorderStatusOrders(status, orderedIds) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "column_reorder",
+      status,
+      ordered_ids: orderedIds,
+    },
+  });
+  return payload;
+}
+
 export async function adminGetOrder(orderId) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
@@ -240,10 +252,14 @@ export async function adminSaveOrder(
   return stabilizeOrderDetail(payload.full ?? payload.order);
 }
 
-export async function adminSetStatus(orderId, status) {
+export async function adminSetStatus(orderId, status, queueIndex = null) {
+  const body = { action: "set_status", order_id: orderId, status };
+  if (queueIndex != null && Number.isFinite(Number(queueIndex))) {
+    body.queue_index = Number(queueIndex);
+  }
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
-    body: { action: "set_status", order_id: orderId, status },
+    body,
   });
   return payload.order;
 }

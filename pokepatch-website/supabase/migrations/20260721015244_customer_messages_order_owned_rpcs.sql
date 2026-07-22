@@ -21,7 +21,6 @@ as $$
       )
     );
 $$;
-
 create or replace function public.mark_my_messages_read(p_ids uuid[] default null)
 returns bigint
 language plpgsql

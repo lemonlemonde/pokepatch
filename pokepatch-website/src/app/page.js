@@ -5,6 +5,7 @@ import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
+import QueueCount from "@/components/QueueCount";
 import { marketingServices } from "@/lib/servicePricing";
 
 const steps = [
@@ -103,6 +104,8 @@ export default function Home() {
           Get a Quote
         </Button>
       </section>
+
+      <QueueCount />
 
       <section className="mb-16 animate-fade-up [animation-delay:150ms]">
         <SectionHeading subtitle="Recent before-and-afters from our workshop">

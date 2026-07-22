@@ -289,7 +289,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount"
+      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
   // Quote columns may be missing until the order_quotes migration is applied.
@@ -297,7 +297,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     const retry = await supabase
       .from("orders")
       .select(
-        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at"
+        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority"
       )
       .order("created_at", { ascending: false });
     if (retry.error) throw ordersError;
@@ -307,6 +307,27 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   if (ordersError) throw ordersError;
   if (!orders?.length) return [];
 
+  // 1-based place among status=new, same order as list_queue_orders / get_my_orders.
+  const queuePositionById = new Map<string, number>();
+  const newOrders = [...orders]
+    .filter((o) => o.status === "new")
+    .sort((a, b) => {
+      const ap = a.queue_priority;
+      const bp = b.queue_priority;
+      if (ap == null && bp == null) {
+        /* fall through */
+      } else if (ap == null) return 1;
+      else if (bp == null) return -1;
+      else if (ap !== bp) return Number(ap) - Number(bp);
+      const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
+      const bt = b.created_at ? new Date(b.created_at as string).getTime() : 0;
+      if (at !== bt) return at - bt;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  newOrders.forEach((o, index) => {
+    queuePositionById.set(o.id as string, index + 1);
+  });
+
   const orderIds = orders.map((o) => o.id as string);
   const [
     { data: cards, error: cardsError },
@@ -315,7 +336,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   ] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, order_id")
+      .select("id, order_id, status")
       .in("order_id", orderIds)
       .order("id", { ascending: true }),
     supabase
@@ -329,11 +350,18 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const emailSet = authEmailSet(authUsers);
 
   const countByOrder = new Map<string, number>();
+  const completedCountByOrder = new Map<string, number>();
   const cardOrderById = new Map<string, string>();
   for (const card of cards ?? []) {
     const orderId = card.order_id as string;
     const cardId = card.id as string;
     countByOrder.set(orderId, (countByOrder.get(orderId) ?? 0) + 1);
+    if (card.status === "completed") {
+      completedCountByOrder.set(
+        orderId,
+        (completedCountByOrder.get(orderId) ?? 0) + 1
+      );
+    }
     cardOrderById.set(cardId, orderId);
   }
 
@@ -384,6 +412,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
+      cards_completed: completedCountByOrder.get(orderId) ?? 0,
+      queue_position: queuePositionById.get(orderId) ?? null,
       preview_paths: preview.map((row) => row.path),
       preview_urls: preview.map((row) => row.url),
     };
@@ -861,13 +891,30 @@ Deno.serve(async (req) => {
       if (!orderId || !status) {
         return jsonResponse(req, { ok: false, error: "order_id and status required" }, 400);
       }
-      const { data, error } = await supabase.rpc("update_order", {
-        p_order_id: orderId,
-        p_order: { status },
-      });
-      if (error) throw error;
+      const hasIndex = body.queue_index !== undefined && body.queue_index !== null;
+      const queueIndex = hasIndex ? Number(body.queue_index) : null;
+      if (hasIndex && !Number.isFinite(queueIndex)) {
+        return jsonResponse(req, { ok: false, error: "queue_index must be a number" }, 400);
+      }
+
+      if (hasIndex) {
+        const { error } = await supabase.rpc("move_order_in_status", {
+          p_order_id: orderId,
+          p_status: status,
+          p_queue_index: queueIndex,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.rpc("update_order", {
+          p_order_id: orderId,
+          p_order: { status },
+        });
+        if (error) throw error;
+      }
+
       await bumpOrderUpdatesAvailable(supabase, orderId);
-      return jsonResponse(req, { ok: true, order: data });
+      const order = await fetchOrderGraph(supabase, orderId);
+      return jsonResponse(req, { ok: true, order });
     }
 
     if (action === "delete") {
@@ -991,6 +1038,27 @@ Deno.serve(async (req) => {
         return jsonResponse(req, { ok: false, error: "order not found after save" }, 404);
       }
       return jsonResponse(req, { ok: true, order, full: order });
+    }
+
+    if (action === "column_reorder") {
+      const status = String(body.status ?? "");
+      const orderedIds = Array.isArray(body.ordered_ids)
+        ? body.ordered_ids.map((id: unknown) => String(id ?? "")).filter(Boolean)
+        : null;
+      if (!status || !orderedIds) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "status and ordered_ids required" },
+          400
+        );
+      }
+
+      const { error } = await supabase.rpc("reorder_status_orders", {
+        p_status: status,
+        p_ordered_ids: orderedIds,
+      });
+      if (error) throw error;
+      return jsonResponse(req, { ok: true });
     }
 
     if (action === "gallery_list") {

@@ -14,6 +14,7 @@ import {
   adminListOrders,
   adminLoginWithSession,
   adminLogout,
+  adminReorderStatusOrders,
   adminSaveOrder,
   adminSetStatus,
   adminUploadPhoto,
@@ -32,7 +33,8 @@ import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
-  CLOSED_ORDER_STATUSES,
+  COMPLETED_ORDER_STATUS,
+  CANCELED_ORDER_STATUS,
   CARD_STATUSES,
   groupOrdersByStatus,
   normalizeOrderStatus,
@@ -44,6 +46,7 @@ import {
   cardStatusBadgeClass,
   isClosedOrderStatus,
   filterClosedColumnOrders,
+  isPriorityElevated,
 } from "@/lib/orderStatus";
 import {
   QUOTE_SERVICES,
@@ -221,7 +224,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Drag rows between columns to update status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+      "Drag within a column to reorder, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -257,6 +260,8 @@ const ORDERS_EDIT_META = {
 function tabFromPathname(pathname) {
   const path = pathname?.replace(/\/$/, "") ?? "";
   if (path.endsWith("/admin/orders/all")) return "orders-all";
+  // Queue page removed — kanban owns ordering.
+  if (path.startsWith("/admin/queue")) return "orders";
   const match = ADMIN_TABS.find((entry) =>
     path.startsWith(entry.path.replace(/\/$/, "")),
   );
@@ -570,6 +575,9 @@ function orderToKanbanSummary(order) {
     completed_at: isClosed ? (order.completed_at ?? null) : null,
     status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
+    cards_completed: order.cards_completed ?? null,
+    queue_priority: order.queue_priority ?? null,
+    queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
     preview_paths: Array.isArray(order.preview_paths)
       ? order.preview_paths.filter(Boolean)
@@ -613,6 +621,24 @@ function TrashIcon({ className = "h-5 w-5" }) {
       <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
       <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function GripIcon({ className = "h-4 w-4" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="6" r="1.5" />
+      <circle cx="15" cy="6" r="1.5" />
+      <circle cx="9" cy="12" r="1.5" />
+      <circle cx="15" cy="12" r="1.5" />
+      <circle cx="9" cy="18" r="1.5" />
+      <circle cx="15" cy="18" r="1.5" />
     </svg>
   );
 }
@@ -694,6 +720,8 @@ function KanbanCard({
   onOpen,
   onContextMenu,
   dragging,
+  priorityElevated = false,
+  dragHandleProps = null,
 }) {
   const panelElRef = useRef(null);
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -703,6 +731,8 @@ function KanbanCard({
   const [panelPos, setPanelPos] = useState(null);
 
   const cardCount = order.card_count ?? order.cards?.length ?? 0;
+  const cardsCompleted =
+    order.cards_completed != null ? Number(order.cards_completed) : null;
   const previewUrls = Array.isArray(order.preview_urls)
     ? order.preview_urls.filter(Boolean).slice(0, 1)
     : [];
@@ -712,7 +742,13 @@ function KanbanCard({
   const thumbUrl = previewUrls[0] ?? null;
   const thumbPathForPreview = previewPaths[0] ?? null;
   const hasMore = cardCount > 1 && Boolean(thumbUrl);
-  const metaChip = `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
+  const showCardProgress =
+    order.status === "in_progress" &&
+    cardsCompleted != null &&
+    cardCount > 0;
+  const metaChip = showCardProgress
+    ? `${cardsCompleted}/${cardCount} done · ${deliveryShortLabel(order.delivery_method)}`
+    : `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
 
   const clearTimers = useCallback(() => {
     if (openTimerRef.current) {
@@ -804,6 +840,18 @@ function KanbanCard({
         dragging ? "opacity-50" : ""
       }`}
     >
+      {dragHandleProps ? (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Drag order #${order.display_id}`}
+          title="Drag to reorder"
+          className="flex shrink-0 cursor-grab touch-none items-center justify-center rounded p-0.5 text-ink/35 transition hover:bg-ink/5 hover:text-ink/60 active:cursor-grabbing"
+          {...dragHandleProps}
+        >
+          <GripIcon className="h-4 w-4" />
+        </span>
+      ) : null}
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -823,6 +871,23 @@ function KanbanCard({
         <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
           #{order.display_id}
         </span>
+        {order.queue_position != null && (
+          <span
+            className="shrink-0 rounded-full bg-status-blue/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white"
+            title="Place in queue"
+          >
+            Q#{order.queue_position}
+          </span>
+        )}
+        {priorityElevated ? (
+          <span
+            className="shrink-0 rounded-full bg-berry/90 px-1.5 py-0.5 text-[10px] font-bold text-white"
+            title="Placed ahead of chronological order (#)"
+            aria-label="Priority elevated"
+          >
+            ↑
+          </span>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
           {order.customer_name}
         </span>
@@ -852,61 +917,71 @@ function KanbanCard({
     panelPos &&
     typeof document !== "undefined" &&
     createPortal(
-      <div className="pointer-events-none fixed inset-0 z-[200]">
-        <div
-          ref={panelElRef}
-          role="tooltip"
-          id={`order-inspect-${order.id}`}
-          className="absolute rounded-xl border-2 border-ink/15 bg-cream p-3 shadow-cozy"
-          style={{
-            top: panelPos.top,
-            left: panelPos.left,
-            width: INSPECT_PANEL_WIDTH,
-          }}
-        >
-          <p className="text-sm font-bold tabular-nums text-ink">
-            #{order.display_id}
-          </p>
-          <p className="mt-1 text-sm font-semibold text-ink">
-            {order.customer_name}
-          </p>
-          <div className="mt-1.5">
-            <AccountStatusBadge hasAccount={order.has_account} />
-          </div>
-          <p className="mt-1 text-xs text-ink/60">
-            {cardCount} card{cardCount === 1 ? "" : "s"} ·{" "}
-            {deliveryLabel(order.delivery_method)}
-          </p>
-          <p className="mt-0.5 text-xs text-ink/50">
-            {formatDate(order.created_at)}
-          </p>
-          <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
-            {previewUrls.length === 0 ? (
-              <div className="aspect-[3/4] w-12 rounded-md bg-night/50" />
-            ) : (
-              previewUrls.map((url, index) => {
-                const showMoreOverlay =
-                  hasMore && index === previewUrls.length - 1;
-                return (
-                  <div
-                    key={`${url}-${index}`}
-                    className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md bg-night/50"
-                  >
-                    <KanbanThumbImg
-                      url={url}
-                      storagePath={previewPaths[index] ?? null}
-                      className="h-full w-full object-cover"
-                    />
-                    {showMoreOverlay && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
-                        …
-                      </div>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+      <div
+        ref={panelElRef}
+        role="tooltip"
+        id={`order-inspect-${order.id}`}
+        className="pointer-events-none fixed z-[200] rounded-xl border-2 border-ink/15 bg-cream p-3 shadow-cozy"
+        style={{
+          top: panelPos.top,
+          left: panelPos.left,
+          width: INSPECT_PANEL_WIDTH,
+        }}
+      >
+        <p className="text-sm font-bold tabular-nums text-ink">
+          #{order.display_id}
+          {order.queue_position != null ? (
+            <span className="ml-2 text-xs font-bold text-status-blue">
+              Q#{order.queue_position} in queue
+            </span>
+          ) : null}
+          {priorityElevated ? (
+            <span className="ml-2 text-xs font-bold text-berry">
+              ↑ ahead of #
+            </span>
+          ) : null}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-ink">
+          {order.customer_name}
+        </p>
+        <div className="mt-1.5">
+          <AccountStatusBadge hasAccount={order.has_account} />
+        </div>
+        <p className="mt-1 text-xs text-ink/60">
+          {showCardProgress
+            ? `${cardsCompleted}/${cardCount} cards complete`
+            : `${cardCount} card${cardCount === 1 ? "" : "s"}`}{" "}
+          · {deliveryLabel(order.delivery_method)}
+        </p>
+        <p className="mt-0.5 text-xs text-ink/50">
+          {formatDate(order.created_at)}
+        </p>
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
+          {previewUrls.length === 0 ? (
+            <div className="aspect-[3/4] w-12 rounded-md bg-night/50" />
+          ) : (
+            previewUrls.map((url, index) => {
+              const showMoreOverlay =
+                hasMore && index === previewUrls.length - 1;
+              return (
+                <div
+                  key={`${url}-${index}`}
+                  className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md bg-night/50"
+                >
+                  <KanbanThumbImg
+                    url={url}
+                    storagePath={previewPaths[index] ?? null}
+                    className="h-full w-full object-cover"
+                  />
+                  {showMoreOverlay && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
+                      …
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>,
       document.body
@@ -1127,16 +1202,30 @@ function OrdersAllList({ orders, onOpenOrder }) {
   );
 }
 
+/** Insert index from pointer Y vs each card's vertical midpoint in the column list. */
+function resolveListDropIndex(clientY, listEl) {
+  const rows = listEl?.querySelectorAll?.("[data-kanban-row]");
+  if (!rows?.length) return 0;
+  for (let i = 0; i < rows.length; i++) {
+    const rect = rows[i].getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) return i;
+  }
+  return rows.length;
+}
+
 function KanbanBoard({
   orders,
   onOpenOrder,
-  onStatusChange,
+  onPlaceOrder,
   onRequestDelete,
   onViewAllOrders,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { statusId, index }
+  const dropTargetRef = useRef(null);
   const [trashArmed, setTrashArmed] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  const [canceledExpanded, setCanceledExpanded] = useState(false);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
   const revenue = useMemo(
@@ -1153,6 +1242,20 @@ function KanbanBoard({
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
   );
+
+  function setDropTargetStable(next) {
+    const prev = dropTargetRef.current;
+    if (
+      prev &&
+      next &&
+      prev.statusId === next.statusId &&
+      prev.index === next.index
+    ) {
+      return;
+    }
+    dropTargetRef.current = next;
+    setDropTarget(next);
+  }
 
   useEffect(() => {
     if (!contextMenu) return undefined;
@@ -1179,27 +1282,34 @@ function KanbanBoard({
     event.dataTransfer.setData("text/plain", orderId);
     event.dataTransfer.effectAllowed = "move";
     setDragOrderId(orderId);
+    dropTargetRef.current = null;
+    setDropTarget(null);
     setContextMenu(null);
   }
 
   function handleDragEnd() {
     setDragOrderId(null);
+    dropTargetRef.current = null;
+    setDropTarget(null);
     setTrashArmed(false);
   }
 
-  async function handleDrop(event, status) {
-    event.preventDefault();
-    const orderId = event.dataTransfer.getData("text/plain");
+  async function commitDrop(statusId, index) {
+    const orderId = dragOrderId;
     setDragOrderId(null);
+    dropTargetRef.current = null;
+    setDropTarget(null);
     setTrashArmed(false);
-    if (!orderId) return;
-    await onStatusChange(orderId, status);
+    if (!orderId || index == null) return;
+    await onPlaceOrder(orderId, statusId, index);
   }
 
   function handleTrashDragOver(event) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
     setTrashArmed(true);
+    dropTargetRef.current = null;
+    setDropTarget(null);
   }
 
   function handleTrashDragLeave(event) {
@@ -1214,6 +1324,8 @@ function KanbanBoard({
       orders.find((entry) => entry.id === orderId) ??
       (dragOrderId === orderId ? dragOrder : null);
     setDragOrderId(null);
+    dropTargetRef.current = null;
+    setDropTarget(null);
     setTrashArmed(false);
     if (!order) return;
     onRequestDelete([order]);
@@ -1227,7 +1339,7 @@ function KanbanBoard({
     });
   }
 
-  function renderColumn(status, { closed }) {
+  function renderColumn(status, { closed, dock = false, expanded = true, onToggleExpand }) {
     const rawOrders = columns[status.id] ?? [];
     const columnOrders = closed
       ? filterClosedColumnOrders(rawOrders)
@@ -1235,70 +1347,184 @@ function KanbanBoard({
     const hiddenCount = closed
       ? Math.max(0, rawOrders.length - columnOrders.length)
       : 0;
+    const dropIndex =
+      dropTarget?.statusId === status.id ? dropTarget.index : null;
+    const showList = !dock || expanded;
+    const dockDropHighlight =
+      dock &&
+      dragOrderId &&
+      dropTarget?.statusId === status.id;
+
+    function updateColumnDropTarget(event, listEl) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      if (!dragOrderId) return;
+      const index =
+        !showList || columnOrders.length === 0
+          ? 0
+          : resolveListDropIndex(event.clientY, listEl);
+      setDropTargetStable({ statusId: status.id, index });
+    }
+
+    function dropOnColumn(event, listEl) {
+      event.preventDefault();
+      const fromRef =
+        dropTargetRef.current?.statusId === status.id
+          ? dropTargetRef.current.index
+          : null;
+      const index =
+        fromRef != null
+          ? fromRef
+          : !showList || columnOrders.length === 0
+            ? 0
+            : resolveListDropIndex(event.clientY, listEl);
+      void commitDrop(status.id, index);
+    }
 
     return (
       <section
         key={status.id}
-        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 border-ink/10 bg-night/40 p-3"
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => handleDrop(event, status.id)}
+        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-night/40 p-3 ${
+          dock
+            ? dockDropHighlight
+              ? "border-berry/60 bg-berry/10"
+              : "border-ink/10"
+            : "h-full border-ink/10"
+        }`}
+        onDragOver={(event) => {
+          if (showList && columnOrders.length > 0) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          if (!dragOrderId) return;
+          setDropTargetStable({ statusId: status.id, index: 0 });
+        }}
+        onDrop={(event) => {
+          if (showList && columnOrders.length > 0) return;
+          event.preventDefault();
+          void commitDrop(status.id, 0);
+        }}
       >
-        <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
+        <div
+          className={`flex shrink-0 flex-nowrap items-center justify-between gap-2 ${
+            showList ? "mb-3" : ""
+          }`}
+        >
           <h2
             className={`min-w-0 truncate text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
               status.id
             )}`}
           >
             {status.label}
-            {rawOrders.length > 0 && (
+            {(dock ? columnOrders.length : rawOrders.length) > 0 && (
               <span className="ml-1.5 text-sm font-semibold text-ink/40">
-                {rawOrders.length}
+                {dock ? columnOrders.length : rawOrders.length}
               </span>
             )}
           </h2>
-          {closed && hiddenCount > 0 && (
-            <button
-              type="button"
-              onClick={onViewAllOrders}
-              className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
-            >
-              Show all
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-2">
+            {dock && (
+              <button
+                type="button"
+                onClick={() => onToggleExpand?.(!expanded)}
+                className="whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
+              >
+                {expanded
+                  ? "See less"
+                  : `See more (${columnOrders.length})`}
+              </button>
+            )}
+            {closed && !dock && hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={onViewAllOrders}
+                className="whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
+              >
+                Show all
+              </button>
+            )}
+          </div>
         </div>
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
-          {columnOrders.map((order) => (
-            <div
-              key={order.id}
-              draggable
-              onDragStart={(event) => handleDragStart(event, order.id)}
-              onDragEnd={handleDragEnd}
-            >
-              <KanbanCard
-                order={order}
-                onOpen={onOpenOrder}
-                onContextMenu={handleCardContextMenu}
-                dragging={dragOrderId === order.id}
-              />
-            </div>
-          ))}
-          {columnOrders.length === 0 && (
-            <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
-              {closed
-                ? `Drop to mark ${status.label.toLowerCase()}`
-                : "Drop orders here"}
-            </p>
-          )}
-          {closed && hiddenCount > 0 && (
-            <button
-              type="button"
-              onClick={onViewAllOrders}
-              className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
-            >
-              +{hiddenCount} older than 7 days — show all
-            </button>
-          )}
-        </div>
+        {showList && (
+          <div
+            data-kanban-scroll
+            className={`min-h-0 space-y-2 overflow-y-auto pr-0.5 ${
+              dock ? "max-h-48 flex-none" : "flex-1"
+            }`}
+            onDragOver={(event) =>
+              updateColumnDropTarget(event, event.currentTarget)
+            }
+            onDrop={(event) => dropOnColumn(event, event.currentTarget)}
+          >
+            {columnOrders.map((order, index) => (
+              <div key={order.id} data-kanban-row className="relative">
+                {dropIndex === index &&
+                  dragOrderId &&
+                  dragOrderId !== order.id && (
+                    <div
+                      className={`pointer-events-none absolute right-0 left-0 z-10 h-1 rounded-full bg-berry ${
+                        index === 0 ? "top-0" : "-top-1.5"
+                      }`}
+                      aria-hidden="true"
+                    />
+                  )}
+                <KanbanCard
+                  order={order}
+                  onOpen={onOpenOrder}
+                  onContextMenu={handleCardContextMenu}
+                  dragging={dragOrderId === order.id}
+                  priorityElevated={isPriorityElevated(order, columnOrders)}
+                  dragHandleProps={{
+                    draggable: true,
+                    onDragStart: (event) => {
+                      event.stopPropagation();
+                      const row = event.currentTarget.closest("[data-kanban-row]");
+                      if (row) {
+                        try {
+                          event.dataTransfer.setDragImage(row, 16, 16);
+                        } catch {
+                          /* setDragImage can throw in some browsers */
+                        }
+                      }
+                      handleDragStart(event, order.id);
+                    },
+                    onDragEnd: handleDragEnd,
+                  }}
+                />
+              </div>
+            ))}
+            {dropIndex === columnOrders.length &&
+              dragOrderId &&
+              columnOrders.length > 0 && (
+                <div
+                  className="pointer-events-none h-1 rounded-full bg-berry"
+                  aria-hidden="true"
+                />
+              )}
+            {columnOrders.length === 0 && (
+              <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
+                {closed
+                  ? `Drop to mark ${status.label.toLowerCase()}`
+                  : "Drop orders here"}
+              </p>
+            )}
+            {closed && hiddenCount > 0 && (
+              <button
+                type="button"
+                onClick={onViewAllOrders}
+                className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
+              >
+                +{hiddenCount} older than 7 days — show all
+              </button>
+            )}
+          </div>
+        )}
+        {dock && !expanded && (
+          <p className="mt-1 text-xs text-ink/45">
+            {dragOrderId
+              ? "Drop here to cancel"
+              : "Collapsed — drop orders here or see more"}
+          </p>
+        )}
       </section>
     );
   }
@@ -1319,47 +1545,57 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
-        {CLOSED_ORDER_STATUSES.map((status) =>
-          renderColumn(status, { closed: true })
-        )}
+        {COMPLETED_ORDER_STATUS
+          ? renderColumn(COMPLETED_ORDER_STATUS, { closed: true })
+          : null}
       </div>
 
-      <div
-        role="region"
-        aria-label="Delete order drop zone"
-        onDragOver={handleTrashDragOver}
-        onDragLeave={handleTrashDragLeave}
-        onDrop={handleTrashDrop}
-        className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
-          dragOrderId
-            ? trashArmed
-              ? "border-berry bg-berry/20 text-berry shadow-cozy"
-              : "border-berry/50 bg-berry/10 text-berry/90"
-            : "border-ink/15 bg-night/30 text-ink/45"
-        }`}
-      >
-        <TrashIcon
-          className={`h-6 w-6 transition ${
-            trashArmed ? "scale-110" : ""
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {CANCELED_ORDER_STATUS
+          ? renderColumn(CANCELED_ORDER_STATUS, {
+              closed: true,
+              dock: true,
+              expanded: canceledExpanded,
+              onToggleExpand: setCanceledExpanded,
+            })
+          : null}
+        <div
+          role="region"
+          aria-label="Delete order drop zone"
+          onDragOver={handleTrashDragOver}
+          onDragLeave={handleTrashDragLeave}
+          onDrop={handleTrashDrop}
+          className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
+            dragOrderId
+              ? trashArmed
+                ? "border-berry bg-berry/20 text-berry shadow-cozy"
+                : "border-berry/50 bg-berry/10 text-berry/90"
+              : "border-ink/15 bg-night/30 text-ink/45"
           }`}
-        />
-        <div className="text-center sm:text-left">
-          <p className="text-sm font-semibold">
-            {trashArmed
-              ? `Release to delete #${dragOrder?.display_id ?? ""}`
-              : dragOrderId
-                ? "Drop here to delete"
-                : "Recycling bin"}
-          </p>
-          <p className="mt-0.5 text-xs opacity-80">
-            {dragOrderId
-              ? "You’ll confirm before anything is deleted"
-              : "Right-click or drag here — always confirms first"}
-          </p>
+        >
+          <TrashIcon
+            className={`h-6 w-6 transition ${
+              trashArmed ? "scale-110" : ""
+            }`}
+          />
+          <div className="text-center sm:text-left">
+            <p className="text-sm font-semibold">
+              {trashArmed
+                ? `Release to delete #${dragOrder?.display_id ?? ""}`
+                : dragOrderId
+                  ? "Drop here to delete"
+                  : "Recycling bin"}
+            </p>
+            <p className="mt-0.5 text-xs opacity-80">
+              {dragOrderId
+                ? "You’ll confirm before anything is deleted"
+                : "Right-click or drag here — always confirms first"}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -2841,28 +3077,85 @@ export default function AdminApp() {
     router.replace("/");
   }
 
-  async function handleStatusChange(orderId, status) {
+  async function handlePlaceOrder(orderId, status, queueIndex) {
     const previous = orders;
     const nextStatus = normalizeOrderStatus(status);
-    setOrders((current) =>
-      current.map((order) => {
-        if (order.id !== orderId) return order;
-        const wasClosed = isClosedOrderStatus(order.status);
-        const nextClosed = isClosedOrderStatus(nextStatus);
-        return {
-          ...order,
-          status: nextStatus,
-          status_changed_at: new Date().toISOString(),
-          completed_at: nextClosed
-            ? wasClosed
-              ? order.completed_at
-              : new Date().toISOString()
-            : null,
-        };
-      })
-    );
+    const moving = previous.find((order) => order.id === orderId);
+    if (!moving) return;
+
+    const fromStatus = normalizeOrderStatus(moving.status);
+    const sameColumn = fromStatus === nextStatus;
+
+    // Adjust insert index when dragging downward in the same column
+    let insertAt = Number(queueIndex);
+    if (!Number.isFinite(insertAt)) insertAt = Number.MAX_SAFE_INTEGER;
+    if (sameColumn) {
+      const col = previous
+        .filter((o) => normalizeOrderStatus(o.status) === fromStatus)
+        .sort((a, b) => {
+          const ap = a.queue_priority;
+          const bp = b.queue_priority;
+          if (ap == null && bp != null) return 1;
+          if (ap != null && bp == null) return -1;
+          if (ap != null && bp != null && ap !== bp) return Number(ap) - Number(bp);
+          return String(a.id).localeCompare(String(b.id));
+        });
+      const fromIndex = col.findIndex((o) => o.id === orderId);
+      if (fromIndex >= 0 && fromIndex < insertAt) insertAt -= 1;
+      if (fromIndex === insertAt) return;
+    }
+
+    setOrders((current) => {
+      const without = current.filter((order) => order.id !== orderId);
+      const byStatus = groupOrdersByStatus(without);
+      const target = [...(byStatus[nextStatus] ?? [])];
+      const wasClosed = isClosedOrderStatus(moving.status);
+      const nextClosed = isClosedOrderStatus(nextStatus);
+      const placed = {
+        ...moving,
+        status: nextStatus,
+        status_changed_at: new Date().toISOString(),
+        completed_at: nextClosed
+          ? wasClosed
+            ? moving.completed_at
+            : new Date().toISOString()
+          : null,
+      };
+      const at = Math.max(0, Math.min(insertAt, target.length));
+      target.splice(at, 0, placed);
+      const nextPriorities = new Map(
+        target.map((order, index) => [order.id, index])
+      );
+      return current.map((order) => {
+        if (order.id === orderId) {
+          return { ...placed, queue_priority: nextPriorities.get(orderId) };
+        }
+        if (normalizeOrderStatus(order.status) === nextStatus) {
+          const rank = nextPriorities.get(order.id);
+          return rank == null ? order : { ...order, queue_priority: rank };
+        }
+        return order;
+      });
+    });
+
     try {
-      await adminSetStatus(orderId, nextStatus);
+      if (sameColumn) {
+        const without = previous.filter((o) => o.id !== orderId);
+        const target = groupOrdersByStatus(without)[nextStatus] ?? [];
+        const at = Math.max(0, Math.min(insertAt, target.length));
+        const orderedIds = [
+          ...target.slice(0, at).map((o) => o.id),
+          orderId,
+          ...target.slice(at).map((o) => o.id),
+        ];
+        await adminReorderStatusOrders(nextStatus, orderedIds);
+      } else {
+        await adminSetStatus(orderId, nextStatus, insertAt);
+      }
+
+      const refreshed = await adminListOrders();
+      setOrders(refreshed.map(orderToKanbanSummary));
+
       if (selectedOrderId === orderId) {
         setDraft((current) => {
           if (!current) return current;
@@ -2873,7 +3166,7 @@ export default function AdminApp() {
       }
     } catch (err) {
       setOrders(previous);
-      setListError(err.message || "Could not update status.");
+      setListError(err.message || "Could not update order place.");
     }
   }
 
@@ -3179,7 +3472,7 @@ export default function AdminApp() {
               <KanbanBoard
                 orders={orders}
                 onOpenOrder={openOrder}
-                onStatusChange={handleStatusChange}
+                onPlaceOrder={handlePlaceOrder}
                 onRequestDelete={handleRequestDelete}
                 onViewAllOrders={() => router.push("/admin/orders/all/")}
               />
