@@ -23,27 +23,22 @@ function formatUpdatedAt(date) {
   }
 }
 
-function Stat({ value, label }) {
+function StatTile({ value, label, dotClass, pulse }) {
   return (
-    <span className="inline-flex items-baseline">
-      <span className="tabular-nums text-xl text-berry sm:text-2xl md:text-3xl">
+    <div className="pixel-border flex flex-col items-center rounded-2xl border-blush/10 bg-cream/60 px-3 py-4 sm:py-5">
+      <span className="font-secondary tabular-nums text-3xl font-bold text-ink sm:text-4xl">
         {value}
       </span>
-      <span className="ml-2.5 text-base font-semibold text-ink/70 sm:ml-3 sm:text-lg">
+      <span className="mt-1.5 flex flex-wrap items-center justify-center gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-ink/60 sm:text-sm">
+        <span
+          className={`inline-block h-2 w-2 shrink-0 rounded-full ${dotClass} ${
+            pulse ? "animate-pulse" : ""
+          }`}
+          aria-hidden="true"
+        />
         {label}
       </span>
-    </span>
-  );
-}
-
-function Dot() {
-  return (
-    <span
-      className="mx-6 inline-block text-4xl font-bold leading-none text-ink/40 sm:mx-8 sm:text-5xl"
-      aria-hidden="true"
-    >
-      ·
-    </span>
+    </div>
   );
 }
 
@@ -100,20 +95,19 @@ export default function QueueCount() {
       <SectionHeading subtitle="Cards currently in the workshop">
         Live Queue
       </SectionHeading>
-      <div className="pixel-border mx-auto max-w-xl rounded-2xl border-blush/10 bg-cream/60 px-4 py-4 text-center font-secondary sm:px-5 sm:py-5">
-        <p className="font-bold text-ink">
-          <span className="tabular-nums text-3xl text-berry sm:text-4xl">
-            {completed}
-          </span>
-          <span className="ml-2.5 text-lg font-semibold text-ink/70 sm:ml-3 sm:text-xl">
-            restored
-          </span>
-        </p>
-        <p className="mt-3 flex flex-wrap items-center justify-center font-bold text-ink sm:mt-3.5">
-          <Stat value={todo} label="in queue" />
-          <Dot />
-          <Stat value={inProgress} label="in progress" />
-        </p>
+      <div className="mx-auto grid max-w-xl grid-cols-3 gap-3 sm:gap-4">
+        <StatTile value={todo} label="In Queue" dotClass="bg-status-yellow" />
+        <StatTile
+          value={inProgress}
+          label="In Progress"
+          dotClass="bg-status-blue"
+          pulse
+        />
+        <StatTile
+          value={completed}
+          label="Restored"
+          dotClass="bg-status-green"
+        />
       </div>
       {updatedLabel ? (
         <p
