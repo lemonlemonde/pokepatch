@@ -141,23 +141,16 @@ export async function adminListOrders() {
   return payload.orders ?? [];
 }
 
-export async function adminListQueueOrders() {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: { action: "queue_list" },
-  });
-  return payload.orders ?? [];
-}
-
-export async function adminReorderQueueOrders(orderedIds) {
+export async function adminReorderStatusOrders(status, orderedIds) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body: {
-      action: "queue_reorder",
+      action: "column_reorder",
+      status,
       ordered_ids: orderedIds,
     },
   });
-  return payload.orders ?? [];
+  return payload;
 }
 
 export async function adminGetOrder(orderId) {
@@ -186,10 +179,14 @@ export async function adminSaveOrder(
   return payload.full ?? payload.order;
 }
 
-export async function adminSetStatus(orderId, status) {
+export async function adminSetStatus(orderId, status, queueIndex = null) {
+  const body = { action: "set_status", order_id: orderId, status };
+  if (queueIndex != null && Number.isFinite(Number(queueIndex))) {
+    body.queue_index = Number(queueIndex);
+  }
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
-    body: { action: "set_status", order_id: orderId, status },
+    body,
   });
   return payload.order;
 }

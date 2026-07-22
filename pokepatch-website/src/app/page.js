@@ -100,11 +100,12 @@ export default function Home() {
         <p className="mt-2 text-sm text-ink/70 md:text-base">
           Bay Area Drop-Off • Nationwide Mail-In
         </p>
-        <QueueCount />
         <Button href="/contact" className="mt-6">
           Get a Quote
         </Button>
       </section>
+
+      <QueueCount />
 
       <section className="mb-16 animate-fade-up [animation-delay:150ms]">
         <SectionHeading subtitle="Recent before-and-afters from our workshop">

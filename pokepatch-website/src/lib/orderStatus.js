@@ -62,9 +62,19 @@ export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "new" || status.id === "in_progress"
 );
 
-/** Closed statuses shown as kanban columns (last week only by default). */
+/** Closed statuses (completed + canceled). */
 export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "completed" || status.id === "canceled"
+);
+
+/** Completed column on the main kanban row. */
+export const COMPLETED_ORDER_STATUS = ORDER_STATUSES.find(
+  (status) => status.id === "completed"
+);
+
+/** Canceled column docks next to the recycling bin. */
+export const CANCELED_ORDER_STATUS = ORDER_STATUSES.find(
+  (status) => status.id === "canceled"
 );
 
 export const DEFAULT_ORDER_STATUS = "new";
@@ -171,27 +181,21 @@ function timeMs(value, fallback) {
 }
 
 /**
- * Column sort: oldest at top, newest at bottom.
- * - To do: when submitted (created_at)
- * - In progress: when moved into in progress (status_changed_at)
- * - Completed / canceled: when closed (completed_at)
+ * Column sort: relative queue_priority within the status (lower = higher).
+ * Ties broken by created_at, then id.
  */
-export function sortOrdersForStatusColumn(orders, statusId) {
-  const status = normalizeOrderStatus(statusId);
+export function sortOrdersForStatusColumn(orders, _statusId) {
   return [...(orders ?? [])].sort((a, b) => {
-    if (status === "new") {
-      return timeMs(a.created_at) - timeMs(b.created_at);
+    const ap = a.queue_priority;
+    const bp = b.queue_priority;
+    if (ap == null && bp != null) return 1;
+    if (ap != null && bp == null) return -1;
+    if (ap != null && bp != null && ap !== bp) {
+      return Number(ap) - Number(bp);
     }
-    if (status === "in_progress") {
-      return (
-        timeMs(a.status_changed_at, a.created_at) -
-        timeMs(b.status_changed_at, b.created_at)
-      );
-    }
-    return (
-      timeMs(a.completed_at, a.status_changed_at || a.created_at) -
-      timeMs(b.completed_at, b.status_changed_at || b.created_at)
-    );
+    const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
+    if (byCreated !== 0) return byCreated;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
   });
 }
 
@@ -211,4 +215,23 @@ export function groupOrdersByStatus(orders) {
     );
   }
   return grouped;
+}
+
+/**
+ * True when an order sits higher in `columnOrders` (already priority-sorted)
+ * than it would under chronological order by display_id (lower number = older).
+ */
+export function isPriorityElevated(order, columnOrders) {
+  const list = columnOrders ?? [];
+  if (!order?.id || list.length < 2) return false;
+  const actual = list.findIndex((entry) => entry.id === order.id);
+  if (actual < 0) return false;
+  const chronological = [...list].sort((a, b) => {
+    const aId = Number(a.display_id) || 0;
+    const bId = Number(b.display_id) || 0;
+    if (aId !== bId) return aId - bId;
+    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
+  });
+  const expected = chronological.findIndex((entry) => entry.id === order.id);
+  return expected >= 0 && actual < expected;
 }

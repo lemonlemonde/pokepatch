@@ -371,13 +371,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 order.status
               )}`}
             >
-              {customerOrderStatusLabel(order.status)}
+              {order.queue_position != null
+                ? `#${order.queue_position} in queue`
+                : customerOrderStatusLabel(order.status)}
             </span>
-            {order.queue_position != null && (
-              <span className="inline-flex items-center rounded-full bg-night/30 px-2 py-0.5 text-[11px] font-bold tabular-nums text-ink/75">
-                #{order.queue_position} in queue
-              </span>
-            )}
             {lastUpdatedLabel ? (
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${

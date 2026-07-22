@@ -38,10 +38,10 @@
 -- RPCs:
 --   create_order(p_payload jsonb)  — public form; EXECUTE granted to anon
 --   update_order(...)              — admin only; EXECUTE granted to service_role
---   get_queue_card_count()         — public; { todo, in_progress } card counts by cards.status
---   orders.queue_priority          — lower = sooner; admin Queue page reorders
+--   get_queue_card_count()         — public; { todo, in_progress, completed } by cards.status
+--   orders.queue_priority          — relative rank within status (0..n-1 per column)
 --   get_my_orders.queue_position   — 1-based place among status=new
---   list_queue_orders() / reorder_queue_orders(uuid[]) — service_role; admin queue page
+--   reorder_status_orders(status, ids[]) / move_order_in_status(...) — service_role; kanban
 --
 -- Webhook: orders INSERT → notify edge function (new path).
 --
