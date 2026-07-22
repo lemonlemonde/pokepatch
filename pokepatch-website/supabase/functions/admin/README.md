@@ -115,7 +115,7 @@ JSON POST (requires `X-Admin-Token`):
 | `set_status` | `order_id`, `status` |
 | `delete` | `order_id` or `order_ids` (array) |
 | `delete_photo` | `order_id`, `image_id` — removes an admin-uploaded card photo (not `customer`) |
-| `save` | `order_id`, `order`, `contacts`, `cards` |
+| `save` | `order_id`, `order`, `contacts`, `cards` — cards list is authoritative; omitted cards (and their photos) are deleted |
 | `gallery_list` | — |
 | `gallery_get` | `id` |
 | `gallery_create` | `title`, optional `set_name`, `damage_tags`, `published` |

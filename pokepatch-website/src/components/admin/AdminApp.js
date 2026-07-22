@@ -1771,6 +1771,19 @@ function OrderEditor({
     });
   }
 
+  function removeCard(cardIndex) {
+    const removed = draft.cards[cardIndex];
+    if (!removed) return;
+    const cardId = String(removed.id);
+    const cards = draft.cards.filter((_, i) => i !== cardIndex);
+    const quote_items = (draft.quote_items ?? []).filter(
+      (item) => !quoteItemBelongsToCard(item, removed, draft.cards)
+    );
+    const quote_card_hv = { ...(draft.quote_card_hv ?? {}) };
+    delete quote_card_hv[cardId];
+    updateDraft({ cards, quote_items, quote_card_hv });
+  }
+
   function addCardPendingFiles(cardIndex, fileList) {
     const card = draft.cards[cardIndex];
     if (!card) return;
@@ -2450,13 +2463,24 @@ function OrderEditor({
                     : undefined
                 }
                 action={
-                  <button
-                    type="button"
-                    onClick={() => addQuoteItem(card)}
-                    className="text-sm font-semibold text-berry transition hover:underline"
-                  >
-                    Add service
-                  </button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => addQuoteItem(card)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
+                    >
+                      Add service
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeCard(cardIndex)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                    >
+                      Remove card
+                    </button>
+                  </div>
                 }
               >
                 <div className="grid gap-4 sm:grid-cols-2">

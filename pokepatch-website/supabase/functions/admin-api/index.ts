@@ -1023,6 +1023,35 @@ Deno.serve(async (req) => {
         orderPatch.quote_items = body.quote_items;
       }
 
+      let omittedPhotoPaths: string[] = [];
+      if (cards) {
+        const keptIds = new Set(
+          cards
+            .map((card: { id?: unknown }) => String(card?.id ?? ""))
+            .filter(Boolean)
+        );
+        const { data: existingCards, error: existingCardsError } = await supabase
+          .from("cards")
+          .select("id")
+          .eq("order_id", orderId);
+        if (existingCardsError) throw existingCardsError;
+
+        const omittedIds = (existingCards ?? [])
+          .map((card) => card.id as string)
+          .filter((id) => !keptIds.has(String(id)));
+
+        if (omittedIds.length > 0) {
+          const { data: images, error: imagesError } = await supabase
+            .from("card_images")
+            .select("storage_path")
+            .in("card_id", omittedIds);
+          if (imagesError) throw imagesError;
+          omittedPhotoPaths = (images ?? [])
+            .map((image) => image.storage_path as string)
+            .filter(Boolean);
+        }
+      }
+
       const { error: rpcError } = await supabase.rpc("update_order", {
         p_order_id: orderId,
         p_order: orderPatch,
@@ -1030,6 +1059,15 @@ Deno.serve(async (req) => {
         p_cards: cards,
       });
       if (rpcError) throw rpcError;
+
+      if (omittedPhotoPaths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from(BUCKET)
+          .remove(pathsWithSiblings(omittedPhotoPaths));
+        if (storageError) {
+          console.error("omitted card photo cleanup failed", storageError);
+        }
+      }
 
       await bumpOrderUpdatesAvailable(supabase, orderId);
 

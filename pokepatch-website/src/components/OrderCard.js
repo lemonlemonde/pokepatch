@@ -873,7 +873,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 Photos · {photoCount}
                               </p>
                               <div className="grid grid-cols-3 gap-2">
-                                {card.images.map((image, imageIndex) => (
+                                {(card.images || []).map((image, imageIndex) => (
                                   <Photo
                                     key={image.id}
                                     url={thumbUrls[image.storage_path]}
