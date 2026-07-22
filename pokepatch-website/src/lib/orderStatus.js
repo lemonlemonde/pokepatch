@@ -1,4 +1,5 @@
 export const ORDER_STATUSES = [
+  { id: "on_hold", label: "On hold" },
   { id: "new", label: "To do", customerLabel: "In queue" },
   { id: "in_progress", label: "In progress" },
   { id: "completed", label: "Completed" },
@@ -59,7 +60,10 @@ export function cardStatusBadgeClass(statusId) {
 
 /** Statuses shown on the admin board by default. */
 export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
-  (status) => status.id === "new" || status.id === "in_progress"
+  (status) =>
+    status.id === "on_hold" ||
+    status.id === "new" ||
+    status.id === "in_progress"
 );
 
 /** Closed statuses (completed + canceled). */
@@ -121,9 +125,11 @@ export function isClosedOrderStatus(statusId) {
   return status === "completed" || status === "canceled";
 }
 
-/** Blue = not started, yellow = in progress, green = done, muted = canceled. */
+/** Blue = not started, peach = on hold, yellow = in progress, green = done, muted = canceled. */
 export function orderStatusBadgeClass(statusId) {
   switch (normalizeOrderStatus(statusId)) {
+    case "on_hold":
+      return "bg-peach text-night";
     case "in_progress":
       return "bg-status-yellow text-night";
     case "completed":
@@ -138,6 +144,8 @@ export function orderStatusBadgeClass(statusId) {
 
 export function orderStatusHeadingClass(statusId) {
   switch (normalizeOrderStatus(statusId)) {
+    case "on_hold":
+      return "text-peach";
     case "in_progress":
       return "text-status-yellow";
     case "completed":
