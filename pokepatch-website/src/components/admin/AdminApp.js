@@ -625,24 +625,6 @@ function TrashIcon({ className = "h-5 w-5" }) {
   );
 }
 
-function GripIcon({ className = "h-4 w-4" }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden="true"
-    >
-      <circle cx="9" cy="6" r="1.5" />
-      <circle cx="15" cy="6" r="1.5" />
-      <circle cx="9" cy="12" r="1.5" />
-      <circle cx="15" cy="12" r="1.5" />
-      <circle cx="9" cy="18" r="1.5" />
-      <circle cx="15" cy="18" r="1.5" />
-    </svg>
-  );
-}
-
 function ChevronDownIcon({ className = "h-4 w-4" }) {
   return (
     <svg
@@ -721,7 +703,6 @@ function KanbanCard({
   onContextMenu,
   dragging,
   priorityElevated = false,
-  dragHandleProps = null,
 }) {
   const panelElRef = useRef(null);
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -836,22 +817,10 @@ function KanbanCard({
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={scheduleClose}
-      className={`relative flex w-full items-center gap-2 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 ${
+      className={`relative flex w-full cursor-grab items-center gap-2 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
         dragging ? "opacity-50" : ""
       }`}
     >
-      {dragHandleProps ? (
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label={`Drag order #${order.display_id}`}
-          title="Drag to reorder"
-          className="flex shrink-0 cursor-grab touch-none items-center justify-center rounded p-0.5 text-ink/35 transition hover:bg-ink/5 hover:text-ink/60 active:cursor-grabbing"
-          {...dragHandleProps}
-        >
-          <GripIcon className="h-4 w-4" />
-        </span>
-      ) : null}
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -871,14 +840,6 @@ function KanbanCard({
         <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
           #{order.display_id}
         </span>
-        {order.queue_position != null && (
-          <span
-            className="shrink-0 rounded-full bg-status-blue/90 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white"
-            title="Place in queue"
-          >
-            Q#{order.queue_position}
-          </span>
-        )}
         {priorityElevated ? (
           <span
             className="shrink-0 rounded-full bg-berry/90 px-1.5 py-0.5 text-[10px] font-bold text-white"
@@ -930,11 +891,6 @@ function KanbanCard({
       >
         <p className="text-sm font-bold tabular-nums text-ink">
           #{order.display_id}
-          {order.queue_position != null ? (
-            <span className="ml-2 text-xs font-bold text-status-blue">
-              Q#{order.queue_position} in queue
-            </span>
-          ) : null}
           {priorityElevated ? (
             <span className="ml-2 text-xs font-bold text-berry">
               ↑ ahead of #
@@ -1233,6 +1189,7 @@ function KanbanBoard({
       completed: sumOrderAmounts(columns.completed),
       pipeline: sumOrderAmounts([
         ...(columns.new ?? []),
+        ...(columns.on_hold ?? []),
         ...(columns.in_progress ?? []),
       ]),
     }),
@@ -1404,46 +1361,56 @@ function KanbanBoard({
           void commitDrop(status.id, 0);
         }}
       >
-        <div
-          className={`flex shrink-0 flex-nowrap items-center justify-between gap-2 ${
-            showList ? "mb-3" : ""
-          }`}
-        >
-          <h2
-            className={`min-w-0 truncate text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
-              status.id
-            )}`}
+        {dock ? (
+          <button
+            type="button"
+            onClick={() => onToggleExpand?.(!expanded)}
+            aria-expanded={expanded}
+            className={`flex w-full shrink-0 flex-nowrap items-center justify-between gap-2 rounded-lg text-left transition hover:bg-ink/5 ${
+              showList ? "mb-3" : ""
+            }`}
           >
-            {status.label}
-            {(dock ? columnOrders.length : rawOrders.length) > 0 && (
-              <span className="ml-1.5 text-sm font-semibold text-ink/40">
-                {dock ? columnOrders.length : rawOrders.length}
-              </span>
-            )}
-          </h2>
-          <div className="flex shrink-0 items-center gap-2">
-            {dock && (
-              <button
-                type="button"
-                onClick={() => onToggleExpand?.(!expanded)}
-                className="whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
-              >
-                {expanded
-                  ? "See less"
-                  : `See more (${columnOrders.length})`}
-              </button>
-            )}
-            {closed && !dock && hiddenCount > 0 && (
+            <h2
+              className={`min-w-0 truncate text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+                status.id
+              )}`}
+            >
+              {status.label}
+              {columnOrders.length > 0 && (
+                <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                  {columnOrders.length}
+                </span>
+              )}
+            </h2>
+            <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink/60">
+              {expanded ? "See less" : `See more (${columnOrders.length})`}
+            </span>
+          </button>
+        ) : (
+          <div className="mb-3 flex shrink-0 flex-nowrap items-center justify-between gap-2">
+            <h2
+              className={`min-w-0 truncate text-base font-bold leading-none sm:text-lg ${orderStatusHeadingClass(
+                status.id
+              )}`}
+            >
+              {status.label}
+              {rawOrders.length > 0 && (
+                <span className="ml-1.5 text-sm font-semibold text-ink/40">
+                  {rawOrders.length}
+                </span>
+              )}
+            </h2>
+            {closed && hiddenCount > 0 && (
               <button
                 type="button"
                 onClick={onViewAllOrders}
-                className="whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
+                className="shrink-0 whitespace-nowrap text-xs font-semibold text-ink/60 underline-offset-2 hover:text-ink hover:underline"
               >
                 Show all
               </button>
             )}
           </div>
-        </div>
+        )}
         {showList && (
           <div
             data-kanban-scroll
@@ -1456,7 +1423,14 @@ function KanbanBoard({
             onDrop={(event) => dropOnColumn(event, event.currentTarget)}
           >
             {columnOrders.map((order, index) => (
-              <div key={order.id} data-kanban-row className="relative">
+              <div
+                key={order.id}
+                data-kanban-row
+                className="relative"
+                draggable
+                onDragStart={(event) => handleDragStart(event, order.id)}
+                onDragEnd={handleDragEnd}
+              >
                 {dropIndex === index &&
                   dragOrderId &&
                   dragOrderId !== order.id && (
@@ -1473,22 +1447,6 @@ function KanbanBoard({
                   onContextMenu={handleCardContextMenu}
                   dragging={dragOrderId === order.id}
                   priorityElevated={isPriorityElevated(order, columnOrders)}
-                  dragHandleProps={{
-                    draggable: true,
-                    onDragStart: (event) => {
-                      event.stopPropagation();
-                      const row = event.currentTarget.closest("[data-kanban-row]");
-                      if (row) {
-                        try {
-                          event.dataTransfer.setDragImage(row, 16, 16);
-                        } catch {
-                          /* setDragImage can throw in some browsers */
-                        }
-                      }
-                      handleDragStart(event, order.id);
-                    },
-                    onDragEnd: handleDragEnd,
-                  }}
                 />
               </div>
             ))}
@@ -1545,7 +1503,7 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
