@@ -13,8 +13,13 @@ import {
   adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
 } from "@/lib/adminApi";
-import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative } from "@/lib/gallery";
-import { compressImageForUpload } from "@/lib/imageCompression";
+import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative, galleryPosterPublicUrl, galleryThumbPublicUrl } from "@/lib/gallery";
+import {
+  compressImageForUpload,
+  makeThumbForUpload,
+  makeVideoPosterForUpload,
+  GALLERY_THUMB_MAX_DIMENSION,
+} from "@/lib/imageCompression";
 
 function fieldClassName() {
   return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
@@ -143,17 +148,22 @@ function SideUpload({
           />
         ) : previewUrl ? (
           kind === "video" ? (
-            <video
-              src={previewUrl}
-              className="h-full w-full object-cover"
-              muted
-              playsInline
-              controls
-            />
+            galleryPosterPublicUrl(previewUrl) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={galleryPosterPublicUrl(previewUrl)}
+                alt={label}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-night/40 text-xs text-ink/50">
+                Video (poster pending)
+              </div>
+            )
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={previewUrl}
+              src={galleryThumbPublicUrl(previewUrl) || previewUrl}
               alt={label}
               className="h-full w-full object-cover"
             />
@@ -294,8 +304,31 @@ export default function GalleryManager() {
         if (!file) continue;
         const [pairId, side] = key.split(":");
         if (!pairId || (side !== "before" && side !== "after")) continue;
-        const uploadFile = await compressImageForUpload(file);
-        item = await adminUploadGalleryPairSide(pairId, side, uploadFile);
+
+        if (file.type?.startsWith("video/")) {
+          const { file: poster, error: posterError } =
+            await makeVideoPosterForUpload(file);
+          if (posterError || !poster) {
+            throw new Error(
+              posterError || "Couldn't capture a poster from this video."
+            );
+          }
+          item = await adminUploadGalleryPairSide(pairId, side, file, {
+            poster,
+          });
+        } else {
+          const { file: uploadFile, error: compressError } =
+            await compressImageForUpload(file);
+          if (compressError || !uploadFile) {
+            throw new Error(compressError || "Couldn't process this image.");
+          }
+          const { file: thumb } = await makeThumbForUpload(uploadFile, {
+            maxDimension: GALLERY_THUMB_MAX_DIMENSION,
+          });
+          item = await adminUploadGalleryPairSide(pairId, side, uploadFile, {
+            thumb,
+          });
+        }
       }
 
       // Persist any edited pair captions for still-existing pairs.
@@ -751,8 +784,16 @@ export default function GalleryManager() {
                   {item.pairs?.[0]?.urls?.before && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={item.pairs[0].urls.before}
+                      src={
+                        (item.pairs[0].media_kind === "video" ||
+                        item.pairs[0].mediaKind === "video"
+                          ? galleryPosterPublicUrl(item.pairs[0].urls.before)
+                          : galleryThumbPublicUrl(item.pairs[0].urls.before)) ||
+                        item.pairs[0].urls.before
+                      }
                       alt=""
+                      loading="lazy"
+                      decoding="async"
                       className="h-12 w-9 rounded object-cover"
                     />
                   )}

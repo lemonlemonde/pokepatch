@@ -21,7 +21,8 @@ import {
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
-import { compressImageForUpload } from "@/lib/imageCompression";
+import { compressImageForUpload, makeThumbForUpload, thumbPath } from "@/lib/imageCompression";
+import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import OrderSendUpdatePanel, {
@@ -67,8 +68,7 @@ import {
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 
-const MAX_ADMIN_PHOTO_MB = 50;
-const MAX_ADMIN_PHOTO_BYTES = MAX_ADMIN_PHOTO_MB * 1024 * 1024;
+const MAX_ADMIN_PHOTOS_PER_CARD = 20;
 
 function newClientId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -526,7 +526,9 @@ function previewUrlsFromOrder(order) {
   for (const card of order.cards ?? []) {
     for (const image of card.images ?? []) {
       if (image.image_type !== "customer") continue;
-      if (image.signed_url) urls.push(image.signed_url);
+      if (image.signed_thumb_url || image.signed_url) {
+        urls.push(image.signed_thumb_url || image.signed_url);
+      }
       if (urls.length >= 4) return urls;
     }
   }
@@ -577,6 +579,9 @@ function orderToKanbanSummary(order) {
     queue_priority: order.queue_priority ?? null,
     queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
+    preview_paths: Array.isArray(order.preview_paths)
+      ? order.preview_paths.filter(Boolean)
+      : [],
     quote_total: orderAmount(order),
   };
 }
@@ -678,6 +683,38 @@ function clampInspectPosition(clientX, clientY, panelHeight = INSPECT_PANEL_HEIG
   };
 }
 
+function KanbanThumbImg({ url, storagePath, className }) {
+  const [src, setSrc] = useState(url);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setSrc(url);
+    setFailed(false);
+  }, [url]);
+
+  if (!src || failed) {
+    return <div className={`bg-night/50 ${className ?? ""}`} />;
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className={className}
+      draggable={false}
+      onError={() => {
+        if (storagePath) {
+          forgetSignedUrl("card-photos", thumbPath(storagePath));
+        }
+        setFailed(true);
+      }}
+    />
+  );
+}
+
 function KanbanCard({
   order,
   onOpen,
@@ -697,10 +734,14 @@ function KanbanCard({
   const cardsCompleted =
     order.cards_completed != null ? Number(order.cards_completed) : null;
   const previewUrls = Array.isArray(order.preview_urls)
-    ? order.preview_urls.filter(Boolean).slice(0, 4)
+    ? order.preview_urls.filter(Boolean).slice(0, 1)
+    : [];
+  const previewPaths = Array.isArray(order.preview_paths)
+    ? order.preview_paths
     : [];
   const thumbUrl = previewUrls[0] ?? null;
-  const hasMore = cardCount > previewUrls.length && previewUrls.length > 0;
+  const thumbPathForPreview = previewPaths[0] ?? null;
+  const hasMore = cardCount > 1 && Boolean(thumbUrl);
   const showCardProgress =
     order.status === "in_progress" &&
     cardsCompleted != null &&
@@ -855,11 +896,10 @@ function KanbanCard({
         </span>
         <span className="relative aspect-[3/4] w-7 shrink-0 overflow-hidden rounded bg-night/50">
           {thumbUrl ? (
-            <img
-              src={thumbUrl}
-              alt=""
+            <KanbanThumbImg
+              url={thumbUrl}
+              storagePath={thumbPathForPreview}
               className="h-full w-full object-cover"
-              draggable={false}
             />
           ) : null}
           {cardCount > 1 && (
@@ -928,11 +968,10 @@ function KanbanCard({
                   key={`${url}-${index}`}
                   className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-md bg-night/50"
                 >
-                  <img
-                    src={url}
-                    alt=""
+                  <KanbanThumbImg
+                    url={url}
+                    storagePath={previewPaths[index] ?? null}
                     className="h-full w-full object-cover"
-                    draggable={false}
                   />
                   {showMoreOverlay && (
                     <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-xs font-bold text-cream">
@@ -964,12 +1003,16 @@ function filenameFromStoragePath(path) {
 function savedPhotoItems(images) {
   return (images ?? []).map((image) => {
     const label = filenameFromStoragePath(image.storage_path);
+    const full = image.signed_url ?? "";
+    const thumb = image.signed_thumb_url || full;
     return {
       id: image.id ?? image.storage_path,
-      src: image.signed_url ?? "",
+      storagePath: image.storage_path ?? null,
+      src: thumb,
+      fullSrc: full,
       alt: label,
       label,
-      href: image.signed_url ?? undefined,
+      href: full || undefined,
       removeAriaLabel: `Remove ${label}`,
     };
   });
@@ -1773,17 +1816,18 @@ function OrderEditor({
   function addCardPendingFiles(cardIndex, fileList) {
     const card = draft.cards[cardIndex];
     if (!card) return;
-    const incoming = copyFileList(fileList).filter(
-      (file) =>
-        file.type?.startsWith("image/") && file.size <= MAX_ADMIN_PHOTO_BYTES
+    const incoming = copyFileList(fileList).filter((file) =>
+      file.type?.startsWith("image/")
     );
     if (incoming.length === 0) return;
 
+    const nextPending = [
+      ...(card.pending_files ?? []),
+      ...incoming.map((file) => ({ id: newClientId(), file })),
+    ].slice(0, MAX_ADMIN_PHOTOS_PER_CARD);
+
     updateCard(cardIndex, {
-      pending_files: [
-        ...(card.pending_files ?? []),
-        ...incoming.map((file) => ({ id: newClientId(), file })),
-      ],
+      pending_files: nextPending,
     });
   }
 
@@ -2847,7 +2891,7 @@ export default function AdminApp() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
   const pathTab = tabFromPathname(pathname);
   const searchEditId = searchParams.get("edit");
   // Static export can no-op same-path query clears via router.push. Dismiss the
@@ -3023,9 +3067,14 @@ export default function AdminApp() {
 
   async function handleLogout() {
     await adminLogout();
-    setAuthed(false);
     setOrders([]);
     clearEditor();
+    try {
+      await signOut();
+    } catch {
+      // Admin token is already cleared; still leave the page.
+    }
+    router.replace("/");
   }
 
   async function handlePlaceOrder(orderId, status, queueIndex) {
@@ -3216,12 +3265,18 @@ export default function AdminApp() {
 
       for (const { cardId, files } of pendingUploads) {
         for (const entry of files) {
-          const uploadFile = await compressImageForUpload(entry.file);
+          const { file: uploadFile, error: compressError } =
+            await compressImageForUpload(entry.file);
+          if (compressError || !uploadFile) {
+            throw new Error(compressError || "Couldn't process this image.");
+          }
+          const { file: thumb } = await makeThumbForUpload(uploadFile);
           await adminUploadPhoto(
             selectedOrderId,
             cardId,
             "admin",
-            uploadFile
+            uploadFile,
+            { thumb }
           );
         }
       }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { thumbPath } from "@/lib/imageCompression";
 import {
   customerOrderStatusLabel,
   customerCardStatusLabel,
@@ -15,25 +16,57 @@ import {
   unpackQuoteCardHv,
 } from "@/lib/servicePricing";
 import QuoteReceipt from "@/components/QuoteReceipt";
+import MediaLightbox from "@/components/MediaLightbox";
+import {
+  forgetSignedUrl,
+  getCachedSignedUrls,
+} from "@/lib/signedUrlCache";
 
-const SIGNED_URL_EXPIRES_IN = 60 * 60; // 1 hour
+const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24; // 24h — reuse same token for CDN/browser cache
+const CARD_PHOTOS_BUCKET = "card-photos";
 
 const LABEL_CLS =
   "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/60";
 
 // card-photos is a private bucket, so we mint short-lived signed URLs. RLS
 // ensures a customer can only sign photos that belong to their own orders.
-async function signPaths(paths) {
+// Prefer .thumb.webp siblings for list UI; fall back to the full object.
+// Reuse cached signed URLs (same token) so Smart CDN + browser cache can hit.
+async function signPaths(paths, { preferThumb = false } = {}) {
   const unique = [...new Set((paths || []).filter(Boolean))];
   if (!supabase || unique.length === 0) return {};
-  const { data, error } = await supabase.storage
-    .from("card-photos")
-    .createSignedUrls(unique, SIGNED_URL_EXPIRES_IN);
-  if (error || !data) return {};
+
+  const requestPaths = preferThumb ? unique.map((p) => thumbPath(p)) : unique;
+  const signedByRequestPath = await getCachedSignedUrls(
+    supabase,
+    CARD_PHOTOS_BUCKET,
+    requestPaths,
+    SIGNED_URL_EXPIRES_IN
+  );
+
   const map = {};
-  for (const item of data) {
-    if (item.path && item.signedUrl) map[item.path] = item.signedUrl;
+  const missingOriginals = [];
+  for (let i = 0; i < unique.length; i += 1) {
+    const original = unique[i];
+    const requestPath = requestPaths[i];
+    const url = signedByRequestPath[requestPath];
+    if (url) {
+      map[original] = url;
+    } else if (preferThumb) {
+      missingOriginals.push(original);
+    }
   }
+
+  if (missingOriginals.length > 0) {
+    const fallback = await getCachedSignedUrls(
+      supabase,
+      CARD_PHOTOS_BUCKET,
+      missingOriginals,
+      SIGNED_URL_EXPIRES_IN
+    );
+    Object.assign(map, fallback);
+  }
+
   return map;
 }
 
@@ -147,17 +180,47 @@ function Chevron({ open }) {
   );
 }
 
-function Photo({ url, alt, badge }) {
+function Photo({ url, alt, badge, onOpen, onThumbError }) {
+  const [src, setSrc] = useState(url);
+  const [failedThumb, setFailedThumb] = useState(false);
+
+  useEffect(() => {
+    setSrc(url);
+    setFailedThumb(false);
+  }, [url]);
+
   return (
     <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-ink/10 bg-night/40">
-      {url ? (
-        <img src={url} alt={alt} className="h-full w-full object-cover" />
+      {src ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          disabled={!onOpen}
+          className="block h-full w-full cursor-zoom-in disabled:cursor-default"
+          aria-label={`Enlarge ${alt}`}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover"
+            onError={() => {
+              if (failedThumb || !onThumbError) return;
+              setFailedThumb(true);
+              onThumbError().then((fullUrl) => {
+                if (fullUrl) setSrc(fullUrl);
+              });
+            }}
+          />
+        </button>
       ) : (
         <div className="h-full w-full animate-pulse bg-ink/5" />
       )}
       {badge && (
         <span
-          className={`absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${badge.cls}`}
+          className={`pointer-events-none absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${badge.cls}`}
         >
           {badge.label}
         </span>
@@ -191,8 +254,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [expandedCardId, setExpandedCardId] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { cardId, index }
   const [previewUrls, setPreviewUrls] = useState({});
-  const [imageUrls, setImageUrls] = useState({});
+  // Grid / card chips: thumbs only. Full URLs load on lightbox open and are cached.
+  const [thumbUrls, setThumbUrls] = useState({});
+  const [fullUrls, setFullUrls] = useState({});
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
@@ -258,12 +324,19 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       setUpdatesOpen(false);
       setExpandedMessageId(null);
       setHighlightedMessageIds(new Set());
+      setLightbox(null);
     }
   }, [isExpanded]);
 
   useEffect(() => {
+    setLightbox(null);
+  }, [expandedCardId]);
+
+  useEffect(() => {
     let active = true;
-    signPaths(previewPaths).then((map) => {
+    // List strip: one thumb only.
+    const paths = previewPaths.slice(0, 1);
+    signPaths(paths, { preferThumb: true }).then((map) => {
       if (active) setPreviewUrls(map);
     });
     return () => {
@@ -278,13 +351,48 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     const paths = (orderDetails.cards || []).flatMap((card) =>
       (card.images || []).map((image) => image.storage_path)
     );
-    signPaths(paths).then((map) => {
-      if (active) setImageUrls(map);
+    // Expanded grids / card chips: thumbs only (fallback to full if sibling missing).
+    signPaths(paths, { preferThumb: true }).then((map) => {
+      if (active) setThumbUrls(map);
     });
     return () => {
       active = false;
     };
   }, [orderDetails]);
+
+  // Full-size URLs only when lightbox opens; cache across navigations.
+  useEffect(() => {
+    if (!lightbox || !orderDetails) return undefined;
+    const card = (orderDetails.cards || []).find(
+      (row) => row.id === lightbox.cardId
+    );
+    const path = card?.images?.[lightbox.index]?.storage_path;
+    if (!path) return undefined;
+    let active = true;
+    signPaths([path], { preferThumb: false }).then((map) => {
+      if (!active || !map[path]) return;
+      setFullUrls((prev) => (prev[path] ? prev : { ...prev, ...map }));
+    });
+    return () => {
+      active = false;
+    };
+  }, [lightbox, orderDetails]);
+
+  async function resolveFullAfterBadThumb(storagePath) {
+    if (!storagePath) return null;
+    if (fullUrls[storagePath]) return fullUrls[storagePath];
+    // Drop phantom thumb URL so we don't keep serving a 404 token.
+    forgetSignedUrl(CARD_PHOTOS_BUCKET, thumbPath(storagePath));
+    const map = await signPaths([storagePath], { preferThumb: false });
+    const full = map[storagePath] ?? null;
+    if (full) {
+      setFullUrls((prev) =>
+        prev[storagePath] ? prev : { ...prev, [storagePath]: full }
+      );
+      setThumbUrls((prev) => ({ ...prev, [storagePath]: full }));
+    }
+    return full;
+  }
 
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
@@ -297,8 +405,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     lastUpdatedAt &&
     new Date(lastUpdatedAt).getTime() === new Date(order.created_at).getTime();
   const activityChipLabel = isFirstActivityOnly ? "Placed" : "Updated";
-  const imageCount = order.image_count ?? previewPaths.length;
-  const hasMore = imageCount > 4;
   const delivery = orderDetails
     ? deliveryLabel(orderDetails.delivery_method)
     : null;
@@ -314,6 +420,33 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         unpackQuoteCardHv(orderDetails.quote_bulk_counts)
       )
     : [];
+
+  const lightboxCard =
+    lightbox && orderDetails
+      ? (orderDetails.cards || []).find((card) => card.id === lightbox.cardId)
+      : null;
+  const lightboxImages = lightboxCard?.images || [];
+  const lightboxImage = lightboxImages[lightbox?.index] ?? null;
+  const lightboxPath = lightboxImage?.storage_path ?? null;
+  const lightboxUrl = lightboxPath
+    ? fullUrls[lightboxPath] || thumbUrls[lightboxPath] || null
+    : null;
+  const lightboxBadge = lightboxImage
+    ? imageBadge(lightboxImage.image_type, { showUpdateBadge: hasUpdates })
+    : null;
+  const lightboxMedia =
+    lightboxUrl && lightboxImage
+      ? {
+          type: "image",
+          src: lightboxUrl,
+          alt: `${lightboxCard.card_name} - ${lightboxImage.image_type}`,
+          label:
+            lightboxBadge?.label ||
+            lightboxImage.image_type?.replaceAll("_", " ") ||
+            "Photo",
+          sectionTitle: lightboxCard.card_name,
+        }
+      : null;
 
   async function handleOpenUpdates() {
     const nextOpen = !updatesOpen;
@@ -411,31 +544,36 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
           {previewPaths.length === 0 ? (
             <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
           ) : (
-            previewPaths.slice(0, 4).map((path, index) => {
+            (() => {
+              const path = previewPaths[0];
               const url = previewUrls[path];
-              const showMore = hasMore && index === 3;
               return (
-                <div
-                  key={path || index}
-                  className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50"
-                >
+                <div className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50">
                   {url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={url}
-                      alt={`Order #${order.display_id} card ${index + 1}`}
+                      alt={`Order #${order.display_id} preview`}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
+                      onError={() => {
+                        resolveFullAfterBadThumb(path).then((full) => {
+                          if (full) {
+                            setPreviewUrls((prev) => ({
+                              ...prev,
+                              [path]: full,
+                            }));
+                          }
+                        });
+                      }}
                     />
                   ) : (
                     <div className="h-full w-full animate-pulse bg-ink/5" />
                   )}
-                  {showMore && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-night/70 text-sm font-bold text-cream backdrop-blur-[1px]">
-                      …
-                    </div>
-                  )}
                 </div>
               );
-            })
+            })()
           )}
         </div>
 
@@ -651,7 +789,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   {orderDetails.cards.map((card) => {
                     const isCardOpen = expandedCardId === card.id;
                     const cardThumbUrl =
-                      imageUrls[card.images?.[0]?.storage_path];
+                      thumbUrls[card.images?.[0]?.storage_path];
                     const photoCount = card.images?.length || 0;
                     return (
                       <div
@@ -672,10 +810,15 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         >
                           <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/50">
                             {cardThumbUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
                               <img
                                 src={cardThumbUrl}
                                 alt={`${card.card_name} preview`}
                                 className="h-full w-full object-cover"
+                                onError={() => {
+                                  const path = card.images?.[0]?.storage_path;
+                                  if (path) resolveFullAfterBadThumb(path);
+                                }}
                               />
                             ) : (
                               <div className="h-full w-full animate-pulse bg-ink/5" />
@@ -730,14 +873,28 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 Photos · {photoCount}
                               </p>
                               <div className="grid grid-cols-3 gap-2">
-                                {card.images.map((image) => (
+                                {card.images.map((image, imageIndex) => (
                                   <Photo
                                     key={image.id}
-                                    url={imageUrls[image.storage_path]}
+                                    url={thumbUrls[image.storage_path]}
                                     alt={`${card.card_name} - ${image.image_type}`}
                                     badge={imageBadge(image.image_type, {
                                       showUpdateBadge: hasUpdates,
                                     })}
+                                    onOpen={
+                                      thumbUrls[image.storage_path]
+                                        ? () =>
+                                            setLightbox({
+                                              cardId: card.id,
+                                              index: imageIndex,
+                                            })
+                                        : undefined
+                                    }
+                                    onThumbError={() =>
+                                      resolveFullAfterBadThumb(
+                                        image.storage_path
+                                      )
+                                    }
                                   />
                                 ))}
                               </div>
@@ -753,6 +910,37 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
           )}
         </div>
       )}
+      {lightboxMedia ? (
+        <MediaLightbox
+          media={lightboxMedia}
+          onClose={() => setLightbox(null)}
+          onPrevious={() =>
+            setLightbox((current) =>
+              !current || current.index <= 0
+                ? current
+                : { ...current, index: current.index - 1 }
+            )
+          }
+          onNext={() =>
+            setLightbox((current) => {
+              if (!current) return current;
+              const card = (orderDetails?.cards || []).find(
+                (row) => row.id === current.cardId
+              );
+              const count = card?.images?.length ?? 0;
+              return current.index >= count - 1
+                ? current
+                : { ...current, index: current.index + 1 };
+            })
+          }
+          hasPrevious={Boolean(lightbox && lightbox.index > 0)}
+          hasNext={Boolean(
+            lightbox && lightbox.index < lightboxImages.length - 1
+          )}
+          position={(lightbox?.index ?? 0) + 1}
+          total={lightboxImages.length}
+        />
+      ) : null}
     </div>
   );
 }

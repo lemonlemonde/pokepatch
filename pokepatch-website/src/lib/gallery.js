@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { posterPath, thumbPath } from "@/lib/imageCompression";
 
 /** Canonical damage tag bank for gallery cards. */
 export const DAMAGE_TAGS = [
@@ -72,26 +73,48 @@ function publicUrlForPath(path) {
   return data?.publicUrl ?? null;
 }
 
-const STORAGE_PUBLIC_MARKER = "/storage/v1/object/public/";
+/**
+ * Public URL for a gallery still's list/thumbnail sibling (.thumb.webp).
+ * Falls back to the full object URL when path is missing or local/static.
+ */
+export function galleryThumbPublicUrl(pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== "string") return null;
+  if (pathOrUrl.startsWith("/") || pathOrUrl.startsWith("blob:")) {
+    return pathOrUrl;
+  }
+  if (pathOrUrl.startsWith("http")) {
+    // Already a full URL — prefer sibling .thumb.webp when it's a Storage object URL.
+    const marker = "/storage/v1/object/public/gallery/";
+    const idx = pathOrUrl.indexOf(marker);
+    if (idx === -1) return pathOrUrl;
+    const objectPath = pathOrUrl.slice(idx + marker.length).split("?")[0];
+    return publicUrlForPath(thumbPath(decodeURIComponent(objectPath))) || pathOrUrl;
+  }
+  return publicUrlForPath(thumbPath(pathOrUrl)) || publicUrlForPath(pathOrUrl);
+}
 
 /**
- * Return a width-constrained variant of a Supabase Storage image URL using the
- * built-in image transformation endpoint. Non-storage URLs (e.g. local static
- * fallbacks) and empty widths are returned unchanged.
+ * Public URL for a gallery video poster sibling (.poster.webp).
  */
-export function galleryImageUrl(src, { width, quality = 70 } = {}) {
-  if (!src || typeof src !== "string" || !width) return src;
-  const markerIndex = src.indexOf(STORAGE_PUBLIC_MARKER);
-  if (markerIndex === -1) return src;
-  const rendered = src.replace(
-    STORAGE_PUBLIC_MARKER,
-    "/storage/v1/render/image/public/"
-  );
-  const separator = rendered.includes("?") ? "&" : "?";
-  // resize=contain scales proportionally by width. Without it, Supabase
-  // defaults to a cover crop against the original height, producing a
-  // center-cropped vertical strip (i.e. a "zoomed in" image).
-  return `${rendered}${separator}width=${width}&resize=contain&quality=${quality}`;
+export function galleryPosterPublicUrl(pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== "string") return null;
+  if (pathOrUrl.startsWith("/") || pathOrUrl.startsWith("blob:")) {
+    // Local/static fallbacks have no Storage poster sibling.
+    return null;
+  }
+  if (pathOrUrl.startsWith("http")) {
+    const marker = "/storage/v1/object/public/gallery/";
+    const idx = pathOrUrl.indexOf(marker);
+    if (idx === -1) return null;
+    const objectPath = pathOrUrl.slice(idx + marker.length).split("?")[0];
+    return publicUrlForPath(posterPath(decodeURIComponent(objectPath)));
+  }
+  return publicUrlForPath(posterPath(pathOrUrl));
+}
+
+/** @deprecated No Image Transformations — use galleryThumbPublicUrl / stored thumbs. */
+export function galleryImageUrl(src) {
+  return src;
 }
 
 function detectMediaKind(path) {

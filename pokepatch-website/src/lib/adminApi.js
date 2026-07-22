@@ -1,4 +1,77 @@
+import { thumbPath } from "@/lib/imageCompression";
+import { reuseOrRememberSignedUrl } from "@/lib/signedUrlCache";
+
 const TOKEN_KEY = "pokepatch-admin-token";
+
+/** Matches admin-api SIGNED_URL_EXPIRES_IN so we keep the same token warm. */
+const ADMIN_SIGNED_TTL_SEC = 60 * 60 * 24 * 365;
+const CARD_PHOTOS_BUCKET = "card-photos";
+
+function stabilizeUrl(storagePath, freshUrl) {
+  return reuseOrRememberSignedUrl(
+    CARD_PHOTOS_BUCKET,
+    storagePath,
+    freshUrl,
+    ADMIN_SIGNED_TTL_SEC
+  );
+}
+
+/** Keep the same signed tokens across list/get refreshes (CDN + browser cache). */
+function stabilizeOrderSummary(order) {
+  if (!order) return order;
+  const paths = Array.isArray(order.preview_paths) ? order.preview_paths : null;
+  const urls = Array.isArray(order.preview_urls) ? order.preview_urls : null;
+  if (!paths?.length || !urls?.length) return order;
+
+  const preview_urls = paths
+    .map((path, i) => {
+      const fresh = urls[i];
+      if (!path || !fresh) return null;
+      // List previews are prefer-thumb signed.
+      return stabilizeUrl(thumbPath(path), fresh);
+    })
+    .filter(Boolean);
+
+  return { ...order, preview_urls };
+}
+
+function stabilizeOrderDetail(order) {
+  if (!order) return order;
+  const base = stabilizeOrderSummary(order);
+  if (!Array.isArray(base.cards)) return base;
+
+  return {
+    ...base,
+    cards: base.cards.map((card) => ({
+      ...card,
+      images: (card.images ?? []).map((image) => {
+        const path = image.storage_path;
+        if (!path) return image;
+        let signed_url = image.signed_url ?? null;
+        let signed_thumb_url = image.signed_thumb_url ?? null;
+        if (signed_url) {
+          signed_url = stabilizeUrl(path, signed_url);
+        }
+        if (signed_thumb_url) {
+          signed_thumb_url = stabilizeUrl(thumbPath(path), signed_thumb_url);
+        }
+        return { ...image, signed_url, signed_thumb_url };
+      }),
+    })),
+  };
+}
+
+function stabilizeImageRow(image) {
+  if (!image?.storage_path) return image;
+  const path = image.storage_path;
+  let signed_url = image.signed_url ?? null;
+  let signed_thumb_url = image.signed_thumb_url ?? null;
+  if (signed_url) signed_url = stabilizeUrl(path, signed_url);
+  if (signed_thumb_url) {
+    signed_thumb_url = stabilizeUrl(thumbPath(path), signed_thumb_url);
+  }
+  return { ...image, signed_url, signed_thumb_url };
+}
 
 function getSupabaseUrl() {
   return process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") ?? "";
@@ -138,7 +211,7 @@ export async function adminListOrders() {
     token: getStoredAdminToken(),
     body: { action: "list" },
   });
-  return payload.orders ?? [];
+  return (payload.orders ?? []).map(stabilizeOrderSummary);
 }
 
 export async function adminReorderStatusOrders(status, orderedIds) {
@@ -158,7 +231,7 @@ export async function adminGetOrder(orderId) {
     token: getStoredAdminToken(),
     body: { action: "get", order_id: orderId },
   });
-  return payload.order;
+  return stabilizeOrderDetail(payload.order);
 }
 
 export async function adminSaveOrder(
@@ -176,7 +249,7 @@ export async function adminSaveOrder(
       quote_items,
     },
   });
-  return payload.full ?? payload.order;
+  return stabilizeOrderDetail(payload.full ?? payload.order);
 }
 
 export async function adminSetStatus(orderId, status, queueIndex = null) {
@@ -203,19 +276,26 @@ export async function adminDeleteOrders(orderIds) {
   return payload.deleted;
 }
 
-export async function adminUploadPhoto(orderId, cardId, imageType, file) {
+export async function adminUploadPhoto(
+  orderId,
+  cardId,
+  imageType,
+  file,
+  { thumb = null } = {}
+) {
   const formData = new FormData();
   formData.append("kind", "order");
   formData.append("order_id", orderId);
   formData.append("card_id", cardId);
   formData.append("image_type", imageType);
   formData.append("file", file);
+  if (thumb) formData.append("thumb", thumb);
 
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     formData,
   });
-  return payload.image;
+  return stabilizeImageRow(payload.image);
 }
 
 export async function adminDeletePhoto(orderId, imageId) {
@@ -332,12 +412,19 @@ export async function adminClearGalleryPairSide(pairId, side) {
   return payload.item;
 }
 
-export async function adminUploadGalleryPairSide(pairId, side, file) {
+export async function adminUploadGalleryPairSide(
+  pairId,
+  side,
+  file,
+  { thumb = null, poster = null } = {}
+) {
   const formData = new FormData();
   formData.append("kind", "gallery");
   formData.append("pair_id", pairId);
   formData.append("side", side);
   formData.append("file", file);
+  if (thumb) formData.append("thumb", thumb);
+  if (poster) formData.append("poster", poster);
 
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

@@ -9,6 +9,42 @@ import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
+/** Unique order photo paths are never overwritten — long Cache-Control. */
+const IMMUTABLE_CACHE_CONTROL = "604800";
+/** Gallery can replace in place — shorter browser TTL. */
+const GALLERY_CACHE_CONTROL = "86400";
+
+function thumbPath(storagePath: string): string {
+  if (storagePath.endsWith(".thumb.webp") || storagePath.endsWith(".poster.webp")) {
+    return storagePath;
+  }
+  return `${storagePath}.thumb.webp`;
+}
+
+function posterPath(storagePath: string): string {
+  if (storagePath.endsWith(".poster.webp")) return storagePath;
+  return `${storagePath}.poster.webp`;
+}
+
+function siblingPaths(storagePath: string): string[] {
+  if (
+    storagePath.endsWith(".thumb.webp") ||
+    storagePath.endsWith(".poster.webp")
+  ) {
+    return [];
+  }
+  return [thumbPath(storagePath), posterPath(storagePath)];
+}
+
+function pathsWithSiblings(paths: string[]): string[] {
+  const out = new Set<string>();
+  for (const path of paths) {
+    if (!path) continue;
+    out.add(path);
+    for (const sibling of siblingPaths(path)) out.add(sibling);
+  }
+  return [...out];
+}
 
 const ADMIN_IMAGE_TYPES = new Set([
   "customer",
@@ -101,7 +137,7 @@ async function deleteOrderAndPhotos(
   if (paths.length > 0) {
     const { error: storageError } = await supabase.storage
       .from(BUCKET)
-      .remove(paths);
+      .remove(pathsWithSiblings(paths));
     if (storageError) {
       console.error("order photo cleanup failed", storageError);
     }
@@ -207,11 +243,46 @@ async function signPaths(
     return map;
   }
   for (const item of data ?? []) {
-    if (item.path && item.signedUrl) {
+    if (item.path && item.signedUrl && !(item as { error?: string }).error) {
       map.set(item.path, item.signedUrl);
     }
   }
   return map;
+}
+
+/** Sign thumb siblings when present; fall back to full object. Keys = original paths. */
+async function signPathsPreferThumb(
+  supabase: ReturnType<typeof getServiceClient>,
+  paths: string[]
+): Promise<Map<string, string>> {
+  const unique = [...new Set(paths.filter(Boolean))];
+  const result = new Map<string, string>();
+  if (unique.length === 0) return result;
+
+  const thumbPaths = unique.map((p) => thumbPath(p));
+  const { data: thumbData, error: thumbError } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(thumbPaths, SIGNED_URL_EXPIRES_IN);
+  if (thumbError) {
+    console.error("createSignedUrls thumb error", thumbError);
+  }
+
+  const missing: string[] = [];
+  for (let i = 0; i < unique.length; i += 1) {
+    const original = unique[i];
+    const item = thumbData?.[i];
+    if (item?.signedUrl && !(item as { error?: string }).error) {
+      result.set(original, item.signedUrl);
+    } else {
+      missing.push(original);
+    }
+  }
+
+  if (missing.length > 0) {
+    const fullSigned = await signPaths(supabase, missing);
+    for (const [path, url] of fullSigned) result.set(path, url);
+  }
+  return result;
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
@@ -317,18 +388,25 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       const orderId = cardOrderById.get(image.card_id as string);
       if (!orderId) continue;
       const paths = previewPathsByOrder.get(orderId) ?? [];
-      if (paths.length >= 4) continue;
+      // Kanban only needs one preview thumb per order.
+      if (paths.length >= 1) continue;
       paths.push(image.storage_path as string);
       previewPathsByOrder.set(orderId, paths);
     }
   }
 
   const allPreviewPaths = [...previewPathsByOrder.values()].flat();
-  const signedMap = await signPaths(supabase, allPreviewPaths);
+  const signedMap = await signPathsPreferThumb(supabase, allPreviewPaths);
 
   return orders.map((order) => {
     const orderId = order.id as string;
     const paths = previewPathsByOrder.get(orderId) ?? [];
+    const preview = paths
+      .map((path) => {
+        const url = signedMap.get(path);
+        return url ? { path, url } : null;
+      })
+      .filter((row): row is { path: string; url: string } => Boolean(row));
     return {
       ...order,
       has_account: orderHasAccount(order, emailSet),
@@ -336,9 +414,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
       queue_position: queuePositionById.get(orderId) ?? null,
-      preview_urls: paths
-        .map((path) => signedMap.get(path))
-        .filter((url): url is string => Boolean(url)),
+      preview_paths: preview.map((row) => row.path),
+      preview_urls: preview.map((row) => row.url),
     };
   });
 }
@@ -421,7 +498,10 @@ async function fetchOrderGraph(
   }
 
   const paths = images.map((img) => img.storage_path);
-  const signedMap = await signPaths(supabase, paths);
+  const [signedMap, thumbSignedMap] = await Promise.all([
+    signPaths(supabase, paths),
+    signPathsPreferThumb(supabase, paths),
+  ]);
 
   const contactsByOrder = new Map<string, typeof contacts>();
   for (const c of contacts ?? []) {
@@ -460,6 +540,7 @@ async function fetchOrderGraph(
       images: (imagesByCard.get(card.id as string) ?? []).map((img) => ({
         ...img,
         signed_url: signedMap.get(img.storage_path) ?? null,
+        signed_thumb_url: thumbSignedMap.get(img.storage_path) ?? null,
       })),
     })),
     quote_items: quoteItemsByOrder.get(order.id as string) ?? [],
@@ -509,8 +590,26 @@ async function handleOrderUpload(
 
   const { error: uploadError } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, { upsert: false, contentType: file.type || undefined });
+    .upload(path, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+      cacheControl: IMMUTABLE_CACHE_CONTROL,
+    });
   if (uploadError) throw uploadError;
+
+  const thumb = form.get("thumb");
+  if (thumb instanceof File) {
+    const { error: thumbError } = await supabase.storage
+      .from(BUCKET)
+      .upload(thumbPath(path), thumb, {
+        upsert: true,
+        contentType: thumb.type || "image/webp",
+        cacheControl: IMMUTABLE_CACHE_CONTROL,
+      });
+    if (thumbError) {
+      console.error("order thumb upload failed", thumbError);
+    }
+  }
 
   const { data: imageRow, error: insertError } = await supabase
     .from("card_images")
@@ -524,13 +623,17 @@ async function handleOrderUpload(
     await bumpOrderUpdatesAvailable(supabase, orderId);
   }
 
-  const signedMap = await signPaths(supabase, [path]);
+  const [signedMap, thumbSignedMap] = await Promise.all([
+    signPaths(supabase, [path]),
+    signPathsPreferThumb(supabase, [path]),
+  ]);
 
   return jsonResponse(req, {
     ok: true,
     image: {
       ...imageRow,
       signed_url: signedMap.get(path) ?? null,
+      signed_thumb_url: thumbSignedMap.get(path) ?? null,
     },
   });
 }
@@ -599,13 +702,41 @@ async function handleGalleryUpload(
 
   const { error: uploadError } = await supabase.storage
     .from(GALLERY_BUCKET)
-    .upload(path, file, { upsert: true, contentType: file.type || undefined });
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+      cacheControl: GALLERY_CACHE_CONTROL,
+    });
   if (uploadError) throw uploadError;
 
   const inferredKind =
     file.type.startsWith("video/") || detectMediaKindFromPath(file.name) === "video"
       ? "video"
       : "image";
+
+  const thumb = form.get("thumb");
+  if (thumb instanceof File && inferredKind === "image") {
+    const { error: thumbError } = await supabase.storage
+      .from(GALLERY_BUCKET)
+      .upload(thumbPath(path), thumb, {
+        upsert: true,
+        contentType: thumb.type || "image/webp",
+        cacheControl: GALLERY_CACHE_CONTROL,
+      });
+    if (thumbError) console.error("gallery thumb upload failed", thumbError);
+  }
+
+  const poster = form.get("poster");
+  if (poster instanceof File && inferredKind === "video") {
+    const { error: posterError } = await supabase.storage
+      .from(GALLERY_BUCKET)
+      .upload(posterPath(path), poster, {
+        upsert: true,
+        contentType: poster.type || "image/webp",
+        cacheControl: GALLERY_CACHE_CONTROL,
+      });
+    if (posterError) console.error("gallery poster upload failed", posterError);
+  }
 
   const { error: updateError } = await supabase
     .from("gallery_pairs")
@@ -622,7 +753,9 @@ async function handleGalleryUpload(
     .eq("id", existing.item_id);
 
   if (previousPath && previousPath !== path) {
-    await supabase.storage.from(GALLERY_BUCKET).remove([previousPath]);
+    await supabase.storage
+      .from(GALLERY_BUCKET)
+      .remove(pathsWithSiblings([previousPath]));
   }
 
   const item = await getGalleryItem(supabase, existing.item_id as string);
@@ -866,7 +999,7 @@ Deno.serve(async (req) => {
       if (image.storage_path) {
         const { error: storageError } = await supabase.storage
           .from(BUCKET)
-          .remove([image.storage_path as string]);
+          .remove(pathsWithSiblings([image.storage_path as string]));
         if (storageError) {
           console.error("admin photo storage cleanup failed", storageError);
         }
@@ -1016,7 +1149,9 @@ Deno.serve(async (req) => {
       if (deleteError) throw deleteError;
 
       if (paths.length > 0) {
-        await supabase.storage.from(GALLERY_BUCKET).remove(paths);
+        await supabase.storage
+          .from(GALLERY_BUCKET)
+          .remove(pathsWithSiblings(paths));
       }
 
       const { data: listed } = await supabase.storage
@@ -1104,7 +1239,9 @@ Deno.serve(async (req) => {
       if (deleteError) throw deleteError;
 
       if (paths.length > 0) {
-        await supabase.storage.from(GALLERY_BUCKET).remove(paths);
+        await supabase.storage
+          .from(GALLERY_BUCKET)
+          .remove(pathsWithSiblings(paths));
       }
 
       await supabase
@@ -1173,7 +1310,9 @@ Deno.serve(async (req) => {
       if (updateError) throw updateError;
 
       if (previousPath) {
-        await supabase.storage.from(GALLERY_BUCKET).remove([previousPath]);
+        await supabase.storage
+          .from(GALLERY_BUCKET)
+          .remove(pathsWithSiblings([previousPath]));
       }
 
       const item = await getGalleryItem(supabase, existing.item_id as string);

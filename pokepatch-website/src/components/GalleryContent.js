@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { DAMAGE_TAGS, formatPostedRelative } from "@/lib/gallery";
+import { DAMAGE_TAGS, formatPostedRelative, galleryPosterPublicUrl } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
 import MediaLightbox from "@/components/MediaLightbox";
 
@@ -69,6 +69,7 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
   }
 
   const isVideo = type === "video";
+  const posterSrc = isVideo ? galleryPosterPublicUrl(src) : null;
 
   return (
     <div className="space-y-2">
@@ -80,13 +81,18 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
       >
         {isVideo ? (
           <>
-            <video
-              src={src}
-              muted
-              playsInline
-              preload="metadata"
-              className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
-            />
+            {posterSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={posterSrc}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-105"
+              />
+            ) : (
+              <div className="absolute inset-0 bg-night/30" />
+            )}
             <span className="pointer-events-none absolute inset-0 bg-night/20 transition group-hover:bg-night/30" />
             <PlayBadge />
           </>
@@ -248,13 +254,30 @@ function GalleryItemCard({ item, index, onOpen }) {
                         className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
                       >
                         {isVideo ? (
-                          <video
-                            src={src}
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="absolute inset-0 h-full w-full object-cover"
-                          />
+                          <>
+                            {galleryPosterPublicUrl(src) ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={galleryPosterPublicUrl(src)}
+                                alt=""
+                                loading="lazy"
+                                decoding="async"
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="absolute inset-0 bg-night/30" />
+                            )}
+                            <span className="absolute inset-0 flex items-center justify-center bg-night/25">
+                              <svg
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                className="h-3 w-3 text-ink"
+                                aria-hidden="true"
+                              >
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </span>
+                          </>
                         ) : (
                           <GalleryImage
                             src={src}
@@ -263,18 +286,6 @@ function GalleryItemCard({ item, index, onOpen }) {
                             sizes="32px"
                             className="object-cover"
                           />
-                        )}
-                        {isVideo && (
-                          <span className="absolute inset-0 flex items-center justify-center bg-night/25">
-                            <svg
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              className="h-3 w-3 text-ink"
-                              aria-hidden="true"
-                            >
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </span>
                         )}
                       </span>
                     );

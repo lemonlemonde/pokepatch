@@ -2,6 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import MediaLightbox from "@/components/MediaLightbox";
+import { thumbPath } from "@/lib/imageCompression";
+import { forgetSignedUrl } from "@/lib/signedUrlCache";
 
 function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
   const image = (
@@ -11,6 +13,8 @@ function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
         <img
           src={src}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className="max-h-full max-w-full object-contain"
         />
       ) : (
@@ -199,17 +203,50 @@ function fitCollapsedVisible(availablePx, customerTotal, updateTotal) {
 function toLightboxMedia(item, sectionTitle) {
   return {
     type: "image",
-    src: item.src,
+    // Prefer full-resolution URL for enlarge; thumb is only for the strip.
+    src: item.fullSrc || item.href || item.src,
     alt: item.alt || item.label || "",
     label: item.label || item.alt || "",
     sectionTitle,
   };
 }
 
-function AdminThumb({ src, alt, onOpen, onRemove, removeAriaLabel }) {
-  const image = src ? (
+function AdminThumb({
+  src,
+  fallbackSrc,
+  storagePath,
+  alt,
+  onOpen,
+  onRemove,
+  removeAriaLabel,
+}) {
+  const [displaySrc, setDisplaySrc] = useState(src);
+  const [triedFallback, setTriedFallback] = useState(false);
+
+  useEffect(() => {
+    setDisplaySrc(src);
+    setTriedFallback(false);
+  }, [src]);
+
+  const image = displaySrc ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={src} alt={alt} className="h-full w-full object-cover" />
+    <img
+      src={displaySrc}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      className="h-full w-full object-cover"
+      onError={() => {
+        if (triedFallback) return;
+        setTriedFallback(true);
+        if (storagePath) {
+          forgetSignedUrl("card-photos", thumbPath(storagePath));
+        }
+        if (fallbackSrc && fallbackSrc !== displaySrc) {
+          setDisplaySrc(fallbackSrc);
+        }
+      }}
+    />
   ) : (
     <span className="text-[10px] text-ink/40">…</span>
   );
@@ -219,9 +256,9 @@ function AdminThumb({ src, alt, onOpen, onRemove, removeAriaLabel }) {
       <button
         type="button"
         onClick={() => {
-          if (src) onOpen?.();
+          if (displaySrc) onOpen?.();
         }}
-        disabled={!src}
+        disabled={!displaySrc}
         className="block h-full w-full cursor-zoom-in disabled:cursor-default"
         aria-label={`Enlarge ${alt || "photo"}`}
       >
@@ -271,6 +308,8 @@ function AdminPhotoCluster({
             <AdminThumb
               key={item.id}
               src={item.src}
+              fallbackSrc={item.fullSrc || item.href || null}
+              storagePath={item.storagePath || null}
               alt={item.alt}
               onOpen={() => onOpenItem?.(item.id)}
               onRemove={onRemove ? () => onRemove(item.id) : undefined}

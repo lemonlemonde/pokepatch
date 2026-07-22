@@ -181,14 +181,53 @@ async function signPaths(
 
   const { data, error } = await supabase.storage
     .from(BUCKET)
-    .createSignedUrls(paths, SIGNED_URL_EXPIRES_IN);
+    .createSignedUrls(
+      paths.map((p) =>
+        p.endsWith(".thumb.webp") || p.endsWith(".poster.webp")
+          ? p
+          : `${p}.thumb.webp`
+      ),
+      SIGNED_URL_EXPIRES_IN
+    );
   if (error) {
     console.error("createSignedUrls error", error);
-    return [];
+    // Fall back to full-size signed URLs.
+    const fallback = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrls(paths, SIGNED_URL_EXPIRES_IN);
+    if (fallback.error) return [];
+    return (fallback.data ?? [])
+      .map((d) => d.signedUrl)
+      .filter((u): u is string => Boolean(u));
   }
-  return (data ?? [])
-    .map((d) => d.signedUrl)
-    .filter((u): u is string => Boolean(u));
+
+  const thumbUrls = (data ?? [])
+    .map((d, i) => ({ url: d.signedUrl, err: (d as { error?: string }).error, path: paths[i] }))
+    .filter((row) => row.url && !row.err);
+
+  if (thumbUrls.length === paths.length) {
+    return thumbUrls.map((row) => row.url as string);
+  }
+
+  // Mix: use thumbs where available, full for the rest.
+  const missing = paths.filter(
+    (_, i) => !(data?.[i]?.signedUrl) || (data?.[i] as { error?: string })?.error
+  );
+  const fallback = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrls(missing, SIGNED_URL_EXPIRES_IN);
+  const fullByPath = new Map<string, string>();
+  for (const item of fallback.data ?? []) {
+    if (item.path && item.signedUrl) fullByPath.set(item.path, item.signedUrl);
+  }
+
+  return paths.map((path, i) => {
+    const thumb = data?.[i];
+    if (thumb?.signedUrl && !(thumb as { error?: string }).error) {
+      return thumb.signedUrl;
+    }
+    return fullByPath.get(path) ?? "";
+  }).filter(Boolean);
 }
 
 async function notifyDiscordLegacy({

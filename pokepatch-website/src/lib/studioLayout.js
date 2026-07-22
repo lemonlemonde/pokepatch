@@ -1,7 +1,22 @@
 import logoSrc from "@/app/pokepatch_icon.png";
 
+/** Square feed canvas (2×2 grid, video, 1×2 default). */
 export const INSTAGRAM_WIDTH = 1080;
 export const INSTAGRAM_HEIGHT = 1080;
+/** 9:16 Reels canvas (1×2 optional). */
+export const REEL_WIDTH = 1080;
+export const REEL_HEIGHT = 1920;
+
+/** @typedef {'square' | 'reel'} StudioOutputFormat */
+
+/** Canvas size for a 1×2 output format. Defaults to square. */
+export function getOutputCanvasSize(format = "square") {
+  if (format === "reel") {
+    return { width: REEL_WIDTH, height: REEL_HEIGHT };
+  }
+  return { width: INSTAGRAM_WIDTH, height: INSTAGRAM_HEIGHT };
+}
+
 // --- 1×2 formatter layout (comparison / paired-sides) ---
 export const EDGE_PADDING = 18;
 export const COLUMN_GAP = 18;
@@ -37,6 +52,10 @@ export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
 export const CARD_INFO_FONT_SIZE = 27;
 export const CARD_INFO_THUMB_SIZE = 112;
+/** 9:16 card chip thumb: 3× square, then −10%. */
+export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
+  CARD_INFO_THUMB_SIZE * 3 * 0.9,
+);
 export const CARD_INFO_INNER_PAD_Y = 6;
 export const CARD_INFO_INNER_PAD_X = 12;
 export const CARD_INFO_EDGE_PADDING = 24;
@@ -44,6 +63,30 @@ export const CARD_INFO_EDGE_PADDING = 24;
 // caption gaps: chip → caption → images).
 export const CARD_INFO_CLEARANCE = 28;
 export const CAPTION_GAP = CARD_INFO_CLEARANCE;
+/** Extra inset for corner chips on 9:16 so they sit off Instagram's UI edges. */
+const REEL_CHIP_EDGE_NUDGE = 20;
+/** Drop the top-right brand chip on 9:16. */
+const REEL_BRANDING_TOP_NUDGE = 285;
+/** Extra gap between brand chip and the right canvas edge on 9:16. */
+const REEL_BRANDING_RIGHT_EXTRA = 20;
+/** Extra left/right image margin on 9:16 (each side). */
+const REEL_SIDE_PADDING_EXTRA = 20;
+/** Trim horizontal padding inside the 9:16 card-info chip. */
+const REEL_CARD_INFO_WIDTH_TRIM = 20;
+/** Shift the centered 9:16 card-info chip left of true center. */
+const REEL_CARD_INFO_LEFT_SHIFT = 45;
+/** Extra inner padding on the right of the 9:16 card-info chip. */
+const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
+/** Space between image/label block and the centered card chip on 9:16. */
+const REEL_CARD_INFO_GAP_BELOW_CONTENT = 60;
+/** Nudge caption+images (and the chip below them) above true vertical center on 9:16. */
+const REEL_CENTER_NUDGE_UP = 135;
+/** Scale fonts + branding logo on 9:16 only. */
+const REEL_TYPE_SCALE = 1.5;
+// Branding chip metrics (must stay in sync with drawBranding).
+const BRANDING_MAX_FRAME = 72;
+const BRANDING_INNER_PAD = 14;
+const BRANDING_FONT_SIZE = 24;
 // Reserved top space so branding / card-info badges don't sit on the cards.
 export const GRID_TOP_BRAND_BAND =
   CARD_INFO_EDGE_PADDING +
@@ -51,6 +94,44 @@ export const GRID_TOP_BRAND_BAND =
   2 * CARD_INFO_INNER_PAD_Y +
   CARD_INFO_CLEARANCE -
   GRID_EDGE_PADDING;
+
+function isTallCanvas(height) {
+  return height > INSTAGRAM_HEIGHT;
+}
+
+/** Side-by-side column geometry for 1×2 frames. */
+function pairLayout(tall) {
+  const edge = EDGE_PADDING + (tall ? REEL_SIDE_PADDING_EXTRA : 0);
+  const canvasW = tall ? REEL_WIDTH : INSTAGRAM_WIDTH;
+  const slotWidth = (canvasW - 2 * edge - COLUMN_GAP) / 2;
+  return {
+    edge,
+    slotWidth,
+    leftX: edge,
+    rightX: edge + slotWidth + COLUMN_GAP,
+  };
+}
+
+function reelTyped(value, tall) {
+  return tall ? Math.round(value * REEL_TYPE_SCALE) : value;
+}
+
+/** Font / tracking / gap sizes for the current canvas. */
+function typeMetrics(tall) {
+  return {
+    labelFont: reelTyped(LABEL_FONT_SIZE, tall),
+    labelGap: reelTyped(LABEL_GAP, tall),
+    labelTracking: reelTyped(LABEL_TRACKING, tall),
+    labelBlockHeight: reelTyped(LABEL_GAP, tall) + reelTyped(LABEL_FONT_SIZE, tall),
+    captionFont: reelTyped(CAPTION_FONT_SIZE, tall),
+    captionTracking: reelTyped(CAPTION_TRACKING, tall),
+    captionGap: reelTyped(CAPTION_GAP, tall),
+    cardInfoFont: reelTyped(CARD_INFO_FONT_SIZE, tall),
+    brandFont: reelTyped(BRANDING_FONT_SIZE, tall),
+    brandLogoFrame: reelTyped(BRANDING_MAX_FRAME, tall),
+    brandInnerPad: reelTyped(BRANDING_INNER_PAD, tall),
+  };
+}
 
 function cardInfoChipBottom() {
   return (
@@ -60,13 +141,51 @@ function cardInfoChipBottom() {
   );
 }
 
-/** Equal gaps: chip → caption → images. */
+function reelCardInfoChipHeight() {
+  const cardFont = reelTyped(CARD_INFO_FONT_SIZE, true);
+  const textH = cardFont * 2 + 6;
+  return Math.max(REEL_CARD_INFO_THUMB_SIZE, textH) + 2 * CARD_INFO_INNER_PAD_Y;
+}
+
+/** Bottom reserve so the centered 9:16 card chip fits under the content. */
+function reelCardInfoBottomReserve() {
+  return (
+    REEL_CARD_INFO_GAP_BELOW_CONTENT +
+    reelCardInfoChipHeight() +
+    EDGE_PADDING
+  );
+}
+
+/** Equal gaps: chip → caption → images (square / feed layout). */
 function captionStackBelowChip() {
   const chipBottom = cardInfoChipBottom();
   return {
     captionCenterY: chipBottom + CAPTION_GAP + CAPTION_FONT_SIZE / 2,
     imagesTop: chipBottom + CAPTION_GAP + CAPTION_FONT_SIZE + CAPTION_GAP,
   };
+}
+
+/** Vertically place images(+labels) on 9:16; caption sits in a reserved band above. */
+function captionStackCentered(canvasHeight, imagesAndLabelsHeight) {
+  const type = typeMetrics(true);
+  const captionBlock = type.captionFont + type.captionGap;
+  // Always reserve the caption band so image/chip Y matches with or without caption.
+  const blockHeight = captionBlock + imagesAndLabelsHeight;
+  const blockTop = Math.max(
+    EDGE_PADDING,
+    Math.floor((canvasHeight - blockHeight) / 2) - REEL_CENTER_NUDGE_UP,
+  );
+
+  return {
+    captionCenterY: blockTop + type.captionFont / 2,
+    imagesTop: blockTop + type.captionFont + type.captionGap,
+  };
+}
+
+function chipEdgePadding(ctx, basePadding) {
+  return (
+    basePadding + (isTallCanvas(ctx.canvas.height) ? REEL_CHIP_EDGE_NUDGE : 0)
+  );
 }
 
 /** Ink bounds for BEFORE/AFTER (caps sit high in the em box; don't use font size). */
@@ -120,10 +239,16 @@ export function enableHighQuality(ctx) {
 
 export function ensureLabelFont() {
   if (!labelFontReady) {
+    const reel = typeMetrics(true);
     labelFontReady = Promise.all([
       document.fonts.load(`500 ${LABEL_FONT_SIZE}px Nunito`),
       document.fonts.load(`700 ${CARD_INFO_FONT_SIZE}px Nunito`),
       document.fonts.load(`italic 400 ${CARD_INFO_FONT_SIZE}px Nunito`),
+      document.fonts.load(`500 ${reel.labelFont}px Nunito`),
+      document.fonts.load(`700 ${reel.cardInfoFont}px Nunito`),
+      document.fonts.load(`italic 400 ${reel.cardInfoFont}px Nunito`),
+      document.fonts.load(`500 ${reel.captionFont}px Nunito`),
+      document.fonts.load(`500 ${reel.brandFont}px Nunito`),
     ]).catch(() => undefined);
   }
   return labelFontReady;
@@ -199,18 +324,20 @@ export function getSourceDimensions(source) {
 }
 
 export function fillBackground(ctx) {
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
   const gradient = ctx.createRadialGradient(
-    INSTAGRAM_WIDTH / 2,
-    INSTAGRAM_HEIGHT * 0.42,
+    width / 2,
+    height * 0.42,
     0,
-    INSTAGRAM_WIDTH / 2,
-    INSTAGRAM_HEIGHT * 0.42,
-    INSTAGRAM_WIDTH * 0.78,
+    width / 2,
+    height * 0.42,
+    width * 0.78,
   );
   gradient.addColorStop(0, "#14141c");
   gradient.addColorStop(1, BACKGROUND);
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, INSTAGRAM_WIDTH, INSTAGRAM_HEIGHT);
+  ctx.fillRect(0, 0, width, height);
 }
 
 /** Fit the full image inside the slot (contain) — no cropping. */
@@ -326,20 +453,21 @@ function drawColumn(
   targetSh,
   imageTop,
 ) {
+  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
   const drawX = columnX + Math.floor((slotWidth - targetSw) / 2);
   drawCard(ctx, resized, metrics, drawX, imageTop, targetSw, targetSh);
 
-  ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
+  ctx.font = `500 ${type.labelFont}px ${LABEL_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.fillStyle = LABEL_COLOR;
 
-  const labelY = imageTop + targetSh + LABEL_GAP + LABEL_FONT_SIZE / 2;
+  const labelY = imageTop + targetSh + type.labelGap + type.labelFont / 2;
   drawTrackedText(
     ctx,
     label.toUpperCase(),
     columnX + slotWidth / 2,
     labelY,
-    LABEL_TRACKING,
+    type.labelTracking,
   );
 }
 
@@ -357,11 +485,12 @@ function drawBadgeBackground(ctx, blockX, blockY, blockW, blockH) {
 }
 
 export function drawBranding(ctx, logoImg) {
-  const padding = 24;
-  const maxFrameSize = 72;
-  const gap = 10;
-  const fontSize = 24;
-  const innerPad = 14;
+  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
+  const padding = chipEdgePadding(ctx, 24);
+  const maxFrameSize = type.brandLogoFrame;
+  const gap = reelTyped(10, isTallCanvas(ctx.canvas.height));
+  const fontSize = type.brandFont;
+  const innerPad = type.brandInnerPad;
 
   // Keep the old small visual size (full-frame scale), but crop transparent
   // padding so it doesn't add empty space left/right of the mark in the badge.
@@ -383,8 +512,13 @@ export function drawBranding(ctx, logoImg) {
   const textWidth = ctx.measureText(BRAND_HANDLE).width;
   const blockW = innerPad + logoW + gap + textWidth + innerPad;
   const blockH = Math.max(logoH, fontSize) + innerPad * 2;
-  const blockX = INSTAGRAM_WIDTH - padding - blockW;
-  const blockY = padding;
+  const tall = isTallCanvas(ctx.canvas.height);
+  const blockX =
+    ctx.canvas.width -
+    padding -
+    blockW -
+    (tall ? REEL_BRANDING_RIGHT_EXTRA : 0);
+  const blockY = padding + (tall ? REEL_BRANDING_TOP_NUDGE : 0);
 
   drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
 
@@ -433,19 +567,35 @@ function drawLabeledLine(ctx, label, value, x, y, fontSize) {
 }
 
 /**
- * Top-left chip mirroring branding: front thumb + Card / Set lines.
+ * Card-info chip: top-left on square; larger + centered under content on 9:16.
  * @param {{ frontImg: CanvasImageSource, card: string, set: string }} cardInfo
+ * @param {{ blockX?: number, blockY?: number, thumbBox?: number } | null} layout
  */
-export function drawCardInfo(ctx, cardInfo) {
+export function drawCardInfo(ctx, cardInfo, layout = null) {
   const { frontImg, card, set } = cardInfo;
-  const padding = CARD_INFO_EDGE_PADDING;
-  const thumbBox = CARD_INFO_THUMB_SIZE;
-  const gap = 12;
-  const fontSize = CARD_INFO_FONT_SIZE;
-  const lineGap = 6;
-  const padX = CARD_INFO_INNER_PAD_X;
-  const padY = CARD_INFO_INNER_PAD_Y;
-  const thumbRadius = 8;
+  const tall = isTallCanvas(ctx.canvas.height);
+  const type = typeMetrics(tall);
+  const padding = chipEdgePadding(ctx, CARD_INFO_EDGE_PADDING);
+  const thumbBox =
+    layout?.thumbBox ??
+    (tall ? REEL_CARD_INFO_THUMB_SIZE : CARD_INFO_THUMB_SIZE);
+  const gap = reelTyped(12, tall);
+  // 9:16: pull Card/Set text about halfway closer to the thumb.
+  const textGap = tall ? Math.round(gap / 2) : gap;
+  const fontSize = type.cardInfoFont;
+  const lineGap = reelTyped(6, tall);
+  const padX = Math.max(
+    4,
+    reelTyped(CARD_INFO_INNER_PAD_X, tall) -
+      (tall ? Math.floor(REEL_CARD_INFO_WIDTH_TRIM / 2) : 0),
+  );
+  // 9:16: flush thumb on the left; extra breathing room on the right.
+  const padLeft = tall ? 0 : padX;
+  const padRight = tall
+    ? padX + reelTyped(REEL_CARD_INFO_PAD_RIGHT_EXTRA, tall)
+    : padX;
+  const padY = reelTyped(CARD_INFO_INNER_PAD_Y, tall);
+  const thumbRadius = tall ? 14 : 8;
 
   const cardLabel = "Card: ";
   const setLabel = "Set: ";
@@ -460,14 +610,18 @@ export function drawCardInfo(ctx, cardInfo) {
   const thumbW = Math.max(1, Math.round(srcW * thumbScale));
   const thumbH = Math.max(1, Math.round(srcH * thumbScale));
 
-  const blockW = padX + thumbBox + gap + textW + padX;
+  const blockW = padLeft + thumbBox + textGap + textW + padRight;
   const blockH = Math.max(thumbBox, textH) + padY * 2;
-  const blockX = padding;
-  const blockY = padding;
+  const blockX =
+    layout?.blockX ??
+    (tall
+      ? Math.floor((ctx.canvas.width - blockW) / 2) - REEL_CARD_INFO_LEFT_SHIFT
+      : padding);
+  const blockY = layout?.blockY ?? padding;
 
   drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
 
-  const thumbX = blockX + padX + Math.floor((thumbBox - thumbW) / 2);
+  const thumbX = blockX + padLeft + Math.floor((thumbBox - thumbW) / 2);
   const thumbY = blockY + Math.floor((blockH - thumbH) / 2);
   ctx.save();
   enableHighQuality(ctx);
@@ -477,7 +631,7 @@ export function drawCardInfo(ctx, cardInfo) {
   ctx.drawImage(frontImg, thumbX, thumbY, thumbW, thumbH);
   ctx.restore();
 
-  const textX = blockX + padX + thumbBox + gap;
+  const textX = blockX + padLeft + thumbBox + textGap;
   const textTop = blockY + (blockH - textH) / 2;
   drawLabeledLine(ctx, cardLabel, card, textX, textTop, fontSize);
   drawLabeledLine(
@@ -492,24 +646,33 @@ export function drawCardInfo(ctx, cardInfo) {
 
 /** Centered caption; `centerY` is the vertical middle of the text. */
 function drawRestorationCaption(ctx, caption, centerY) {
-  ctx.font = `500 ${CAPTION_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
+  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
+  ctx.font = `500 ${type.captionFont}px ${LABEL_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.fillStyle = LABEL_COLOR;
   drawTrackedText(
     ctx,
     caption,
-    INSTAGRAM_WIDTH / 2,
+    ctx.canvas.width / 2,
     centerY,
-    CAPTION_TRACKING,
+    type.captionTracking,
   );
 }
 
 /** Card-info chip → branding (draw after cards/labels/caption). */
-function drawOverlays(ctx, logoImg, overlay) {
+function drawOverlays(ctx, logoImg, overlay, cardInfoLayout = null) {
   if (overlay?.cardInfo) {
-    drawCardInfo(ctx, overlay.cardInfo);
+    drawCardInfo(ctx, overlay.cardInfo, cardInfoLayout);
   }
   drawBranding(ctx, logoImg);
+}
+
+function reelCardInfoLayoutBelowContent(contentBottom) {
+  return {
+    blockY: contentBottom + REEL_CARD_INFO_GAP_BELOW_CONTENT,
+    thumbBox: REEL_CARD_INFO_THUMB_SIZE,
+    // blockX computed in drawCardInfo when omitted (centered)
+  };
 }
 
 export function drawComparisonFrame(
@@ -521,45 +684,72 @@ export function drawComparisonFrame(
   logoImg,
   overlay = null,
 ) {
-  const captionStack = overlay?.caption ? captionStackBelowChip() : null;
-  const contentTop = captionStack?.imagesTop ?? EDGE_PADDING;
+  const canvasHeight = ctx.canvas.height;
+  const tall = isTallCanvas(canvasHeight);
+  const type = typeMetrics(tall);
+  const cols = pairLayout(tall);
+  const hasCaption = Boolean(overlay?.caption);
+  const hasCardInfo = Boolean(overlay?.cardInfo);
+  const bottomReserve =
+    tall && hasCardInfo ? reelCardInfoBottomReserve() : EDGE_PADDING;
+
+  // Tall: always reserve caption band + use the same imagesTop (caption optional).
+  // Square + caption: pin under the card-info chip (tight feed layout).
+  const pinnedStack = hasCaption && !tall ? captionStackBelowChip() : null;
+  const contentTop = pinnedStack?.imagesTop ?? EDGE_PADDING;
+  const captionReserve =
+    tall || hasCaption ? type.captionFont + type.captionGap : 0;
   const maxImageHeight =
-    INSTAGRAM_HEIGHT - contentTop - EDGE_PADDING - 2 * LABEL_BLOCK_HEIGHT;
+    canvasHeight -
+    (tall ? EDGE_PADDING : contentTop) -
+    bottomReserve -
+    captionReserve -
+    2 * type.labelBlockHeight;
   const leftMetrics = getContainMetrics(
     leftSource,
-    SLOT_WIDTH,
+    cols.slotWidth,
     maxImageHeight,
   );
   const rightMetrics = getContainMetrics(
     rightSource,
-    SLOT_WIDTH,
+    cols.slotWidth,
     maxImageHeight,
   );
   const { targetSw, targetSh } = getSharedTargetSize(
     leftMetrics,
     rightMetrics,
-    SLOT_WIDTH,
+    cols.slotWidth,
   );
-  const availableH = INSTAGRAM_HEIGHT - contentTop - EDGE_PADDING;
-  // With a caption, pin images under the equal gap (don't re-center).
-  const imageTop = captionStack
-    ? contentTop
-    : contentTop + Math.floor((availableH - targetSh) / 2);
+
+  const imagesAndLabelsHeight = targetSh + type.labelBlockHeight;
+  const reelStack = tall
+    ? captionStackCentered(canvasHeight, imagesAndLabelsHeight)
+    : null;
+
+  const availableH = canvasHeight - contentTop - bottomReserve;
+  const imageTop = reelStack
+    ? reelStack.imagesTop
+    : pinnedStack
+      ? pinnedStack.imagesTop
+      : contentTop + Math.floor((availableH - targetSh) / 2);
 
   const leftResized = prepareResized(leftSource, leftMetrics);
   const rightResized = prepareResized(rightSource, rightMetrics);
 
   enableHighQuality(ctx);
   fillBackground(ctx);
-  if (captionStack) {
-    drawRestorationCaption(ctx, overlay.caption, captionStack.captionCenterY);
+  if (hasCaption) {
+    const captionY = reelStack?.captionCenterY ?? pinnedStack?.captionCenterY;
+    if (captionY != null) {
+      drawRestorationCaption(ctx, overlay.caption, captionY);
+    }
   }
   drawColumn(
     ctx,
     leftResized,
     leftMetrics,
-    LEFT_COLUMN_X,
-    SLOT_WIDTH,
+    cols.leftX,
+    cols.slotWidth,
     leftLabel,
     targetSw,
     targetSh,
@@ -569,14 +759,20 @@ export function drawComparisonFrame(
     ctx,
     rightResized,
     rightMetrics,
-    RIGHT_COLUMN_X,
-    SLOT_WIDTH,
+    cols.rightX,
+    cols.slotWidth,
     rightLabel,
     targetSw,
     targetSh,
     imageTop,
   );
-  drawOverlays(ctx, logoImg, overlay);
+  const cardInfoLayout =
+    tall && hasCardInfo
+      ? reelCardInfoLayoutBelowContent(
+          imageTop + targetSh + type.labelBlockHeight,
+        )
+      : null;
+  drawOverlays(ctx, logoImg, overlay, cardInfoLayout);
 }
 
 /**
@@ -590,30 +786,52 @@ export function drawPairedSidesFrame(
   logoImg,
   overlay = null,
 ) {
-  const captionStack = overlay?.caption ? captionStackBelowChip() : null;
-  const contentTop = captionStack?.imagesTop ?? EDGE_PADDING;
+  const canvasHeight = ctx.canvas.height;
+  const canvasWidth = ctx.canvas.width;
+  const tall = isTallCanvas(canvasHeight);
+  const type = typeMetrics(tall);
+  const cols = pairLayout(tall);
+  const hasCaption = Boolean(overlay?.caption);
+  const hasCardInfo = Boolean(overlay?.cardInfo);
+  const bottomReserve =
+    tall && hasCardInfo ? reelCardInfoBottomReserve() : EDGE_PADDING;
+
+  const pinnedStack = hasCaption && !tall ? captionStackBelowChip() : null;
+  const contentTop = pinnedStack?.imagesTop ?? EDGE_PADDING;
+  const captionReserve =
+    tall || hasCaption ? type.captionFont + type.captionGap : 0;
   const maxImageHeight =
-    INSTAGRAM_HEIGHT - contentTop - EDGE_PADDING - LABEL_BLOCK_HEIGHT;
+    canvasHeight -
+    (tall ? EDGE_PADDING : contentTop) -
+    bottomReserve -
+    captionReserve -
+    type.labelBlockHeight;
   const leftMetrics = getContainMetrics(
     leftSource,
-    SLOT_WIDTH,
+    cols.slotWidth,
     maxImageHeight,
   );
   const rightMetrics = getContainMetrics(
     rightSource,
-    SLOT_WIDTH,
+    cols.slotWidth,
     maxImageHeight,
   );
   const { targetSw, targetSh } = getSharedTargetSize(
     leftMetrics,
     rightMetrics,
-    SLOT_WIDTH,
+    cols.slotWidth,
   );
-  const blockHeight = targetSh + LABEL_BLOCK_HEIGHT;
-  const availableH = INSTAGRAM_HEIGHT - contentTop - EDGE_PADDING;
-  const imageTop = captionStack
-    ? contentTop
-    : contentTop + Math.floor((availableH - blockHeight) / 2);
+  const blockHeight = targetSh + type.labelBlockHeight;
+  const reelStack = tall
+    ? captionStackCentered(canvasHeight, blockHeight)
+    : null;
+
+  const availableH = canvasHeight - contentTop - bottomReserve;
+  const imageTop = reelStack
+    ? reelStack.imagesTop
+    : pinnedStack
+      ? pinnedStack.imagesTop
+      : contentTop + Math.floor((availableH - blockHeight) / 2);
 
   const leftResized = prepareResized(leftSource, leftMetrics);
   const rightResized = prepareResized(rightSource, rightMetrics);
@@ -621,12 +839,15 @@ export function drawPairedSidesFrame(
   enableHighQuality(ctx);
   fillBackground(ctx);
 
-  if (captionStack) {
-    drawRestorationCaption(ctx, overlay.caption, captionStack.captionCenterY);
+  if (hasCaption) {
+    const captionY = reelStack?.captionCenterY ?? pinnedStack?.captionCenterY;
+    if (captionY != null) {
+      drawRestorationCaption(ctx, overlay.caption, captionY);
+    }
   }
 
-  const leftDrawX = LEFT_COLUMN_X + Math.floor((SLOT_WIDTH - targetSw) / 2);
-  const rightDrawX = RIGHT_COLUMN_X + Math.floor((SLOT_WIDTH - targetSw) / 2);
+  const leftDrawX = cols.leftX + Math.floor((cols.slotWidth - targetSw) / 2);
+  const rightDrawX = cols.rightX + Math.floor((cols.slotWidth - targetSw) / 2);
   drawCard(ctx, leftResized, leftMetrics, leftDrawX, imageTop, targetSw, targetSh);
   drawCard(
     ctx,
@@ -638,19 +859,23 @@ export function drawPairedSidesFrame(
     targetSh,
   );
 
-  ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
+  ctx.font = `500 ${type.labelFont}px ${LABEL_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.fillStyle = LABEL_COLOR;
-  const labelY = imageTop + targetSh + LABEL_GAP + LABEL_FONT_SIZE / 2;
+  const labelY = imageTop + targetSh + type.labelGap + type.labelFont / 2;
   drawTrackedText(
     ctx,
     label.toUpperCase(),
-    INSTAGRAM_WIDTH / 2,
+    canvasWidth / 2,
     labelY,
-    LABEL_TRACKING,
+    type.labelTracking,
   );
 
-  drawOverlays(ctx, logoImg, overlay);
+  const cardInfoLayout =
+    tall && hasCardInfo
+      ? reelCardInfoLayoutBelowContent(imageTop + blockHeight)
+      : null;
+  drawOverlays(ctx, logoImg, overlay, cardInfoLayout);
 }
 
 /**
