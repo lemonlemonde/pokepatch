@@ -456,9 +456,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at";
 
 const ORDER_STATUS_IDS = new Set([
   "on_hold",
@@ -723,7 +723,9 @@ async function fetchOrderGraph(
       .in("order_id", orderIds),
     supabase
       .from("cards")
-      .select("id, order_id, card_name, set_name, description, market_value_raw_nm, status")
+      .select(
+        "id, order_id, card_name, set_name, description, market_value_raw_nm, status, photos_drive_url"
+      )
       .in("order_id", orderIds)
       .order("id", { ascending: true }),
     supabase
