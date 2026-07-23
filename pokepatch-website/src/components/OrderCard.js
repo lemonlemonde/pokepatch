@@ -724,37 +724,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 </div>
               </div>
 
-              {/* Google Drive folder from the team */}
-              {orderDetails.photos_drive_url && (
-                <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <SectionLabel showUpdate={hasUpdates}>
-                    Photo folder
-                  </SectionLabel>
-                  <a
-                    href={orderDetails.photos_drive_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-ink transition hover:underline"
-                  >
-                    Open Google Drive
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </a>
-                </div>
-              )}
-
               {/* Quote from the team */}
               {hasQuoteData({
                 items: orderDetails.quote_items,
@@ -866,6 +835,35 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                   </p>
                                 )}
                               </div>
+                              {card.photos_drive_url ? (
+                                <div>
+                                  <SectionLabel showUpdate={hasUpdates}>
+                                    Google Drive folder
+                                  </SectionLabel>
+                                  <a
+                                    href={card.photos_drive_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-ink transition hover:underline"
+                                  >
+                                    Open Google Drive
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2.5"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="h-3.5 w-3.5"
+                                      aria-hidden="true"
+                                    >
+                                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                                      <polyline points="15 3 21 3 21 9" />
+                                      <line x1="10" y1="14" x2="21" y2="3" />
+                                    </svg>
+                                  </a>
+                                </div>
+                              ) : null}
                             </div>
 
                             <div className="sm:w-1/2 sm:shrink-0">
@@ -873,7 +871,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 Photos · {photoCount}
                               </p>
                               <div className="grid grid-cols-3 gap-2">
-                                {card.images.map((image, imageIndex) => (
+                                {(card.images || []).map((image, imageIndex) => (
                                   <Photo
                                     key={image.id}
                                     url={thumbUrls[image.storage_path]}

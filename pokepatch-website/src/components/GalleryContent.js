@@ -18,6 +18,7 @@ function buildMediaList(items) {
         entries.push({
           type: kind,
           src: pair.before,
+          poster: kind === "video" ? galleryPosterPublicUrl(pair.before) : null,
           alt: `${item.title} before`,
           label: "Before",
           sectionTitle: item.title,
@@ -27,6 +28,7 @@ function buildMediaList(items) {
         entries.push({
           type: kind,
           src: pair.after,
+          poster: kind === "video" ? galleryPosterPublicUrl(pair.after) : null,
           alt: `${item.title} after`,
           label: "After",
           sectionTitle: item.title,

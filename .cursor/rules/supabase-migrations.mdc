@@ -7,9 +7,11 @@ alwaysApply: true
 
 Follow root [README → Schema changes (CLI-managed)](../../README.md#schema-changes-cli-managed).
 
+Also follow [Local vs live (deploy safety)](../../README.md#local-vs-live-deploy-safety): write migration files locally; **ask before** `supabase db push` or any remote DDL. Include customer vs admin impact when asking.
+
 ## Required workflow
 
-1. Prefer: `cd pokepatch-website` → `supabase migration new <name>` → edit the generated file → `supabase db push` → `supabase migration list` (Local === Remote).
+1. Prefer: `cd pokepatch-website` → `supabase migration new <name>` → edit the generated file → (after permission) `supabase db push` → `supabase migration list` (Local === Remote).
 2. **Never** invent or hand-rename migration timestamps. The CLI keys history by the filename version prefix.
 3. **Never** apply DDL via MCP `apply_migration`, dashboard SQL, or ad-hoc SQL **and also** add a differently named local migration for the same change.
 4. If remote was updated first: run `supabase migration fetch --linked`, confirm `supabase migration list` is clean, then commit those files. Do not invent a second local version.

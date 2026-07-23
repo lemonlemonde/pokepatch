@@ -45,3 +45,6 @@ next-env.d.ts
 
 # supabase 
 supabase/.temp/
+
+# local full-res copies saved by scripts/recompress-card-photos.mjs
+storage-backup/

@@ -223,9 +223,13 @@ export default function MediaLightbox({
                 className={LIGHTBOX_MEDIA_CLASSNAME}
               />
             ) : (
+              // preload="metadata" + poster: opening the lightbox shows the
+              // poster frame without downloading the whole MP4 until play.
               <MutedVideo
                 key={media.src}
                 src={media.src}
+                poster={media.poster || undefined}
+                preload="metadata"
                 loop
                 controls
                 className={LIGHTBOX_MEDIA_CLASSNAME}
