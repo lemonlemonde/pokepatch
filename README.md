@@ -116,11 +116,11 @@ These can be mixed: e.g. **live API + old frontend**, or **local frontend + live
 
 1. **Keep changes local** until the user explicitly asks to deploy or push to live.
 2. **Never** run live-affecting commands without asking first, including:
-   - `npm run deploy` / publishing the static site
    - `supabase functions deploy …`
    - `supabase db push` / remote DDL (dashboard SQL, MCP `apply_migration`, etc.)
    - `git push` when that updates what production serves (or otherwise ships the change)
-3. Before asking, **give a short deploy impact analysis** (see below). Do not deploy “while you’re at it.”
+3. **Agents must never run `npm run deploy`** (or `gh-pages` / other Pages publish). Always tell the user to run frontend publish themselves from `pokepatch-website/` (`npm run deploy`).
+4. Before asking, **give a short deploy impact analysis** (see below). Do not deploy “while you’re at it.”
 
 ### Deploy impact analysis (required before any live action)
 

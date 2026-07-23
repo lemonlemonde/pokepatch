@@ -11,11 +11,26 @@ Follow root [README → Local vs live (deploy safety)](../../README.md#local-vs-
 
 1. **Everything stays local** unless the user explicitly asks to deploy or push to live.
 2. Treat these as live-affecting — **do not run them without permission**:
-   - Frontend publish (`npm run deploy`, or equivalent Pages publish)
    - `supabase functions deploy …`
    - Schema to remote (`supabase db push`, dashboard/MCP DDL)
    - `git push` when it ships production
 3. Local frontend, local function files, and unpushed migrations are independent from what is live. Mixed versions are normal while developing.
+
+## Frontend publish — never run by the agent
+
+**Never** run `npm run deploy` (or `gh-pages`, or any other command that publishes the static site to GitHub Pages).
+
+Even if the user says “deploy”, “ship it”, “go live”, or “run it”:
+
+- Do **not** execute frontend publish yourself.
+- Tell the user to run it from `pokepatch-website/`:
+
+```bash
+cd pokepatch-website
+npm run deploy
+```
+
+Schema / edge-function deploys may still be run by the agent **only** after explicit permission; frontend publish stays user-only.
 
 ## Before asking to go live
 
@@ -26,4 +41,4 @@ Give a short **deploy impact analysis**:
 - **Admin** impact (`/admin/`)
 - Cross-version risk (new API + old frontend, new frontend + old API, schema vs clients)
 
-Wait for an explicit yes before deploying or pushing anything to live.
+Wait for an explicit yes before deploying or pushing anything to live (except frontend publish, which the user always runs themselves).

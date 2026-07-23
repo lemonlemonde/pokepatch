@@ -1,6 +1,6 @@
 -- Per-card Google Drive folder URLs (replaces order-level photos_drive_url).
--- Backfills existing order URLs onto every card in that order, then drops
--- orders.photos_drive_url.
+-- Backfills existing order URLs onto every card, verifies the copy, then drops
+-- orders.photos_drive_url. All steps run in one migration transaction.
 
 alter table public.cards
   add column if not exists photos_drive_url text;
@@ -10,7 +10,51 @@ set photos_drive_url = nullif(trim(o.photos_drive_url), '')
 from public.orders o
 where c.order_id = o.id
   and o.photos_drive_url is not null
-  and trim(o.photos_drive_url) <> '';
+  and trim(o.photos_drive_url) <> ''
+  and (
+    c.photos_drive_url is null
+    or trim(c.photos_drive_url) = ''
+  );
+
+-- Fail (and roll back) if any card under an order with a Drive URL still lacks it,
+-- or if an order has a Drive URL but no cards (nothing to copy onto).
+do $$
+declare
+  v_missing int;
+  v_orphan_orders int;
+begin
+  select count(*)::int into v_missing
+  from public.cards c
+  inner join public.orders o on o.id = c.order_id
+  where o.photos_drive_url is not null
+    and trim(o.photos_drive_url) <> ''
+    and (
+      c.photos_drive_url is null
+      or trim(c.photos_drive_url) = ''
+      or c.photos_drive_url is distinct from nullif(trim(o.photos_drive_url), '')
+    );
+
+  if v_missing > 0 then
+    raise exception
+      'cards_photos_drive_url backfill incomplete: % card(s) missing order Drive URL',
+      v_missing;
+  end if;
+
+  select count(*)::int into v_orphan_orders
+  from public.orders o
+  where o.photos_drive_url is not null
+    and trim(o.photos_drive_url) <> ''
+    and not exists (
+      select 1 from public.cards c where c.order_id = o.id
+    );
+
+  if v_orphan_orders > 0 then
+    raise exception
+      'cards_photos_drive_url: % order(s) have a Drive URL but no cards — copy manually before dropping',
+      v_orphan_orders;
+  end if;
+end;
+$$;
 
 CREATE OR REPLACE FUNCTION public.update_order(p_order_id uuid, p_order jsonb DEFAULT NULL::jsonb, p_contacts jsonb DEFAULT NULL::jsonb, p_cards jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
@@ -640,5 +684,6 @@ $$;
 REVOKE ALL ON FUNCTION public.get_my_order(uuid) FROM public;
 GRANT EXECUTE ON FUNCTION public.get_my_order(uuid) TO authenticated;
 
+-- Safe to drop only after verified backfill above (same transaction).
 alter table public.orders
   drop column if exists photos_drive_url;
