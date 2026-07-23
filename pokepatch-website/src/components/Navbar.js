@@ -133,9 +133,7 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 flex justify-center px-4 pt-4">
       <nav
-        className={`w-full max-w-4xl border px-4 py-2.5 transition-all duration-300 sm:px-6 ${
-          menuOpen ? "rounded-3xl" : "rounded-full"
-        } ${
+        className={`w-full max-w-4xl rounded-[1.75rem] border px-4 py-2.5 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out sm:px-6 ${
           solid
             ? "border-ink/15 bg-night/70 shadow-cozy-sm backdrop-blur-md"
             : "border-transparent bg-transparent"
@@ -185,27 +183,39 @@ export default function Navbar() {
           </button>
         </div>
 
-        {menuOpen && (
-          <ul className="mt-2 space-y-1 border-t border-ink/10 pt-2 sm:hidden">
-            {links.map(({ href, label, badge }) => (
-              <li key={href}>
-                <Link
-                  href={href}
-                  aria-current={isActive(href) ? "page" : undefined}
-                  onClick={() => setMenuOpen(false)}
-                  className={`${linkClassName(href)} inline-flex items-center gap-1.5`}
-                >
-                  {label}
-                  {badge > 0 ? (
-                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
-                      {badge > 99 ? "99+" : badge}
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out sm:hidden ${
+            menuOpen
+              ? "grid-rows-[1fr] opacity-100"
+              : "grid-rows-[0fr] opacity-0"
+          }`}
+        >
+          <div className="overflow-hidden">
+            <ul
+              className="mt-2 space-y-1 border-t border-ink/10 pt-2"
+              aria-hidden={!menuOpen}
+            >
+              {links.map(({ href, label, badge }) => (
+                <li key={href}>
+                  <Link
+                    href={href}
+                    tabIndex={menuOpen ? undefined : -1}
+                    aria-current={isActive(href) ? "page" : undefined}
+                    onClick={() => setMenuOpen(false)}
+                    className={`${linkClassName(href)} inline-flex items-center gap-1.5`}
+                  >
+                    {label}
+                    {badge > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                    ) : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </nav>
     </header>
   );
