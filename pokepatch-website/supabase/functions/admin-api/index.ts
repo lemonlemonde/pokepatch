@@ -13,6 +13,12 @@ const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 const IMMUTABLE_CACHE_CONTROL = "604800";
 /** Gallery can replace in place — shorter browser TTL. */
 const GALLERY_CACHE_CONTROL = "86400";
+/**
+ * Clients compress images before upload (≤1200px WebP, see
+ * imageCompression.js POST_COMPRESS_MAX_BYTES). Reject anything bigger so a
+ * raw 30MB scan can never land in Storage and leak egress on every view.
+ */
+const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 
 function thumbPath(storagePath: string): string {
   if (storagePath.endsWith(".thumb.webp") || storagePath.endsWith(".poster.webp")) {
@@ -423,7 +429,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   }
 
   const allPreviewPaths = [...previewPathsByOrder.values()].flat();
-  const signedMap = await signPathsPreferThumb(supabase, allPreviewPaths);
+  // Thumbs only — never fall back to signing full-size originals for the
+  // kanban. A missing sibling renders a placeholder instead of a 30MB PNG.
+  const signedMap = await signPathsThumbsOnly(supabase, allPreviewPaths);
 
   return orders.map((order) => {
     const orderId = order.id as string;
@@ -814,6 +822,13 @@ async function handleOrderUpload(
   if (!(file instanceof File)) {
     return jsonResponse(req, { ok: false, error: "file required" }, 400);
   }
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "image too large — compress it before uploading" },
+      413
+    );
+  }
 
   const { data: card, error: cardError } = await supabase
     .from("cards")
@@ -933,6 +948,16 @@ async function handleGalleryUpload(
   if (!(file instanceof File)) {
     return jsonResponse(req, { ok: false, error: "file required" }, 400);
   }
+  const isVideoUpload =
+    file.type.startsWith("video/") ||
+    detectMediaKindFromPath(file.name) === "video";
+  if (!isVideoUpload && file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "image too large — compress it before uploading" },
+      413
+    );
+  }
 
   const { data: existing, error: existingError } = await supabase
     .from("gallery_pairs")
@@ -958,10 +983,7 @@ async function handleGalleryUpload(
     });
   if (uploadError) throw uploadError;
 
-  const inferredKind =
-    file.type.startsWith("video/") || detectMediaKindFromPath(file.name) === "video"
-      ? "video"
-      : "image";
+  const inferredKind = isVideoUpload ? "video" : "image";
 
   const thumb = form.get("thumb");
   if (thumb instanceof File && inferredKind === "image") {

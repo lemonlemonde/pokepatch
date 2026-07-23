@@ -55,6 +55,9 @@ const SIBLING_EXT = /\.(thumb|poster)\.webp$/i;
 const CARD_THUMB_DIM = 320;
 const GALLERY_THUMB_DIM = 640;
 const POSTER_DIM = 640;
+/** Siblings are derived + additive-only, so browsers can cache them for 1y.
+ *  Without this, Storage defaults to max-age=3600 (browser cache = 1 hour). */
+const SIBLING_CACHE_CONTROL = "31536000";
 
 const supabase = createClient(url, key, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -129,6 +132,7 @@ async function backfillImage(bucket, path, existing) {
       // Additive only — never replace an existing sibling or original.
       upsert: false,
       contentType: "image/webp",
+      cacheControl: SIBLING_CACHE_CONTROL,
     });
   if (upErr) {
     if (/already exists|Duplicate|resource already/i.test(upErr.message)) {
@@ -220,6 +224,7 @@ async function backfillVideoPoster(bucket, path, existing) {
       // Additive only — never replace an existing sibling or original.
       upsert: false,
       contentType: "image/webp",
+      cacheControl: SIBLING_CACHE_CONTROL,
     });
   if (upErr) {
     if (/already exists|Duplicate|resource already/i.test(upErr.message)) {
