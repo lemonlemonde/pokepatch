@@ -456,9 +456,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, status, completed_at, status_changed_at, queue_priority";
 
 const ORDER_STATUS_IDS = new Set([
   "on_hold",

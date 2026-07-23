@@ -3602,11 +3602,19 @@ export default function AdminApp() {
       setDraft(nextDraft);
       setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
       setOrders((current) =>
-        current.map((order) =>
-          order.id === selectedOrderId
-            ? { ...order, ...orderToKanbanSummary(refreshed) }
-            : order
-        )
+        current.map((order) => {
+          if (order.id !== selectedOrderId) return order;
+          const summary = orderToKanbanSummary(refreshed);
+          // Detail responses historically omitted queue_priority; don't let a
+          // null overwrite the column rank and jump the card in the board.
+          if (
+            summary.queue_priority == null &&
+            order.queue_priority != null
+          ) {
+            summary.queue_priority = order.queue_priority;
+          }
+          return { ...order, ...summary };
+        })
       );
     } catch (err) {
       setEditorError(err.message || "Save failed.");
