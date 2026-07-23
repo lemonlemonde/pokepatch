@@ -31,7 +31,7 @@
 -- Working tables (admin edits these):
 --   orders, contacts, cards, card_images
 --   orders.queue_priority — lower = higher priority among open orders
---   cards.photos_drive_url — optional Google Drive folder URL per card
+--   orders.photos_drive_url — optional Google Drive folder URL for the order
 --
 -- Original backup (written once by create_order, never updated):
 --   orders_original, contacts_original, cards_original, card_images_original

@@ -85,7 +85,6 @@ function emptyAdminCard() {
     set_name: "",
     description: "",
     market_value_raw_nm: "",
-    photos_drive_url: "",
     status: DEFAULT_CARD_STATUS,
     images: [],
     pending_files: [],
@@ -347,7 +346,6 @@ function orderToDraft(order) {
       card.market_value_raw_nm != null
         ? String(card.market_value_raw_nm)
         : "",
-    photos_drive_url: card.photos_drive_url ?? "",
     status: normalizeCardStatus(card.status),
     images: card.images ?? [],
     pending_files: [],
@@ -360,6 +358,7 @@ function orderToDraft(order) {
     has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
+    photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
@@ -379,6 +378,7 @@ function draftPayload(draft) {
       customer_name: draft.customer_name.trim(),
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
+      photos_drive_url: draft.photos_drive_url.trim(),
       status: draft.status,
       quote_bulk_counts: packQuoteAdjustments(
         draft.quote_adjustments,
@@ -400,7 +400,6 @@ function draftPayload(draft) {
       card_name: card.card_name.trim(),
       set_name: card.set_name.trim(),
       description: card.description.trim(),
-      photos_drive_url: (card.photos_drive_url ?? "").trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
     })),
@@ -434,6 +433,10 @@ function validateDraftForSave(draft) {
   if (!draft.customer_name.trim()) {
     return "Customer name is required.";
   }
+  const driveError = validateDriveUrl(draft.photos_drive_url);
+  if (driveError) {
+    return driveError;
+  }
   for (const contact of draft.contacts) {
     if (!contact.value.trim()) {
       return "Fill in every contact or remove empty rows before saving.";
@@ -443,10 +446,6 @@ function validateDraftForSave(draft) {
     const card = draft.cards[index];
     if (!card.card_name.trim()) {
       return `Card ${index + 1} needs a name.`;
-    }
-    const driveError = validateDriveUrl(card.photos_drive_url);
-    if (driveError) {
-      return `Card ${index + 1}: ${driveError}`;
     }
     if (
       (card.market_value_raw_nm ?? "").trim() !== "" &&
@@ -2090,7 +2089,7 @@ function OrderEditor({
 
   function addCard() {
     const card = emptyAdminCard();
-    scrollToCardIdRef.current = card.id;
+    setHighlightedCardId(String(card.id));
     onChange((current) => {
       const base = current ?? draft;
       return {
@@ -2362,6 +2361,8 @@ function OrderEditor({
     });
     return { indicesByCardId, orphans };
   }, [draft.cards, quoteItems]);
+
+  const driveUrl = draft.photos_drive_url.trim();
 
   function renderQuoteHvLine(card) {
     if (!card?.id) return null;
@@ -2728,6 +2729,36 @@ function OrderEditor({
         </div>
       </EditorSection>
 
+      <EditorSection
+        title="Google Drive"
+        action={
+          driveUrl ? (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-berry transition hover:underline"
+            >
+              Open folder
+            </a>
+          ) : null
+        }
+      >
+        <label className="block">
+          <EditorLabel>Folder link</EditorLabel>
+          <input
+            className={editorFieldClass()}
+            type="url"
+            inputMode="url"
+            placeholder="https://drive.google.com/drive/folders/…"
+            value={draft.photos_drive_url}
+            onChange={(event) =>
+              updateDraft({ photos_drive_url: event.target.value })
+            }
+          />
+        </label>
+      </EditorSection>
+
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3 px-1">
           <h3 className="text-base font-semibold text-ink">Cards</h3>
@@ -2753,7 +2784,6 @@ function OrderEditor({
             );
             const pendingFiles = card.pending_files ?? [];
             const photoInputId = `admin-card-photos-${card.id}`;
-            const driveUrl = (card.photos_drive_url ?? "").trim();
             const incomplete = !adminCardIsComplete(card);
             const cardId = String(card.id);
             const indices =
@@ -2848,35 +2878,6 @@ function OrderEditor({
                       }
                     />
                   </label>
-                  <div className="sm:col-span-2">
-                    <div className="mb-1.5 flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-ink/65">
-                        Google Drive folder
-                      </span>
-                      {driveUrl ? (
-                        <a
-                          href={driveUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-semibold text-berry transition hover:underline"
-                        >
-                          Open folder
-                        </a>
-                      ) : null}
-                    </div>
-                    <input
-                      className={editorFieldClass()}
-                      type="url"
-                      inputMode="url"
-                      placeholder="https://drive.google.com/drive/folders/…"
-                      value={card.photos_drive_url ?? ""}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          photos_drive_url: event.target.value,
-                        })
-                      }
-                    />
-                  </div>
                 </div>
                 <div className="mt-4 border-t border-ink/10 pt-4">
                   <AdminOrderCardPhotoGroups
