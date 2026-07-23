@@ -2089,7 +2089,7 @@ function OrderEditor({
 
   function addCard() {
     const card = emptyAdminCard();
-    scrollToCardIdRef.current = card.id;
+    setHighlightedCardId(String(card.id));
     onChange((current) => {
       const base = current ?? draft;
       return {
@@ -2729,6 +2729,36 @@ function OrderEditor({
         </div>
       </EditorSection>
 
+      <EditorSection
+        title="Google Drive"
+        action={
+          driveUrl ? (
+            <a
+              href={driveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-berry transition hover:underline"
+            >
+              Open folder
+            </a>
+          ) : null
+        }
+      >
+        <label className="block">
+          <EditorLabel>Folder link</EditorLabel>
+          <input
+            className={editorFieldClass()}
+            type="url"
+            inputMode="url"
+            placeholder="https://drive.google.com/drive/folders/…"
+            value={draft.photos_drive_url}
+            onChange={(event) =>
+              updateDraft({ photos_drive_url: event.target.value })
+            }
+          />
+        </label>
+      </EditorSection>
+
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-3 px-1">
           <h3 className="text-base font-semibold text-ink">Cards</h3>
@@ -3106,36 +3136,6 @@ function OrderEditor({
             />
           </EditorSubsection>
         </div>
-      </EditorSection>
-
-      <EditorSection
-        title="Google Drive"
-        action={
-          driveUrl ? (
-            <a
-              href={driveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-berry transition hover:underline"
-            >
-              Open folder
-            </a>
-          ) : null
-        }
-      >
-        <label className="block">
-          <EditorLabel>Folder link</EditorLabel>
-          <input
-            className={editorFieldClass()}
-            type="url"
-            inputMode="url"
-            placeholder="https://drive.google.com/drive/folders/…"
-            value={draft.photos_drive_url}
-            onChange={(event) =>
-              updateDraft({ photos_drive_url: event.target.value })
-            }
-          />
-        </label>
       </EditorSection>
 
       <EditorSection

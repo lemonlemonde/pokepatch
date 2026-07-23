@@ -728,7 +728,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {orderDetails.photos_drive_url && (
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
                   <SectionLabel showUpdate={hasUpdates}>
-                    Google Drive folder
+                    Photo folder
                   </SectionLabel>
                   <a
                     href={orderDetails.photos_drive_url}
