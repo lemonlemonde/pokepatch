@@ -16,6 +16,7 @@ import {
   adminLogout,
   adminReorderStatusOrders,
   adminSaveOrder,
+  adminSendMessages,
   adminSetStatus,
   adminUploadPhoto,
   adminValidate,
@@ -25,9 +26,7 @@ import { compressImageForUpload, makeThumbForUpload, thumbPath } from "@/lib/ima
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
-import OrderSendUpdatePanel, {
-  OrderSendUpdateButton,
-} from "@/components/admin/OrderSendUpdate";
+import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
@@ -1724,7 +1723,6 @@ function OrderEditor({
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [removingPhotoId, setRemovingPhotoId] = useState(null);
-  const [sendUpdateOpen, setSendUpdateOpen] = useState(false);
   const scrollToCardIdRef = useRef(null);
 
   function updateDraft(patch) {
@@ -2311,12 +2309,6 @@ function OrderEditor({
             >
               Discard
             </button>
-            <OrderSendUpdateButton
-              open={sendUpdateOpen}
-              onToggle={() => setSendUpdateOpen((current) => !current)}
-              disabled={saving}
-              canSend={Boolean(draft.customer_email?.trim())}
-            />
             <button
               type="button"
               onClick={onSave}
@@ -2328,41 +2320,6 @@ function OrderEditor({
           </div>
         </div>
       </div>
-
-      {sendUpdateOpen ? (
-        <div className="space-y-5">
-          <div
-            className="flex items-center gap-3"
-            role="separator"
-            aria-label="Open update"
-          >
-            <div className="h-px flex-1 bg-ink/15" />
-            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
-              Open update
-            </span>
-            <div className="h-px flex-1 bg-ink/15" />
-          </div>
-          <OrderSendUpdatePanel
-            open={sendUpdateOpen}
-            onClose={() => setSendUpdateOpen(false)}
-            orderId={orderId}
-            displayId={displayId}
-            customerEmail={draft.customer_email}
-            disabled={saving}
-          />
-          <div
-            className="flex items-center gap-3"
-            role="separator"
-            aria-label="Order details"
-          >
-            <div className="h-px flex-1 bg-ink/15" />
-            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
-              Order details
-            </span>
-            <div className="h-px flex-1 bg-ink/15" />
-          </div>
-        </div>
-      ) : null}
 
       {error && (
         <p className="rounded-xl border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
@@ -2741,16 +2698,15 @@ function OrderEditor({
                         </select>
                       </label>
                       <label className="block min-w-0 sm:col-span-1">
-                        <EditorLabel>Description</EditorLabel>
+                        <EditorLabel>Amount ($)</EditorLabel>
                         <input
                           className={editorFieldClass()}
-                          value={row.description ?? ""}
+                          inputMode="decimal"
+                          value={row.amount_dollars ?? ""}
                           onChange={(event) =>
-                            updateQuoteAdjustment(index, {
-                              description: event.target.value,
-                            })
+                            setAdjustmentDollars(index, event.target.value)
                           }
-                          placeholder="Optional note…"
+                          placeholder="0.00"
                         />
                       </label>
                       <div className="flex items-end justify-end">
@@ -2764,16 +2720,17 @@ function OrderEditor({
                       </div>
                     </div>
                     <div className="mt-3">
-                      <label className="block max-w-xs">
-                        <EditorLabel>Amount ($)</EditorLabel>
+                      <label className="block">
+                        <EditorLabel>Description</EditorLabel>
                         <input
                           className={editorFieldClass()}
-                          inputMode="decimal"
-                          value={row.amount_dollars ?? ""}
+                          value={row.description ?? ""}
                           onChange={(event) =>
-                            setAdjustmentDollars(index, event.target.value)
+                            updateQuoteAdjustment(index, {
+                              description: event.target.value,
+                            })
                           }
-                          placeholder="0.00"
+                          placeholder="Optional note…"
                         />
                       </label>
                     </div>
@@ -2916,6 +2873,7 @@ export default function AdminApp() {
   const [listError, setListError] = useState("");
   const [deleteTargets, setDeleteTargets] = useState(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
+  const [savePromptOpen, setSavePromptOpen] = useState(false);
 
   const dirty = useMemo(() => {
     if (!draft) return false;
@@ -2941,6 +2899,7 @@ export default function AdminApp() {
     setSavedSnapshot("");
     setEditorError("");
     setLoadingOrderId(null);
+    setSavePromptOpen(false);
   }, []);
 
   const refreshOrders = useCallback(async () => {
@@ -3216,6 +3175,7 @@ export default function AdminApp() {
   }
 
   function leaveEditor() {
+    setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
     // address bar in sync while React state already shows the board.
@@ -3242,11 +3202,23 @@ export default function AdminApp() {
     }
   }
 
-  async function handleSave() {
+  function requestSave() {
     if (!selectedOrderId || !draft) return;
     const validationError = validateDraftForSave(draft);
     if (validationError) {
       setEditorError(validationError);
+      return;
+    }
+    setEditorError("");
+    setSavePromptOpen(true);
+  }
+
+  async function handleSave({ notify = false, subject = "", body = "" } = {}) {
+    if (!selectedOrderId || !draft) return;
+    const validationError = validateDraftForSave(draft);
+    if (validationError) {
+      setEditorError(validationError);
+      setSavePromptOpen(false);
       return;
     }
 
@@ -3259,6 +3231,7 @@ export default function AdminApp() {
 
     setSaving(true);
     setEditorError("");
+    setSavePromptOpen(false);
     try {
       const payload = draftPayload(draft);
       let refreshed = await adminSaveOrder(selectedOrderId, payload);
@@ -3295,6 +3268,31 @@ export default function AdminApp() {
             : order
         )
       );
+
+      if (notify && subject.trim() && body.trim()) {
+        try {
+          const result = await adminSendMessages({
+            order_ids: [selectedOrderId],
+            subject: subject.trim(),
+            body,
+          });
+          if ((result.failed ?? 0) > 0) {
+            const firstError = Array.isArray(result.results)
+              ? result.results.find((row) => row.email_status === "failed")
+                  ?.email_error
+              : null;
+            setEditorError(
+              firstError ||
+                "Order saved, but the customer notification failed to send."
+            );
+          }
+        } catch (notifyErr) {
+          setEditorError(
+            notifyErr.message ||
+              "Order saved, but the customer notification failed to send."
+          );
+        }
+      }
     } catch (err) {
       setEditorError(err.message || "Save failed.");
     } finally {
@@ -3422,28 +3420,44 @@ export default function AdminApp() {
               )}
 
               {routeOrderId && draft && (
-                <OrderEditor
-                  displayId={selectedDisplayId}
-                  orderId={selectedOrderId}
-                  draft={draft}
-                  dirty={dirty}
-                  saving={saving}
-                  error={editorError}
-                  onBack={leaveEditor}
-                  backLabel={
-                    searchParams.get("from") === "all"
-                      ? "Back to all orders"
-                      : "Back to board"
-                  }
-                  onChange={(next) =>
-                    setDraft((current) =>
-                      typeof next === "function" ? next(current) : next
-                    )
-                  }
-                  onCancel={handleCancel}
-                  onSave={handleSave}
-                  onError={setEditorError}
-                />
+                <>
+                  <OrderEditor
+                    displayId={selectedDisplayId}
+                    orderId={selectedOrderId}
+                    draft={draft}
+                    dirty={dirty}
+                    saving={saving}
+                    error={editorError}
+                    onBack={leaveEditor}
+                    backLabel={
+                      searchParams.get("from") === "all"
+                        ? "Back to all orders"
+                        : "Back to board"
+                    }
+                    onChange={(next) =>
+                      setDraft((current) =>
+                        typeof next === "function" ? next(current) : next
+                      )
+                    }
+                    onCancel={handleCancel}
+                    onSave={requestSave}
+                    onError={setEditorError}
+                  />
+                  <OrderSaveChangesDialog
+                    open={savePromptOpen}
+                    displayId={selectedDisplayId}
+                    customerEmail={draft.customer_email}
+                    beforePayload={
+                      savedSnapshot ? JSON.parse(savedSnapshot) : null
+                    }
+                    afterPayload={draftPayload(draft)}
+                    saving={saving}
+                    onCancel={() => {
+                      if (!saving) setSavePromptOpen(false);
+                    }}
+                    onConfirm={handleSave}
+                  />
+                </>
               )}
             </div>
           ) : loadingOrders && orders.length === 0 ? (
