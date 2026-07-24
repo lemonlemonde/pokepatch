@@ -86,6 +86,17 @@ function quoteLineForCard(item) {
   return amount ? `${service}: ${amount}` : service;
 }
 
+function quoteServiceChangeLine(before, after) {
+  const beforeName = serviceNameForItem(before);
+  const afterName = serviceNameForItem(after);
+  const beforeAmt = serviceAmountForItem(before);
+  const afterAmt = serviceAmountForItem(after);
+  if (beforeName === afterName && beforeAmt && afterAmt) {
+    return `Updated: ${beforeName}: ${beforeAmt} → ${afterAmt}`;
+  }
+  return `Updated: ${quoteLineForCard(before)} → ${quoteLineForCard(after)}`;
+}
+
 function formatAdjustmentAmount(row, subtotal = null) {
   const signed = quoteAdjustmentSignedAmount(row, subtotal);
   if (signed !== 0) return formatMoney(signed);
@@ -316,7 +327,7 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     } else if (!before && after) {
       change = `Added: ${quoteLineForCard(after)}`;
     } else if (quoteLineForCard(before) !== quoteLineForCard(after)) {
-      change = `Updated: ${quoteLineForCard(before)} → ${quoteLineForCard(after)}`;
+      change = quoteServiceChangeLine(before, after);
     }
 
     if (!change) continue;
@@ -381,7 +392,7 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
         );
       } else {
         group.changes.push(
-          `Updated: High-value fee: ${formatMoney(Number(beforeAmt))} → High-value fee: ${formatMoney(Number(afterAmt))}`
+          `Updated: High-value fee: ${formatMoney(Number(beforeAmt))} → ${formatMoney(Number(afterAmt))}`
         );
       }
     }
