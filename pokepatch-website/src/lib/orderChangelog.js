@@ -9,6 +9,12 @@ import {
   unpackQuoteCardHv,
   cardsWithQuoteHv,
 } from "@/lib/servicePricing";
+import {
+  customerCardStatusLabel,
+  customerOrderStatusLabel,
+  normalizeCardStatus,
+  normalizeOrderStatus,
+} from "@/lib/orderStatus";
 
 function cardLabel(card, index = 0) {
   const name = String(card?.card_name ?? "").trim();
@@ -87,15 +93,15 @@ function adjustmentChangeCause(before, after, action, subtotal) {
   const amount = formatAdjustmentAmount(row, subtotal);
 
   if (kind === "discount") {
-    if (action === "added") return `Subtracted discount ${amount}`;
-    if (action === "removed") return `Removed discount ${amount}`;
-    return `Discount ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
+    if (action === "added") return `Applied discount: ${amount}`;
+    if (action === "removed") return `Removed discount: ${amount}`;
+    return `Discount: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
   }
 
   const label = adjustmentKindLabel(kind).toLowerCase();
-  if (action === "added") return `Added ${label} ${amount}`;
-  if (action === "removed") return `Removed ${label} ${amount}`;
-  return `${adjustmentKindLabel(kind)} ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
+  if (action === "added") return `Added: ${label} ${amount}`;
+  if (action === "removed") return `Removed: ${label} ${amount}`;
+  return `${adjustmentKindLabel(kind)}: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
 }
 
 function quoteFingerprint(payload) {
@@ -161,8 +167,27 @@ function cardStatus(cardId, beforeCards, afterCards) {
  * @typedef {{ cardId: string, label: string, status: CardChangelogStatus, sortIndex: number, changes: string[] }} CardChangelogGroup
  */
 
+/** First usable preview URL for a card (admin signed URLs when present). */
+export function buildCardThumbById(cards = []) {
+  const map = {};
+  for (const card of cards ?? []) {
+    if (card?.id == null) continue;
+    const id = String(card.id);
+    if (map[id]) continue;
+    const images = card.images ?? [];
+    const preferred =
+      images.find((image) => image?.image_type === "customer") ?? images[0];
+    const url =
+      preferred?.signed_thumb_url || preferred?.signed_url || null;
+    if (url) map[id] = url;
+  }
+  return map;
+}
+
 /**
  * Build customer-facing changelog grouped by card.
+ * Order section: order status, adjustments (discount/surcharge/etc), quote total change.
+ * Card sections: card status, services, high-value fees.
  * @returns {{ cardGroups: CardChangelogGroup[], orderChanges: string[], quoteSummary: string | null, text: string, hasChangelog: boolean }}
  */
 export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
@@ -171,14 +196,16 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   const cardGroupsMap = new Map();
   const orderChanges = [];
 
-  function ensureCardGroup(cardId) {
+  function ensureCardGroup(cardId, { label, status, sortIndex } = {}) {
     let group = cardGroupsMap.get(cardId);
     if (!group) {
       group = {
         cardId,
-        label: cardTitleForId(cardId, beforeCards, afterCards),
-        status: cardStatus(cardId, beforeCards, afterCards),
-        sortIndex: cardSortIndex(cardId, afterCards, beforeCards),
+        label:
+          label ?? cardTitleForId(cardId, beforeCards, afterCards),
+        status: status ?? cardStatus(cardId, beforeCards, afterCards),
+        sortIndex:
+          sortIndex ?? cardSortIndex(cardId, afterCards, beforeCards),
         changes: [],
       };
       cardGroupsMap.set(cardId, group);
@@ -186,9 +213,30 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     return group;
   }
 
-  const allCards = (afterPayload?.cards ?? beforePayload?.cards ?? []).map(
-    (card) => ({ ...card, id: String(card.id) })
-  );
+  /** Service lines always belong to a card box — never the Order section. */
+  function ensureGroupForQuoteItem(item) {
+    const cardId = findCardIdForQuoteItem(item, allCards);
+    if (cardId) return ensureCardGroup(cardId);
+    const label = cardLabel(item, 0);
+    const orphanId = `orphan:${label.toLowerCase()}`;
+    return ensureCardGroup(orphanId, {
+      label,
+      status: "modified",
+      sortIndex: 5000 + cardGroupsMap.size,
+    });
+  }
+
+  // Prefer after-card fields when both sides have the same id.
+  const allCardsById = new Map();
+  for (const card of beforePayload?.cards ?? []) {
+    if (card?.id == null) continue;
+    allCardsById.set(String(card.id), { ...card, id: String(card.id) });
+  }
+  for (const card of afterPayload?.cards ?? []) {
+    if (card?.id == null) continue;
+    allCardsById.set(String(card.id), { ...card, id: String(card.id) });
+  }
+  const allCards = [...allCardsById.values()];
 
   // Cards added or removed always get a box.
   for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
@@ -198,34 +246,57 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
+  // Order status change.
+  const beforeOrderStatus = normalizeOrderStatus(
+    beforePayload?.order?.status
+  );
+  const afterOrderStatus = normalizeOrderStatus(afterPayload?.order?.status);
+  if (
+    beforePayload?.order != null &&
+    afterPayload?.order != null &&
+    beforeOrderStatus !== afterOrderStatus
+  ) {
+    orderChanges.push(
+      `Status: ${customerOrderStatusLabel(beforeOrderStatus)} → ${customerOrderStatusLabel(afterOrderStatus)}`
+    );
+  }
+
+  // Per-card status changes (surviving cards only).
+  for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
+    const before = beforeCards.get(cardId)?.row;
+    const after = afterCards.get(cardId)?.row;
+    if (!before || !after) continue;
+    const beforeStatus = normalizeCardStatus(before.status);
+    const afterStatus = normalizeCardStatus(after.status);
+    if (beforeStatus === afterStatus) continue;
+    ensureCardGroup(cardId).changes.push(
+      `Status: ${customerCardStatusLabel(beforeStatus)} → ${customerCardStatusLabel(afterStatus)}`
+    );
+  }
+
   const beforeItems = indexById(beforePayload?.quote_items);
   const afterItems = indexById(afterPayload?.quote_items);
   const quoteSubtotal = quoteItemsSubtotal(
     afterPayload?.quote_items ?? beforePayload?.quote_items ?? []
   );
 
+  // Per-card service / quote-line diffs (Order never lists these).
   for (const itemId of new Set([...beforeItems.keys(), ...afterItems.keys()])) {
     const before = beforeItems.get(itemId)?.row;
     const after = afterItems.get(itemId)?.row;
     const item = after ?? before;
-    const cardId = findCardIdForQuoteItem(item, allCards);
 
     let change = null;
     if (before && !after) {
-      change = `Removed ${quoteLineForCard(before)}`;
+      change = `Removed: ${quoteLineForCard(before)}`;
     } else if (!before && after) {
-      change = `Added ${quoteLineForCard(after)}`;
+      change = `Added: ${quoteLineForCard(after)}`;
     } else if (quoteLineForCard(before) !== quoteLineForCard(after)) {
-      change = `Updated ${quoteLineForCard(before)} → ${quoteLineForCard(after)}`;
+      change = `Updated: ${quoteLineForCard(before)} → ${quoteLineForCard(after)}`;
     }
 
     if (!change) continue;
-
-    if (cardId) {
-      ensureCardGroup(cardId).changes.push(change);
-    } else {
-      orderChanges.push(change);
-    }
+    ensureGroupForQuoteItem(item).changes.push(change);
   }
 
   const beforeAdj = indexById(
@@ -273,13 +344,13 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
       const group = ensureCardGroup(String(cardId));
       if (beforeAmt == null || beforeAmt === "") {
         group.changes.push(
-          `High-value fee ${formatMoney(Number(afterAmt))}`
+          `High-value fee: ${formatMoney(Number(afterAmt))}`
         );
       } else if (afterAmt == null || afterAmt === "") {
-        group.changes.push("Removed high-value fee");
+        group.changes.push("Removed: high-value fee");
       } else {
         group.changes.push(
-          `High-value fee ${formatMoney(Number(beforeAmt))} → ${formatMoney(Number(afterAmt))}`
+          `High-value fee: ${formatMoney(Number(beforeAmt))} → ${formatMoney(Number(afterAmt))}`
         );
       }
     }
@@ -312,51 +383,145 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     const hv = hvMap[group.cardId];
     if (hv?.amount_dollars) {
       group.changes.push(
-        `High-value fee ${formatMoney(Number(hv.amount_dollars))}`
+        `High-value fee: ${formatMoney(Number(hv.amount_dollars))}`
       );
     }
   }
 
-  // On newly added cards, drop redundant "Added" prefixes — the card box is already "New".
+  // On newly added cards, drop redundant "Added:" prefixes — the card box is already "New".
   for (const group of cardGroupsMap.values()) {
     if (group.status !== "added") continue;
-    group.changes = group.changes.map((line) =>
-      line.startsWith("Added ") ? line.slice(6) : line
-    );
+    group.changes = group.changes.map((line) => {
+      if (line.startsWith("Added: ")) return line.slice(7);
+      if (line.startsWith("Added ")) return line.slice(6);
+      return line;
+    });
   }
 
   // On removed cards, soften quote line labels.
   for (const group of cardGroupsMap.values()) {
     if (group.status !== "removed") continue;
-    group.changes = group.changes.map((line) =>
-      line.startsWith("Removed ") ? line.slice(8) : line
-    );
+    group.changes = group.changes.map((line) => {
+      if (line.startsWith("Removed: ")) return line.slice(9);
+      if (line.startsWith("Removed ")) return line.slice(8);
+      return line;
+    });
   }
 
   const cardGroups = [...cardGroupsMap.values()]
     .filter((group) => group.status === "added" || group.status === "removed" || group.changes.length > 0)
     .sort((a, b) => a.sortIndex - b.sortIndex);
 
+  // Order section: status (above), adjustments (above), and total change only.
   let quoteSummary = null;
   if (quoteFingerprint(beforePayload) !== quoteFingerprint(afterPayload)) {
     const beforeTotal = quoteTotalFromPayload(beforePayload);
     const afterTotal = quoteTotalFromPayload(afterPayload);
-    quoteSummary =
-      beforeTotal === afterTotal
-        ? `Quote total unchanged at ${formatMoney(afterTotal)}`
-        : `Quote total ${formatMoney(beforeTotal)} → ${formatMoney(afterTotal)}`;
+    if (beforeTotal !== afterTotal) {
+      quoteSummary = `Quote total: ${formatMoney(beforeTotal)} → ${formatMoney(afterTotal)}`;
+      const alreadyListed = orderChanges.some((line) =>
+        String(line).startsWith("Quote total")
+      );
+      if (!alreadyListed) {
+        orderChanges.unshift(quoteSummary);
+      }
+    }
   }
 
   const text = formatOrderChangelogText({ cardGroups, orderChanges, quoteSummary });
-  const hasChangelog = cardGroups.length > 0 || orderChanges.length > 0;
+  const hasChangelog =
+    cardGroups.length > 0 || orderChanges.length > 0 || Boolean(quoteSummary);
 
-  return {
+  const changelog = {
     cardGroups,
     orderChanges,
     quoteSummary,
+  };
+
+  return {
+    ...changelog,
     text,
     hasChangelog,
+    summary: summarizeChangelog(changelog),
   };
+}
+
+/**
+ * Short customer-facing subject. Up to two phrases join with " + ";
+ * more than that becomes a single "multiple changes" line.
+ * @param {{ cardGroups?: CardChangelogGroup[], orderChanges?: string[], quoteSummary?: string | null }} changelog
+ */
+export function summarizeChangelog(changelog = {}) {
+  const phrases = [];
+  const cardGroups = changelog.cardGroups ?? [];
+  const orderChanges = changelog.orderChanges ?? [];
+  const quoteSummary = changelog.quoteSummary ?? null;
+
+  const orderStatusLine = orderChanges.find((line) =>
+    String(line).startsWith("Status:")
+  );
+  if (orderStatusLine) {
+    const toLabel = String(orderStatusLine).split("→").pop()?.trim();
+    if (toLabel) {
+      phrases.push(`Your order is now ${toLabel.toLowerCase()}`);
+    }
+  }
+
+  const added = cardGroups.filter((g) => g.status === "added").length;
+  const removed = cardGroups.filter((g) => g.status === "removed").length;
+  if (added === 1) phrases.push("A new card has been added");
+  else if (added > 1) phrases.push("New cards have been added");
+  if (removed === 1) phrases.push("A card has been removed");
+  else if (removed > 1) phrases.push("Cards have been removed");
+
+  let completedCards = 0;
+  let inProgressCards = 0;
+  let otherCardStatus = 0;
+  for (const group of cardGroups) {
+    if (group.status !== "modified") continue;
+    for (const line of group.changes ?? []) {
+      if (!String(line).startsWith("Status:")) continue;
+      const toLabel = String(line).split("→").pop()?.trim()?.toLowerCase();
+      if (toLabel === "completed") completedCards += 1;
+      else if (toLabel === "in progress") inProgressCards += 1;
+      else otherCardStatus += 1;
+    }
+  }
+  if (completedCards === 1) phrases.push("Your card has been completed");
+  else if (completedCards > 1) phrases.push("Your cards have been completed");
+  if (inProgressCards >= 1) {
+    phrases.push(
+      inProgressCards === 1
+        ? "Your card is now in progress"
+        : "Your cards are now in progress"
+    );
+  }
+  if (otherCardStatus >= 1 && completedCards === 0 && inProgressCards === 0) {
+    phrases.push(
+      otherCardStatus === 1
+        ? "A card status has been updated"
+        : "Card statuses have been updated"
+    );
+  }
+
+  const quoteTouched =
+    Boolean(quoteSummary) ||
+    orderChanges.some((line) => !String(line).startsWith("Status:")) ||
+    cardGroups.some((g) =>
+      (g.changes ?? []).some((line) => !String(line).startsWith("Status:"))
+    );
+  if (quoteTouched) {
+    phrases.push("Your order quote has been updated");
+  }
+
+  if (phrases.length === 0 && (cardGroups.length > 0 || orderChanges.length > 0)) {
+    phrases.push("Your order has been updated");
+  }
+
+  if (phrases.length > 2) {
+    return "Your order has multiple changes";
+  }
+  return phrases.join(" + ");
 }
 
 export function formatOrderChangelogText({
@@ -364,9 +529,20 @@ export function formatOrderChangelogText({
   orderChanges = [],
   quoteSummary = null,
 } = {}) {
-  if (!cardGroups.length && !orderChanges.length) return "";
+  if (!cardGroups.length && !orderChanges.length && !quoteSummary) return "";
   const lines = [];
-  if (quoteSummary) lines.push(quoteSummary, "");
+  const quoteInOrder = orderChanges.some((line) =>
+    String(line).startsWith("Quote total")
+  );
+  if (quoteSummary && !quoteInOrder) lines.push(quoteSummary, "");
+
+  if (orderChanges.length) {
+    lines.push("Order");
+    for (const change of orderChanges) {
+      lines.push(`  - ${change}`);
+    }
+    lines.push("");
+  }
 
   for (const group of cardGroups) {
     lines.push(group.label);
@@ -377,13 +553,6 @@ export function formatOrderChangelogText({
       lines.push(`  - ${change}`);
     }
     lines.push("");
-  }
-
-  if (orderChanges.length) {
-    lines.push("Order");
-    for (const change of orderChanges) {
-      lines.push(`  - ${change}`);
-    }
   }
 
   while (lines[lines.length - 1] === "") lines.pop();

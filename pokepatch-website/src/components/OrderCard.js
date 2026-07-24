@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { thumbPath } from "@/lib/imageCompression";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/lib/servicePricing";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import MediaLightbox from "@/components/MediaLightbox";
+import { ChangelogDiff } from "@/components/ChangelogDiff";
 import {
   forgetSignedUrl,
   getCachedSignedUrls,
@@ -84,14 +85,9 @@ function deliveryLabel(method) {
     : { text: "Shipping", sub: "Mailed to you" };
 }
 
-// Non-customer photos are the ones our team adds, so we badge them.
-// "Update" is temporary (unseen team changes); Progress/Final are permanent labels.
-function imageBadge(type, { showUpdateBadge = false } = {}) {
+// Non-customer photos are the ones our team adds, so we badge progress/final.
+function imageBadge(type) {
   switch (type) {
-    case "admin":
-      return showUpdateBadge
-        ? { label: "Update", cls: "bg-mint text-night" }
-        : null;
     case "progress_front":
     case "progress_back":
       return { label: "Progress", cls: "bg-lavender text-night" };
@@ -241,12 +237,50 @@ function formatMessageTime(value) {
   }
 }
 
-function previewMessageBody(body, maxLen = 120) {
-  const text = String(body ?? "")
+function messageBodyText(body) {
+  return String(body ?? "")
     .replace(/^Regarding Order #\d+\s*/i, "")
     .trim();
-  if (text.length <= maxLen) return text;
-  return `${text.slice(0, maxLen).trim()}…`;
+}
+
+/** null = unknown; skip the missing-column round-trip after first probe. */
+let customerMessagesChangelogAvailable = null;
+
+async function fetchOrderMessages(orderId) {
+  async function query(columns) {
+    return supabase
+      .from("customer_messages")
+      .select(columns)
+      .eq("order_id", orderId)
+      .order("sent_at", { ascending: false });
+  }
+
+  if (customerMessagesChangelogAvailable !== false) {
+    const withChangelog = await query(
+      "id, subject, body, changelog, sent_at, read_at"
+    );
+    if (!withChangelog.error) {
+      customerMessagesChangelogAvailable = true;
+      return { data: withChangelog.data ?? [], error: null };
+    }
+
+    const missingChangelog =
+      withChangelog.error.code === "PGRST204" ||
+      /changelog/i.test(withChangelog.error.message || "") ||
+      /changelog/i.test(withChangelog.error.details || "") ||
+      /changelog/i.test(withChangelog.error.hint || "");
+
+    if (!missingChangelog) {
+      return { data: [], error: withChangelog.error };
+    }
+    customerMessagesChangelogAvailable = false;
+  }
+
+  const withoutChangelog = await query("id, subject, body, sent_at, read_at");
+  if (withoutChangelog.error) {
+    return { data: [], error: withoutChangelog.error };
+  }
+  return { data: withoutChangelog.data ?? [], error: null };
 }
 
 export default function OrderCard({ order, onClick, isExpanded = false }) {
@@ -261,8 +295,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const [fullUrls, setFullUrls] = useState({});
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesLoadedForId, setMessagesLoadedForId] = useState(null);
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [expandedMessageId, setExpandedMessageId] = useState(null);
+  const [messagesListExpanded, setMessagesListExpanded] = useState(false);
   const [highlightedMessageIds, setHighlightedMessageIds] = useState(
     () => new Set()
   );
@@ -271,6 +307,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     ? order.preview_paths
     : [];
   const previewPathsKey = previewPaths.join(",");
+  const expectMessages = Boolean(order.has_unread_messages);
+  const messagesReady = messagesLoadedForId === order.id;
+  const showMessagesPanel =
+    messages.length > 0 ||
+    (isExpanded && expectMessages && (!messagesReady || messagesLoading));
 
   useEffect(() => {
     if (isExpanded && !orderDetails && supabase) {
@@ -294,35 +335,105 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     if (!isExpanded || !supabase) return undefined;
 
     let cancelled = false;
-    setMessagesLoading(true);
+    // Keep cached messages visible; only show a loading shell on first fetch.
+    if (messagesLoadedForId !== order.id) {
+      setMessagesLoading(true);
+    }
 
-    supabase
-      .from("customer_messages")
-      .select("id, subject, body, sent_at, read_at")
-      .eq("order_id", order.id)
-      .order("sent_at", { ascending: false })
-      .then(({ data, error: loadError }) => {
-        if (cancelled) return;
-        if (loadError) {
-          console.error("Failed to load order messages", loadError);
-          setMessages([]);
-          return;
-        }
-        setMessages(data ?? []);
-      })
-      .finally(() => {
-        if (!cancelled) setMessagesLoading(false);
-      });
+    async function loadMessages() {
+      const { data, error: loadError } = await fetchOrderMessages(order.id);
+      if (cancelled) return;
+      if (loadError) {
+        console.error(
+          "Failed to load order messages",
+          loadError.message || loadError.code || loadError
+        );
+        if (messagesLoadedForId !== order.id) setMessages([]);
+        setMessagesLoadedForId(order.id);
+        return;
+      }
+      setMessages(data);
+      setMessagesLoadedForId(order.id);
+    }
+
+    loadMessages().finally(() => {
+      if (!cancelled) setMessagesLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
+    // messagesLoadedForId intentionally omitted — only re-fetch on expand/order change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpanded, order.id]);
+
+  const markMessageRead = useCallback(
+    async (messageId) => {
+      if (!supabase || !messageId) return;
+
+      const target = messages.find((row) => row.id === messageId);
+      if (!target || target.read_at) return;
+
+      try {
+        const { error: markError } = await supabase.rpc(
+          "mark_my_messages_read",
+          { p_ids: [messageId] }
+        );
+        if (markError) throw markError;
+
+        const now = new Date().toISOString();
+        const remainingUnread = messages.filter(
+          (row) => row.id !== messageId && !row.read_at
+        ).length;
+        setMessages((prev) =>
+          prev.map((row) =>
+            row.id === messageId ? { ...row, read_at: now } : row
+          )
+        );
+        setHighlightedMessageIds((prev) => {
+          if (!prev.has(messageId)) return prev;
+          const next = new Set(prev);
+          next.delete(messageId);
+          return next;
+        });
+
+        // Clear legacy order-level chip only once every message has been opened.
+        if (remainingUnread === 0) {
+          const { error: seenError } = await supabase.rpc(
+            "mark_my_order_updates_seen",
+            { p_order_id: order.id }
+          );
+          if (seenError) {
+            const missing =
+              seenError.code === "PGRST202" ||
+              /mark_my_order_updates_seen/i.test(seenError.message || "");
+            if (!missing) {
+              console.error("mark_my_order_updates_seen failed", seenError);
+            }
+          }
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("pokepatch:messages-read", {
+                detail: { orderId: order.id },
+              })
+            );
+          }
+        } else if (typeof window !== "undefined") {
+          // Keep navbar badge in sync even when some messages remain unread.
+          window.dispatchEvent(new Event("pokepatch:messages-read"));
+        }
+      } catch (err) {
+        console.error("mark_my_messages_read failed", err);
+      }
+    },
+    [messages, order.id]
+  );
 
   useEffect(() => {
     if (!isExpanded) {
       setUpdatesOpen(false);
       setExpandedMessageId(null);
+      setMessagesListExpanded(false);
       setHighlightedMessageIds(new Set());
       setLightbox(null);
     }
@@ -396,8 +507,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
-  const hasUpdates = order.has_new_updates ?? order.has_admin_photos;
-  const hasUnreadMessages = messages.some((row) => !row.read_at);
+  // Unread chip = emailed messages with read_at null only (not silent edits).
+  const hasUnreadMessages = messagesReady
+    ? messages.some((row) => !row.read_at)
+    : Boolean(order.has_unread_messages);
   const lastUpdatedAt = latestActivityAt(order);
   const lastUpdatedLabel = formatUpdateTime(lastUpdatedAt);
   const isFirstActivityOnly =
@@ -421,6 +534,21 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       )
     : [];
 
+  const messageThumbByCardId = useMemo(() => {
+    const map = {};
+    for (const card of orderDetails?.cards ?? []) {
+      if (card?.id == null) continue;
+      const images = card.images ?? [];
+      const preferred =
+        images.find((image) => image?.image_type === "customer") ?? images[0];
+      const path = preferred?.storage_path;
+      if (path && thumbUrls[path]) {
+        map[String(card.id)] = thumbUrls[path];
+      }
+    }
+    return map;
+  }, [orderDetails, thumbUrls]);
+
   const lightboxCard =
     lightbox && orderDetails
       ? (orderDetails.cards || []).find((card) => card.id === lightbox.cardId)
@@ -432,7 +560,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     ? fullUrls[lightboxPath] || thumbUrls[lightboxPath] || null
     : null;
   const lightboxBadge = lightboxImage
-    ? imageBadge(lightboxImage.image_type, { showUpdateBadge: hasUpdates })
+    ? imageBadge(lightboxImage.image_type)
     : null;
   const lightboxMedia =
     lightboxUrl && lightboxImage
@@ -448,7 +576,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         }
       : null;
 
-  async function handleOpenUpdates() {
+  function handleOpenUpdates() {
     const nextOpen = !updatesOpen;
     setUpdatesOpen(nextOpen);
     if (!nextOpen) {
@@ -456,30 +584,17 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       setExpandedMessageId(null);
       return;
     }
-    if (!supabase) return;
+    // Highlight unread rows only — do not mark read until a message is opened.
+    setHighlightedMessageIds(
+      new Set(messages.filter((row) => !row.read_at).map((row) => row.id))
+    );
+  }
 
-    const unreadIds = messages
-      .filter((row) => !row.read_at)
-      .map((row) => row.id);
-    setHighlightedMessageIds(new Set(unreadIds));
-    if (unreadIds.length === 0) return;
-
-    try {
-      const { error: markError } = await supabase.rpc("mark_my_messages_read", {
-        p_ids: unreadIds,
-      });
-      if (markError) throw markError;
-      const now = new Date().toISOString();
-      setMessages((prev) =>
-        prev.map((row) =>
-          unreadIds.includes(row.id) ? { ...row, read_at: now } : row
-        )
-      );
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("pokepatch:messages-read"));
-      }
-    } catch (err) {
-      console.error("mark_my_messages_read failed", err);
+  function handleToggleMessage(messageId) {
+    const opening = expandedMessageId !== messageId;
+    setExpandedMessageId(opening ? messageId : null);
+    if (opening) {
+      void markMessageRead(messageId);
     }
   }
 
@@ -511,18 +626,20 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             {lastUpdatedLabel ? (
               <span
                 className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                  hasUpdates
+                  hasUnreadMessages
                     ? "bg-mint text-night"
                     : "bg-night/30 text-ink/70"
                 }`}
               >
-                {hasUpdates ? (
+                {hasUnreadMessages ? (
                   <span className="h-1.5 w-1.5 rounded-full bg-night/70" />
                 ) : null}
-                {hasUpdates ? "New update" : activityChipLabel}
+                {hasUnreadMessages ? "New message" : activityChipLabel}
                 <span
                   className={
-                    hasUpdates ? "font-semibold text-night/70" : "font-semibold"
+                    hasUnreadMessages
+                      ? "font-semibold text-night/70"
+                      : "font-semibold"
                   }
                 >
                   · {lastUpdatedLabel}
@@ -585,76 +702,123 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       {/* Expanded */}
       {isExpanded && (
         <div className="border-t border-ink/10 p-4">
-          {(!messagesLoading && messages.length > 0) ||
-          orderDetails?.general_notes ? (
+          {showMessagesPanel || orderDetails?.general_notes ? (
             <div className="mb-5 space-y-3">
-              {!messagesLoading && messages.length > 0 ? (
-                <div className="rounded-xl border border-mint/30 bg-mint/10">
+              {showMessagesPanel ? (
+                <div className="rounded-xl border border-sky/35 bg-sky/10">
                   <button
                     type="button"
                     onClick={handleOpenUpdates}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+                    disabled={messages.length === 0}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left disabled:cursor-default"
                   >
                     <span>
-                      <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
-                        <span>Updates from PokePatch</span>
+                      <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-sky">
+                        <span>Messages</span>
                         {hasUnreadMessages ? <UpdateChip /> : null}
                       </span>
                       <span className="mt-0.5 block text-xs text-ink/55">
-                        {messages.length}{" "}
-                        {messages.length === 1 ? "message" : "messages"}
+                        {messages.length > 0
+                          ? `${messages.length} ${
+                              messages.length === 1 ? "message" : "messages"
+                            }`
+                          : "Loading…"}
                       </span>
                     </span>
-                    <Chevron open={updatesOpen} />
+                    <Chevron open={updatesOpen && messages.length > 0} />
                   </button>
-                  {updatesOpen ? (
-                    <ul className="space-y-2 border-t border-mint/20 px-3 py-3">
-                      {messages.map((message) => {
+                  {updatesOpen && messages.length > 0 ? (
+                    <div className="border-t border-sky/25 px-3 py-3">
+                      <ul className="space-y-2">
+                        {(messagesListExpanded
+                          ? messages
+                          : messages.slice(0, 3)
+                        ).map((message) => {
                         const expanded = expandedMessageId === message.id;
                         const isNew = highlightedMessageIds.has(message.id);
+                        const changelog = message.changelog;
+                        const hasChangelog =
+                          (changelog?.cardGroups?.length ?? 0) > 0 ||
+                          (changelog?.orderChanges?.length ?? 0) > 0 ||
+                          Boolean(changelog?.quoteSummary);
+                        const hasBody = Boolean(messageBodyText(message.body));
+                        const hasContent = hasBody || hasChangelog;
                         return (
                           <li key={message.id}>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedMessageId((current) =>
-                                  current === message.id ? null : message.id
-                                )
-                              }
-                              className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                            <div
+                              className={`rounded-lg border transition ${
                                 isNew
-                                  ? "border-mint/50 bg-mint/20 ring-1 ring-mint/30"
-                                  : "border-mint/20 bg-cream/50 hover:border-mint/40"
+                                  ? "border-sky/50 bg-sky/20 ring-1 ring-sky/30"
+                                  : "border-sky/20 bg-cream/50"
                               }`}
                             >
-                              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                                <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-                                  <span>{message.subject}</span>
-                                  {isNew ? <UpdateChip /> : null}
-                                </p>
-                                <time
-                                  dateTime={message.sent_at}
-                                  className="text-[11px] text-ink/55"
-                                >
-                                  {formatMessageTime(message.sent_at)}
-                                </time>
-                              </div>
-                              <p
-                                className={`mt-1 text-sm text-ink/80 ${
-                                  expanded
-                                    ? "whitespace-pre-wrap"
-                                    : "line-clamp-2"
-                                }`}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMessage(message.id)}
+                                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
+                                aria-expanded={expanded}
                               >
-                                {expanded
-                                  ? message.body
-                                  : previewMessageBody(message.body)}
-                              </p>
-                            </button>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                                    <span>{message.subject}</span>
+                                    {isNew ? <UpdateChip /> : null}
+                                  </span>
+                                  <time
+                                    dateTime={message.sent_at}
+                                    className="mt-0.5 block text-[11px] text-ink/55"
+                                  >
+                                    {formatMessageTime(message.sent_at)}
+                                  </time>
+                                  {hasContent ? (
+                                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky">
+                                      {expanded ? "See less" : "See more"}
+                                      <span className="inline-flex scale-75">
+                                        <Chevron open={expanded} />
+                                      </span>
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </button>
+                              {expanded && hasContent ? (
+                                <div className="space-y-2 border-t border-sky/25 px-3 py-2.5">
+                                  {hasBody ? (
+                                    <p className="whitespace-pre-wrap text-sm text-ink/80">
+                                      {messageBodyText(message.body)}
+                                    </p>
+                                  ) : null}
+                                  {hasChangelog ? (
+                                    <ChangelogDiff
+                                      cardGroups={changelog.cardGroups ?? []}
+                                      orderChanges={
+                                        changelog.orderChanges ?? []
+                                      }
+                                      quoteSummary={
+                                        changelog.quoteSummary ?? null
+                                      }
+                                      thumbByCardId={messageThumbByCardId}
+                                    />
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
                           </li>
                         );
                       })}
-                    </ul>
+                      </ul>
+                      {messages.length > 3 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMessagesListExpanded((open) => !open)
+                          }
+                          className="mt-2 w-full rounded-lg px-2 py-1.5 text-center text-xs font-semibold text-sky transition hover:bg-sky/15"
+                        >
+                          {messagesListExpanded
+                            ? "Show less"
+                            : `Show more (${messages.length - 3} older)`}
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
                 </div>
               ) : null}
@@ -663,7 +827,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 <div className="rounded-xl border border-mint/30 bg-mint/10 p-3">
                   <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
                     <span>Notes from PokePatch</span>
-                    {hasUpdates ? <UpdateChip /> : null}
                   </p>
                   <p className="mt-1 text-sm text-ink/85">
                     {orderDetails.general_notes}
@@ -727,7 +890,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {/* Google Drive folder from the team */}
               {orderDetails.photos_drive_url && (
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <SectionLabel showUpdate={hasUpdates}>
+                  <SectionLabel>
                     Photo folder
                   </SectionLabel>
                   <a
@@ -765,7 +928,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   title={
                     <span className="inline-flex flex-wrap items-center gap-2">
                       Your quote
-                      {hasUpdates ? <UpdateChip /> : null}
+                      
                     </span>
                   }
                   items={orderDetails.quote_items}
@@ -780,7 +943,6 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {/* Cards */}
               <div>
                 <SectionLabel
-                  showUpdate={hasUpdates}
                   className="mb-2"
                 >
                   {`Cards · ${orderDetails.cards.length}`}
@@ -878,9 +1040,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                     key={image.id}
                                     url={thumbUrls[image.storage_path]}
                                     alt={`${card.card_name} - ${image.image_type}`}
-                                    badge={imageBadge(image.image_type, {
-                                      showUpdateBadge: hasUpdates,
-                                    })}
+                                    badge={imageBadge(image.image_type)}
                                     onOpen={
                                       thumbUrls[image.storage_path]
                                         ? () =>

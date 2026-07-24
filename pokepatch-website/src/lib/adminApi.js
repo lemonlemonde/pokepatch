@@ -481,6 +481,8 @@ export async function adminSendMessages({
   order_ids = [],
   subject,
   body,
+  changelog = null,
+  thumb_by_card_id = null,
 } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
@@ -489,6 +491,8 @@ export async function adminSendMessages({
       order_ids,
       subject,
       body,
+      changelog: changelog || undefined,
+      thumb_by_card_id: thumb_by_card_id || undefined,
     },
   });
   return payload;
