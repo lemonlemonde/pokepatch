@@ -17,6 +17,7 @@ import {
   adminReorderStatusOrders,
   adminSaveOrder,
   adminSearchOrders,
+  adminSendMessages,
   adminSetStatus,
   adminUploadPhoto,
   adminValidate,
@@ -26,9 +27,9 @@ import { compressImageForUpload, makeThumbForUpload, thumbPath } from "@/lib/ima
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
-import OrderSendUpdatePanel, {
-  OrderSendUpdateButton,
-} from "@/components/admin/OrderSendUpdate";
+import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
+import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
+import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
@@ -1969,13 +1970,14 @@ function OrderEditor({
   onChange,
   onCancel,
   onSave,
+  onSendMessage,
   onError,
   focusCardId = null,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [removingPhotoId, setRemovingPhotoId] = useState(null);
-  const [sendUpdateOpen, setSendUpdateOpen] = useState(false);
   const [highlightedCardId, setHighlightedCardId] = useState(null);
+  const scrollToCardIdRef = useRef(null);
   const scrolledFocusKeyRef = useRef("");
 
   function updateDraft(patch) {
@@ -2604,18 +2606,20 @@ function OrderEditor({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
+              onClick={onSendMessage}
+              disabled={saving || !draft.customer_email?.trim()}
+              className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink transition hover:border-mint disabled:opacity-40"
+            >
+              Send message
+            </button>
+            <button
+              type="button"
               onClick={onCancel}
               disabled={saving || !dirty}
               className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
             >
               Discard
             </button>
-            <OrderSendUpdateButton
-              open={sendUpdateOpen}
-              onToggle={() => setSendUpdateOpen((current) => !current)}
-              disabled={saving}
-              canSend={Boolean(draft.customer_email?.trim())}
-            />
             <button
               type="button"
               onClick={onSave}
@@ -2627,41 +2631,6 @@ function OrderEditor({
           </div>
         </div>
       </div>
-
-      {sendUpdateOpen ? (
-        <div className="space-y-5">
-          <div
-            className="flex items-center gap-3"
-            role="separator"
-            aria-label="Open update"
-          >
-            <div className="h-px flex-1 bg-ink/15" />
-            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
-              Open update
-            </span>
-            <div className="h-px flex-1 bg-ink/15" />
-          </div>
-          <OrderSendUpdatePanel
-            open={sendUpdateOpen}
-            onClose={() => setSendUpdateOpen(false)}
-            orderId={orderId}
-            displayId={displayId}
-            customerEmail={draft.customer_email}
-            disabled={saving}
-          />
-          <div
-            className="flex items-center gap-3"
-            role="separator"
-            aria-label="Order details"
-          >
-            <div className="h-px flex-1 bg-ink/15" />
-            <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/40">
-              Order details
-            </span>
-            <div className="h-px flex-1 bg-ink/15" />
-          </div>
-        </div>
-      ) : null}
 
       {error && (
         <p className="rounded-xl border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
@@ -3083,16 +3052,15 @@ function OrderEditor({
                         </select>
                       </label>
                       <label className="block min-w-0 sm:col-span-1">
-                        <EditorLabel>Description</EditorLabel>
+                        <EditorLabel>Amount ($)</EditorLabel>
                         <input
                           className={editorFieldClass()}
-                          value={row.description ?? ""}
+                          inputMode="decimal"
+                          value={row.amount_dollars ?? ""}
                           onChange={(event) =>
-                            updateQuoteAdjustment(index, {
-                              description: event.target.value,
-                            })
+                            setAdjustmentDollars(index, event.target.value)
                           }
-                          placeholder="Optional note…"
+                          placeholder="0.00"
                         />
                       </label>
                       <div className="flex items-end justify-end">
@@ -3106,16 +3074,17 @@ function OrderEditor({
                       </div>
                     </div>
                     <div className="mt-3">
-                      <label className="block max-w-xs">
-                        <EditorLabel>Amount ($)</EditorLabel>
+                      <label className="block">
+                        <EditorLabel>Description</EditorLabel>
                         <input
                           className={editorFieldClass()}
-                          inputMode="decimal"
-                          value={row.amount_dollars ?? ""}
+                          value={row.description ?? ""}
                           onChange={(event) =>
-                            setAdjustmentDollars(index, event.target.value)
+                            updateQuoteAdjustment(index, {
+                              description: event.target.value,
+                            })
                           }
-                          placeholder="0.00"
+                          placeholder="Optional note…"
                         />
                       </label>
                     </div>
@@ -3229,6 +3198,11 @@ export default function AdminApp() {
   const [listError, setListError] = useState("");
   const [deleteTargets, setDeleteTargets] = useState(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
+  const [savePromptOpen, setSavePromptOpen] = useState(false);
+  const [movePrompt, setMovePrompt] = useState(null);
+  const [moveSaving, setMoveSaving] = useState(false);
+  const [noteOnlyOpen, setNoteOnlyOpen] = useState(false);
+  const [noteOnlySending, setNoteOnlySending] = useState(false);
 
   const dirty = useMemo(() => {
     if (!draft) return false;
@@ -3254,6 +3228,9 @@ export default function AdminApp() {
     setSavedSnapshot("");
     setEditorError("");
     setLoadingOrderId(null);
+    setSavePromptOpen(false);
+    setNoteOnlyOpen(false);
+    setMovePrompt(null);
   }, []);
 
   const refreshOrders = useCallback(async () => {
@@ -3416,8 +3393,63 @@ export default function AdminApp() {
       const fromIndex = col.findIndex((o) => o.id === orderId);
       if (fromIndex >= 0 && fromIndex < insertAt) insertAt -= 1;
       if (fromIndex === insertAt) return;
+      await commitPlaceOrder({
+        orderId,
+        nextStatus,
+        insertAt,
+        sameColumn: true,
+        previous,
+        moving,
+      });
+      return;
     }
 
+    // Cross-column: ask Save/Move only vs notify before committing.
+    const previewUrls = Array.isArray(moving.preview_urls)
+      ? moving.preview_urls.filter(Boolean)
+      : [];
+    setMovePrompt({
+      orderId,
+      nextStatus,
+      insertAt,
+      sameColumn: false,
+      previous,
+      moving,
+      displayId: moving.display_id,
+      customerEmail: moving.customer_email,
+      orderSummary: {
+        displayId: moving.display_id,
+        customerName: moving.customer_name,
+        thumbUrl: previewUrls[0] ?? null,
+        fromStatus,
+        toStatus: nextStatus,
+        cardCount: moving.card_count ?? null,
+      },
+      beforePayload: {
+        order: { status: fromStatus },
+        cards: [],
+        quote_items: [],
+      },
+      afterPayload: {
+        order: { status: nextStatus },
+        cards: [],
+        quote_items: [],
+      },
+    });
+  }
+
+  async function commitPlaceOrder({
+    orderId,
+    nextStatus,
+    insertAt,
+    sameColumn,
+    previous,
+    moving,
+    notify = false,
+    subject = "",
+    body = "",
+    changelog = null,
+  }) {
     setOrders((current) => {
       const without = current.filter((order) => order.id !== orderId);
       const byStatus = groupOrdersByStatus(without);
@@ -3477,9 +3509,22 @@ export default function AdminApp() {
           return next;
         });
       }
+
+      if (notify && subject.trim() && (body.trim() || changelog)) {
+        await adminSendMessages({
+          order_ids: [orderId],
+          subject: subject.trim(),
+          body,
+          changelog,
+          thumb_by_card_id: buildCardThumbById(
+            selectedOrderId === orderId ? draft?.cards : []
+          ),
+        });
+      }
     } catch (err) {
       setOrders(previous);
       setListError(err.message || "Could not update order place.");
+      throw err;
     }
   }
 
@@ -3530,6 +3575,7 @@ export default function AdminApp() {
   }
 
   function leaveEditor() {
+    setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
     // address bar in sync while React state already shows the board.
@@ -3556,11 +3602,38 @@ export default function AdminApp() {
     }
   }
 
-  async function handleSave() {
+  function requestSave() {
     if (!selectedOrderId || !draft) return;
     const validationError = validateDraftForSave(draft);
     if (validationError) {
       setEditorError(validationError);
+      return;
+    }
+    setEditorError("");
+    const before = savedSnapshot ? JSON.parse(savedSnapshot) : null;
+    const after = draftPayload(draft);
+    const { hasChangelog } = buildOrderChangelog({
+      beforePayload: before,
+      afterPayload: after,
+    });
+    if (!hasChangelog) {
+      void handleSave({ notify: false });
+      return;
+    }
+    setSavePromptOpen(true);
+  }
+
+  async function handleSave({
+    notify = false,
+    subject = "",
+    body = "",
+    changelog = null,
+  } = {}) {
+    if (!selectedOrderId || !draft) return;
+    const validationError = validateDraftForSave(draft);
+    if (validationError) {
+      setEditorError(validationError);
+      setSavePromptOpen(false);
       return;
     }
 
@@ -3573,6 +3646,8 @@ export default function AdminApp() {
 
     setSaving(true);
     setEditorError("");
+    setSavePromptOpen(false);
+    const emailThumbs = buildCardThumbById(draft.cards);
     try {
       const payload = draftPayload(draft);
       let refreshed = await adminSaveOrder(selectedOrderId, payload);
@@ -3606,8 +3681,6 @@ export default function AdminApp() {
         current.map((order) => {
           if (order.id !== selectedOrderId) return order;
           const summary = orderToKanbanSummary(refreshed);
-          // Detail responses historically omitted queue_priority; don't let a
-          // null overwrite the column rank and jump the card in the board.
           if (
             summary.queue_priority == null &&
             order.queue_priority != null
@@ -3617,10 +3690,62 @@ export default function AdminApp() {
           return { ...order, ...summary };
         })
       );
+
+      if (notify && subject.trim() && (body.trim() || changelog)) {
+        try {
+          const result = await adminSendMessages({
+            order_ids: [selectedOrderId],
+            subject: subject.trim(),
+            body,
+            changelog,
+            thumb_by_card_id: emailThumbs,
+          });
+          if ((result.failed ?? 0) > 0) {
+            const firstError = Array.isArray(result.results)
+              ? result.results.find((row) => row.email_status === "failed")
+                  ?.email_error
+              : null;
+            setEditorError(
+              firstError ||
+                "Order saved, but the customer notification failed to send."
+            );
+          }
+        } catch (notifyErr) {
+          setEditorError(
+            notifyErr.message ||
+              "Order saved, but the customer notification failed to send."
+          );
+        }
+      }
     } catch (err) {
       setEditorError(err.message || "Save failed.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleMoveConfirm({
+    notify = false,
+    subject = "",
+    body = "",
+    changelog = null,
+  } = {}) {
+    if (!movePrompt) return;
+    setMoveSaving(true);
+    setListError("");
+    try {
+      await commitPlaceOrder({
+        ...movePrompt,
+        notify,
+        subject,
+        body,
+        changelog,
+      });
+      setMovePrompt(null);
+    } catch (err) {
+      setListError(err.message || "Could not update order place.");
+    } finally {
+      setMoveSaving(false);
     }
   }
 
@@ -3744,29 +3869,84 @@ export default function AdminApp() {
               )}
 
               {routeOrderId && draft && (
-                <OrderEditor
-                  displayId={selectedDisplayId}
-                  orderId={selectedOrderId}
-                  draft={draft}
-                  dirty={dirty}
-                  saving={saving}
-                  error={editorError}
-                  focusCardId={searchFocusCardId}
-                  onBack={leaveEditor}
-                  backLabel={
-                    searchParams.get("from") === "all"
-                      ? "Back to all orders"
-                      : "Back to board"
-                  }
-                  onChange={(next) =>
-                    setDraft((current) =>
-                      typeof next === "function" ? next(current) : next
-                    )
-                  }
-                  onCancel={handleCancel}
-                  onSave={handleSave}
-                  onError={setEditorError}
-                />
+                <>
+                  <OrderEditor
+                    displayId={selectedDisplayId}
+                    orderId={selectedOrderId}
+                    draft={draft}
+                    dirty={dirty}
+                    saving={saving}
+                    error={editorError}
+                    focusCardId={searchFocusCardId}
+                    onBack={leaveEditor}
+                    backLabel={
+                      searchParams.get("from") === "all"
+                        ? "Back to all orders"
+                        : "Back to board"
+                    }
+                    onChange={(next) =>
+                      setDraft((current) =>
+                        typeof next === "function" ? next(current) : next
+                      )
+                    }
+                    onCancel={handleCancel}
+                    onSave={requestSave}
+                    onSendMessage={() => setNoteOnlyOpen(true)}
+                    onError={setEditorError}
+                  />
+                  <OrderSaveChangesDialog
+                    open={savePromptOpen}
+                    variant="save"
+                    displayId={selectedDisplayId}
+                    customerEmail={draft.customer_email}
+                    thumbByCardId={buildCardThumbById(draft.cards)}
+                    beforePayload={
+                      savedSnapshot ? JSON.parse(savedSnapshot) : null
+                    }
+                    afterPayload={draftPayload(draft)}
+                    saving={saving}
+                    onCancel={() => {
+                      if (!saving) setSavePromptOpen(false);
+                    }}
+                    onConfirm={handleSave}
+                  />
+                  <OrderNoteOnlyDialog
+                    open={noteOnlyOpen}
+                    displayId={selectedDisplayId}
+                    customerEmail={draft.customer_email}
+                    sending={noteOnlySending}
+                    onCancel={() => {
+                      if (!noteOnlySending) setNoteOnlyOpen(false);
+                    }}
+                    onSend={async ({ subject, body }) => {
+                      setNoteOnlySending(true);
+                      setEditorError("");
+                      try {
+                        const result = await adminSendMessages({
+                          order_ids: [selectedOrderId],
+                          subject,
+                          body,
+                        });
+                        if ((result.failed ?? 0) > 0) {
+                          const firstError = Array.isArray(result.results)
+                            ? result.results.find(
+                                (row) => row.email_status === "failed"
+                              )?.email_error
+                            : null;
+                          setEditorError(
+                            firstError || "Message failed to send."
+                          );
+                        } else {
+                          setNoteOnlyOpen(false);
+                        }
+                      } catch (err) {
+                        setEditorError(err.message || "Message failed to send.");
+                      } finally {
+                        setNoteOnlySending(false);
+                      }
+                    }}
+                  />
+                </>
               )}
             </div>
           ) : loadingOrders && orders.length === 0 ? (
@@ -3813,6 +3993,22 @@ export default function AdminApp() {
                 onCancel={handleCancelDelete}
                 onConfirm={handleConfirmDelete}
               />
+              {movePrompt ? (
+                <OrderSaveChangesDialog
+                  open
+                  variant="move"
+                  displayId={movePrompt.displayId}
+                  customerEmail={movePrompt.customerEmail}
+                  orderSummary={movePrompt.orderSummary}
+                  beforePayload={movePrompt.beforePayload}
+                  afterPayload={movePrompt.afterPayload}
+                  saving={moveSaving}
+                  onCancel={() => {
+                    if (!moveSaving) setMovePrompt(null);
+                  }}
+                  onConfirm={handleMoveConfirm}
+                />
+              ) : null}
             </>
           )}
         </>

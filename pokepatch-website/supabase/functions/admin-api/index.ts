@@ -89,19 +89,6 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-/** Resurface the customer's "New updates" chip after any admin order change. */
-async function bumpOrderUpdatesAvailable(
-  supabase: ReturnType<typeof getServiceClient>,
-  orderId: string
-) {
-  const { error } = await supabase
-    .from("orders")
-    .update({ updates_available_at: new Date().toISOString() })
-    .eq("id", orderId);
-  if (error) {
-    console.error("updates_available_at bump failed", error);
-  }
-}
 
 async function deleteOrderAndPhotos(
   supabase: ReturnType<typeof getServiceClient>,
@@ -318,6 +305,58 @@ async function signPathsThumbsOnly(
   return result;
 }
 
+/** Prefer customer image, else first image; sign thumbs for email embedding. */
+async function resolveCardThumbById(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardIds: string[]
+): Promise<Record<string, string>> {
+  const unique = [...new Set(cardIds.map(String).filter(Boolean))];
+  const result: Record<string, string> = {};
+  if (unique.length === 0) return result;
+
+  const { data: images, error } = await supabase
+    .from("card_images")
+    .select("card_id, image_type, storage_path")
+    .in("card_id", unique)
+    .order("id", { ascending: true });
+  if (error) throw error;
+
+  const pathByCard = new Map<string, string>();
+  for (const image of images ?? []) {
+    const cardId = String(image.card_id);
+    if (image.image_type === "customer") {
+      pathByCard.set(cardId, image.storage_path as string);
+    }
+  }
+  for (const image of images ?? []) {
+    const cardId = String(image.card_id);
+    if (!pathByCard.has(cardId) && image.storage_path) {
+      pathByCard.set(cardId, image.storage_path as string);
+    }
+  }
+
+  const signedMap = await signPathsPreferThumb(
+    supabase,
+    [...pathByCard.values()]
+  );
+  for (const [cardId, path] of pathByCard) {
+    const url = signedMap.get(path);
+    if (url) result[cardId] = url;
+  }
+  return result;
+}
+
+function parseThumbByCardId(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const id = String(key).trim();
+    const url = typeof value === "string" ? value.trim() : "";
+    if (id && url && /^https?:\/\//i.test(url)) out[id] = url;
+  }
+  return out;
+}
+
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
@@ -369,8 +408,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   ] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, order_id, status")
+      .select("id, order_id, status, sort_order")
       .in("order_id", orderIds)
+      .order("sort_order", { ascending: true })
       .order("id", { ascending: true }),
     supabase
       .from("order_quote_items")
@@ -724,9 +764,10 @@ async function fetchOrderGraph(
     supabase
       .from("cards")
       .select(
-        "id, order_id, card_name, set_name, description, market_value_raw_nm, status"
+        "id, order_id, sort_order, card_name, set_name, description, market_value_raw_nm, status"
       )
       .in("order_id", orderIds)
+      .order("sort_order", { ascending: true })
       .order("id", { ascending: true }),
     supabase
       .from("order_quote_items")
@@ -881,11 +922,6 @@ async function handleOrderUpload(
     .select("id, card_id, image_type, storage_path")
     .single();
   if (insertError) throw insertError;
-
-  // Team uploads should resurface the customer's "New updates" chip.
-  if (imageType !== "customer") {
-    await bumpOrderUpdatesAvailable(supabase, orderId);
-  }
 
   const [signedMap, thumbSignedMap] = await Promise.all([
     signPaths(supabase, [path]),
@@ -1192,7 +1228,6 @@ Deno.serve(async (req) => {
         if (error) throw error;
       }
 
-      await bumpOrderUpdatesAvailable(supabase, orderId);
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
@@ -1285,7 +1320,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      await bumpOrderUpdatesAvailable(supabase, orderId);
       return jsonResponse(req, { ok: true, deleted_image_id: imageId });
     }
 
@@ -1349,7 +1383,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      await bumpOrderUpdatesAvailable(supabase, orderId);
 
       const order = await fetchOrderGraph(supabase, orderId);
       if (!order) {
@@ -1701,7 +1734,7 @@ Deno.serve(async (req) => {
       let query = supabase
         .from("customer_messages")
         .select(
-          "id, recipient_email, user_id, order_id, subject, body, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)"
+          "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)"
         )
         .order("sent_at", { ascending: false })
         .limit(limit);
@@ -1736,11 +1769,28 @@ Deno.serve(async (req) => {
       const subject =
         typeof body.subject === "string" ? body.subject.trim() : "";
       const messageBody = typeof body.body === "string" ? body.body : "";
+      const changelog =
+        body.changelog && typeof body.changelog === "object"
+          ? body.changelog
+          : null;
+      const hasChangelog =
+        Boolean(changelog) &&
+        ((Array.isArray((changelog as { cardGroups?: unknown }).cardGroups) &&
+          ((changelog as { cardGroups: unknown[] }).cardGroups?.length ?? 0) >
+            0) ||
+          (Array.isArray((changelog as { orderChanges?: unknown }).orderChanges) &&
+            ((changelog as { orderChanges: unknown[] }).orderChanges?.length ??
+              0) > 0) ||
+          Boolean((changelog as { quoteSummary?: unknown }).quoteSummary));
       if (!subject) {
         return jsonResponse(req, { ok: false, error: "subject required" }, 400);
       }
-      if (!messageBody.trim()) {
-        return jsonResponse(req, { ok: false, error: "body required" }, 400);
+      if (!messageBody.trim() && !hasChangelog) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "body or changelog required" },
+          400
+        );
       }
 
       const rawOrderIds = Array.isArray(body.order_ids) ? body.order_ids : [];
@@ -1788,6 +1838,24 @@ Deno.serve(async (req) => {
         email_error: string | null;
       }[] = [];
 
+      const clientThumbs = parseThumbByCardId(body.thumb_by_card_id);
+      const changelogCardIds = hasChangelog
+        ? (
+            (changelog as { cardGroups?: Array<{ cardId?: string }> })
+              .cardGroups ?? []
+          )
+            .map((group) =>
+              group?.cardId != null ? String(group.cardId) : ""
+            )
+            .filter(Boolean)
+        : [];
+      const missingThumbIds = changelogCardIds.filter((id) => !clientThumbs[id]);
+      const dbThumbs =
+        missingThumbIds.length > 0
+          ? await resolveCardThumbById(supabase, missingThumbIds)
+          : {};
+      const thumbByCardId = { ...dbThumbs, ...clientThumbs };
+
       for (const orderId of orderIds) {
         const orderRow = orderById.get(orderId)!;
         const email = normalizeEmail(orderRow.customer_email);
@@ -1817,6 +1885,7 @@ Deno.serve(async (req) => {
             user_id: userId,
             subject,
             body: storedBody,
+            changelog: hasChangelog ? changelog : null,
             email_status: "pending",
             batch_id: batchId,
           })
@@ -1841,6 +1910,8 @@ Deno.serve(async (req) => {
           subject,
           body: messageBody,
           orderDisplayId,
+          changelog: hasChangelog ? (changelog as never) : null,
+          thumbByCardId: hasChangelog ? thumbByCardId : null,
         });
 
         const emailStatus = sendResult.ok ? "sent" : "failed";
@@ -1865,7 +1936,6 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        await bumpOrderUpdatesAvailable(supabase, orderId);
 
         results.push({
           order_id: orderId,

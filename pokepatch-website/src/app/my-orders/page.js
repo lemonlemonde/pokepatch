@@ -38,22 +38,82 @@ export default function MyOrdersPage() {
   }, [customerAuthEnabled, user, authLoading, router]);
 
   useEffect(() => {
-    if (user && supabase) {
-      setLoading(true);
-      supabase
-        .rpc("get_my_orders")
-        .then(({ data, error }) => {
-          if (error) throw error;
-          setOrders(data || []);
-        })
-        .catch((err) => {
+    if (!user || !supabase) return undefined;
+
+    let cancelled = false;
+    setLoading(true);
+
+    async function loadOrders() {
+      try {
+        const { data, error: ordersError } = await supabase.rpc("get_my_orders");
+        if (ordersError) throw ordersError;
+        const rows = data || [];
+
+        // Chip from real unread messages only — ignore legacy has_new_updates
+        // (still set by silent save/move on live until admin-api is redeployed).
+        const orderIds = rows.map((row) => row.id).filter(Boolean);
+        let unreadOrderIds = new Set();
+        if (orderIds.length > 0) {
+          const { data: unreadRows, error: unreadError } = await supabase
+            .from("customer_messages")
+            .select("order_id")
+            .in("order_id", orderIds)
+            .is("read_at", null);
+          if (unreadError) {
+            console.error("Failed to load unread messages", unreadError);
+          } else {
+            unreadOrderIds = new Set(
+              (unreadRows ?? []).map((row) => row.order_id).filter(Boolean)
+            );
+          }
+        }
+
+        if (cancelled) return;
+        setOrders(
+          rows.map((row) => ({
+            ...row,
+            has_unread_messages: unreadOrderIds.has(row.id),
+            // Keep legacy keys false for chip consumers; messages drive unread now.
+            has_new_updates: unreadOrderIds.has(row.id),
+            has_admin_photos: unreadOrderIds.has(row.id),
+          }))
+        );
+      } catch (err) {
+        if (!cancelled) {
           setError(err.message || "Failed to load orders");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    loadOrders();
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
+
+  useEffect(() => {
+    function onMessagesRead(event) {
+      const orderId = event?.detail?.orderId;
+      if (!orderId) return;
+      setOrders((current) =>
+        current.map((entry) =>
+          entry.id === orderId
+            ? {
+                ...entry,
+                has_unread_messages: false,
+                has_new_updates: false,
+                has_admin_photos: false,
+              }
+            : entry
+        )
+      );
+    }
+    window.addEventListener("pokepatch:messages-read", onMessagesRead);
+    return () =>
+      window.removeEventListener("pokepatch:messages-read", onMessagesRead);
+  }, []);
 
 const visibleOrders = useMemo(
     () => filterOrdersByCompletedVisibility(orders),
@@ -143,40 +203,9 @@ const visibleOrders = useMemo(
                         key={order.id}
                         order={order}
                         onClick={() => {
-                          setExpandedOrderId((prev) => {
-                            const next = prev === order.id ? null : order.id;
-                            if (
-                              next === order.id &&
-                              (order.has_new_updates || order.has_admin_photos)
-                            ) {
-                              // Opening the order clears "New updates" for this customer.
-                              supabase
-                                ?.rpc("mark_my_order_updates_seen", {
-                                  p_order_id: order.id,
-                                })
-                                .then(({ error: seenError }) => {
-                                  if (seenError) {
-                                    console.error(
-                                      "mark_my_order_updates_seen failed",
-                                      seenError
-                                    );
-                                    return;
-                                  }
-                                  setOrders((current) =>
-                                    current.map((entry) =>
-                                      entry.id === order.id
-                                        ? {
-                                            ...entry,
-                                            has_new_updates: false,
-                                            has_admin_photos: false,
-                                          }
-                                        : entry
-                                    )
-                                  );
-                                });
-                            }
-                            return next;
-                          });
+                          setExpandedOrderId((prev) =>
+                            prev === order.id ? null : order.id
+                          );
                         }}
                         isExpanded={expandedOrderId === order.id}
                       />
