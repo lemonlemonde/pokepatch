@@ -8,6 +8,7 @@ import {
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
   cardsWithQuoteHv,
+  SERVICE_KEYS,
 } from "@/lib/servicePricing";
 import {
   customerCardStatusLabel,
@@ -62,15 +63,26 @@ function cardSortIndex(cardId, afterCards, beforeCards) {
   return 9999;
 }
 
+function serviceNameForItem(item) {
+  const labeled = String(item?.service_label ?? "").trim();
+  if (labeled) return labeled;
+  const fallback = defaultServiceLabel(item?.service_key);
+  if (fallback) return fallback;
+  if (item?.service_key === SERVICE_KEYS.CUSTOM) return "Custom";
+  return "Service";
+}
+
+function serviceAmountForItem(item) {
+  const raw = item?.quote_base_amount;
+  if (raw == null || raw === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return formatMoney(n);
+}
+
 function quoteLineForCard(item) {
-  const service =
-    String(item?.service_label ?? "").trim() ||
-    defaultServiceLabel(item?.service_key) ||
-    "Service";
-  const amount =
-    item?.quote_base_amount != null
-      ? formatMoney(Number(item.quote_base_amount))
-      : null;
+  const service = serviceNameForItem(item);
+  const amount = serviceAmountForItem(item);
   return amount ? `${service}: ${amount}` : service;
 }
 
@@ -361,13 +373,15 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
       const group = ensureCardGroup(String(cardId));
       if (beforeAmt == null || beforeAmt === "") {
         group.changes.push(
-          `High-value fee: ${formatMoney(Number(afterAmt))}`
+          `Added: High-value fee: ${formatMoney(Number(afterAmt))}`
         );
       } else if (afterAmt == null || afterAmt === "") {
-        group.changes.push("Removed: high-value fee");
+        group.changes.push(
+          `Removed: High-value fee: ${formatMoney(Number(beforeAmt))}`
+        );
       } else {
         group.changes.push(
-          `High-value fee: ${formatMoney(Number(beforeAmt))} → ${formatMoney(Number(afterAmt))}`
+          `Updated: High-value fee: ${formatMoney(Number(beforeAmt))} → High-value fee: ${formatMoney(Number(afterAmt))}`
         );
       }
     }
