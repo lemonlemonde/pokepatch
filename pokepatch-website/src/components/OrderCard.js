@@ -104,7 +104,7 @@ function UpdateChip({ className = "" }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-night ${className}`.trim()}
     >
-      Update
+      New
     </span>
   );
 }
@@ -141,20 +141,25 @@ function formatUpdateTime(dateString) {
   });
 }
 
-/** Latest activity: team updates, status changes, or order creation. */
-function latestActivityAt(order) {
+/** Latest of several ISO timestamps (invalid/null skipped). */
+function latestTimestamp(...values) {
   let bestMs = null;
-  for (const value of [
-    order?.updates_available_at,
-    order?.status_changed_at,
-    order?.created_at,
-  ]) {
+  for (const value of values) {
     if (!value) continue;
     const ms = new Date(value).getTime();
     if (Number.isNaN(ms)) continue;
     if (bestMs === null || ms > bestMs) bestMs = ms;
   }
   return bestMs === null ? null : new Date(bestMs).toISOString();
+}
+
+/** Latest activity: team updates, status changes, or order creation. */
+function latestActivityAt(order) {
+  return latestTimestamp(
+    order?.updates_available_at,
+    order?.status_changed_at,
+    order?.created_at
+  );
 }
 
 function Chevron({ open }) {
@@ -511,7 +516,29 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
   const hasUnreadMessages = messagesReady
     ? messages.some((row) => !row.read_at)
     : Boolean(order.has_unread_messages);
-  const lastUpdatedAt = latestActivityAt(order);
+  const latestMessageAt = messagesReady
+    ? messages.reduce((best, row) => {
+        if (!row.sent_at) return best;
+        if (!best) return row.sent_at;
+        return new Date(row.sent_at).getTime() > new Date(best).getTime()
+          ? row.sent_at
+          : best;
+      }, null)
+    : order.latest_message_at ?? null;
+  const latestUnreadMessageAt = messagesReady
+    ? messages.reduce((best, row) => {
+        if (row.read_at || !row.sent_at) return best;
+        if (!best) return row.sent_at;
+        return new Date(row.sent_at).getTime() > new Date(best).getTime()
+          ? row.sent_at
+          : best;
+      }, null)
+    : order.latest_unread_message_at ?? null;
+  // New message → unread sent time; otherwise max(order activity, latest message).
+  const lastUpdatedAt = hasUnreadMessages
+    ? latestUnreadMessageAt ||
+      latestTimestamp(latestActivityAt(order), latestMessageAt)
+    : latestTimestamp(latestActivityAt(order), latestMessageAt);
   const lastUpdatedLabel = formatUpdateTime(lastUpdatedAt);
   const isFirstActivityOnly =
     Boolean(order.created_at) &&

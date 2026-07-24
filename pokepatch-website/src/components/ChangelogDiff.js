@@ -371,18 +371,38 @@ function DiffText({ text }) {
     const amountClass = removed
       ? "font-bold text-berry"
       : "font-bold text-mint";
-    const amountMatch = value.match(/^(.+?)\s+(\(\$?-?[\d,.]+\))$/);
+    // "Surface Cleaning: $12" or legacy "Surface Cleaning ($12)"
+    const amountMatch =
+      value.match(/^(.+?):\s+(\$?-?[\d,.]+%?)$/) ||
+      value.match(/^(.+?)\s+(\(\$?-?[\d,.]+\))$/);
     return (
       <span>
         <span className="font-normal text-ink/45">{label}</span>{" "}
         {amountMatch ? (
           <>
-            <span className={nameClass}>{amountMatch[1]}</span>{" "}
-            <span className={amountClass}>{amountMatch[2]}</span>
+            <span className={nameClass}>
+              {amountMatch[1].endsWith(":")
+                ? amountMatch[1]
+                : `${amountMatch[1]}:`}
+            </span>{" "}
+            <span className={amountClass}>
+              {String(amountMatch[2]).replace(/^\(|\)$/g, "")}
+            </span>
           </>
         ) : (
           <span className={amountClass}>{value}</span>
         )}
+      </span>
+    );
+  }
+
+  // Bare service / fee lines (e.g. on New cards): "Surface Cleaning: $12"
+  const serviceLine = raw.match(/^(.+?):\s+(\$?-?[\d,.]+%?)$/);
+  if (serviceLine) {
+    return (
+      <span>
+        <span className="font-normal text-ink/45">{serviceLine[1]}:</span>{" "}
+        <span className="font-bold text-mint">{serviceLine[2]}</span>
       </span>
     );
   }

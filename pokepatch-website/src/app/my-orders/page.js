@@ -49,22 +49,47 @@ export default function MyOrdersPage() {
         if (ordersError) throw ordersError;
         const rows = data || [];
 
-        // Chip from real unread messages only — ignore legacy has_new_updates
-        // (still set by silent save/move on live until admin-api is redeployed).
+        // Message chips/times from customer_messages (not legacy updates_available_at).
         const orderIds = rows.map((row) => row.id).filter(Boolean);
         let unreadOrderIds = new Set();
+        /** @type {Map<string, string>} orderId → latest unread sent_at ISO */
+        const latestUnreadAtByOrder = new Map();
+        /** @type {Map<string, string>} orderId → latest message sent_at ISO */
+        const latestMessageAtByOrder = new Map();
         if (orderIds.length > 0) {
-          const { data: unreadRows, error: unreadError } = await supabase
+          const { data: messageRows, error: messagesError } = await supabase
             .from("customer_messages")
-            .select("order_id")
-            .in("order_id", orderIds)
-            .is("read_at", null);
-          if (unreadError) {
-            console.error("Failed to load unread messages", unreadError);
+            .select("order_id, sent_at, read_at")
+            .in("order_id", orderIds);
+          if (messagesError) {
+            console.error("Failed to load order messages", messagesError);
           } else {
-            unreadOrderIds = new Set(
-              (unreadRows ?? []).map((row) => row.order_id).filter(Boolean)
-            );
+            for (const row of messageRows ?? []) {
+              const orderId = row.order_id;
+              if (!orderId) continue;
+              const sentAt = row.sent_at;
+              if (sentAt) {
+                const prev = latestMessageAtByOrder.get(orderId);
+                if (
+                  !prev ||
+                  new Date(sentAt).getTime() > new Date(prev).getTime()
+                ) {
+                  latestMessageAtByOrder.set(orderId, sentAt);
+                }
+              }
+              if (row.read_at == null) {
+                unreadOrderIds.add(orderId);
+                if (sentAt) {
+                  const prevUnread = latestUnreadAtByOrder.get(orderId);
+                  if (
+                    !prevUnread ||
+                    new Date(sentAt).getTime() > new Date(prevUnread).getTime()
+                  ) {
+                    latestUnreadAtByOrder.set(orderId, sentAt);
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -73,7 +98,10 @@ export default function MyOrdersPage() {
           rows.map((row) => ({
             ...row,
             has_unread_messages: unreadOrderIds.has(row.id),
-            // Keep legacy keys false for chip consumers; messages drive unread now.
+            latest_unread_message_at:
+              latestUnreadAtByOrder.get(row.id) ?? null,
+            latest_message_at: latestMessageAtByOrder.get(row.id) ?? null,
+            // Keep legacy keys for chip consumers; messages drive unread now.
             has_new_updates: unreadOrderIds.has(row.id),
             has_admin_photos: unreadOrderIds.has(row.id),
           }))
@@ -105,6 +133,11 @@ export default function MyOrdersPage() {
                 has_unread_messages: false,
                 has_new_updates: false,
                 has_admin_photos: false,
+                latest_message_at:
+                  entry.latest_message_at ??
+                  entry.latest_unread_message_at ??
+                  null,
+                latest_unread_message_at: null,
               }
             : entry
         )

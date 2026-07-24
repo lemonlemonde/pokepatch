@@ -71,7 +71,7 @@ function quoteLineForCard(item) {
     item?.quote_base_amount != null
       ? formatMoney(Number(item.quote_base_amount))
       : null;
-  return amount ? `${service} (${amount})` : service;
+  return amount ? `${service}: ${amount}` : service;
 }
 
 function formatAdjustmentAmount(row, subtotal = null) {
@@ -99,8 +99,8 @@ function adjustmentChangeCause(before, after, action, subtotal) {
   }
 
   const label = adjustmentKindLabel(kind).toLowerCase();
-  if (action === "added") return `Added: ${label} ${amount}`;
-  if (action === "removed") return `Removed: ${label} ${amount}`;
+  if (action === "added") return `Added: ${label}: ${amount}`;
+  if (action === "removed") return `Removed: ${label}: ${amount}`;
   return `${adjustmentKindLabel(kind)}: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
 }
 
@@ -281,10 +281,22 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   );
 
   // Per-card service / quote-line diffs (Order never lists these).
+  // Whole-card removals are covered by the Removed box — skip per-service lines.
   for (const itemId of new Set([...beforeItems.keys(), ...afterItems.keys()])) {
     const before = beforeItems.get(itemId)?.row;
     const after = afterItems.get(itemId)?.row;
     const item = after ?? before;
+
+    if (before && !after) {
+      const removedCardId = findCardIdForQuoteItem(
+        before,
+        beforePayload?.cards ?? []
+      );
+      if (removedCardId && !afterCards.has(removedCardId)) {
+        ensureCardGroup(removedCardId, { status: "removed" });
+        continue;
+      }
+    }
 
     let change = null;
     if (before && !after) {
@@ -338,6 +350,11 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   for (const cardId of new Set([...beforeHv.keys(), ...afterHv.keys()])) {
     const before = beforeHv.get(cardId)?.row;
     const after = afterHv.get(cardId)?.row;
+    // Card fully removed — Removed box is enough (no HV detail lines).
+    if (beforeCards.has(cardId) && !afterCards.has(cardId)) {
+      ensureCardGroup(cardId, { status: "removed" });
+      continue;
+    }
     const beforeAmt = before?.amount_dollars;
     const afterAmt = after?.amount_dollars;
     if (!valuesEqual(beforeAmt, afterAmt)) {
@@ -356,30 +373,25 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
-  // New or removed cards: show full quote snapshot when we only have the add/remove event.
-  for (const group of cardGroupsMap.values()) {
-    if (group.changes.length > 0) continue;
+  // Ensure every removed card has a group (even with no services / HV).
+  for (const cardId of beforeCards.keys()) {
+    if (afterCards.has(cardId)) continue;
+    ensureCardGroup(cardId, { status: "removed" }).changes = [];
+  }
 
-    const items =
-      group.status === "removed"
-        ? beforePayload?.quote_items ?? []
-        : afterPayload?.quote_items ?? [];
-    const cards =
-      group.status === "removed"
-        ? beforePayload?.cards ?? []
-        : afterPayload?.cards ?? [];
+  // New cards with no other diffs: show quote snapshot under the New box.
+  for (const group of cardGroupsMap.values()) {
+    if (group.status !== "added" || group.changes.length > 0) continue;
+
+    const items = afterPayload?.quote_items ?? [];
+    const cards = afterPayload?.cards ?? [];
 
     for (const item of items) {
       if (findCardIdForQuoteItem(item, cards) !== group.cardId) continue;
       group.changes.push(quoteLineForCard(item));
     }
 
-    const hvMap = unpackQuoteCardHv(
-      (group.status === "removed"
-        ? beforePayload?.order
-        : afterPayload?.order
-      )?.quote_bulk_counts
-    );
+    const hvMap = unpackQuoteCardHv(afterPayload?.order?.quote_bulk_counts);
     const hv = hvMap[group.cardId];
     if (hv?.amount_dollars) {
       group.changes.push(
@@ -394,16 +406,6 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     group.changes = group.changes.map((line) => {
       if (line.startsWith("Added: ")) return line.slice(7);
       if (line.startsWith("Added ")) return line.slice(6);
-      return line;
-    });
-  }
-
-  // On removed cards, soften quote line labels.
-  for (const group of cardGroupsMap.values()) {
-    if (group.status !== "removed") continue;
-    group.changes = group.changes.map((line) => {
-      if (line.startsWith("Removed: ")) return line.slice(9);
-      if (line.startsWith("Removed ")) return line.slice(8);
       return line;
     });
   }
