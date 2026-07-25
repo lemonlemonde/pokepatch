@@ -95,7 +95,7 @@ function formatDiffLineHtml(text: string): string {
       `<span style="color:#5EC8A7;font-weight:600;">${escapeHtml(parts.to)}</span>`;
   }
   const labeled = text.match(
-    /^(Added|Removed|Applied discount|Removed discount|Updated|High-value fee|Quote total):\s+(.+)$/i
+    /^(Added|Removed|Applied discount|Removed discount|Applied|Updated|High-value fee|Quote total):\s+(.+)$/i
   );
   if (labeled) {
     const removed = /^removed/i.test(labeled[1]);

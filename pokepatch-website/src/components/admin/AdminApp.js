@@ -158,6 +158,31 @@ function quoteItemIsReady(item) {
   return true;
 }
 
+/** True when a quote line has a service name and a filled dollar value. */
+function quoteItemHasNameAndValue(item) {
+  if (!quoteItemIsReady(item)) return false;
+  return moneyFieldToPayload(item.quote_base_amount) != null;
+}
+
+/**
+ * True when the card has at least one named+valued service and no in-progress
+ * (partially filled) service lines — used for default-collapsed + auto-collapse.
+ */
+function adminCardHasReadyService(indices, quoteItems) {
+  if (!indices?.length) return false;
+  let hasReady = false;
+  for (const index of indices) {
+    const item = quoteItems[index];
+    if (!item) continue;
+    const started =
+      quoteItemHasService(item) || Boolean((item.service_label ?? "").trim());
+    if (!started) continue;
+    if (!quoteItemHasNameAndValue(item)) return false;
+    hasReady = true;
+  }
+  return hasReady;
+}
+
 function quoteItemCardRef(item, cards = [], index = 0) {
   const linked =
     item?.card_pick && item.card_pick !== "custom"
@@ -1879,14 +1904,6 @@ function editorFieldClass() {
   return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
 }
 
-function adminCardIsComplete(card) {
-  const hasName = Boolean((card?.card_name ?? "").trim());
-  const hasDescription = Boolean((card?.description ?? "").trim());
-  const photoCount =
-    (card?.images ?? []).length + (card?.pending_files ?? []).length;
-  return hasName && hasDescription && photoCount > 0;
-}
-
 function EditorSection({ title, titleExtra, action, children, className = "", id }) {
   return (
     <section
@@ -1903,6 +1920,75 @@ function EditorSection({ title, titleExtra, action, children, className = "", id
         {action ?? null}
       </div>
       {children}
+    </section>
+  );
+}
+
+/** Collapsible order-card shell with a numbered header for clearer card boundaries. */
+function CollapsibleOrderCard({
+  id,
+  dataCardId,
+  title,
+  titleExtra,
+  action,
+  thumbUrl = null,
+  thumbStoragePath = null,
+  collapsedSummary = null,
+  expanded,
+  onToggle,
+  className = "",
+  children,
+}) {
+  return (
+    <section
+      id={id}
+      data-admin-card-id={dataCardId}
+      className={`overflow-hidden rounded-2xl border-2 border-l-[6px] bg-cream shadow-cozy-sm ${
+        className || "border-ink/15 border-l-ink/30"
+      }`}
+    >
+      <div
+        className={`flex flex-wrap items-start gap-2 border-b px-3 py-3 sm:gap-3 sm:px-4 ${
+          expanded ? "border-sky/25 bg-sky/15" : "border-ink/10 bg-sky/10"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+        >
+          {!expanded && thumbUrl ? (
+            <div className="relative mt-0.5 aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md border border-ink/15 bg-night/50">
+              <KanbanThumbImg
+                url={thumbUrl}
+                storagePath={thumbStoragePath}
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <h3 className="min-w-0 text-base leading-snug">{title}</h3>
+            {!expanded && collapsedSummary ? (
+              <div className="mt-1">{collapsedSummary}</div>
+            ) : null}
+          </div>
+          <ChevronDownIcon
+            className={`mt-1.5 h-4 w-4 shrink-0 text-ink/40 transition-transform ${
+              expanded ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+        {titleExtra || action ? (
+          <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
+            {titleExtra ?? null}
+            {action ?? null}
+          </div>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="space-y-4 p-4 sm:p-5">{children}</div>
+      ) : null}
     </section>
   );
 }
@@ -1975,6 +2061,8 @@ function OrderEditor({
   focusCardId = null,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
+  const [expandedCardId, setExpandedCardId] = useState(null);
+  const [collapsedCardIds, setCollapsedCardIds] = useState(() => new Set());
   const [removingPhotoId, setRemovingPhotoId] = useState(null);
   const [highlightedCardId, setHighlightedCardId] = useState(null);
   const scrollToCardIdRef = useRef(null);
@@ -1985,6 +2073,30 @@ function OrderEditor({
     onChange((current) => ({ ...(current ?? draft), ...patch }));
   }
 
+  function expandCard(cardId) {
+    if (cardId == null) return;
+    const id = String(cardId);
+    setExpandedCardId(id);
+    setCollapsedCardIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  function collapseCard(cardId) {
+    if (cardId == null) return;
+    const id = String(cardId);
+    setExpandedCardId((prev) => (String(prev) === id ? null : prev));
+    setCollapsedCardIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }
+
   const cardIdsKey = (draft.cards ?? []).map((card) => card.id).join("|");
 
   useEffect(() => {
@@ -1992,7 +2104,15 @@ function OrderEditor({
       setHighlightedCardId(null);
       return;
     }
-    setHighlightedCardId(String(focusCardId));
+    const id = String(focusCardId);
+    setHighlightedCardId(id);
+    setExpandedCardId(id);
+    setCollapsedCardIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }, [focusCardId, orderId]);
 
   useEffect(() => {
@@ -2070,6 +2190,35 @@ function OrderEditor({
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [expandedQuoteLineId, draft.quote_items]);
 
+  useEffect(() => {
+    if (!expandedCardId) return;
+    function onPointerDown(event) {
+      const root = document.querySelector(
+        `[data-admin-card-id="${CSS.escape(String(expandedCardId))}"]`
+      );
+      if (root && root.contains(event.target)) return;
+
+      const card = (draft.cards ?? []).find(
+        (entry) => String(entry.id) === String(expandedCardId)
+      );
+      if (!card) {
+        setExpandedCardId(null);
+        return;
+      }
+      const indices = (draft.quote_items ?? [])
+        .map((item, index) =>
+          quoteItemBelongsToCard(item, card, draft.cards) ? index : -1
+        )
+        .filter((index) => index >= 0);
+      // Only auto-collapse when the card has a named+valued service.
+      if (adminCardHasReadyService(indices, draft.quote_items ?? [])) {
+        collapseCard(card.id);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [expandedCardId, draft.cards, draft.quote_items]);
+
   function updateContact(index, patch) {
     const contacts = draft.contacts.map((contact, i) =>
       i === index ? { ...contact, ...patch } : contact
@@ -2092,6 +2241,7 @@ function OrderEditor({
   function addCard() {
     const card = emptyAdminCard();
     setHighlightedCardId(String(card.id));
+    setExpandedCardId(String(card.id));
     onChange((current) => {
       const base = current ?? draft;
       return {
@@ -2176,6 +2326,9 @@ function OrderEditor({
       i === index ? { ...card, ...patch } : card
     );
     const updated = cards[index];
+    const statusOnly =
+      Object.keys(patch).length === 1 && "status" in patch;
+    if (updated?.id != null && !statusOnly) expandCard(updated.id);
     const touchesName = "card_name" in patch || "set_name" in patch;
     const touchesMarket = "market_value_raw_nm" in patch;
     let quote_items = draft.quote_items ?? [];
@@ -2215,6 +2368,7 @@ function OrderEditor({
     const card = draft.cards[cardIndex];
     if (!card?.id) return;
     const cardId = String(card.id);
+    expandCard(cardId);
     const marketValue = moneyFieldToPayload(value);
     const cards = draft.cards.map((entry, i) =>
       i === cardIndex ? { ...entry, market_value_raw_nm: value } : entry
@@ -2233,6 +2387,13 @@ function OrderEditor({
     const quote_items = (draft.quote_items ?? []).map((item, i) =>
       i === index ? { ...item, ...patch } : item
     );
+    const item = quote_items[index];
+    const card =
+      item &&
+      (draft.cards ?? []).find((entry) =>
+        quoteItemBelongsToCard(item, entry, draft.cards)
+      );
+    if (card?.id != null) expandCard(card.id);
     updateDraft({ quote_items });
   }
 
@@ -2240,6 +2401,7 @@ function OrderEditor({
     const next = emptyQuoteItem(card);
     const quote_items = [...(draft.quote_items ?? []), next];
     setExpandedQuoteLineId(next.id);
+    if (card?.id != null) expandCard(card.id);
     updateDraft({ quote_items });
   }
 
@@ -2263,6 +2425,14 @@ function OrderEditor({
   }
 
   function applyServiceToQuoteItem(index, serviceKey) {
+    const currentItem = draft.quote_items?.[index];
+    const card =
+      currentItem &&
+      (draft.cards ?? []).find((entry) =>
+        quoteItemBelongsToCard(currentItem, entry, draft.cards)
+      );
+    if (card?.id != null) expandCard(card.id);
+
     if (!serviceKey) {
       const quote_items = (draft.quote_items ?? []).map((item, i) =>
         i === index
@@ -2699,6 +2869,64 @@ function OrderEditor({
       </EditorSection>
 
       <EditorSection
+        title="Contacts"
+        action={
+          <button
+            type="button"
+            onClick={addContact}
+            className="text-sm font-semibold text-berry transition hover:underline"
+          >
+            Add contact
+          </button>
+        }
+      >
+        {draft.contacts.length === 0 ? (
+          <p className="text-sm text-ink/45">No contacts yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {draft.contacts.map((contact, index) => (
+              <div
+                key={contact.id ?? `new-${index}`}
+                className="flex flex-col gap-2 sm:flex-row sm:items-center"
+              >
+                <select
+                  className={`${editorFieldClass()} sm:w-40 sm:shrink-0`}
+                  value={contact.contact_type}
+                  onChange={(event) =>
+                    updateContact(index, {
+                      contact_type: event.target.value,
+                    })
+                  }
+                >
+                  {CONTACT_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className={editorFieldClass()}
+                  value={contact.value}
+                  onChange={(event) =>
+                    updateContact(index, { value: event.target.value })
+                  }
+                  placeholder="Contact value"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeContact(index)}
+                  aria-label="Remove contact"
+                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold text-ink/40 transition hover:bg-berry/10 hover:text-berry sm:px-2"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </EditorSection>
+
+      <EditorSection
         title="Google Drive"
         action={
           driveUrl ? (
@@ -2728,7 +2956,7 @@ function OrderEditor({
         </label>
       </EditorSection>
 
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="flex items-center justify-between gap-3 px-1">
           <h3 className="text-base font-semibold text-ink">Cards</h3>
           <button
@@ -2753,7 +2981,6 @@ function OrderEditor({
             );
             const pendingFiles = card.pending_files ?? [];
             const photoInputId = `admin-card-photos-${card.id}`;
-            const incomplete = !adminCardIsComplete(card);
             const cardId = String(card.id);
             const indices =
               quoteLinesByCard.indicesByCardId.get(cardId) ?? [];
@@ -2771,12 +2998,62 @@ function OrderEditor({
               hv_amount: draft.quote_card_hv?.[cardId]?.amount_dollars,
             });
             const subtotal = servicesSubtotal + cardHv;
+            const hasReadyService = adminCardHasReadyService(
+              indices,
+              quoteItems
+            );
+            const manuallyCollapsed = collapsedCardIds.has(cardId);
+            const manuallyExpanded = String(expandedCardId) === cardId;
+            // Default: open until a named+valued service exists; always allow
+            // manual expand/collapse (including empty cards).
+            const isExpanded = manuallyExpanded
+              ? true
+              : manuallyCollapsed
+                ? false
+                : !hasReadyService;
+            const readyServiceNames = indices
+              .filter((index) => quoteItemHasNameAndValue(quoteItems[index]))
+              .map((index) => {
+                const item = quoteItems[index];
+                return (
+                  item.service_label?.trim() ||
+                  defaultServiceLabel(item.service_key) ||
+                  "Service"
+                );
+              });
+            const cardName = (card.card_name ?? "").trim();
+            const cardSet = (card.set_name ?? "").trim();
+            const firstImage = (card.images ?? []).find(
+              (image) => image.signed_thumb_url || image.signed_url
+            );
+            const thumbUrl =
+              firstImage?.signed_thumb_url || firstImage?.signed_url || null;
+            const thumbStoragePath = firstImage?.storage_path ?? null;
+            const cardTitle = (
+              <>
+                <span className="font-semibold tabular-nums text-ink/70">
+                  {cardIndex + 1}:{" "}
+                </span>
+                <span className="font-bold text-ink">
+                  {cardName || "Untitled"}
+                </span>
+                {cardSet ? (
+                  <span className="font-medium text-ink/55">
+                    {" "}
+                    ({cardSet})
+                  </span>
+                ) : null}
+              </>
+            );
 
             return (
-              <EditorSection
+              <CollapsibleOrderCard
                 key={card.id}
                 id={`admin-order-card-${card.id}`}
-                title={`Card ${cardIndex + 1}`}
+                dataCardId={cardId}
+                title={cardTitle}
+                thumbUrl={thumbUrl}
+                thumbStoragePath={thumbStoragePath}
                 titleExtra={
                   <CardStatusPills
                     value={card.status}
@@ -2784,32 +3061,53 @@ function OrderEditor({
                     onChange={(status) => updateCard(cardIndex, { status })}
                   />
                 }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => removeCard(cardIndex)}
+                    disabled={saving}
+                    className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                  >
+                    Remove card
+                  </button>
+                }
+                expanded={isExpanded}
+                onToggle={() => {
+                  if (isExpanded) collapseCard(cardId);
+                  else expandCard(cardId);
+                }}
+                collapsedSummary={
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/55">
+                      <span className="truncate">
+                        {readyServiceNames.length > 0
+                          ? readyServiceNames.join(" · ")
+                          : "No services"}
+                      </span>
+                      {lineAmounts.length > 0 ? (
+                        <span className="shrink-0 font-semibold tabular-nums text-ink">
+                          {formatMoney(servicesSubtotal)}
+                        </span>
+                      ) : null}
+                    </div>
+                    {cardHv > 0 ? (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/50">
+                        <span>High-value fee</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-ink/80">
+                          {formatMoney(cardHv)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                }
                 className={
                   String(card.id) === String(highlightedCardId)
-                    ? "border-blush ring-2 ring-blush/45"
-                    : incomplete
-                      ? "border-berry/55 ring-1 ring-berry/25"
-                      : undefined
-                }
-                action={
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => addQuoteItem(card)}
-                      disabled={saving}
-                      className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
-                    >
-                      Add service
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeCard(cardIndex)}
-                      disabled={saving}
-                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                    >
-                      Remove card
-                    </button>
-                  </div>
+                    ? hasReadyService
+                      ? "border-mint/50 border-l-mint ring-2 ring-blush/45"
+                      : "border-error/45 border-l-error ring-2 ring-blush/45"
+                    : hasReadyService
+                      ? "border-mint/40 border-l-mint"
+                      : "border-error/35 border-l-error/80"
                 }
               >
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -2823,6 +3121,7 @@ function OrderEditor({
                           card_name: event.target.value,
                         })
                       }
+                      onFocus={() => expandCard(cardId)}
                     />
                   </label>
                   <label className="block">
@@ -2833,6 +3132,7 @@ function OrderEditor({
                       onChange={(event) =>
                         updateCard(cardIndex, { set_name: event.target.value })
                       }
+                      onFocus={() => expandCard(cardId)}
                     />
                   </label>
                   <label className="block sm:col-span-2">
@@ -2845,10 +3145,11 @@ function OrderEditor({
                           description: event.target.value,
                         })
                       }
+                      onFocus={() => expandCard(cardId)}
                     />
                   </label>
                 </div>
-                <div className="mt-4 border-t border-ink/10 pt-4">
+                <div className="border-t border-ink/10 pt-4">
                   <AdminOrderCardPhotoGroups
                     customerItems={savedPhotoItems(customerImages)}
                     updateItems={savedPhotoItems(adminImages)}
@@ -2872,6 +3173,7 @@ function OrderEditor({
                       multiple
                       disabled={saving}
                       onChange={(event) => {
+                        expandCard(cardId);
                         addCardPendingFiles(cardIndex, event.target.files);
                         event.target.value = "";
                       }}
@@ -2894,19 +3196,29 @@ function OrderEditor({
                   </div>
                 </div>
 
-                <div className="mt-4 space-y-2 border-t border-ink/10 pt-4">
+                <div className="space-y-2 border-t border-ink/10 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
+                      Services
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => addQuoteItem(card)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
+                    >
+                      Add service
+                    </button>
+                  </div>
                   {indices.length > 0 ? (
                     <div className="space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
-                        Services
-                      </p>
                       {indices.map((index) =>
                         renderQuoteServiceLine(quoteItems[index], index)
                       )}
                     </div>
                   ) : (
                     <p className="text-xs text-ink/45">
-                      No services yet — add one above.
+                      No services yet — add one here.
                     </p>
                   )}
                   <div className="space-y-2 border-t border-ink/10 pt-2">
@@ -2951,7 +3263,7 @@ function OrderEditor({
                     </p>
                   </div>
                 </div>
-              </EditorSection>
+              </CollapsibleOrderCard>
             );
           })
         )}
@@ -3105,64 +3417,6 @@ function OrderEditor({
             />
           </EditorSubsection>
         </div>
-      </EditorSection>
-
-      <EditorSection
-        title="Contacts"
-        action={
-          <button
-            type="button"
-            onClick={addContact}
-            className="text-sm font-semibold text-berry transition hover:underline"
-          >
-            Add contact
-          </button>
-        }
-      >
-        {draft.contacts.length === 0 ? (
-          <p className="text-sm text-ink/45">No contacts yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {draft.contacts.map((contact, index) => (
-              <div
-                key={contact.id ?? `new-${index}`}
-                className="flex flex-col gap-2 sm:flex-row sm:items-center"
-              >
-                <select
-                  className={`${editorFieldClass()} sm:w-40 sm:shrink-0`}
-                  value={contact.contact_type}
-                  onChange={(event) =>
-                    updateContact(index, {
-                      contact_type: event.target.value,
-                    })
-                  }
-                >
-                  {CONTACT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={editorFieldClass()}
-                  value={contact.value}
-                  onChange={(event) =>
-                    updateContact(index, { value: event.target.value })
-                  }
-                  placeholder="Contact value"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeContact(index)}
-                  aria-label="Remove contact"
-                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold text-ink/40 transition hover:bg-berry/10 hover:text-berry sm:px-2"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </EditorSection>
     </div>
   );
