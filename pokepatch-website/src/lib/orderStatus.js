@@ -1,9 +1,15 @@
 export const ORDER_STATUSES = [
-  { id: "on_hold", label: "On hold" },
+  { id: "pending", label: "Pending" },
   { id: "new", label: "To do", customerLabel: "In queue" },
   { id: "in_progress", label: "In progress" },
   { id: "completed", label: "Completed" },
   { id: "canceled", label: "Canceled" },
+];
+
+/** Chip / customer labels for orders.status = pending. */
+export const PENDING_KINDS = [
+  { id: "quote", label: "Pending quote", shortLabel: "quote" },
+  { id: "drop_off", label: "Pending drop-off", shortLabel: "drop-off" },
 ];
 
 /** Per-card workflow status (independent from order status; uses `todo` not `new`). */
@@ -15,6 +21,7 @@ export const CARD_STATUSES = [
 ];
 
 export const DEFAULT_CARD_STATUS = "todo";
+export const DEFAULT_PENDING_KIND = "quote";
 
 const CARD_LABEL_BY_ID = Object.fromEntries(
   CARD_STATUSES.map((status) => [status.id, status.label]),
@@ -61,7 +68,7 @@ export function cardStatusBadgeClass(statusId) {
 /** Statuses shown on the admin board by default. */
 export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) =>
-    status.id === "on_hold" ||
+    status.id === "pending" ||
     status.id === "new" ||
     status.id === "in_progress"
 );
@@ -81,6 +88,7 @@ export const CANCELED_ORDER_STATUS = ORDER_STATUSES.find(
   (status) => status.id === "canceled"
 );
 
+/** Fallback for unknown status ids (not the new-order default). */
 export const DEFAULT_ORDER_STATUS = "new";
 
 /** Closed orders older than this are hidden on My Orders and the admin kanban. */
@@ -97,13 +105,64 @@ const CUSTOMER_LABEL_BY_ID = Object.fromEntries(
   ]),
 );
 
+const PENDING_KIND_LABEL_BY_ID = Object.fromEntries(
+  PENDING_KINDS.map((kind) => [kind.id, kind.label]),
+);
+
+export function normalizePendingKind(kindId) {
+  if (kindId && PENDING_KIND_LABEL_BY_ID[kindId]) return kindId;
+  return DEFAULT_PENDING_KIND;
+}
+
+export function pendingKindLabel(kindId) {
+  return (
+    PENDING_KIND_LABEL_BY_ID[normalizePendingKind(kindId)] ??
+    PENDING_KIND_LABEL_BY_ID[DEFAULT_PENDING_KIND]
+  );
+}
+
+const PENDING_KIND_SHORT_LABEL_BY_ID = Object.fromEntries(
+  PENDING_KINDS.map((kind) => [kind.id, kind.shortLabel ?? kind.label]),
+);
+
+/** Compact kanban chip label (e.g. "quote" / "drop-off"). */
+export function pendingKindShortLabel(kindId) {
+  const kind = normalizePendingKind(kindId);
+  return (
+    PENDING_KIND_SHORT_LABEL_BY_ID[kind] ??
+    PENDING_KIND_SHORT_LABEL_BY_ID[DEFAULT_PENDING_KIND]
+  );
+}
+
+/** Peach = quote, sky = drop-off. */
+export function pendingKindBadgeClass(kindId) {
+  switch (normalizePendingKind(kindId)) {
+    case "drop_off":
+      return "bg-sky text-night";
+    case "quote":
+    default:
+      return "bg-peach text-night";
+  }
+}
+
 export function orderStatusLabel(statusId) {
   return LABEL_BY_ID[normalizeOrderStatus(statusId)] ?? LABEL_BY_ID[DEFAULT_ORDER_STATUS];
 }
 
-/** Customer-facing label (e.g. "In queue" instead of admin "To do"). */
-export function customerOrderStatusLabel(statusId) {
+/**
+ * Display label for admin/customer chips.
+ * Pending orders use the kind label (Pending quote / Pending drop-off).
+ */
+export function orderDisplayLabel(statusId, pendingKind = null) {
   const status = normalizeOrderStatus(statusId);
+  if (status === "pending") return pendingKindLabel(pendingKind);
+  return orderStatusLabel(status);
+}
+
+/** Customer-facing label (e.g. "In queue" instead of admin "To do"). */
+export function customerOrderStatusLabel(statusId, pendingKind = null) {
+  const status = normalizeOrderStatus(statusId);
+  if (status === "pending") return pendingKindLabel(pendingKind);
   return (
     CUSTOMER_LABEL_BY_ID[status] ??
     LABEL_BY_ID[status] ??
@@ -114,10 +173,21 @@ export function customerOrderStatusLabel(statusId) {
 export function normalizeOrderStatus(statusId) {
   if (statusId && LABEL_BY_ID[statusId]) return statusId;
   // Legacy values from earlier status schemes.
+  if (
+    statusId === "on_hold" ||
+    statusId === "pending_quote" ||
+    statusId === "pending_dropoff"
+  ) {
+    return "pending";
+  }
   if (statusId === "todo") return DEFAULT_ORDER_STATUS;
   if (statusId === "delivered") return "completed";
   if (statusId === "cancelled") return "canceled";
   return DEFAULT_ORDER_STATUS;
+}
+
+export function isPendingOrderStatus(statusId) {
+  return normalizeOrderStatus(statusId) === "pending";
 }
 
 export function isClosedOrderStatus(statusId) {
@@ -125,11 +195,14 @@ export function isClosedOrderStatus(statusId) {
   return status === "completed" || status === "canceled";
 }
 
-/** Blue = not started, peach = on hold, yellow = in progress, green = done, muted = canceled. */
-export function orderStatusBadgeClass(statusId) {
+/**
+ * Blue = not started, peach/sky = pending (by kind), yellow = in progress,
+ * green = done, muted = canceled.
+ */
+export function orderStatusBadgeClass(statusId, pendingKind = null) {
   switch (normalizeOrderStatus(statusId)) {
-    case "on_hold":
-      return "bg-peach text-night";
+    case "pending":
+      return pendingKindBadgeClass(pendingKind);
     case "in_progress":
       return "bg-status-yellow text-night";
     case "completed":
@@ -144,7 +217,7 @@ export function orderStatusBadgeClass(statusId) {
 
 export function orderStatusHeadingClass(statusId) {
   switch (normalizeOrderStatus(statusId)) {
-    case "on_hold":
+    case "pending":
       return "text-peach";
     case "in_progress":
       return "text-status-yellow";
@@ -242,4 +315,55 @@ export function isPriorityElevated(order, columnOrders) {
   });
   const expected = chronological.findIndex((entry) => entry.id === order.id);
   return expected >= 0 && actual < expected;
+}
+
+/**
+ * Editor / move-dialog status options.
+ * Pending is split into quote vs drop-off choices.
+ */
+export const EDITOR_STATUS_OPTIONS = [
+  { value: "pending:quote", status: "pending", pendingKind: "quote", label: "Pending quote" },
+  {
+    value: "pending:drop_off",
+    status: "pending",
+    pendingKind: "drop_off",
+    label: "Pending drop-off",
+  },
+  { value: "new", status: "new", pendingKind: null, label: "To do" },
+  {
+    value: "in_progress",
+    status: "in_progress",
+    pendingKind: null,
+    label: "In progress",
+  },
+  {
+    value: "completed",
+    status: "completed",
+    pendingKind: null,
+    label: "Completed",
+  },
+  { value: "canceled", status: "canceled", pendingKind: null, label: "Canceled" },
+];
+
+export function editorStatusValue(statusId, pendingKind = null) {
+  const status = normalizeOrderStatus(statusId);
+  if (status === "pending") {
+    return `pending:${normalizePendingKind(pendingKind)}`;
+  }
+  return status;
+}
+
+export function parseEditorStatusValue(value) {
+  const raw = String(value ?? "");
+  if (raw.startsWith("pending:")) {
+    return {
+      status: "pending",
+      pendingKind: normalizePendingKind(raw.slice("pending:".length)),
+    };
+  }
+  const status = normalizeOrderStatus(raw);
+  return {
+    status,
+    pendingKind: status === "pending" ? DEFAULT_PENDING_KIND : null,
+  };
 }

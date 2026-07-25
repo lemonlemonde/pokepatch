@@ -18,6 +18,7 @@ import {
   adminSaveOrder,
   adminSearchOrders,
   adminSendMessages,
+  adminSetPendingKind,
   adminSetStatus,
   adminUploadPhoto,
   adminValidate,
@@ -38,17 +39,27 @@ import {
   COMPLETED_ORDER_STATUS,
   CANCELED_ORDER_STATUS,
   CARD_STATUSES,
+  PENDING_KINDS,
+  EDITOR_STATUS_OPTIONS,
   groupOrdersByStatus,
   normalizeOrderStatus,
   normalizeCardStatus,
+  normalizePendingKind,
   DEFAULT_CARD_STATUS,
+  DEFAULT_PENDING_KIND,
   orderStatusHeadingClass,
   orderStatusLabel,
+  orderDisplayLabel,
   orderStatusBadgeClass,
   cardStatusBadgeClass,
   isClosedOrderStatus,
+  isPendingOrderStatus,
   filterClosedColumnOrders,
   isPriorityElevated,
+  editorStatusValue,
+  parseEditorStatusValue,
+  pendingKindShortLabel,
+  pendingKindBadgeClass,
 } from "@/lib/orderStatus";
 import {
   QUOTE_SERVICES,
@@ -386,6 +397,9 @@ function orderToDraft(order) {
     general_notes: order.general_notes ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
+    pending_kind: isPendingOrderStatus(order.status)
+      ? normalizePendingKind(order.pending_kind)
+      : null,
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
       contact_type: contact.contact_type,
@@ -399,13 +413,17 @@ function orderToDraft(order) {
 }
 
 function draftPayload(draft) {
+  const status = normalizeOrderStatus(draft.status);
   return {
     order: {
       customer_name: draft.customer_name.trim(),
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
       photos_drive_url: draft.photos_drive_url.trim(),
-      status: draft.status,
+      status,
+      ...(status === "pending"
+        ? { pending_kind: normalizePendingKind(draft.pending_kind) }
+        : { pending_kind: null }),
       quote_bulk_counts: packQuoteAdjustments(
         draft.quote_adjustments,
         draft.quote_card_hv
@@ -606,6 +624,10 @@ function orderToKanbanSummary(order) {
     has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method,
     status,
+    pending_kind:
+      status === "pending"
+        ? normalizePendingKind(order.pending_kind)
+        : null,
     completed_at: isClosed ? (order.completed_at ?? null) : null,
     status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
@@ -731,12 +753,149 @@ function KanbanThumbImg({ url, storagePath, className }) {
   );
 }
 
+function PendingKindChip({
+  order,
+  onSetPendingKind,
+  onInteract,
+  disabled = false,
+}) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const rootRef = useRef(null);
+  const menuRef = useRef(null);
+  const kind = normalizePendingKind(order.pending_kind);
+
+  const placeMenu = useCallback(() => {
+    const button = rootRef.current?.querySelector("button");
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 112; // min-w-[7rem]
+    const left = Math.min(
+      Math.max(8, rect.left),
+      window.innerWidth - menuWidth - 8
+    );
+    setMenuPos({ top: rect.bottom + 4, left });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    placeMenu();
+    function onPointerDown(event) {
+      const target = event.target;
+      if (rootRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    function onReposition() {
+      placeMenu();
+    }
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
+    };
+  }, [open, placeMenu]);
+
+  const menu =
+    open &&
+    menuPos &&
+    typeof document !== "undefined" &&
+    createPortal(
+      <div
+        ref={menuRef}
+        role="listbox"
+        className="fixed z-[220] min-w-[7rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+        style={{ top: menuPos.top, left: menuPos.left }}
+        onClick={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {PENDING_KINDS.map((option) => {
+          const selected = kind === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-semibold transition hover:bg-ink/5 ${
+                selected ? "text-ink" : "text-ink/80"
+              }`}
+              onClick={() => {
+                setOpen(false);
+                onInteract?.();
+                if (!selected) onSetPendingKind?.(order.id, option.id);
+              }}
+            >
+              <span
+                className={`inline-flex rounded-full px-1.5 py-0.5 text-[10px] font-bold ${pendingKindBadgeClass(
+                  option.id
+                )}`}
+              >
+                {option.shortLabel ?? option.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>,
+      document.body
+    );
+
+  return (
+    <span ref={rootRef} className="relative -translate-y-0.5 shrink-0">
+      <button
+        type="button"
+        disabled={disabled || !onSetPendingKind}
+        draggable={false}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((current) => {
+            const next = !current;
+            if (next) onInteract?.();
+            return next;
+          });
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          onInteract?.();
+        }}
+        className={`inline-flex items-center gap-0.5 rounded-full py-0.5 pl-1.5 pr-1 text-[10px] font-bold transition ${pendingKindBadgeClass(
+          kind
+        )} ${disabled ? "opacity-60" : "hover:brightness-95"}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={orderDisplayLabel("pending", kind)}
+      >
+        {pendingKindShortLabel(kind)}
+        <ChevronDownIcon
+          className={`h-2.5 w-2.5 shrink-0 opacity-70 transition ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {menu}
+    </span>
+  );
+}
+
 function KanbanCard({
   order,
   onOpen,
   onContextMenu,
   dragging,
   priorityElevated = false,
+  showPendingChip = false,
+  onSetPendingKind,
+  suppressInspect = false,
 }) {
   const panelElRef = useRef(null);
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -803,10 +962,10 @@ function KanbanCard({
   }, [clearTimers]);
 
   const scheduleOpen = useCallback(() => {
-    if (dragging) return;
+    if (dragging || suppressInspect) return;
     clearTimers();
     openTimerRef.current = setTimeout(showInspect, INSPECT_OPEN_DELAY_MS);
-  }, [clearTimers, dragging, showInspect]);
+  }, [clearTimers, dragging, showInspect, suppressInspect]);
 
   const scheduleClose = useCallback(() => {
     clearTimers();
@@ -814,11 +973,13 @@ function KanbanCard({
   }, [clearTimers, hideInspect]);
 
   function handleMouseEnter(event) {
+    if (suppressInspect) return;
     placeAtCursor(event.clientX, event.clientY, { syncState: true });
     scheduleOpen();
   }
 
   function handleMouseMove(event) {
+    if (suppressInspect) return;
     placeAtCursor(event.clientX, event.clientY, {
       syncState: !inspectOpen,
     });
@@ -827,8 +988,8 @@ function KanbanCard({
   useEffect(() => () => clearTimers(), [clearTimers]);
 
   useEffect(() => {
-    if (dragging) hideInspect();
-  }, [dragging, hideInspect]);
+    if (dragging || suppressInspect) hideInspect();
+  }, [dragging, suppressInspect, hideInspect]);
 
   useEffect(() => {
     if (!inspectOpen) return undefined;
@@ -851,10 +1012,30 @@ function KanbanCard({
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={scheduleClose}
-      className={`relative flex w-full cursor-grab items-center gap-2 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
+      className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
         dragging ? "opacity-50" : ""
       }`}
     >
+      <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+        #{order.display_id}
+      </span>
+      {priorityElevated ? (
+        <span
+          className="shrink-0 rounded-full bg-berry/90 px-1.5 py-0.5 text-[10px] font-bold text-white"
+          title="Placed ahead of chronological order (#)"
+          aria-label="Priority elevated"
+        >
+          ↑
+        </span>
+      ) : null}
+      {showPendingChip ? (
+        <PendingKindChip
+          order={order}
+          onSetPendingKind={onSetPendingKind}
+          onInteract={hideInspect}
+          disabled={dragging}
+        />
+      ) : null}
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -871,18 +1052,6 @@ function KanbanCard({
           inspectOpen ? `order-inspect-${order.id}` : undefined
         }
       >
-        <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
-          #{order.display_id}
-        </span>
-        {priorityElevated ? (
-          <span
-            className="shrink-0 rounded-full bg-berry/90 px-1.5 py-0.5 text-[10px] font-bold text-white"
-            title="Placed ahead of chronological order (#)"
-            aria-label="Priority elevated"
-          >
-            ↑
-          </span>
-        ) : null}
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
           {order.customer_name}
         </span>
@@ -1330,10 +1499,11 @@ function OrderCardSearch({ onOpenOrder }) {
                           </span>
                           <span
                             className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${orderStatusBadgeClass(
-                              orderStatus
+                              orderStatus,
+                              hit.pending_kind
                             )}`}
                           >
-                            {orderStatusLabel(orderStatus)}
+                            {orderDisplayLabel(orderStatus, hit.pending_kind)}
                           </span>
                           <span className="text-sm font-semibold text-ink">
                             {hit.customer_name}
@@ -1446,10 +1616,11 @@ function OrdersAllList({ orders, onOpenOrder }) {
                 <td className="whitespace-nowrap px-3 py-1.5">
                   <span
                     className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${orderStatusBadgeClass(
-                      status
+                      status,
+                      order.pending_kind
                     )}`}
                   >
-                    {orderStatusLabel(status)}
+                    {orderDisplayLabel(status, order.pending_kind)}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink/80">
@@ -1490,8 +1661,10 @@ function KanbanBoard({
   orders,
   onOpenOrder,
   onPlaceOrder,
+  onSetPendingKind,
   onRequestDelete,
   onViewAllOrders,
+  suppressInspect = false,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { statusId, index }
@@ -1505,8 +1678,8 @@ function KanbanBoard({
     () => ({
       completed: sumOrderAmounts(columns.completed),
       pipeline: sumOrderAmounts([
+        ...(columns.pending ?? []),
         ...(columns.new ?? []),
-        ...(columns.on_hold ?? []),
         ...(columns.in_progress ?? []),
       ]),
     }),
@@ -1764,6 +1937,9 @@ function KanbanBoard({
                   onContextMenu={handleCardContextMenu}
                   dragging={dragOrderId === order.id}
                   priorityElevated={isPriorityElevated(order, columnOrders)}
+                  showPendingChip={status.id === "pending"}
+                  onSetPendingKind={onSetPendingKind}
+                  suppressInspect={suppressInspect}
                 />
               </div>
             ))}
@@ -2765,10 +2941,11 @@ function OrderEditor({
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
-                  draft.status
+                  draft.status,
+                  draft.pending_kind
                 )}`}
               >
-                {orderStatusLabel(draft.status)}
+                {orderDisplayLabel(draft.status, draft.pending_kind)}
               </span>
               <AccountStatusBadge hasAccount={draft.has_account} pill />
             </div>
@@ -2845,12 +3022,18 @@ function OrderEditor({
             <EditorLabel>Status</EditorLabel>
             <select
               className={editorFieldClass()}
-              value={draft.status}
-              onChange={(event) => updateDraft({ status: event.target.value })}
+              value={editorStatusValue(draft.status, draft.pending_kind)}
+              onChange={(event) => {
+                const parsed = parseEditorStatusValue(event.target.value);
+                updateDraft({
+                  status: parsed.status,
+                  pending_kind: parsed.pendingKind,
+                });
+              }}
             >
-              {ORDER_STATUSES.map((status) => (
-                <option key={status.id} value={status.id}>
-                  {status.label}
+              {EDITOR_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -3621,6 +3804,101 @@ export default function AdminApp() {
     router.replace("/");
   }
 
+  function handleSetPendingKind(orderId, nextKind) {
+    const previous = orders;
+    const moving = previous.find((order) => order.id === orderId);
+    if (!moving || !isPendingOrderStatus(moving.status)) return;
+    const fromKind = normalizePendingKind(moving.pending_kind);
+    const toKind = normalizePendingKind(nextKind);
+    if (fromKind === toKind) return;
+
+    const previewUrls = Array.isArray(moving.preview_urls)
+      ? moving.preview_urls.filter(Boolean)
+      : [];
+    setMovePrompt({
+      kind: "pending_kind",
+      orderId,
+      nextPendingKind: toKind,
+      previous,
+      moving,
+      displayId: moving.display_id,
+      customerEmail: moving.customer_email,
+      orderSummary: {
+        displayId: moving.display_id,
+        customerName: moving.customer_name,
+        thumbUrl: previewUrls[0] ?? null,
+        fromStatus: "pending",
+        toStatus: "pending",
+        fromPendingKind: fromKind,
+        toPendingKind: toKind,
+        cardCount: moving.card_count ?? null,
+      },
+      beforePayload: {
+        order: { status: "pending", pending_kind: fromKind },
+        cards: [],
+        quote_items: [],
+      },
+      afterPayload: {
+        order: { status: "pending", pending_kind: toKind },
+        cards: [],
+        quote_items: [],
+      },
+    });
+  }
+
+  async function commitPendingKindChange({
+    orderId,
+    nextPendingKind,
+    previous,
+    notify = false,
+    subject = "",
+    body = "",
+    changelog = null,
+  }) {
+    const pendingKind = normalizePendingKind(nextPendingKind);
+    const previousDraft = draft;
+    const previousSnapshot = savedSnapshot;
+
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === orderId ? { ...order, pending_kind: pendingKind } : order
+      )
+    );
+    if (selectedOrderId === orderId) {
+      setDraft((current) => {
+        if (!current) return current;
+        const next = { ...current, pending_kind: pendingKind };
+        setSavedSnapshot(JSON.stringify(draftPayload(next)));
+        return next;
+      });
+    }
+
+    try {
+      await adminSetPendingKind(orderId, pendingKind);
+      const refreshed = await adminListOrders();
+      setOrders(refreshed.map(orderToKanbanSummary));
+
+      if (notify && subject.trim() && (body.trim() || changelog)) {
+        await adminSendMessages({
+          order_ids: [orderId],
+          subject: subject.trim(),
+          body,
+          changelog,
+          thumb_by_card_id: buildCardThumbById(
+            selectedOrderId === orderId ? draft?.cards : []
+          ),
+        });
+      }
+    } catch (err) {
+      setOrders(previous);
+      if (selectedOrderId === orderId) {
+        setDraft(previousDraft);
+        setSavedSnapshot(previousSnapshot);
+      }
+      throw err;
+    }
+  }
+
   async function handlePlaceOrder(orderId, status, queueIndex) {
     const previous = orders;
     const nextStatus = normalizeOrderStatus(status);
@@ -3677,15 +3955,37 @@ export default function AdminApp() {
         thumbUrl: previewUrls[0] ?? null,
         fromStatus,
         toStatus: nextStatus,
+        fromPendingKind: isPendingOrderStatus(fromStatus)
+          ? normalizePendingKind(moving.pending_kind)
+          : null,
+        toPendingKind:
+          nextStatus === "pending"
+            ? isPendingOrderStatus(fromStatus)
+              ? normalizePendingKind(moving.pending_kind)
+              : DEFAULT_PENDING_KIND
+            : null,
         cardCount: moving.card_count ?? null,
       },
       beforePayload: {
-        order: { status: fromStatus },
+        order: {
+          status: fromStatus,
+          pending_kind: isPendingOrderStatus(fromStatus)
+            ? normalizePendingKind(moving.pending_kind)
+            : null,
+        },
         cards: [],
         quote_items: [],
       },
       afterPayload: {
-        order: { status: nextStatus },
+        order: {
+          status: nextStatus,
+          pending_kind:
+            nextStatus === "pending"
+              ? isPendingOrderStatus(fromStatus)
+                ? normalizePendingKind(moving.pending_kind)
+                : DEFAULT_PENDING_KIND
+              : null,
+        },
         cards: [],
         quote_items: [],
       },
@@ -3713,6 +4013,12 @@ export default function AdminApp() {
       const placed = {
         ...moving,
         status: nextStatus,
+        pending_kind:
+          nextStatus === "pending"
+            ? isPendingOrderStatus(moving.status)
+              ? normalizePendingKind(moving.pending_kind)
+              : DEFAULT_PENDING_KIND
+            : null,
         status_changed_at: new Date().toISOString(),
         completed_at: nextClosed
           ? wasClosed
@@ -3758,7 +4064,16 @@ export default function AdminApp() {
       if (selectedOrderId === orderId) {
         setDraft((current) => {
           if (!current) return current;
-          const next = { ...current, status: nextStatus };
+          const next = {
+            ...current,
+            status: nextStatus,
+            pending_kind:
+              nextStatus === "pending"
+                ? isPendingOrderStatus(moving.status)
+                  ? normalizePendingKind(moving.pending_kind)
+                  : DEFAULT_PENDING_KIND
+                : null,
+          };
           setSavedSnapshot(JSON.stringify(draftPayload(next)));
           return next;
         });
@@ -3988,16 +4303,31 @@ export default function AdminApp() {
     setMoveSaving(true);
     setListError("");
     try {
-      await commitPlaceOrder({
-        ...movePrompt,
-        notify,
-        subject,
-        body,
-        changelog,
-      });
+      if (movePrompt.kind === "pending_kind") {
+        await commitPendingKindChange({
+          ...movePrompt,
+          notify,
+          subject,
+          body,
+          changelog,
+        });
+      } else {
+        await commitPlaceOrder({
+          ...movePrompt,
+          notify,
+          subject,
+          body,
+          changelog,
+        });
+      }
       setMovePrompt(null);
     } catch (err) {
-      setListError(err.message || "Could not update order place.");
+      setListError(
+        err.message ||
+          (movePrompt.kind === "pending_kind"
+            ? "Could not update pending type."
+            : "Could not update order place.")
+      );
     } finally {
       setMoveSaving(false);
     }
@@ -4238,8 +4568,10 @@ export default function AdminApp() {
                 orders={orders}
                 onOpenOrder={openOrder}
                 onPlaceOrder={handlePlaceOrder}
+                onSetPendingKind={handleSetPendingKind}
                 onRequestDelete={handleRequestDelete}
                 onViewAllOrders={() => router.push("/admin/orders/all/")}
+                suppressInspect={Boolean(movePrompt || deleteTargets?.length)}
               />
               <DeleteOrderDialog
                 orders={deleteTargets}

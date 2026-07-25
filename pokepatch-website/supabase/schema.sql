@@ -41,7 +41,7 @@
 --   update_order(...)              — admin only; EXECUTE granted to service_role
 --                                   (when p_cards provided, omitted cards are deleted)
 --   get_queue_card_count()         — public; { todo, in_progress, completed };
---                                   todo = cards.status todo on orders new|on_hold
+--                                   todo = cards.status todo on orders new|pending
 --   orders.queue_priority          — relative rank within status (0..n-1 per column)
 --   get_my_orders.queue_position   — 1-based place among status=new
 --   reorder_status_orders(status, ids[]) / move_order_in_status(...) — service_role; kanban

@@ -12,9 +12,11 @@ import SectionHeading from "@/components/SectionHeading";
 import OrderCard from "@/components/OrderCard";
 import {
   ORDER_STATUSES,
+  PENDING_KINDS,
   groupOrdersByStatus,
   orderStatusHeadingClass,
   customerOrderStatusLabel,
+  normalizePendingKind,
   filterOrdersByCompletedVisibility,
 } from "@/lib/orderStatus";
 
@@ -159,9 +161,32 @@ const visibleOrders = useMemo(
   const statusSections = useMemo(
     () =>
       ORDER_STATUSES.flatMap((status) => {
+        if (status.id === "pending") {
+          return PENDING_KINDS.flatMap((kind) => {
+            const sectionOrders = (ordersByStatus.pending ?? []).filter(
+              (order) =>
+                normalizePendingKind(order.pending_kind) === kind.id
+            );
+            if (sectionOrders.length === 0) return [];
+            return [
+              {
+                id: `pending:${kind.id}`,
+                statusId: "pending",
+                label: kind.label,
+                orders: sectionOrders,
+              },
+            ];
+          });
+        }
         const sectionOrders = ordersByStatus[status.id] ?? [];
         if (sectionOrders.length === 0) return [];
-        return [{ ...status, orders: sectionOrders }];
+        return [
+          {
+            ...status,
+            statusId: status.id,
+            orders: sectionOrders,
+          },
+        ];
       }),
     [ordersByStatus]
   );
@@ -220,10 +245,11 @@ const visibleOrders = useMemo(
                   <div className="flex items-baseline justify-between gap-3">
                     <h2
                       className={`font-display text-lg font-bold ${orderStatusHeadingClass(
-                        section.id
+                        section.statusId
                       )}`}
                     >
-                      {customerOrderStatusLabel(section.id)}
+                      {section.label ??
+                        customerOrderStatusLabel(section.statusId)}
                     </h2>
                     <span className="text-xs text-ink/60">
                       {section.orders.length}{" "}

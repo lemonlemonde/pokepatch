@@ -283,14 +283,35 @@ export async function adminSaveOrder(
   return stabilizeOrderDetail(payload.full ?? payload.order);
 }
 
-export async function adminSetStatus(orderId, status, queueIndex = null) {
+export async function adminSetStatus(
+  orderId,
+  status,
+  queueIndex = null,
+  { pendingKind = undefined } = {}
+) {
   const body = { action: "set_status", order_id: orderId, status };
   if (queueIndex != null && Number.isFinite(Number(queueIndex))) {
     body.queue_index = Number(queueIndex);
   }
+  if (pendingKind !== undefined) {
+    body.pending_kind = pendingKind;
+  }
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
     body,
+  });
+  return payload.order;
+}
+
+/** Chip toggle: update pending_kind only (keeps queue place). */
+export async function adminSetPendingKind(orderId, pendingKind) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "set_pending_kind",
+      order_id: orderId,
+      pending_kind: pendingKind,
+    },
   });
   return payload.order;
 }

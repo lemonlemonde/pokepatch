@@ -8,7 +8,7 @@ import {
 } from "@/lib/orderChangelog";
 import {
   orderStatusBadgeClass,
-  orderStatusLabel,
+  orderDisplayLabel,
 } from "@/lib/orderStatus";
 
 function fieldClassName() {
@@ -23,6 +23,8 @@ function OrderMoveSummary({ summary }) {
     thumbUrl,
     fromStatus,
     toStatus,
+    fromPendingKind = null,
+    toPendingKind = null,
     cardCount,
   } = summary;
   const name = String(customerName ?? "").trim() || "—";
@@ -53,20 +55,22 @@ function OrderMoveSummary({ summary }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusBadgeClass(
-              fromStatus
+              fromStatus,
+              fromPendingKind
             )}`}
           >
-            {orderStatusLabel(fromStatus)}
+            {orderDisplayLabel(fromStatus, fromPendingKind)}
           </span>
           <span className="text-[11px] font-semibold text-ink/40" aria-hidden>
             →
           </span>
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusBadgeClass(
-              toStatus
+              toStatus,
+              toPendingKind
             )}`}
           >
-            {orderStatusLabel(toStatus)}
+            {orderDisplayLabel(toStatus, toPendingKind)}
           </span>
           {cardsLabel ? (
             <span className="text-[11px] text-ink/45">{cardsLabel}</span>

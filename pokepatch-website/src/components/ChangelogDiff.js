@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   CARD_STATUSES,
   ORDER_STATUSES,
+  PENDING_KINDS,
   cardStatusBadgeClass,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
@@ -417,7 +418,7 @@ function StatusChip({ label }) {
   const className = meta
     ? meta.kind === "card"
       ? cardStatusBadgeClass(meta.id)
-      : orderStatusBadgeClass(meta.id)
+      : orderStatusBadgeClass(meta.id, meta.pendingKind ?? null)
     : "bg-night/30 text-ink/70";
   return (
     <span
@@ -433,6 +434,12 @@ function resolveStatusMeta(label) {
     .trim()
     .toLowerCase();
   if (!needle) return null;
+  for (const kind of PENDING_KINDS) {
+    const labels = [kind.label, kind.shortLabel].filter(Boolean);
+    if (labels.some((entry) => entry.toLowerCase() === needle)) {
+      return { kind: "order", id: "pending", pendingKind: kind.id };
+    }
+  }
   for (const status of ORDER_STATUSES) {
     const labels = [status.label, status.customerLabel].filter(Boolean);
     if (labels.some((entry) => entry.toLowerCase() === needle)) {

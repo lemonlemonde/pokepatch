@@ -33,7 +33,8 @@ Live Supabase is the source of truth. These objects must already exist before
 deploying admin functions (they do on production):
 
 **Admin orders**
-- `orders.status` (`new`, `on_hold`, `in_progress`, `completed`, `canceled`)
+- `orders.status` (`pending`, `new`, `in_progress`, `completed`, `canceled`)
+- `orders.pending_kind` (`quote` | `drop_off`, only when status is `pending`) — chip/customer label under the Pending column
 - Expanded `card_images.image_type` values for admin uploads
 - `admin_sessions` table
 - `update_order` status support

@@ -15,6 +15,7 @@ import {
   customerOrderStatusLabel,
   normalizeCardStatus,
   normalizeOrderStatus,
+  normalizePendingKind,
 } from "@/lib/orderStatus";
 
 function cardLabel(card, index = 0) {
@@ -269,18 +270,30 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
-  // Order status change.
+  // Order status / pending-kind change.
   const beforeOrderStatus = normalizeOrderStatus(
     beforePayload?.order?.status
   );
   const afterOrderStatus = normalizeOrderStatus(afterPayload?.order?.status);
+  const beforePendingKind =
+    beforeOrderStatus === "pending"
+      ? normalizePendingKind(beforePayload?.order?.pending_kind)
+      : null;
+  const afterPendingKind =
+    afterOrderStatus === "pending"
+      ? normalizePendingKind(afterPayload?.order?.pending_kind)
+      : null;
   if (
     beforePayload?.order != null &&
     afterPayload?.order != null &&
-    beforeOrderStatus !== afterOrderStatus
+    (beforeOrderStatus !== afterOrderStatus ||
+      beforePendingKind !== afterPendingKind)
   ) {
     orderChanges.push(
-      `Status: ${customerOrderStatusLabel(beforeOrderStatus)} → ${customerOrderStatusLabel(afterOrderStatus)}`
+      `Status: ${customerOrderStatusLabel(
+        beforeOrderStatus,
+        beforePendingKind
+      )} → ${customerOrderStatusLabel(afterOrderStatus, afterPendingKind)}`
     );
   }
 

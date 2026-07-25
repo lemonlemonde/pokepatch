@@ -226,7 +226,8 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 | `display_id` | Bigint identity — shown in Discord/Sheets as `#42` |
 | `customer_name`, `delivery_method` | From public form |
 | `general_notes` | Admin-only (not on public form) |
-| `status` | Admin kanban: `new`, `in_progress`, `completed`, `delivered` |
+| `status` | Admin kanban: `pending` (Pending), `new` (To do), `in_progress`, `completed`, `canceled` |
+| `pending_kind` | When `pending`: `quote` or `drop_off` (Pending quote / Pending drop-off chips) |
 
 **`cards` / `card_images`**
 

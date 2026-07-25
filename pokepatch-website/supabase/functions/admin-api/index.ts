@@ -361,10 +361,10 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
+      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
     )
     .order("created_at", { ascending: false });
-  // Quote columns may be missing until the order_quotes migration is applied.
+  // Quote / pending_kind columns may be missing until migrations are applied.
   if (ordersError) {
     const retry = await supabase
       .from("orders")
@@ -496,17 +496,19 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, completed_at, status_changed_at, queue_priority";
+  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
 
 const ORDER_STATUS_IDS = new Set([
-  "on_hold",
+  "pending",
   "new",
   "in_progress",
   "completed",
   "canceled",
 ]);
+
+const PENDING_KIND_IDS = new Set(["quote", "drop_off"]);
 
 const SEARCH_RESULT_LIMIT = 10;
 /** Pull extra matches so we can re-rank by order created_at before cutting to 10. */
@@ -539,6 +541,7 @@ type SearchOrderRow = {
   customer_email: string | null;
   delivery_method: string | null;
   status: string | null;
+  pending_kind: string | null;
   general_notes: string | null;
   completed_at: string | null;
 };
@@ -614,7 +617,7 @@ async function searchOrdersByCardText(
   const { data: orders, error: ordersError } = await supabase
     .from("orders")
     .select(
-      "id, display_id, created_at, customer_name, customer_email, delivery_method, status, general_notes, completed_at"
+      "id, display_id, created_at, customer_name, customer_email, delivery_method, status, pending_kind, general_notes, completed_at"
     )
     .in("id", orderIds);
   if (ordersError) throw ordersError;
@@ -700,6 +703,7 @@ async function searchOrdersByCardText(
         customer_email: order.customer_email,
         delivery_method: order.delivery_method,
         status: order.status,
+        pending_kind: order.pending_kind,
         general_notes: order.general_notes,
         completed_at: order.completed_at,
         created_at: order.created_at,
@@ -1203,14 +1207,39 @@ Deno.serve(async (req) => {
 
     if (action === "set_status") {
       const orderId = String(body.order_id ?? "");
-      const status = String(body.status ?? "");
+      let status = String(body.status ?? "");
       if (!orderId || !status) {
         return jsonResponse(req, { ok: false, error: "order_id and status required" }, 400);
+      }
+      if (
+        status === "on_hold" ||
+        status === "pending_quote" ||
+        status === "pending_dropoff"
+      ) {
+        status = "pending";
+      }
+      if (
+        !["pending", "new", "in_progress", "completed", "canceled"].includes(
+          status
+        )
+      ) {
+        return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
       }
       const hasIndex = body.queue_index !== undefined && body.queue_index !== null;
       const queueIndex = hasIndex ? Number(body.queue_index) : null;
       if (hasIndex && !Number.isFinite(queueIndex)) {
         return jsonResponse(req, { ok: false, error: "queue_index must be a number" }, 400);
+      }
+
+      const pendingKindRaw =
+        body.pending_kind === undefined || body.pending_kind === null
+          ? undefined
+          : String(body.pending_kind);
+      if (
+        pendingKindRaw !== undefined &&
+        !PENDING_KIND_IDS.has(pendingKindRaw)
+      ) {
+        return jsonResponse(req, { ok: false, error: "invalid pending_kind" }, 400);
       }
 
       if (hasIndex) {
@@ -1220,14 +1249,47 @@ Deno.serve(async (req) => {
           p_queue_index: queueIndex,
         });
         if (error) throw error;
+        if (status === "pending" && pendingKindRaw) {
+          const { error: kindError } = await supabase.rpc("update_order", {
+            p_order_id: orderId,
+            p_order: { pending_kind: pendingKindRaw },
+          });
+          if (kindError) throw kindError;
+        }
       } else {
+        const orderPatch: Record<string, string> = { status };
+        if (status === "pending") {
+          orderPatch.pending_kind = pendingKindRaw ?? "quote";
+        }
         const { error } = await supabase.rpc("update_order", {
           p_order_id: orderId,
-          p_order: { status },
+          p_order: orderPatch,
         });
         if (error) throw error;
       }
 
+      const order = await fetchOrderGraph(supabase, orderId);
+      return jsonResponse(req, { ok: true, order });
+    }
+
+    if (action === "set_pending_kind") {
+      const orderId = String(body.order_id ?? "");
+      const pendingKind = String(body.pending_kind ?? "");
+      if (!orderId || !pendingKind) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_id and pending_kind required" },
+          400
+        );
+      }
+      if (!PENDING_KIND_IDS.has(pendingKind)) {
+        return jsonResponse(req, { ok: false, error: "invalid pending_kind" }, 400);
+      }
+      const { error } = await supabase.rpc("update_order", {
+        p_order_id: orderId,
+        p_order: { pending_kind: pendingKind },
+      });
+      if (error) throw error;
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
@@ -1403,9 +1465,24 @@ Deno.serve(async (req) => {
           400
         );
       }
+      let reorderStatus = status;
+      if (
+        reorderStatus === "on_hold" ||
+        reorderStatus === "pending_quote" ||
+        reorderStatus === "pending_dropoff"
+      ) {
+        reorderStatus = "pending";
+      }
+      if (
+        !["pending", "new", "in_progress", "completed", "canceled"].includes(
+          reorderStatus
+        )
+      ) {
+        return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
+      }
 
       const { error } = await supabase.rpc("reorder_status_orders", {
-        p_status: status,
+        p_status: reorderStatus,
         p_ordered_ids: orderedIds,
       });
       if (error) throw error;
