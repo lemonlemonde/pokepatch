@@ -116,8 +116,8 @@ function adjustmentChangeCause(before, after, action, subtotal) {
   const amount = formatAdjustmentAmount(row, subtotal);
 
   if (kind === "discount") {
-    if (action === "added") return `Applied discount: ${amount}`;
-    if (action === "removed") return `Removed discount: ${amount}`;
+    if (action === "added") return `Applied: discount: ${amount}`;
+    if (action === "removed") return `Removed: discount: ${amount}`;
     return `Discount: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
   }
 

@@ -30,7 +30,7 @@ function Chevron({ open }) {
 
 /**
  * Receipt-style quote summary:
- * per-card subsections with nested services + card-level HV + card subtotal,
+ * per-card subsections with nested services + card-level HV (amount in header),
  * then order-level adjustments, total.
  */
 export default function QuoteReceipt({
@@ -138,13 +138,6 @@ export default function QuoteReceipt({
                   </span>
                 </div>
               ) : null}
-
-              <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/15 pt-1.5 font-sans text-xs">
-                <span className="font-medium text-ink/55">Card subtotal</span>
-                <span className="font-semibold tabular-nums text-ink">
-                  {formatMoney(group.subtotal)}
-                </span>
-              </div>
             </div>
           </div>
         ))}

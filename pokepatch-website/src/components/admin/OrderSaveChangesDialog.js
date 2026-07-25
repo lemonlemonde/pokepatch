@@ -282,9 +282,17 @@ export default function OrderSaveChangesDialog({
                   {notifyLabel}
                 </span>
                 <span className="mt-0.5 block text-xs text-ink/50">
-                  {canNotify
-                    ? `Email ${customerEmail} and add to Messages.`
-                    : "No email on this order."}
+                  {canNotify ? (
+                    <>
+                      Email{" "}
+                      <span className="font-bold text-mint">
+                        {customerEmail}
+                      </span>{" "}
+                      and add to Messages.
+                    </>
+                  ) : (
+                    "No email on this order."
+                  )}
                 </span>
               </span>
             </label>
