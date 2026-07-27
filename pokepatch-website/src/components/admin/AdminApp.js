@@ -769,7 +769,7 @@ function PendingKindChip({
     const button = rootRef.current?.querySelector("button");
     if (!button) return;
     const rect = button.getBoundingClientRect();
-    const menuWidth = 112; // min-w-[7rem]
+    const menuWidth = 160; // min-w-[10rem]
     const left = Math.min(
       Math.max(8, rect.left),
       window.innerWidth - menuWidth - 8
@@ -812,7 +812,7 @@ function PendingKindChip({
       <div
         ref={menuRef}
         role="listbox"
-        className="fixed z-[220] min-w-[7rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+        className="fixed z-[220] min-w-[10rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
         style={{ top: menuPos.top, left: menuPos.left }}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
@@ -825,7 +825,7 @@ function PendingKindChip({
               type="button"
               role="option"
               aria-selected={selected}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-semibold transition hover:bg-ink/5 ${
+              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold transition hover:bg-ink/5 ${
                 selected ? "text-ink" : "text-ink/80"
               }`}
               onClick={() => {
@@ -868,7 +868,7 @@ function PendingKindChip({
           event.stopPropagation();
           onInteract?.();
         }}
-        className={`inline-flex items-center gap-0.5 rounded-full py-0.5 pl-1.5 pr-1 text-[10px] font-bold transition ${pendingKindBadgeClass(
+        className={`inline-flex min-h-8 items-center gap-0.5 rounded-full py-1 pl-2 pr-1.5 text-xs font-bold transition sm:min-h-0 sm:py-0.5 sm:pl-1.5 sm:pr-1 sm:text-[10px] ${pendingKindBadgeClass(
           kind
         )} ${disabled ? "opacity-60" : "hover:brightness-95"}`}
         aria-haspopup="listbox"
@@ -1996,7 +1996,7 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 max-sm:auto-rows-[minmax(22rem,auto)] sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
