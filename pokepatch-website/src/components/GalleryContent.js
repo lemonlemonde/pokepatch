@@ -578,7 +578,7 @@ export default function GalleryContent({ items }) {
               {filteredItems.length === 1 ? "restoration" : "restorations"}
             </p>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
               {pageItems.map((item, index) => (
                 <GalleryItemCard
                   key={item.id ?? item.title}
