@@ -73,8 +73,8 @@ const REEL_BRANDING_RIGHT_EXTRA = 20;
 const REEL_SIDE_PADDING_EXTRA = 20;
 /** Trim horizontal padding inside the 9:16 card-info chip. */
 const REEL_CARD_INFO_WIDTH_TRIM = 20;
-/** Shift the centered 9:16 card-info chip left of true center. */
-const REEL_CARD_INFO_LEFT_SHIFT = 45;
+/** Fixed text column width inside the 9:16 card-info chip (truncates overflow). */
+const REEL_CARD_INFO_TEXT_WIDTH = 420;
 /** Extra inner padding on the right of the 9:16 card-info chip. */
 const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
 /** Space between image/label block and the centered card chip on 9:16. */
@@ -553,6 +553,22 @@ function measureLabeledLineWidth(ctx, label, value, fontSize) {
   return labelW + valueW;
 }
 
+/** Truncate value so label+value fit within maxTextW (adds … when clipped). */
+function fitLabeledValue(ctx, label, value, fontSize, maxTextW) {
+  const raw = value ?? "";
+  if (measureLabeledLineWidth(ctx, label, raw, fontSize) <= maxTextW) {
+    return raw;
+  }
+  let fitted = raw;
+  while (
+    fitted.length > 0 &&
+    measureLabeledLineWidth(ctx, label, `${fitted}…`, fontSize) > maxTextW
+  ) {
+    fitted = fitted.slice(0, -1);
+  }
+  return fitted.length > 0 ? `${fitted}…` : "…";
+}
+
 function drawLabeledLine(ctx, label, value, x, y, fontSize) {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
@@ -599,10 +615,25 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
 
   const cardLabel = "Card: ";
   const setLabel = "Set: ";
-  const textW = Math.max(
-    measureLabeledLineWidth(ctx, cardLabel, card, fontSize),
-    measureLabeledLineWidth(ctx, setLabel, set, fontSize),
-  );
+  const maxTextW = tall
+    ? reelTyped(REEL_CARD_INFO_TEXT_WIDTH, tall)
+    : Math.max(
+        80,
+        ctx.canvas.width -
+          2 * padding -
+          padLeft -
+          thumbBox -
+          textGap -
+          padRight,
+      );
+  const cardText = fitLabeledValue(ctx, cardLabel, card, fontSize, maxTextW);
+  const setText = fitLabeledValue(ctx, setLabel, set, fontSize, maxTextW);
+  const textW = tall
+    ? maxTextW
+    : Math.max(
+        measureLabeledLineWidth(ctx, cardLabel, cardText, fontSize),
+        measureLabeledLineWidth(ctx, setLabel, setText, fontSize),
+      );
   const textH = fontSize * 2 + lineGap;
 
   const { width: srcW, height: srcH } = getSourceDimensions(frontImg);
@@ -614,9 +645,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const blockH = Math.max(thumbBox, textH) + padY * 2;
   const blockX =
     layout?.blockX ??
-    (tall
-      ? Math.floor((ctx.canvas.width - blockW) / 2) - REEL_CARD_INFO_LEFT_SHIFT
-      : padding);
+    (tall ? Math.floor((ctx.canvas.width - blockW) / 2) : padding);
   const blockY = layout?.blockY ?? padding;
 
   drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
@@ -633,11 +662,11 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
 
   const textX = blockX + padLeft + thumbBox + textGap;
   const textTop = blockY + (blockH - textH) / 2;
-  drawLabeledLine(ctx, cardLabel, card, textX, textTop, fontSize);
+  drawLabeledLine(ctx, cardLabel, cardText, textX, textTop, fontSize);
   drawLabeledLine(
     ctx,
     setLabel,
-    set,
+    setText,
     textX,
     textTop + fontSize + lineGap,
     fontSize,

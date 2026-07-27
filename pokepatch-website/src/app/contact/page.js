@@ -3,7 +3,7 @@ import SocialLinks from "@/components/SocialLinks";
 import QuoteForm from "@/components/QuoteForm";
 
 export const metadata = {
-  title: "Get a Quote",
+  title: "Get Free Quote",
   description:
     "Send photos of your damaged trading cards and get a restoration quote within 2 hours. Local Bay Area drop-off or nationwide mail-in.",
 };
@@ -13,7 +13,7 @@ export default function ContactPage() {
     <div className="mx-auto max-w-2xl px-6 py-12">
       <div className="animate-fade-up">
         <SectionHeading subtitle="Fill out the form below and we'll get back to you!">
-          Get a Quote
+          Get Free Quote
         </SectionHeading>
       </div>
 

@@ -225,6 +225,19 @@ export default function QuoteForm() {
     }
   }, [cards]);
 
+  useEffect(() => {
+    function onBeforeUnload(event) {
+      if (!formStartedRef.current) return;
+      if (status === "success" || status === "uploading" || status === "submitting") {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [status]);
+
   // Logged-in customers use their account email; keep it in sync and locked.
   useEffect(() => {
     if (user?.email) setEmail(user.email);

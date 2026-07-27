@@ -769,7 +769,7 @@ function PendingKindChip({
     const button = rootRef.current?.querySelector("button");
     if (!button) return;
     const rect = button.getBoundingClientRect();
-    const menuWidth = 112; // min-w-[7rem]
+    const menuWidth = 160; // min-w-[10rem]
     const left = Math.min(
       Math.max(8, rect.left),
       window.innerWidth - menuWidth - 8
@@ -812,7 +812,7 @@ function PendingKindChip({
       <div
         ref={menuRef}
         role="listbox"
-        className="fixed z-[220] min-w-[7rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+        className="fixed z-[220] min-w-[10rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
         style={{ top: menuPos.top, left: menuPos.left }}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
@@ -825,7 +825,7 @@ function PendingKindChip({
               type="button"
               role="option"
               aria-selected={selected}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-semibold transition hover:bg-ink/5 ${
+              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-semibold transition hover:bg-ink/5 ${
                 selected ? "text-ink" : "text-ink/80"
               }`}
               onClick={() => {
@@ -868,7 +868,7 @@ function PendingKindChip({
           event.stopPropagation();
           onInteract?.();
         }}
-        className={`inline-flex items-center gap-0.5 rounded-full py-0.5 pl-1.5 pr-1 text-[10px] font-bold transition ${pendingKindBadgeClass(
+        className={`inline-flex min-h-8 items-center gap-0.5 rounded-full py-1 pl-2 pr-1.5 text-xs font-bold transition sm:min-h-0 sm:py-0.5 sm:pl-1.5 sm:pr-1 sm:text-[10px] ${pendingKindBadgeClass(
           kind
         )} ${disabled ? "opacity-60" : "hover:brightness-95"}`}
         aria-haspopup="listbox"
@@ -1996,7 +1996,7 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid h-[min(66vh,calc(100dvh-16rem))] grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 max-sm:auto-rows-[minmax(22rem,auto)] sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
@@ -3464,35 +3464,21 @@ function OrderEditor({
           </div>
         ) : null}
 
-        {quoteCoverage.uncoveredCards.length > 0 ||
-        quoteCoverage.duplicateServiceCards.length > 0 ? (
+        {quoteCoverage.duplicateServiceCards.length > 0 ? (
           <div className="space-y-2 px-1">
-            {quoteCoverage.uncoveredCards.length > 0 ? (
-              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                <span className="font-semibold text-berry">
-                  Missing service:
-                </span>{" "}
-                {quoteCoverage.uncoveredCards
-                  .map((row) => `${row.number}. ${row.label}`)
-                  .join(", ")}
-              </p>
-            ) : null}
-
-            {quoteCoverage.duplicateServiceCards.length > 0 ? (
-              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                <span className="font-semibold text-berry">
-                  Same service more than once:
-                </span>{" "}
-                {quoteCoverage.duplicateServiceCards
-                  .map(
-                    (row) =>
-                      `${row.number}. ${row.label} (${row.services
-                        .map((s) => `${s.label} ×${s.count}`)
-                        .join(", ")})`
-                  )
-                  .join("; ")}
-              </p>
-            ) : null}
+            <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+              <span className="font-semibold text-berry">
+                Same service more than once:
+              </span>{" "}
+              {quoteCoverage.duplicateServiceCards
+                .map(
+                  (row) =>
+                    `${row.number}. ${row.label} (${row.services
+                      .map((s) => `${s.label} ×${s.count}`)
+                      .join(", ")})`
+                )
+                .join("; ")}
+            </p>
           </div>
         ) : null}
       </div>
@@ -3648,6 +3634,16 @@ export default function AdminApp() {
       draftHasPendingPhotos(draft)
     );
   }, [draft, savedSnapshot]);
+
+  useEffect(() => {
+    if (!dirty || tab !== "orders-edit") return undefined;
+    function onBeforeUnload(event) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty, tab]);
 
   const activeTab =
     tab === "orders-all"
@@ -4144,6 +4140,12 @@ export default function AdminApp() {
   }
 
   function leaveEditor() {
+    if (dirty) {
+      const leave = window.confirm(
+        "You have unsaved changes. Leave without saving?"
+      );
+      if (!leave) return;
+    }
     setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
