@@ -74,7 +74,9 @@ const REEL_SIDE_PADDING_EXTRA = 20;
 /** Trim horizontal padding inside the 9:16 card-info chip. */
 const REEL_CARD_INFO_WIDTH_TRIM = 20;
 /** Fixed text column width inside the 9:16 card-info chip (wraps overflow). */
-const REEL_CARD_INFO_TEXT_WIDTH = 320;
+const REEL_CARD_INFO_TEXT_WIDTH = 370;
+/** Nudge the centered 9:16 card-info chip left of true center. */
+const REEL_CARD_INFO_LEFT_SHIFT = 20;
 /** Extra inner padding on the right of the 9:16 card-info chip. */
 const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
 /** Space between image/label block and the centered card chip on 9:16. */
@@ -747,7 +749,9 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const blockH = Math.max(thumbBox, textH) + padY * 2;
   const blockX =
     layout?.blockX ??
-    (tall ? Math.floor((ctx.canvas.width - blockW) / 2) : padding);
+    (tall
+      ? Math.floor((ctx.canvas.width - blockW) / 2) - REEL_CARD_INFO_LEFT_SHIFT
+      : padding);
   const blockY = layout?.blockY ?? padding;
 
   drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
