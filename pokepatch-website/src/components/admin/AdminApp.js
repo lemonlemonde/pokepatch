@@ -3649,6 +3649,16 @@ export default function AdminApp() {
     );
   }, [draft, savedSnapshot]);
 
+  useEffect(() => {
+    if (!dirty || tab !== "orders-edit") return undefined;
+    function onBeforeUnload(event) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [dirty, tab]);
+
   const activeTab =
     tab === "orders-all"
       ? ORDERS_ALL_META
@@ -4144,6 +4154,12 @@ export default function AdminApp() {
   }
 
   function leaveEditor() {
+    if (dirty) {
+      const leave = window.confirm(
+        "You have unsaved changes. Leave without saving?"
+      );
+      if (!leave) return;
+    }
     setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
