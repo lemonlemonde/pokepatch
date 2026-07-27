@@ -50,7 +50,7 @@ export const GRID_BOTTOM_PADDING = 10;
 // Restoration caption — slightly smaller / tighter than BEFORE/AFTER labels.
 export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
-export const CARD_INFO_FONT_SIZE = 27;
+export const CARD_INFO_FONT_SIZE = 26;
 export const CARD_INFO_THUMB_SIZE = 112;
 /** 9:16 card chip thumb: 3× square, then −10%. */
 export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
