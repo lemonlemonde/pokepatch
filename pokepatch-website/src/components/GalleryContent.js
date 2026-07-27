@@ -578,14 +578,18 @@ export default function GalleryContent({ items }) {
               {filteredItems.length === 1 ? "restoration" : "restorations"}
             </p>
 
-            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+            <div className="columns-1 gap-6 lg:columns-2">
               {pageItems.map((item, index) => (
-                <GalleryItemCard
+                <div
                   key={item.id ?? item.title}
-                  item={item}
-                  index={index}
-                  onOpen={openMedia}
-                />
+                  className="mb-6 break-inside-avoid"
+                >
+                  <GalleryItemCard
+                    item={item}
+                    index={index}
+                    onOpen={openMedia}
+                  />
+                </div>
               ))}
             </div>
 
