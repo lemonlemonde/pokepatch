@@ -20,7 +20,7 @@ export function initPostHog() {
       process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
     person_profiles: "identified_only",
     capture_pageview: false,
-    disable_session_recording: true,
+    disable_session_recording: false,
   });
 
   initialized = true;
