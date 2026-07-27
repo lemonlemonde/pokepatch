@@ -3464,35 +3464,21 @@ function OrderEditor({
           </div>
         ) : null}
 
-        {quoteCoverage.uncoveredCards.length > 0 ||
-        quoteCoverage.duplicateServiceCards.length > 0 ? (
+        {quoteCoverage.duplicateServiceCards.length > 0 ? (
           <div className="space-y-2 px-1">
-            {quoteCoverage.uncoveredCards.length > 0 ? (
-              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                <span className="font-semibold text-berry">
-                  Missing service:
-                </span>{" "}
-                {quoteCoverage.uncoveredCards
-                  .map((row) => `${row.number}. ${row.label}`)
-                  .join(", ")}
-              </p>
-            ) : null}
-
-            {quoteCoverage.duplicateServiceCards.length > 0 ? (
-              <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-                <span className="font-semibold text-berry">
-                  Same service more than once:
-                </span>{" "}
-                {quoteCoverage.duplicateServiceCards
-                  .map(
-                    (row) =>
-                      `${row.number}. ${row.label} (${row.services
-                        .map((s) => `${s.label} ×${s.count}`)
-                        .join(", ")})`
-                  )
-                  .join("; ")}
-              </p>
-            ) : null}
+            <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
+              <span className="font-semibold text-berry">
+                Same service more than once:
+              </span>{" "}
+              {quoteCoverage.duplicateServiceCards
+                .map(
+                  (row) =>
+                    `${row.number}. ${row.label} (${row.services
+                      .map((s) => `${s.label} ×${s.count}`)
+                      .join(", ")})`
+                )
+                .join("; ")}
+            </p>
           </div>
         ) : null}
       </div>
