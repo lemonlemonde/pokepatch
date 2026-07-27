@@ -49,13 +49,13 @@ export default function RootLayout({ children }) {
         className={`${nunito.variable} ${pixelify.variable} ${gugi.variable} flex min-h-screen flex-col font-sans antialiased`}
       >
         <div className="gradient-bg" aria-hidden="true" />
-        <PostHogProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <PostHogProvider>
             <Navbar />
             <main className="flex-1">{children}</main>
             <Footer />
-          </AuthProvider>
-        </PostHogProvider>
+          </PostHogProvider>
+        </AuthProvider>
       </body>
     </html>
   );
