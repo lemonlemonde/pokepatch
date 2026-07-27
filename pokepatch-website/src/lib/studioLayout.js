@@ -50,7 +50,7 @@ export const GRID_BOTTOM_PADDING = 10;
 // Restoration caption — slightly smaller / tighter than BEFORE/AFTER labels.
 export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
-export const CARD_INFO_FONT_SIZE = 27;
+export const CARD_INFO_FONT_SIZE = 26;
 export const CARD_INFO_THUMB_SIZE = 112;
 /** 9:16 card chip thumb: 3× square, then −10%. */
 export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
@@ -73,8 +73,10 @@ const REEL_BRANDING_RIGHT_EXTRA = 20;
 const REEL_SIDE_PADDING_EXTRA = 20;
 /** Trim horizontal padding inside the 9:16 card-info chip. */
 const REEL_CARD_INFO_WIDTH_TRIM = 20;
-/** Shift the centered 9:16 card-info chip left of true center. */
-const REEL_CARD_INFO_LEFT_SHIFT = 45;
+/** Fixed text column width inside the 9:16 card-info chip (wraps overflow). */
+const REEL_CARD_INFO_TEXT_WIDTH = 370;
+/** Nudge the centered 9:16 card-info chip left of true center. */
+const REEL_CARD_INFO_LEFT_SHIFT = 20;
 /** Extra inner padding on the right of the 9:16 card-info chip. */
 const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
 /** Space between image/label block and the centered card chip on 9:16. */
@@ -553,17 +555,116 @@ function measureLabeledLineWidth(ctx, label, value, fontSize) {
   return labelW + valueW;
 }
 
+function measureValueWidth(ctx, value, fontSize) {
+  ctx.font = `italic 400 ${fontSize}px ${LABEL_FONT_FAMILY}`;
+  return ctx.measureText(value).width;
+}
+
+/**
+ * Wrap a labeled field into lines within maxTextW.
+ * First line includes the bold label; continuation lines are value-only
+ * (indented under the value start when the label fits on the first line).
+ * @returns {{ lines: { label: string, value: string }[], height: number }}
+ */
+function layoutLabeledField(ctx, label, value, fontSize, maxTextW, lineGap) {
+  const raw = (value ?? "").trim();
+  ctx.font = `700 ${fontSize}px ${LABEL_FONT_FAMILY}`;
+  const labelW = ctx.measureText(label).width;
+  const firstValueMax = Math.max(8, maxTextW - labelW);
+  const contMax = maxTextW;
+
+  if (!raw) {
+    return {
+      lines: [{ label, value: "" }],
+      height: fontSize,
+    };
+  }
+
+  const words = raw.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let wordIndex = 0;
+
+  // First line: label + as many words as fit.
+  let firstValue = "";
+  while (wordIndex < words.length) {
+    const next =
+      firstValue.length === 0
+        ? words[wordIndex]
+        : `${firstValue} ${words[wordIndex]}`;
+    if (measureValueWidth(ctx, next, fontSize) <= firstValueMax) {
+      firstValue = next;
+      wordIndex += 1;
+    } else {
+      break;
+    }
+  }
+  // If the first word alone is wider than firstValueMax, still place it
+  // (character-wrap) so we never truncate with ellipsis.
+  if (firstValue.length === 0 && wordIndex < words.length) {
+    firstValue = wrapCharsToWidth(ctx, words[wordIndex], fontSize, firstValueMax);
+    // Consume the word; leftover chars become the next "word" stream.
+    const leftover = words[wordIndex].slice(firstValue.length);
+    words[wordIndex] = leftover;
+    if (!leftover) wordIndex += 1;
+  }
+  lines.push({ label, value: firstValue });
+
+  // Continuation lines: wrap remaining words to contMax.
+  let current = "";
+  while (wordIndex < words.length) {
+    const word = words[wordIndex];
+    const next = current.length === 0 ? word : `${current} ${word}`;
+    if (measureValueWidth(ctx, next, fontSize) <= contMax) {
+      current = next;
+      wordIndex += 1;
+      continue;
+    }
+    if (current.length > 0) {
+      lines.push({ label: "", value: current });
+      current = "";
+      continue;
+    }
+    // Single word wider than contMax — character wrap.
+    const chunk = wrapCharsToWidth(ctx, word, fontSize, contMax);
+    lines.push({ label: "", value: chunk });
+    words[wordIndex] = word.slice(chunk.length);
+    if (!words[wordIndex]) wordIndex += 1;
+  }
+  if (current.length > 0) {
+    lines.push({ label: "", value: current });
+  }
+
+  const height = lines.length * fontSize + Math.max(0, lines.length - 1) * lineGap;
+  return { lines, height };
+}
+
+function wrapCharsToWidth(ctx, text, fontSize, maxWidth) {
+  if (!text) return "";
+  if (measureValueWidth(ctx, text, fontSize) <= maxWidth) return text;
+  let fitted = text;
+  while (
+    fitted.length > 1 &&
+    measureValueWidth(ctx, fitted, fontSize) > maxWidth
+  ) {
+    fitted = fitted.slice(0, -1);
+  }
+  return fitted.length > 0 ? fitted : text.slice(0, 1);
+}
+
 function drawLabeledLine(ctx, label, value, x, y, fontSize) {
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
   ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
 
-  ctx.font = `700 ${fontSize}px ${LABEL_FONT_FAMILY}`;
-  ctx.fillText(label, x, y);
-  const labelW = ctx.measureText(label).width;
+  let cursorX = x;
+  if (label) {
+    ctx.font = `700 ${fontSize}px ${LABEL_FONT_FAMILY}`;
+    ctx.fillText(label, cursorX, y);
+    cursorX += ctx.measureText(label).width;
+  }
 
   ctx.font = `italic 400 ${fontSize}px ${LABEL_FONT_FAMILY}`;
-  ctx.fillText(value, x + labelW, y);
+  ctx.fillText(value, cursorX, y);
 }
 
 /**
@@ -584,6 +685,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const textGap = tall ? Math.round(gap / 2) : gap;
   const fontSize = type.cardInfoFont;
   const lineGap = reelTyped(6, tall);
+  const fieldGap = reelTyped(6, tall);
   const padX = Math.max(
     4,
     reelTyped(CARD_INFO_INNER_PAD_X, tall) -
@@ -599,11 +701,44 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
 
   const cardLabel = "Card: ";
   const setLabel = "Set: ";
-  const textW = Math.max(
-    measureLabeledLineWidth(ctx, cardLabel, card, fontSize),
-    measureLabeledLineWidth(ctx, setLabel, set, fontSize),
+  const maxTextW = tall
+    ? reelTyped(REEL_CARD_INFO_TEXT_WIDTH, tall)
+    : Math.max(
+        80,
+        ctx.canvas.width -
+          2 * padding -
+          padLeft -
+          thumbBox -
+          textGap -
+          padRight,
+      );
+  const cardField = layoutLabeledField(
+    ctx,
+    cardLabel,
+    card,
+    fontSize,
+    maxTextW,
+    lineGap,
   );
-  const textH = fontSize * 2 + lineGap;
+  const setField = layoutLabeledField(
+    ctx,
+    setLabel,
+    set,
+    fontSize,
+    maxTextW,
+    lineGap,
+  );
+  const textW = tall
+    ? maxTextW
+    : Math.max(
+        ...cardField.lines.map((line) =>
+          measureLabeledLineWidth(ctx, line.label, line.value, fontSize),
+        ),
+        ...setField.lines.map((line) =>
+          measureLabeledLineWidth(ctx, line.label, line.value, fontSize),
+        ),
+      );
+  const textH = cardField.height + fieldGap + setField.height;
 
   const { width: srcW, height: srcH } = getSourceDimensions(frontImg);
   const thumbScale = Math.min(thumbBox / srcW, thumbBox / srcH);
@@ -632,16 +767,16 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   ctx.restore();
 
   const textX = blockX + padLeft + thumbBox + textGap;
-  const textTop = blockY + (blockH - textH) / 2;
-  drawLabeledLine(ctx, cardLabel, card, textX, textTop, fontSize);
-  drawLabeledLine(
-    ctx,
-    setLabel,
-    set,
-    textX,
-    textTop + fontSize + lineGap,
-    fontSize,
-  );
+  let textTop = blockY + (blockH - textH) / 2;
+  for (const line of cardField.lines) {
+    drawLabeledLine(ctx, line.label, line.value, textX, textTop, fontSize);
+    textTop += fontSize + lineGap;
+  }
+  textTop += fieldGap - lineGap;
+  for (const line of setField.lines) {
+    drawLabeledLine(ctx, line.label, line.value, textX, textTop, fontSize);
+    textTop += fontSize + lineGap;
+  }
 }
 
 /** Centered caption; `centerY` is the vertical middle of the text. */
