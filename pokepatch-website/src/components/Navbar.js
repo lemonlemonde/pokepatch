@@ -13,7 +13,7 @@ import logo from "../app/pokepatch_icon.png";
 const BASE_LINKS = [
   { href: "/", label: "Home" },
   { href: "/gallery", label: "Gallery" },
-  { href: "/contact", label: "Get a Quote" },
+  { href: "/contact", label: "Get Free Quote" },
 ];
 
 // The site is exported with trailing slashes, so normalize before comparing.
