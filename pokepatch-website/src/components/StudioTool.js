@@ -822,6 +822,141 @@ function OutputFormatToggle({ value, onChange }) {
   );
 }
 
+function BeforeAfterPairPhotoFormatter({
+  onBack,
+  onChangeGroupBy,
+  outputFormat,
+  onChangeOutputFormat,
+  cardMeta,
+  onChangeCardMeta,
+}) {
+  const [beforeItems, setBeforeItems] = useState([]);
+  const [afterItems, setAfterItems] = useState([]);
+  const [pairs, setPairs] = useState(() => [createPair()]);
+  const [outputs, setOutputs] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeFormat =
+    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
+    PHOTO_OUTPUT_FORMATS[0];
+
+  useEffect(() => {
+    return () => {
+      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
+    };
+  }, [outputs]);
+
+  async function handleGenerate(event) {
+    event.preventDefault();
+    setError("");
+
+    const partial = pairs.some(
+      (pair) => Boolean(pair.before) !== Boolean(pair.after),
+    );
+    if (partial) {
+      setError("Each pair needs both a before and an after (or remove it).");
+      return;
+    }
+
+    const files = pairs
+      .filter((pair) => pair.before && pair.after)
+      .flatMap((pair) => [
+        beforeItems.find((item) => item.id === pair.before)?.file ?? null,
+        afterItems.find((item) => item.id === pair.after)?.file ?? null,
+      ]);
+
+    const validationError = validatePhotoPairFiles(files, "before-after-pair");
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const metaError = validateCardMeta(cardMeta);
+    if (metaError) {
+      setError(metaError);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const next = await generatePhotoOutputs(
+        files,
+        "before-after-pair",
+        cardMetaToOverlayOptions(cardMeta),
+        outputFormat,
+      );
+      setOutputs((prev) => {
+        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl animate-fade-up">
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={onBack} />
+        <SectionHeading
+          subtitle={`Before & after side-by-side. Add as many pair rows as you need — each complete pair becomes its own post. Output: ${activeFormat.sizeHint}.`}
+        >
+          1×2 formatter
+        </SectionHeading>
+      </div>
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        <div className="mx-auto max-w-3xl space-y-3">
+          <GroupModeToggle
+            value="before-after-pair"
+            onChange={onChangeGroupBy}
+          />
+          <OutputFormatToggle
+            value={outputFormat}
+            onChange={onChangeOutputFormat}
+          />
+        </div>
+
+        <StudioFolderBoard
+          beforeItems={beforeItems}
+          afterItems={afterItems}
+          setBeforeItems={setBeforeItems}
+          setAfterItems={setAfterItems}
+          pairs={pairs}
+          setPairs={setPairs}
+          onError={setError}
+        />
+
+        <div className="mx-auto max-w-3xl space-y-6">
+          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+
+          {error && (
+            <p className="text-center text-sm text-berry" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Generating…" : "Generate images"}
+          </button>
+        </div>
+      </form>
+
+      {outputs && (
+        <div className="mx-auto max-w-3xl">
+          <OutputGrid outputs={outputs} annotated />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
   const [outputFormat, setOutputFormat] = useState("square");
@@ -832,6 +967,19 @@ function PhotoFormatter({ onBack }) {
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
+
+  if (groupBy === "before-after-pair") {
+    return (
+      <BeforeAfterPairPhotoFormatter
+        onBack={onBack}
+        onChangeGroupBy={setGroupBy}
+        outputFormat={outputFormat}
+        onChangeOutputFormat={setOutputFormat}
+        cardMeta={cardMeta}
+        onChangeCardMeta={setCardMeta}
+      />
+    );
+  }
 
   return (
     <MediaFormatter
