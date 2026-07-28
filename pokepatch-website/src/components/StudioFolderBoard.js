@@ -290,6 +290,7 @@ export default function StudioFolderBoard({
   pairs,
   setPairs,
   onError,
+  children = null,
 }) {
   const [previewUrls, setPreviewUrls] = useState({});
   const [activeSlot, setActiveSlot] = useState(null);
@@ -476,6 +477,8 @@ export default function StudioFolderBoard({
         >
           + Add pair
         </button>
+
+        {children}
       </div>
 
       <SideBank

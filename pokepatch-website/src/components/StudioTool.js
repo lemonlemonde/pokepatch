@@ -916,17 +916,15 @@ function BeforeAfterPairPhotoFormatter({
           />
         </div>
 
-        <div className="space-y-6">
-          <StudioFolderBoard
-            beforeItems={beforeItems}
-            afterItems={afterItems}
-            setBeforeItems={setBeforeItems}
-            setAfterItems={setAfterItems}
-            pairs={pairs}
-            setPairs={setPairs}
-            onError={setError}
-          />
-
+        <StudioFolderBoard
+          beforeItems={beforeItems}
+          afterItems={afterItems}
+          setBeforeItems={setBeforeItems}
+          setAfterItems={setAfterItems}
+          pairs={pairs}
+          setPairs={setPairs}
+          onError={setError}
+        >
           <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
 
           {error && (
@@ -942,7 +940,7 @@ function BeforeAfterPairPhotoFormatter({
           >
             {busy ? "Generating…" : "Generate images"}
           </button>
-        </div>
+        </StudioFolderBoard>
       </form>
 
       {outputs && (
