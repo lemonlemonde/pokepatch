@@ -101,7 +101,7 @@ export default function Home() {
           Bay Area Drop-Off • Nationwide Mail-In
         </p>
         <Button href="/contact" className="mt-6">
-          Get a Quote
+          Get Free Quote
         </Button>
       </section>
 
@@ -173,7 +173,7 @@ export default function Home() {
           Send us a few photos and get a quote within 2 hours.
         </p>
         <Button href="/contact" className="mt-5">
-          Get a Quote
+          Get Free Quote
         </Button>
       </section>
     </div>
