@@ -1904,8 +1904,11 @@ function KanbanBoard({
         {showList && (
           <div
             data-kanban-scroll
-            className={`min-h-0 space-y-2 overflow-y-auto pr-0.5 ${
-              dock ? "max-h-48 flex-none" : "flex-1"
+            className={`min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-0.5 ${
+              dock
+                ? "max-h-48 flex-none"
+                : // Mobile: ~4 cards tall, then scroll (keeps stacked columns short).
+                  "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
             }`}
             onDragOver={(event) =>
               updateColumnDropTarget(event, event.currentTarget)
@@ -1996,7 +1999,7 @@ function KanbanBoard({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 max-sm:auto-rows-[minmax(22rem,auto)] sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
@@ -4394,7 +4397,7 @@ export default function AdminApp() {
         </div>
       </div>
 
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex justify-center gap-2 sm:justify-start">
         {ADMIN_TABS.map((entry) => (
           <button
             key={entry.id}
