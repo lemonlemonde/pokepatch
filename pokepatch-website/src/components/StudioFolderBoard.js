@@ -112,96 +112,98 @@ export function SideBank({
   }
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-10rem)] lg:w-52 lg:self-start lg:overflow-y-auto lg:py-4">
-      <div className="flex items-center justify-between">
-        <p className="font-secondary text-sm font-semibold text-blush/90">
-          {title}
-        </p>
-        {totalCount > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-xs font-semibold text-berry/90 hover:text-berry"
-          >
-            Clear ({totalCount})
-          </button>
-        )}
-      </div>
+    <div className="w-full shrink-0 lg:sticky lg:top-20 lg:w-52 lg:self-start">
+      <div className="flex flex-col gap-2 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:py-4">
+        <div className="flex items-center justify-between">
+          <p className="font-secondary text-sm font-semibold text-blush/90">
+            {title}
+          </p>
+          {totalCount > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-xs font-semibold text-berry/90 hover:text-berry"
+            >
+              Clear ({totalCount})
+            </button>
+          )}
+        </div>
 
-      <label
-        htmlFor={`grid-${role}-folder`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed px-3 py-4 text-center transition ${
-          dragging
-            ? "border-berry bg-berry/10"
-            : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
-        }`}
-      >
-        <p className="text-xs text-ink/70">Drop folder or browse</p>
-        <p className="text-[10px] text-ink/40">PNG or JPG</p>
-        <input
-          id={`grid-${role}-folder`}
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="sr-only"
-          onChange={(event) => {
-            onAddFiles(Array.from(event.target.files ?? []));
-            event.target.value = "";
+        <label
+          htmlFor={`grid-${role}-folder`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
           }}
-        />
-      </label>
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed px-3 py-4 text-center transition ${
+            dragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+          }`}
+        >
+          <p className="text-xs text-ink/70">Drop folder or browse</p>
+          <p className="text-[10px] text-ink/40">PNG or JPG</p>
+          <input
+            id={`grid-${role}-folder`}
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              onAddFiles(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+        </label>
 
-      <div className="min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed border-ink/15 bg-night/30 p-2 lg:max-h-none">
-        {availableItems.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {availableItems.map((item) => (
-              <div
-                key={item.id}
-                draggable
-                onDragStart={(event) => setDragItem(event, role, item.id)}
-                className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
-              >
-                <StudioOpenableThumb
-                  src={previewUrls[item.id]}
-                  alt={item.file.name}
-                  label={item.file.name}
+        <div className="min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed border-ink/15 bg-night/30 p-2 lg:max-h-none">
+          {availableItems.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {availableItems.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(event) => setDragItem(event, role, item.id)}
+                  className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <StudioOpenableThumb
                     src={previewUrls[item.id]}
                     alt={item.file.name}
-                    className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
-                    draggable={false}
-                  />
-                </StudioOpenableThumb>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemoveItem(item.id);
-                  }}
-                  className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
-                  aria-label={`Remove ${item.file.name}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
-            {totalCount > 0
-              ? "All placed — drag one back into a slot to swap"
-              : `Upload the ${role} folder`}
-          </p>
-        )}
+                    label={item.file.name}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewUrls[item.id]}
+                      alt={item.file.name}
+                      className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
+                      draggable={false}
+                    />
+                  </StudioOpenableThumb>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemoveItem(item.id);
+                    }}
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
+                    aria-label={`Remove ${item.file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
+              {totalCount > 0
+                ? "All placed — drag one back into a slot to swap"
+                : `Upload the ${role} folder`}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
