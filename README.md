@@ -46,6 +46,51 @@ In the repo **Settings → Pages**, set source to the `gh-pages` branch (root).
 
 ---
 
+## Notion → Cursor tickets
+
+Use Notion as the task backlog and the repo Cursor skill to plan/implement work.
+
+### 1. Notion MCP
+
+Add to `~/.cursor/mcp.json` (merge into existing `mcpServers` if you already have that file):
+
+```json
+{
+  "mcpServers": {
+    "notionApi": {
+      "command": "npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": {
+        "OPENAPI_MCP_HEADERS": "{\"Authorization\": \"Bearer secret_your_notion_token_here\", \"Notion-Version\": \"2022-06-28\" }"
+      }
+    }
+  }
+}
+```
+
+Replace `secret_your_notion_token_here` with a Notion integration token that can access the **Tasks** database. Restart Cursor / reload MCP after editing.
+
+### 2. Skill: `lets-do-notion-tickets`
+
+Repo skill: [`.cursor/skills/lets-do-notion-tickets/`](.cursor/skills/lets-do-notion-tickets/).
+
+In Cursor, invoke **lets-do-notion-tickets** (or “lets do notion tickets”). Cursor will propose solutions for every task whose Status is **Not started** or **Up next** on Notion’s Tasks page (always reading each task description first). Iterate on the plan, then tell it which tickets to execute.
+
+### 3. Lifecycle tags and PRs
+
+While executing:
+
+- Cursor sets **Cursor-owned** to **🐭 in progress** (and Status to **In progress**) when work on a ticket’s branch starts.
+- When the branch work is ready for review, Cursor sets **Cursor-owned** to **🐭 needs review** (Status stays **In progress**).
+- A PR link is **appended** at the end of the task description (append-only; existing body is not rewritten).
+
+### 4. Review
+
+- Test each change locally against the PR / ticket checklist.
+- Fork the Cursor chat as needed for follow-up fixes on a ticket without mixing unrelated work.
+
+---
+
 ## Analytics (PostHog)
 
 [PostHog](https://posthog.com/) tracks page visits, session duration, and quote form conversion. Session replay is disabled.
