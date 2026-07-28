@@ -181,6 +181,7 @@ export default function StudioMediaBank({
   previewUrls: controlledPreviewUrls = null,
   inputId = null,
   bankLabel = null,
+  children = null,
 }) {
   const config = MEDIA_CONFIG[mediaType];
   const fileInputId = inputId ?? config.inputId;
@@ -543,6 +544,8 @@ export default function StudioMediaBank({
               + Add pair
             </button>
           ) : null}
+
+          {children}
         </div>
       ) : null}
     </div>

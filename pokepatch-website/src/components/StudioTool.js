@@ -648,9 +648,9 @@ function MediaFormatter({
           onAddPairRow={dynamicPairRows ? addPairRow : null}
           onRemovePairRow={dynamicPairRows ? removePairRow : null}
           previewUrls={previewUrls}
-        />
-
-        {afterBank}
+        >
+          {afterBank}
+        </StudioMediaBank>
 
         {error && (
           <p className="text-center text-sm text-berry" role="alert">
@@ -1488,9 +1488,23 @@ function GridFormatter({ onBack }) {
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
+  const [previewUrls, setPreviewUrls] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
 
   useEffect(() => {
     return () => {
@@ -1510,13 +1524,19 @@ function GridFormatter({ onBack }) {
       return;
     }
 
-    const files = pairs
+    const selectedItems = pairs
       .filter((pair) => pair.before && pair.after)
       .map((pair) => ({
-        before: beforeItems.find((item) => item.id === pair.before)?.file,
-        after: afterItems.find((item) => item.id === pair.after)?.file,
+        before: beforeItems.find((item) => item.id === pair.before) ?? null,
+        after: afterItems.find((item) => item.id === pair.after) ?? null,
       }))
       .filter((pair) => pair.before && pair.after);
+    const files = await Promise.all(
+      selectedItems.map(async (pair) => ({
+        before: await resolveStudioImageFile(pair.before, previewUrls[pair.before.id]),
+        after: await resolveStudioImageFile(pair.after, previewUrls[pair.after.id]),
+      })),
+    );
 
     if (files.length === 0) {
       setError("Pair at least one before image with an after image.");
@@ -1576,9 +1596,7 @@ function GridFormatter({ onBack }) {
           pairs={pairs}
           setPairs={setPairs}
           onError={setError}
-        />
-
-        <div className="mx-auto max-w-3xl space-y-6">
+        >
           <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
 
           {error && (
@@ -1594,7 +1612,7 @@ function GridFormatter({ onBack }) {
           >
             {busy ? "Generating…" : "Generate grid posts"}
           </button>
-        </div>
+        </StudioFolderBoard>
       </form>
 
       {outputs && (
