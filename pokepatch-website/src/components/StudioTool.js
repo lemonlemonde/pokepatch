@@ -916,17 +916,17 @@ function BeforeAfterPairPhotoFormatter({
           />
         </div>
 
-        <StudioFolderBoard
-          beforeItems={beforeItems}
-          afterItems={afterItems}
-          setBeforeItems={setBeforeItems}
-          setAfterItems={setAfterItems}
-          pairs={pairs}
-          setPairs={setPairs}
-          onError={setError}
-        />
+        <div className="space-y-6">
+          <StudioFolderBoard
+            beforeItems={beforeItems}
+            afterItems={afterItems}
+            setBeforeItems={setBeforeItems}
+            setAfterItems={setAfterItems}
+            pairs={pairs}
+            setPairs={setPairs}
+            onError={setError}
+          />
 
-        <div className="mx-auto max-w-3xl space-y-6">
           <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
 
           {error && (
@@ -1181,96 +1181,115 @@ function FrontBackPairPhotoFormatter({
             onClear={() => clearFolder("before")}
           />
 
-          <div className="min-w-0 flex-1 space-y-4">
-            {sections.map((section) => (
-              <div key={section.role} className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                  {section.title}
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  {section.slots.map(({ key, label }) => {
-                    const item = slots[key] ? findItem(section.role, slots[key]) : null;
-                    const preview = item ? previewUrls[item.id] : null;
-                    const isActive = activeSlot === key;
-                    return (
-                      <div
-                        key={key}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          setActiveSlot(key);
-                        }}
-                        onDragLeave={() =>
-                          setActiveSlot((prev) => (prev === key ? null : prev))
-                        }
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          setActiveSlot(null);
-                          const dragged = readDragItem(event);
-                          if (dragged?.role === section.role) {
-                            assignToSlot(key, section.role, dragged.id);
+          <div className="min-w-0 flex-1 space-y-6">
+            <div className="space-y-4">
+              {sections.map((section) => (
+                <div key={section.role} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                    {section.title}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {section.slots.map(({ key, label }) => {
+                      const item = slots[key]
+                        ? findItem(section.role, slots[key])
+                        : null;
+                      const preview = item ? previewUrls[item.id] : null;
+                      const isActive = activeSlot === key;
+                      return (
+                        <div
+                          key={key}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setActiveSlot(key);
+                          }}
+                          onDragLeave={() =>
+                            setActiveSlot((prev) => (prev === key ? null : prev))
                           }
-                        }}
-                        className={`overflow-hidden rounded-xl border bg-night/50 transition ${
-                          isActive
-                            ? "border-berry bg-berry/10"
-                            : item
-                              ? "border-ink/15"
-                              : "border-dashed border-ink/10"
-                        }`}
-                      >
-                        <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
-                          {label}
-                        </p>
-                        {item && preview ? (
-                          <div
-                            draggable
-                            onDragStart={(event) =>
-                              setDragItem(event, section.role, item.id)
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            setActiveSlot(null);
+                            const dragged = readDragItem(event);
+                            if (dragged?.role === section.role) {
+                              assignToSlot(key, section.role, dragged.id);
                             }
-                            className="cursor-grab p-3 active:cursor-grabbing"
-                          >
-                            <StudioOpenableThumb
-                              src={preview}
-                              alt={`${section.title} ${label} — ${item.file.name}`}
-                              label={`${section.title} ${label}`}
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={preview}
-                                alt={`${section.title} ${label} preview`}
-                                className="mx-auto max-h-36 w-full object-contain"
-                                draggable={false}
-                              />
-                            </StudioOpenableThumb>
-                            <div className="mt-2 flex items-center justify-between gap-2">
-                              <p className="truncate text-xs text-ink/50">
-                                {item.file.name}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  clearSlot(key);
-                                }}
-                                className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="px-3 py-10 text-center text-xs text-ink/30">
-                            Drop {section.title.toLowerCase()} {label.toLowerCase()} here
+                          }}
+                          className={`overflow-hidden rounded-xl border bg-night/50 transition ${
+                            isActive
+                              ? "border-berry bg-berry/10"
+                              : item
+                                ? "border-ink/15"
+                                : "border-dashed border-ink/10"
+                          }`}
+                        >
+                          <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                            {label}
                           </p>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {item && preview ? (
+                            <div
+                              draggable
+                              onDragStart={(event) =>
+                                setDragItem(event, section.role, item.id)
+                              }
+                              className="cursor-grab p-3 active:cursor-grabbing"
+                            >
+                              <StudioOpenableThumb
+                                src={preview}
+                                alt={`${section.title} ${label} — ${item.file.name}`}
+                                label={`${section.title} ${label}`}
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={preview}
+                                  alt={`${section.title} ${label} preview`}
+                                  className="mx-auto max-h-36 w-full object-contain"
+                                  draggable={false}
+                                />
+                              </StudioOpenableThumb>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <p className="truncate text-xs text-ink/50">
+                                  {item.file.name}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    clearSlot(key);
+                                  }}
+                                  className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="px-3 py-10 text-center text-xs text-ink/30">
+                              Drop {section.title.toLowerCase()} {label.toLowerCase()} here
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
+            <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+
+            {error && (
+              <p className="text-center text-sm text-berry" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? "Generating…" : "Generate images"}
+            </button>
+          </div>
           <SideBank
             role="after"
             title="After bank"
@@ -1281,24 +1300,6 @@ function FrontBackPairPhotoFormatter({
             onRemoveItem={(id) => removeFolderItem("after", id)}
             onClear={() => clearFolder("after")}
           />
-        </div>
-
-        <div className="mx-auto max-w-3xl space-y-6">
-          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
-
-          {error && (
-            <p className="text-center text-sm text-berry" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? "Generating…" : "Generate images"}
-          </button>
         </div>
       </form>
 
