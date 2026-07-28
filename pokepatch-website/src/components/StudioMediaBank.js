@@ -211,7 +211,7 @@ export default function StudioMediaBank({
       onError(config.unsupportedError);
       return;
     }
-    const newItems = files.map((file) => ({ id: createBankId(), file }));
+    const newItems = files.map((file) => ({ id: createBankId(), file, crop: null }));
     setBank((prev) => [...prev, ...newItems]);
     onError("");
   }
@@ -243,6 +243,7 @@ export default function StudioMediaBank({
     const newItems = files.map((file, index) => ({
       id: index === 0 ? primaryId : createBankId(),
       file,
+      crop: null,
     }));
 
     setBank((prev) => [...prev, ...newItems]);
@@ -270,9 +271,9 @@ export default function StudioMediaBank({
     }
   }
 
-  function replaceBankFile(bankId, file) {
+  function updateBankCrop(bankId, crop) {
     setBank((prev) =>
-      prev.map((item) => (item.id === bankId ? { ...item, file } : item)),
+      prev.map((item) => (item.id === bankId ? { ...item, crop } : item)),
     );
     onError("");
   }
@@ -480,19 +481,10 @@ export default function StudioMediaBank({
                               src={preview}
                               alt={`${group.title} ${slotLabel} — ${item.file.name}`}
                               label={`${group.title} · ${slotLabel}`}
-                              originalFile={item.file}
-                              onCropped={(file) =>
-                                replaceBankFile(item.id, file)
-                              }
-                            >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={preview}
-                                alt={`${group.title} ${slotLabel} preview`}
-                                className="mx-auto max-h-36 w-full object-contain"
-                                draggable={false}
-                              />
-                            </StudioCroppableThumb>
+                              crop={item.crop}
+                              previewClassName="mx-auto max-h-36 w-full object-contain"
+                              onCropChange={(crop) => updateBankCrop(item.id, crop)}
+                            />
                           ) : (
                             <StudioOpenableThumb
                               src={preview}

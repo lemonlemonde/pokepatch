@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import { StudioCroppableThumb } from "@/components/StudioCropLightbox";
 
 const PAIRS_PER_POST = 2;
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -240,6 +241,7 @@ function PairSlot({
   onDrop,
   onDragStartFilled,
   onClear,
+  onCropChange,
 }) {
   return (
     <div
@@ -266,19 +268,14 @@ function PairSlot({
           onDragStart={onDragStartFilled}
           className="cursor-grab p-3 active:cursor-grabbing"
         >
-          <StudioOpenableThumb
+          <StudioCroppableThumb
             src={previewUrl}
             alt={`${label} — ${item.file.name}`}
             label={label}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={previewUrl}
-              alt={`${label} preview`}
-              className="mx-auto max-h-36 w-full object-contain"
-              draggable={false}
-            />
-          </StudioOpenableThumb>
+            crop={item.crop}
+            previewClassName="mx-auto max-h-36 w-full object-contain"
+            onCropChange={onCropChange}
+          />
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-ink/50">{item.file.name}</p>
             <button
@@ -292,6 +289,7 @@ function PairSlot({
               Remove
             </button>
           </div>
+          <p className="mt-1 text-[10px] text-ink/35">Click to crop</p>
         </div>
       ) : (
         <p className="px-3 py-10 text-center text-xs text-ink/30">
@@ -349,8 +347,15 @@ export default function StudioFolderBoard({
     }
     settersByRole[role]((prev) => [
       ...prev,
-      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
+      ...images.map((file) => ({ id: crypto.randomUUID(), file, crop: null })),
     ]);
+    onError("");
+  }
+
+  function updateItemCrop(role, id, crop) {
+    settersByRole[role]((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, crop } : item)),
+    );
     onError("");
   }
 
@@ -497,6 +502,9 @@ export default function StudioFolderBoard({
                             item && setDragItem(event, role, item.id)
                           }
                           onClear={() => clearSlot(pair.id, role)}
+                          onCropChange={(crop) =>
+                            item && updateItemCrop(role, item.id, crop)
+                          }
                         />
                       );
                     })}

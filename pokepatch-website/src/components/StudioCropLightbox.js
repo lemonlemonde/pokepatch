@@ -8,7 +8,7 @@ import { canvasToBlob } from "@/lib/instagramStitch";
 
 const HANDLE_SIZE = 10;
 const MIN_NORM = 0.05;
-const DEFAULT_CROP = { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
+export const DEFAULT_CROP = { x: 0, y: 0, w: 1, h: 1 };
 
 const ASPECT_OPTIONS = [
   { id: "free", label: "Free", ratio: null },
@@ -38,6 +38,16 @@ function clampCrop(crop) {
   x = clamp(x, 0, 1 - w);
   y = clamp(y, 0, 1 - h);
   return { x, y, w, h };
+}
+
+function isDefaultCrop(crop) {
+  if (!crop) return true;
+  return (
+    Math.abs(crop.x - DEFAULT_CROP.x) < 0.0001 &&
+    Math.abs(crop.y - DEFAULT_CROP.y) < 0.0001 &&
+    Math.abs(crop.w - DEFAULT_CROP.w) < 0.0001 &&
+    Math.abs(crop.h - DEFAULT_CROP.h) < 0.0001
+  );
 }
 
 function fitCropToAspect(crop, ratio, imageAspect) {
@@ -135,16 +145,37 @@ function resizeCrop(origin, handleId, nx, ny, aspectRatio, imageAspect) {
 function getImageContentMetrics(img) {
   if (!img) return null;
   const rect = img.getBoundingClientRect();
-  const width = img.clientWidth;
-  const height = img.clientHeight;
-  if (width <= 0 || height <= 0) return null;
+  const boxWidth = img.clientWidth;
+  const boxHeight = img.clientHeight;
+  if (boxWidth <= 0 || boxHeight <= 0) return null;
+
+  let width = boxWidth;
+  let height = boxHeight;
+  let offsetLeft = img.offsetLeft + img.clientLeft;
+  let offsetTop = img.offsetTop + img.clientTop;
+
+  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const boxAspect = boxWidth / boxHeight;
+    const imageAspect = img.naturalWidth / img.naturalHeight;
+
+    if (imageAspect > boxAspect) {
+      width = boxWidth;
+      height = width / imageAspect;
+      offsetTop += (boxHeight - height) / 2;
+    } else {
+      height = boxHeight;
+      width = height * imageAspect;
+      offsetLeft += (boxWidth - width) / 2;
+    }
+  }
+
   return {
-    left: rect.left + img.clientLeft,
-    top: rect.top + img.clientTop,
+    left: rect.left + (offsetLeft - img.offsetLeft),
+    top: rect.top + (offsetTop - img.offsetTop),
     width,
     height,
-    offsetLeft: img.offsetLeft + img.clientLeft,
-    offsetTop: img.offsetTop + img.clientTop,
+    offsetLeft,
+    offsetTop,
   };
 }
 
@@ -182,6 +213,28 @@ export async function cropImageToBlob(imageUrl, crop, mimeType = "image/jpeg") {
       type,
       0.95,
     );
+  });
+}
+
+export async function resolveStudioImageFile(item, imageUrl) {
+  if (!item?.file) return null;
+  if (isDefaultCrop(item.crop)) return item.file;
+
+  const blob = await cropImageToBlob(
+    imageUrl,
+    clampCrop(item.crop),
+    item.file.type || "image/jpeg",
+  );
+  const baseName = (item.file.name || "image").replace(/\.[^.]+$/, "");
+  const ext =
+    blob.type === "image/png"
+      ? "png"
+      : blob.type === "image/webp"
+        ? "webp"
+        : "jpg";
+
+  return new File([blob], `${baseName}-crop.${ext}`, {
+    type: blob.type || item.file.type || "image/jpeg",
   });
 }
 
@@ -393,36 +446,119 @@ function CropSurface({ src, alt, crop, onCropChange, aspectRatio }) {
   );
 }
 
+function CropPreviewOverlay({ crop }) {
+  if (isDefaultCrop(crop)) return null;
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 1 1"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path
+        d={`M0 0H1V1H0Z M${crop.x} ${crop.y}H${crop.x + crop.w}V${crop.y + crop.h}H${crop.x}Z`}
+        fill="rgba(20,16,25,0.55)"
+        fillRule="evenodd"
+      />
+      <rect
+        x={crop.x}
+        y={crop.y}
+        width={crop.w}
+        height={crop.h}
+        fill="none"
+        stroke="rgba(243,233,242,0.9)"
+        strokeWidth={0.015}
+      />
+    </svg>
+  );
+}
+
+export function StudioCropPreview({
+  src,
+  alt,
+  crop,
+  className = "",
+  imgClassName = "",
+}) {
+  const imageRef = useRef(null);
+  const [contentBox, setContentBox] = useState({
+    offsetLeft: 0,
+    offsetTop: 0,
+    width: 0,
+    height: 0,
+  });
+
+  const updateContentBox = useCallback(() => {
+    const metrics = getImageContentMetrics(imageRef.current);
+    if (!metrics) return;
+    setContentBox({
+      offsetLeft: metrics.offsetLeft,
+      offsetTop: metrics.offsetTop,
+      width: metrics.width,
+      height: metrics.height,
+    });
+  }, []);
+
+  useEffect(() => {
+    const img = imageRef.current;
+    if (!img) return undefined;
+    updateContentBox();
+    const observer = new ResizeObserver(() => updateContentBox());
+    observer.observe(img);
+    img.addEventListener("load", updateContentBox);
+    return () => {
+      observer.disconnect();
+      img.removeEventListener("load", updateContentBox);
+    };
+  }, [src, updateContentBox]);
+
+  return (
+    <div className={`relative ${className}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={imageRef}
+        src={src}
+        alt={alt}
+        className={imgClassName}
+        draggable={false}
+      />
+      {contentBox.width > 0 ? (
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: contentBox.offsetLeft,
+            top: contentBox.offsetTop,
+            width: contentBox.width,
+            height: contentBox.height,
+          }}
+        >
+          <CropPreviewOverlay crop={clampCrop(crop ?? DEFAULT_CROP)} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * Lightbox crop editor for a studio slot image.
- * Call onApply(blob) when the user confirms the crop.
+ * Call onApply(crop|null) when the user confirms the preview crop.
  */
 export default function StudioCropLightbox({
   src,
   alt,
   label,
-  originalFile,
+  initialCrop = null,
   onClose,
   onApply,
 }) {
-  const [crop, setCrop] = useState(DEFAULT_CROP);
+  const [crop, setCrop] = useState(clampCrop(initialCrop ?? DEFAULT_CROP));
   const [aspectId, setAspectId] = useState("free");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
   const aspectRatio =
     ASPECT_OPTIONS.find((option) => option.id === aspectId)?.ratio ?? null;
+  const hasCrop = !isDefaultCrop(crop);
 
   async function handleApply() {
-    setBusy(true);
-    setError("");
-    try {
-      const mimeType = originalFile?.type || "image/jpeg";
-      const blob = await cropImageToBlob(src, crop, mimeType);
-      await onApply(blob);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Crop failed.");
-      setBusy(false);
-    }
+    await onApply(hasCrop ? clampCrop(crop) : null);
   }
 
   return (
@@ -472,11 +608,15 @@ export default function StudioCropLightbox({
           Drag the box to move · drag handles to resize · hold Shift for original aspect
         </p>
 
-        {error ? (
-          <p className="text-center text-sm text-berry">{error}</p>
-        ) : null}
-
         <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setCrop(DEFAULT_CROP)}
+            disabled={!hasCrop}
+            className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:opacity-50"
+          >
+            Reset crop
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -486,11 +626,10 @@ export default function StudioCropLightbox({
           </button>
           <button
             type="button"
-            disabled={busy}
             onClick={handleApply}
             className="rounded-xl bg-berry px-5 py-2.5 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-60"
           >
-            {busy ? "Cropping…" : "Apply crop"}
+            Apply crop preview
           </button>
         </div>
       </div>
@@ -505,10 +644,10 @@ export function StudioCroppableThumb({
   src,
   alt,
   label,
-  originalFile,
+  crop = null,
   className = "",
-  children,
-  onCropped,
+  previewClassName = "",
+  onCropChange,
 }) {
   const [open, setOpen] = useState(false);
   const movedRef = useRef(false);
@@ -531,18 +670,8 @@ export function StudioCroppableThumb({
     setOpen(true);
   }
 
-  async function handleApply(blob) {
-    const baseName = (originalFile?.name || "image").replace(/\.[^.]+$/, "");
-    const ext =
-      blob.type === "image/png"
-        ? "png"
-        : blob.type === "image/webp"
-          ? "webp"
-          : "jpg";
-    const file = new File([blob], `${baseName}-crop.${ext}`, {
-      type: blob.type || "image/jpeg",
-    });
-    await onCropped(file);
+  async function handleApply(nextCrop) {
+    await onCropChange(nextCrop);
     setOpen(false);
   }
 
@@ -563,7 +692,12 @@ export function StudioCroppableThumb({
         className={`cursor-zoom-in ${className}`}
         aria-label={`Crop ${label || alt}`}
       >
-        {children}
+        <StudioCropPreview
+          src={src}
+          alt={alt || label || ""}
+          crop={crop}
+          imgClassName={previewClassName}
+        />
       </div>
 
       {open && src ? (
@@ -571,7 +705,7 @@ export function StudioCroppableThumb({
           src={src}
           alt={alt}
           label={label}
-          originalFile={originalFile}
+          initialCrop={crop}
           onClose={() => setOpen(false)}
           onApply={handleApply}
         />

@@ -15,6 +15,10 @@ import StudioFolderBoard, {
   SideBank,
 } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import {
+  resolveStudioImageFile,
+  StudioCroppableThumb,
+} from "@/components/StudioCropLightbox";
 import StudioAnnotatedPreview, {
   downloadBlob,
 } from "@/components/StudioAnnotatedPreview";
@@ -521,6 +525,7 @@ function MediaFormatter({
   const [slots, setSlots] = useState(() =>
     dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS,
   );
+  const [previewUrls, setPreviewUrls] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -528,6 +533,16 @@ function MediaFormatter({
   const resolvedSlotGroups = dynamicPairRows
     ? beforeAfterPairSlotGroups(Math.max(1, Math.floor(slots.length / 2)))
     : slotGroups;
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      bank.map((item) => [item.id, URL.createObjectURL(item.file)]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [bank]);
 
   useEffect(() => {
     return () => {
@@ -549,8 +564,14 @@ function MediaFormatter({
     setSlots(dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS);
   }, [dynamicPairRows]);
 
-  function getSlotFiles() {
-    return slots.map((id) => bank.find((item) => item.id === id)?.file ?? null);
+  async function getSlotFiles() {
+    return Promise.all(
+      slots.map(async (id) => {
+        const item = bank.find((entry) => entry.id === id);
+        if (!item || mediaType !== "image") return item?.file ?? null;
+        return resolveStudioImageFile(item, previewUrls[item.id]);
+      }),
+    );
   }
 
   function addPairRow() {
@@ -574,7 +595,7 @@ function MediaFormatter({
     event.preventDefault();
     setError("");
 
-    const files = getSlotFiles();
+    const files = await getSlotFiles();
     if (validateFiles) {
       const validationError = validateFiles(files);
       if (validationError) {
@@ -626,6 +647,7 @@ function MediaFormatter({
           slotGroups={resolvedSlotGroups}
           onAddPairRow={dynamicPairRows ? addPairRow : null}
           onRemovePairRow={dynamicPairRows ? removePairRow : null}
+          previewUrls={previewUrls}
         />
 
         {afterBank}
@@ -736,6 +758,16 @@ async function generatePhotoOutputs(
   return canvasOutputsFromPairs(pairs, sizeHint);
 }
 
+async function resolveStudioItemsToFiles(items, previewUrls) {
+  return Promise.all(
+    items.map((item) =>
+      item && previewUrls[item.id]
+        ? resolveStudioImageFile(item, previewUrls[item.id])
+        : null,
+    ),
+  );
+}
+
 async function generateVideoOutputs(files) {
   const { front, back } = await stitchBothVideos(files);
   const pairs = [
@@ -830,12 +862,26 @@ function BeforeAfterPairPhotoFormatter({
   const [beforeItems, setBeforeItems] = useState([]);
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair()]);
+  const [previewUrls, setPreviewUrls] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
 
   useEffect(() => {
     return () => {
@@ -855,12 +901,13 @@ function BeforeAfterPairPhotoFormatter({
       return;
     }
 
-    const files = pairs
+    const selectedItems = pairs
       .filter((pair) => pair.before && pair.after)
       .flatMap((pair) => [
-        beforeItems.find((item) => item.id === pair.before)?.file ?? null,
-        afterItems.find((item) => item.id === pair.after)?.file ?? null,
+        beforeItems.find((item) => item.id === pair.before) ?? null,
+        afterItems.find((item) => item.id === pair.after) ?? null,
       ]);
+    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "before-after-pair");
     if (validationError) {
@@ -1010,7 +1057,7 @@ function FrontBackPairPhotoFormatter({
     const setter = role === "before" ? setBeforeItems : setAfterItems;
     setter((prev) => [
       ...prev,
-      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
+      ...images.map((file) => ({ id: crypto.randomUUID(), file, crop: null })),
     ]);
     setError("");
   }
@@ -1041,6 +1088,14 @@ function FrontBackPairPhotoFormatter({
         ]),
       ),
     );
+  }
+
+  function updateItemCrop(role, id, crop) {
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, crop } : item)),
+    );
+    setError("");
   }
 
   function clearFolder(role) {
@@ -1109,12 +1164,13 @@ function FrontBackPairPhotoFormatter({
     event.preventDefault();
     setError("");
 
-    const files = [
-      slots.beforeFront ? findItem("before", slots.beforeFront)?.file ?? null : null,
-      slots.beforeBack ? findItem("before", slots.beforeBack)?.file ?? null : null,
-      slots.afterFront ? findItem("after", slots.afterFront)?.file ?? null : null,
-      slots.afterBack ? findItem("after", slots.afterBack)?.file ?? null : null,
+    const selectedItems = [
+      slots.beforeFront ? findItem("before", slots.beforeFront) : null,
+      slots.beforeBack ? findItem("before", slots.beforeBack) : null,
+      slots.afterFront ? findItem("after", slots.afterFront) : null,
+      slots.afterBack ? findItem("after", slots.afterBack) : null,
     ];
+    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "front-back-pair");
     if (validationError) {
@@ -1250,19 +1306,16 @@ function FrontBackPairPhotoFormatter({
                               }
                               className="cursor-grab p-3 active:cursor-grabbing"
                             >
-                              <StudioOpenableThumb
+                              <StudioCroppableThumb
                                 src={preview}
                                 alt={`${section.title} ${label} — ${item.file.name}`}
                                 label={`${section.title} ${label}`}
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={preview}
-                                  alt={`${section.title} ${label} preview`}
-                                  className="mx-auto max-h-36 w-full object-contain"
-                                  draggable={false}
-                                />
-                              </StudioOpenableThumb>
+                                crop={item.crop}
+                                previewClassName="mx-auto max-h-36 w-full object-contain"
+                                onCropChange={(crop) =>
+                                  updateItemCrop(section.role, item.id, crop)
+                                }
+                              />
                               <div className="mt-2 flex items-center justify-between gap-2">
                                 <p className="truncate text-xs text-ink/50">
                                   {item.file.name}
@@ -1278,6 +1331,9 @@ function FrontBackPairPhotoFormatter({
                                   Remove
                                 </button>
                               </div>
+                              <p className="mt-1 text-[10px] text-ink/35">
+                                Click to crop
+                              </p>
                             </div>
                           ) : (
                             <p className="px-3 py-10 text-center text-xs text-ink/30">
