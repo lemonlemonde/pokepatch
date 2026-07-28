@@ -65,7 +65,6 @@ import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
   ADJUSTMENT_KIND_OPTIONS,
-  analyzeQuoteCardCoverage,
   cardsWithQuoteHv,
   defaultBaseAmount,
   defaultServiceLabel,
@@ -2688,7 +2687,6 @@ function OrderEditor({
     draft.quote_card_hv ?? {}
   );
   const receiptAdjustments = draft.quote_adjustments ?? [];
-  const quoteCoverage = analyzeQuoteCardCoverage(draft.cards, quoteItems);
   const quoteLinesByCard = useMemo(() => {
     const cards = draft.cards ?? [];
     const indicesByCardId = new Map(
@@ -3461,24 +3459,6 @@ function OrderEditor({
                 renderQuoteServiceLine(quoteItems[index], index)
               )}
             </div>
-          </div>
-        ) : null}
-
-        {quoteCoverage.duplicateServiceCards.length > 0 ? (
-          <div className="space-y-2 px-1">
-            <p className="rounded-lg border-2 border-berry bg-berry/35 px-2.5 py-2 text-xs text-ink">
-              <span className="font-semibold text-berry">
-                Same service more than once:
-              </span>{" "}
-              {quoteCoverage.duplicateServiceCards
-                .map(
-                  (row) =>
-                    `${row.number}. ${row.label} (${row.services
-                      .map((s) => `${s.label} ×${s.count}`)
-                      .join(", ")})`
-                )
-                .join("; ")}
-            </p>
           </div>
         ) : null}
       </div>
