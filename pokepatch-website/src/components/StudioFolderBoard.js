@@ -93,9 +93,11 @@ export function SideBank({
   onAddFiles,
   onRemoveItem,
   onClear,
+  onItemDrop = null,
 }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [itemDragging, setItemDragging] = useState(false);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -159,7 +161,25 @@ export function SideBank({
           />
         </label>
 
-        <div className="min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed border-ink/15 bg-night/30 p-2 lg:max-h-none">
+        <div
+          onDragOver={(event) => {
+            if (!onItemDrop) return;
+            event.preventDefault();
+            setItemDragging(true);
+          }}
+          onDragLeave={() => setItemDragging(false)}
+          onDrop={(event) => {
+            if (!onItemDrop) return;
+            event.preventDefault();
+            setItemDragging(false);
+            onItemDrop(event);
+          }}
+          className={`min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed p-2 transition lg:max-h-none ${
+            itemDragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/15 bg-night/30"
+          }`}
+        >
           {availableItems.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {availableItems.map((item) => (
@@ -199,7 +219,7 @@ export function SideBank({
           ) : (
             <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
               {totalCount > 0
-                ? "All placed — drag one back into a slot to swap"
+                ? "All placed — drag one back here to remove from slot"
                 : `Upload the ${role} folder`}
             </p>
           )}
@@ -365,6 +385,22 @@ export default function StudioFolderBoard({
     );
   }
 
+  function returnToBank(role, id) {
+    setPairs((prev) =>
+      prev.map((pair) =>
+        pair[role] === id ? { ...pair, [role]: null } : pair,
+      ),
+    );
+    onError("");
+  }
+
+  function handleBankItemDrop(event, role) {
+    const dragged = readDragItem(event);
+    if (dragged?.role === role) {
+      returnToBank(role, dragged.id);
+    }
+  }
+
   function addPair() {
     setPairs((prev) => [...prev, createPair()]);
   }
@@ -399,6 +435,7 @@ export default function StudioFolderBoard({
         onAddFiles={(files) => addFiles("before", files)}
         onRemoveItem={(id) => removeFolderItem("before", id)}
         onClear={() => clearFolder("before")}
+        onItemDrop={(event) => handleBankItemDrop(event, "before")}
       />
 
       <div className="min-w-0 flex-1 space-y-4">
@@ -490,6 +527,7 @@ export default function StudioFolderBoard({
         onAddFiles={(files) => addFiles("after", files)}
         onRemoveItem={(id) => removeFolderItem("after", id)}
         onClear={() => clearFolder("after")}
+        onItemDrop={(event) => handleBankItemDrop(event, "after")}
       />
     </div>
   );

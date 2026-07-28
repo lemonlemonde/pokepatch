@@ -1074,6 +1074,25 @@ function FrontBackPairPhotoFormatter({
     setSlots((prev) => ({ ...prev, [slotKey]: null }));
   }
 
+  function returnToBank(role, id) {
+    setSlots((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([slotKey, value]) => [
+          slotKey,
+          value === id && slotKey.startsWith(role) ? null : value,
+        ]),
+      ),
+    );
+    setError("");
+  }
+
+  function handleBankItemDrop(event, role) {
+    const dragged = readDragItem(event);
+    if (dragged?.role === role) {
+      returnToBank(role, dragged.id);
+    }
+  }
+
   function setDragItem(event, role, id) {
     event.dataTransfer.setData(FRONT_BACK_DRAG_TYPE, `${role}:${id}`);
     event.dataTransfer.effectAllowed = "move";
@@ -1177,6 +1196,7 @@ function FrontBackPairPhotoFormatter({
             onAddFiles={(files) => addFiles("before", files)}
             onRemoveItem={(id) => removeFolderItem("before", id)}
             onClear={() => clearFolder("before")}
+            onItemDrop={(event) => handleBankItemDrop(event, "before")}
           />
 
           <div className="min-w-0 flex-1 space-y-6">
@@ -1297,6 +1317,7 @@ function FrontBackPairPhotoFormatter({
             onAddFiles={(files) => addFiles("after", files)}
             onRemoveItem={(id) => removeFolderItem("after", id)}
             onClear={() => clearFolder("after")}
+            onItemDrop={(event) => handleBankItemDrop(event, "after")}
           />
         </div>
       </form>
