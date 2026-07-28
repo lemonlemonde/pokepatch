@@ -12,6 +12,7 @@ import { CONTACT_TYPES } from "@/lib/contacts";
 import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
+import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
@@ -201,8 +202,10 @@ export default function QuoteForm() {
   const [errorMessage, setErrorMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState(null);
   const [cardFileErrors, setCardFileErrors] = useState({});
+  const [formStarted, setFormStarted] = useState(false);
 
   function onFormInteraction() {
+    if (!formStarted) setFormStarted(true);
     if (formStartedRef.current) return;
     formStartedRef.current = true;
     capture("quote_form_started");
@@ -224,6 +227,15 @@ export default function QuoteForm() {
       capture("quote_form_step_completed", { step: "card_details" });
     }
   }, [cards]);
+
+  const quoteLeaveGuardActive =
+    formStarted &&
+    status !== "success" &&
+    status !== "uploading" &&
+    status !== "submitting";
+  const { dialog: unsavedChangesDialog } = useUnsavedChangesGuard(
+    quoteLeaveGuardActive
+  );
 
   // Logged-in customers use their account email; keep it in sync and locked.
   useEffect(() => {
@@ -558,6 +570,8 @@ export default function QuoteForm() {
       });
 
       setStatus("success");
+      setFormStarted(false);
+      formStartedRef.current = false;
       setCustomerName("");
       setEmail("");
       setDeliveryMethod("");
@@ -588,6 +602,7 @@ export default function QuoteForm() {
   const showValidationError = hasFieldErrors(fieldErrors);
 
   return (
+    <>
     <form
       ref={formRef}
       onSubmit={handleSubmit}
@@ -1003,5 +1018,7 @@ export default function QuoteForm() {
         </Button>
       </div>
     </form>
+    {unsavedChangesDialog}
+    </>
   );
 }

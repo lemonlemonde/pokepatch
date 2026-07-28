@@ -34,6 +34,9 @@ import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
+  useUnsavedChangesGuard,
+} from "@/lib/useUnsavedChangesGuard";
+import {
   ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
   COMPLETED_ORDER_STATUS,
@@ -3615,6 +3618,10 @@ export default function AdminApp() {
     );
   }, [draft, savedSnapshot]);
 
+  const unsavedOrderEdit = dirty && tab === "orders-edit";
+  const { requestLeave, dialog: unsavedChangesDialog } =
+    useUnsavedChangesGuard(unsavedOrderEdit);
+
   const activeTab =
     tab === "orders-all"
       ? ORDERS_ALL_META
@@ -3759,6 +3766,7 @@ export default function AdminApp() {
   }, [authed, tab, routeOrderId]);
 
   async function handleLogout() {
+    if (unsavedOrderEdit && !(await requestLeave())) return;
     await adminLogout();
     setOrders([]);
     clearEditor();
@@ -4091,7 +4099,7 @@ export default function AdminApp() {
       const deleted = new Set(ids);
       setOrders((current) => current.filter((order) => !deleted.has(order.id)));
       if (selectedOrderId && deleted.has(selectedOrderId)) {
-        leaveEditor();
+        leaveEditor({ skipConfirm: true });
       }
       setDeleteTargets(null);
     } catch (err) {
@@ -4109,7 +4117,8 @@ export default function AdminApp() {
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
-  function leaveEditor() {
+  async function leaveEditor({ skipConfirm = false } = {}) {
+    if (!skipConfirm && dirty && !(await requestLeave())) return;
     setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
@@ -4118,6 +4127,15 @@ export default function AdminApp() {
       window.history.replaceState(window.history.state, "", editReturnPath);
     }
     router.replace(editReturnPath);
+  }
+
+  async function navigateAdmin(path) {
+    if (unsavedOrderEdit && !(await requestLeave())) return;
+    if (tab === "orders-edit") {
+      clearEditor();
+      setEditorDismissed(true);
+    }
+    router.push(path);
   }
 
   async function handleCancel() {
@@ -4365,7 +4383,7 @@ export default function AdminApp() {
           <button
             key={entry.id}
             type="button"
-            onClick={() => router.push(entry.path)}
+            onClick={() => navigateAdmin(entry.path)}
             className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
               entry.id === "orders"
                 ? ordersSectionActive
@@ -4565,6 +4583,7 @@ export default function AdminApp() {
           )}
         </>
       )}
+      {unsavedChangesDialog}
     </div>
   );
 }
