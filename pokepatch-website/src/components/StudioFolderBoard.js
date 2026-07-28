@@ -112,7 +112,7 @@ export function SideBank({
   }
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)] lg:w-52 lg:self-start lg:overflow-y-auto lg:py-4">
+    <div className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-10rem)] lg:w-52 lg:self-start lg:overflow-y-auto lg:py-4">
       <div className="flex items-center justify-between">
         <p className="font-secondary text-sm font-semibold text-blush/90">
           {title}
