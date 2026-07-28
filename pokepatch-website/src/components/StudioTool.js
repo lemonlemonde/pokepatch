@@ -10,7 +10,10 @@ import StudioMediaBank, {
   emptySlotsForPairRows,
   FRONT_BACK_PAIR_SLOT_GROUPS,
 } from "@/components/StudioMediaBank";
-import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
+import StudioFolderBoard, {
+  createPair,
+  SideBank,
+} from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import StudioAnnotatedPreview, {
   downloadBlob,
@@ -957,6 +960,363 @@ function BeforeAfterPairPhotoFormatter({
   );
 }
 
+const FRONT_BACK_DRAG_TYPE = "text/pokepatch-front-back-item";
+const FRONT_BACK_EMPTY_SLOTS = {
+  beforeFront: null,
+  beforeBack: null,
+  afterFront: null,
+  afterBack: null,
+};
+
+function FrontBackPairPhotoFormatter({
+  onBack,
+  onChangeGroupBy,
+  outputFormat,
+  onChangeOutputFormat,
+  cardMeta,
+  onChangeCardMeta,
+}) {
+  const [beforeItems, setBeforeItems] = useState([]);
+  const [afterItems, setAfterItems] = useState([]);
+  const [slots, setSlots] = useState(FRONT_BACK_EMPTY_SLOTS);
+  const [previewUrls, setPreviewUrls] = useState({});
+  const [activeSlot, setActiveSlot] = useState(null);
+  const [outputs, setOutputs] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeFormat =
+    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
+    PHOTO_OUTPUT_FORMATS[0];
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
+
+  useEffect(() => {
+    return () => {
+      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
+    };
+  }, [outputs]);
+
+  function addFiles(role, fileList) {
+    const images = Array.from(fileList).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (images.length === 0) {
+      setError("No images found in that folder.");
+      return;
+    }
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) => [
+      ...prev,
+      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
+    ]);
+    setError("");
+  }
+
+  function findItem(role, id) {
+    const items = role === "before" ? beforeItems : afterItems;
+    return items.find((item) => item.id === id) ?? null;
+  }
+
+  function availableItems(role) {
+    const items = role === "before" ? beforeItems : afterItems;
+    const used = new Set(
+      Object.entries(slots)
+        .filter(([slotKey, id]) => slotKey.startsWith(role) && id)
+        .map(([, id]) => id),
+    );
+    return items.filter((item) => !used.has(item.id));
+  }
+
+  function removeFolderItem(role, id) {
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) => prev.filter((item) => item.id !== id));
+    setSlots((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([slotKey, value]) => [
+          slotKey,
+          value === id ? null : value,
+        ]),
+      ),
+    );
+  }
+
+  function clearFolder(role) {
+    if (role === "before") {
+      setBeforeItems([]);
+    } else {
+      setAfterItems([]);
+    }
+    setSlots((prev) => ({
+      ...prev,
+      ...(role === "before"
+        ? { beforeFront: null, beforeBack: null }
+        : { afterFront: null, afterBack: null }),
+    }));
+  }
+
+  function assignToSlot(slotKey, role, id) {
+    if (!findItem(role, id)) return;
+    setSlots((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(role) && next[key] === id) next[key] = null;
+      }
+      next[slotKey] = id;
+      return next;
+    });
+    setError("");
+  }
+
+  function clearSlot(slotKey) {
+    setSlots((prev) => ({ ...prev, [slotKey]: null }));
+  }
+
+  function setDragItem(event, role, id) {
+    event.dataTransfer.setData(FRONT_BACK_DRAG_TYPE, `${role}:${id}`);
+    event.dataTransfer.effectAllowed = "move";
+  }
+
+  function readDragItem(event) {
+    const raw = event.dataTransfer.getData(FRONT_BACK_DRAG_TYPE);
+    if (!raw) return null;
+    const separator = raw.indexOf(":");
+    return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
+  }
+
+  async function handleGenerate(event) {
+    event.preventDefault();
+    setError("");
+
+    const files = [
+      slots.beforeFront ? findItem("before", slots.beforeFront)?.file ?? null : null,
+      slots.beforeBack ? findItem("before", slots.beforeBack)?.file ?? null : null,
+      slots.afterFront ? findItem("after", slots.afterFront)?.file ?? null : null,
+      slots.afterBack ? findItem("after", slots.afterBack)?.file ?? null : null,
+    ];
+
+    const validationError = validatePhotoPairFiles(files, "front-back-pair");
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const metaError = validateCardMeta(cardMeta);
+    if (metaError) {
+      setError(metaError);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const next = await generatePhotoOutputs(
+        files,
+        "front-back-pair",
+        cardMetaToOverlayOptions(cardMeta),
+        outputFormat,
+      );
+      setOutputs((prev) => {
+        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sections = [
+    {
+      role: "before",
+      title: "Before",
+      slots: [
+        { key: "beforeFront", label: "Front" },
+        { key: "beforeBack", label: "Back" },
+      ],
+    },
+    {
+      role: "after",
+      title: "After",
+      slots: [
+        { key: "afterFront", label: "Front" },
+        { key: "afterBack", label: "Back" },
+      ],
+    },
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl animate-fade-up">
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={onBack} />
+        <SectionHeading
+          subtitle={`Front & back side-by-side. Fill Before for one post; After is optional for a second. Output: ${activeFormat.sizeHint}.`}
+        >
+          1×2 formatter
+        </SectionHeading>
+      </div>
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        <div className="mx-auto max-w-3xl space-y-3">
+          <GroupModeToggle value="front-back-pair" onChange={onChangeGroupBy} />
+          <OutputFormatToggle
+            value={outputFormat}
+            onChange={onChangeOutputFormat}
+          />
+        </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+          <SideBank
+            role="before"
+            title="Before bank"
+            totalCount={beforeItems.length}
+            availableItems={availableItems("before")}
+            previewUrls={previewUrls}
+            onAddFiles={(files) => addFiles("before", files)}
+            onRemoveItem={(id) => removeFolderItem("before", id)}
+            onClear={() => clearFolder("before")}
+          />
+
+          <div className="min-w-0 flex-1 space-y-4">
+            {sections.map((section) => (
+              <div key={section.role} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  {section.title}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {section.slots.map(({ key, label }) => {
+                    const item = slots[key] ? findItem(section.role, slots[key]) : null;
+                    const preview = item ? previewUrls[item.id] : null;
+                    const isActive = activeSlot === key;
+                    return (
+                      <div
+                        key={key}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          setActiveSlot(key);
+                        }}
+                        onDragLeave={() =>
+                          setActiveSlot((prev) => (prev === key ? null : prev))
+                        }
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setActiveSlot(null);
+                          const dragged = readDragItem(event);
+                          if (dragged?.role === section.role) {
+                            assignToSlot(key, section.role, dragged.id);
+                          }
+                        }}
+                        className={`overflow-hidden rounded-xl border bg-night/50 transition ${
+                          isActive
+                            ? "border-berry bg-berry/10"
+                            : item
+                              ? "border-ink/15"
+                              : "border-dashed border-ink/10"
+                        }`}
+                      >
+                        <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                          {label}
+                        </p>
+                        {item && preview ? (
+                          <div
+                            draggable
+                            onDragStart={(event) =>
+                              setDragItem(event, section.role, item.id)
+                            }
+                            className="cursor-grab p-3 active:cursor-grabbing"
+                          >
+                            <StudioOpenableThumb
+                              src={preview}
+                              alt={`${section.title} ${label} — ${item.file.name}`}
+                              label={`${section.title} ${label}`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={preview}
+                                alt={`${section.title} ${label} preview`}
+                                className="mx-auto max-h-36 w-full object-contain"
+                                draggable={false}
+                              />
+                            </StudioOpenableThumb>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <p className="truncate text-xs text-ink/50">
+                                {item.file.name}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  clearSlot(key);
+                                }}
+                                className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="px-3 py-10 text-center text-xs text-ink/30">
+                            Drop {section.title.toLowerCase()} {label.toLowerCase()} here
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <SideBank
+            role="after"
+            title="After bank"
+            totalCount={afterItems.length}
+            availableItems={availableItems("after")}
+            previewUrls={previewUrls}
+            onAddFiles={(files) => addFiles("after", files)}
+            onRemoveItem={(id) => removeFolderItem("after", id)}
+            onClear={() => clearFolder("after")}
+          />
+        </div>
+
+        <div className="mx-auto max-w-3xl space-y-6">
+          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+
+          {error && (
+            <p className="text-center text-sm text-berry" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Generating…" : "Generate images"}
+          </button>
+        </div>
+      </form>
+
+      {outputs && (
+        <div className="mx-auto max-w-3xl">
+          <OutputGrid outputs={outputs} annotated />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
   const [outputFormat, setOutputFormat] = useState("square");
@@ -971,6 +1331,19 @@ function PhotoFormatter({ onBack }) {
   if (groupBy === "before-after-pair") {
     return (
       <BeforeAfterPairPhotoFormatter
+        onBack={onBack}
+        onChangeGroupBy={setGroupBy}
+        outputFormat={outputFormat}
+        onChangeOutputFormat={setOutputFormat}
+        cardMeta={cardMeta}
+        onChangeCardMeta={setCardMeta}
+      />
+    );
+  }
+
+  if (groupBy === "front-back-pair") {
+    return (
+      <FrontBackPairPhotoFormatter
         onBack={onBack}
         onChangeGroupBy={setGroupBy}
         outputFormat={outputFormat}

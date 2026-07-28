@@ -84,7 +84,7 @@ function readDragItem(event) {
   return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
 }
 
-function SideBank({
+export function SideBank({
   role,
   title,
   totalCount,
