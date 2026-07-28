@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import { StudioCroppableThumb } from "@/components/StudioCropLightbox";
 
 const PAIRS_PER_POST = 2;
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -84,7 +85,7 @@ function readDragItem(event) {
   return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
 }
 
-function SideBank({
+export function SideBank({
   role,
   title,
   totalCount,
@@ -93,9 +94,11 @@ function SideBank({
   onAddFiles,
   onRemoveItem,
   onClear,
+  onItemDrop = null,
 }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [itemDragging, setItemDragging] = useState(false);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -112,96 +115,116 @@ function SideBank({
   }
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-2 lg:sticky lg:top-0 lg:h-screen lg:w-52 lg:py-4">
-      <div className="flex items-center justify-between">
-        <p className="font-secondary text-sm font-semibold text-blush/90">
-          {title}
-        </p>
-        {totalCount > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-xs font-semibold text-berry/90 hover:text-berry"
-          >
-            Clear ({totalCount})
-          </button>
-        )}
-      </div>
+    <div className="w-full shrink-0 lg:sticky lg:top-28 lg:w-52 lg:self-start">
+      <div className="flex flex-col gap-2 lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto lg:pb-4">
+        <div className="flex items-center justify-between">
+          <p className="font-secondary text-sm font-semibold text-blush/90">
+            {title}
+          </p>
+          {totalCount > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-xs font-semibold text-berry/90 hover:text-berry"
+            >
+              Clear ({totalCount})
+            </button>
+          )}
+        </div>
 
-      <label
-        htmlFor={`grid-${role}-folder`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed px-3 py-4 text-center transition ${
-          dragging
-            ? "border-berry bg-berry/10"
-            : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
-        }`}
-      >
-        <p className="text-xs text-ink/70">Drop folder or browse</p>
-        <p className="text-[10px] text-ink/40">PNG or JPG</p>
-        <input
-          id={`grid-${role}-folder`}
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="sr-only"
-          onChange={(event) => {
-            onAddFiles(Array.from(event.target.files ?? []));
-            event.target.value = "";
+        <label
+          htmlFor={`grid-${role}-folder`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
           }}
-        />
-      </label>
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+          className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed px-3 py-4 text-center transition ${
+            dragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+          }`}
+        >
+          <p className="text-xs text-ink/70">Drop folder or browse</p>
+          <p className="text-[10px] text-ink/40">PNG or JPG</p>
+          <input
+            id={`grid-${role}-folder`}
+            ref={inputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              onAddFiles(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+        </label>
 
-      <div className="min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed border-ink/15 bg-night/30 p-2 lg:max-h-none">
-        {availableItems.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {availableItems.map((item) => (
-              <div
-                key={item.id}
-                draggable
-                onDragStart={(event) => setDragItem(event, role, item.id)}
-                className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
-              >
-                <StudioOpenableThumb
-                  src={previewUrls[item.id]}
-                  alt={item.file.name}
-                  label={item.file.name}
+        <div
+          onDragOver={(event) => {
+            if (!onItemDrop) return;
+            event.preventDefault();
+            setItemDragging(true);
+          }}
+          onDragLeave={() => setItemDragging(false)}
+          onDrop={(event) => {
+            if (!onItemDrop) return;
+            event.preventDefault();
+            setItemDragging(false);
+            onItemDrop(event);
+          }}
+          className={`min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed p-2 transition lg:max-h-none ${
+            itemDragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/15 bg-night/30"
+          }`}
+        >
+          {availableItems.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {availableItems.map((item) => (
+                <div
+                  key={item.id}
+                  draggable
+                  onDragStart={(event) => setDragItem(event, role, item.id)}
+                  className="group relative w-16 shrink-0 cursor-grab active:cursor-grabbing"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <StudioOpenableThumb
                     src={previewUrls[item.id]}
                     alt={item.file.name}
-                    className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
-                    draggable={false}
-                  />
-                </StudioOpenableThumb>
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onRemoveItem(item.id);
-                  }}
-                  className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
-                  aria-label={`Remove ${item.file.name}`}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
-            {totalCount > 0
-              ? "All placed — drag one back into a slot to swap"
-              : `Upload the ${role} folder`}
-          </p>
-        )}
+                    label={item.file.name}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={previewUrls[item.id]}
+                      alt={item.file.name}
+                      className="aspect-[3/4] w-full rounded-md border border-ink/15 bg-night/60 object-contain p-0.5"
+                      draggable={false}
+                    />
+                  </StudioOpenableThumb>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemoveItem(item.id);
+                    }}
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
+                    aria-label={`Remove ${item.file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
+              {totalCount > 0
+                ? "All placed — drag one back here to remove from slot"
+                : `Upload the ${role} folder`}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -218,6 +241,7 @@ function PairSlot({
   onDrop,
   onDragStartFilled,
   onClear,
+  onCropChange,
 }) {
   return (
     <div
@@ -244,19 +268,14 @@ function PairSlot({
           onDragStart={onDragStartFilled}
           className="cursor-grab p-3 active:cursor-grabbing"
         >
-          <StudioOpenableThumb
+          <StudioCroppableThumb
             src={previewUrl}
             alt={`${label} — ${item.file.name}`}
             label={label}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={previewUrl}
-              alt={`${label} preview`}
-              className="mx-auto max-h-36 w-full object-contain"
-              draggable={false}
-            />
-          </StudioOpenableThumb>
+            crop={item.crop}
+            previewClassName="mx-auto max-h-36 w-full object-contain"
+            onCropChange={onCropChange}
+          />
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-ink/50">{item.file.name}</p>
             <button
@@ -270,6 +289,7 @@ function PairSlot({
               Remove
             </button>
           </div>
+          <p className="mt-1 text-[10px] text-ink/35">Click to crop</p>
         </div>
       ) : (
         <p className="px-3 py-10 text-center text-xs text-ink/30">
@@ -288,6 +308,7 @@ export default function StudioFolderBoard({
   pairs,
   setPairs,
   onError,
+  children = null,
 }) {
   const [previewUrls, setPreviewUrls] = useState({});
   const [activeSlot, setActiveSlot] = useState(null);
@@ -326,8 +347,15 @@ export default function StudioFolderBoard({
     }
     settersByRole[role]((prev) => [
       ...prev,
-      ...images.map((file) => ({ id: crypto.randomUUID(), file })),
+      ...images.map((file) => ({ id: crypto.randomUUID(), file, crop: null })),
     ]);
+    onError("");
+  }
+
+  function updateItemCrop(role, id, crop) {
+    settersByRole[role]((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, crop } : item)),
+    );
     onError("");
   }
 
@@ -360,6 +388,22 @@ export default function StudioFolderBoard({
         pair.id === pairId ? { ...pair, [role]: null } : pair,
       ),
     );
+  }
+
+  function returnToBank(role, id) {
+    setPairs((prev) =>
+      prev.map((pair) =>
+        pair[role] === id ? { ...pair, [role]: null } : pair,
+      ),
+    );
+    onError("");
+  }
+
+  function handleBankItemDrop(event, role) {
+    const dragged = readDragItem(event);
+    if (dragged?.role === role) {
+      returnToBank(role, dragged.id);
+    }
   }
 
   function addPair() {
@@ -396,6 +440,7 @@ export default function StudioFolderBoard({
         onAddFiles={(files) => addFiles("before", files)}
         onRemoveItem={(id) => removeFolderItem("before", id)}
         onClear={() => clearFolder("before")}
+        onItemDrop={(event) => handleBankItemDrop(event, "before")}
       />
 
       <div className="min-w-0 flex-1 space-y-4">
@@ -457,6 +502,9 @@ export default function StudioFolderBoard({
                             item && setDragItem(event, role, item.id)
                           }
                           onClear={() => clearSlot(pair.id, role)}
+                          onCropChange={(crop) =>
+                            item && updateItemCrop(role, item.id, crop)
+                          }
                         />
                       );
                     })}
@@ -474,6 +522,8 @@ export default function StudioFolderBoard({
         >
           + Add pair
         </button>
+
+        {children}
       </div>
 
       <SideBank
@@ -485,6 +535,7 @@ export default function StudioFolderBoard({
         onAddFiles={(files) => addFiles("after", files)}
         onRemoveItem={(id) => removeFolderItem("after", id)}
         onClear={() => clearFolder("after")}
+        onItemDrop={(event) => handleBankItemDrop(event, "after")}
       />
     </div>
   );

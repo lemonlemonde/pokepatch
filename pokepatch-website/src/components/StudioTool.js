@@ -10,8 +10,15 @@ import StudioMediaBank, {
   emptySlotsForPairRows,
   FRONT_BACK_PAIR_SLOT_GROUPS,
 } from "@/components/StudioMediaBank";
-import StudioFolderBoard, { createPair } from "@/components/StudioFolderBoard";
+import StudioFolderBoard, {
+  createPair,
+  SideBank,
+} from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import {
+  resolveStudioImageFile,
+  StudioCroppableThumb,
+} from "@/components/StudioCropLightbox";
 import StudioAnnotatedPreview, {
   downloadBlob,
 } from "@/components/StudioAnnotatedPreview";
@@ -518,6 +525,7 @@ function MediaFormatter({
   const [slots, setSlots] = useState(() =>
     dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS,
   );
+  const [previewUrls, setPreviewUrls] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -525,6 +533,16 @@ function MediaFormatter({
   const resolvedSlotGroups = dynamicPairRows
     ? beforeAfterPairSlotGroups(Math.max(1, Math.floor(slots.length / 2)))
     : slotGroups;
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      bank.map((item) => [item.id, URL.createObjectURL(item.file)]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [bank]);
 
   useEffect(() => {
     return () => {
@@ -546,8 +564,14 @@ function MediaFormatter({
     setSlots(dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS);
   }, [dynamicPairRows]);
 
-  function getSlotFiles() {
-    return slots.map((id) => bank.find((item) => item.id === id)?.file ?? null);
+  async function getSlotFiles() {
+    return Promise.all(
+      slots.map(async (id) => {
+        const item = bank.find((entry) => entry.id === id);
+        if (!item || mediaType !== "image") return item?.file ?? null;
+        return resolveStudioImageFile(item, previewUrls[item.id]);
+      }),
+    );
   }
 
   function addPairRow() {
@@ -571,7 +595,7 @@ function MediaFormatter({
     event.preventDefault();
     setError("");
 
-    const files = getSlotFiles();
+    const files = await getSlotFiles();
     if (validateFiles) {
       const validationError = validateFiles(files);
       if (validationError) {
@@ -623,9 +647,10 @@ function MediaFormatter({
           slotGroups={resolvedSlotGroups}
           onAddPairRow={dynamicPairRows ? addPairRow : null}
           onRemovePairRow={dynamicPairRows ? removePairRow : null}
-        />
-
-        {afterBank}
+          previewUrls={previewUrls}
+        >
+          {afterBank}
+        </StudioMediaBank>
 
         {error && (
           <p className="text-center text-sm text-berry" role="alert">
@@ -733,6 +758,16 @@ async function generatePhotoOutputs(
   return canvasOutputsFromPairs(pairs, sizeHint);
 }
 
+async function resolveStudioItemsToFiles(items, previewUrls) {
+  return Promise.all(
+    items.map((item) =>
+      item && previewUrls[item.id]
+        ? resolveStudioImageFile(item, previewUrls[item.id])
+        : null,
+    ),
+  );
+}
+
 async function generateVideoOutputs(files) {
   const { front, back } = await stitchBothVideos(files);
   const pairs = [
@@ -816,6 +851,542 @@ function OutputFormatToggle({ value, onChange }) {
   );
 }
 
+function BeforeAfterPairPhotoFormatter({
+  onBack,
+  onChangeGroupBy,
+  outputFormat,
+  onChangeOutputFormat,
+  cardMeta,
+  onChangeCardMeta,
+}) {
+  const [beforeItems, setBeforeItems] = useState([]);
+  const [afterItems, setAfterItems] = useState([]);
+  const [pairs, setPairs] = useState(() => [createPair()]);
+  const [previewUrls, setPreviewUrls] = useState({});
+  const [outputs, setOutputs] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeFormat =
+    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
+    PHOTO_OUTPUT_FORMATS[0];
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
+
+  useEffect(() => {
+    return () => {
+      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
+    };
+  }, [outputs]);
+
+  async function handleGenerate(event) {
+    event.preventDefault();
+    setError("");
+
+    const partial = pairs.some(
+      (pair) => Boolean(pair.before) !== Boolean(pair.after),
+    );
+    if (partial) {
+      setError("Each pair needs both a before and an after (or remove it).");
+      return;
+    }
+
+    const selectedItems = pairs
+      .filter((pair) => pair.before && pair.after)
+      .flatMap((pair) => [
+        beforeItems.find((item) => item.id === pair.before) ?? null,
+        afterItems.find((item) => item.id === pair.after) ?? null,
+      ]);
+    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+
+    const validationError = validatePhotoPairFiles(files, "before-after-pair");
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const metaError = validateCardMeta(cardMeta);
+    if (metaError) {
+      setError(metaError);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const next = await generatePhotoOutputs(
+        files,
+        "before-after-pair",
+        cardMetaToOverlayOptions(cardMeta),
+        outputFormat,
+      );
+      setOutputs((prev) => {
+        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-6xl animate-fade-up">
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={onBack} />
+        <SectionHeading
+          subtitle={`Before & after side-by-side. Add as many pair rows as you need — each complete pair becomes its own post. Output: ${activeFormat.sizeHint}.`}
+        >
+          1×2 formatter
+        </SectionHeading>
+      </div>
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        <div className="mx-auto max-w-3xl space-y-3">
+          <GroupModeToggle
+            value="before-after-pair"
+            onChange={onChangeGroupBy}
+          />
+          <OutputFormatToggle
+            value={outputFormat}
+            onChange={onChangeOutputFormat}
+          />
+        </div>
+
+        <StudioFolderBoard
+          beforeItems={beforeItems}
+          afterItems={afterItems}
+          setBeforeItems={setBeforeItems}
+          setAfterItems={setAfterItems}
+          pairs={pairs}
+          setPairs={setPairs}
+          onError={setError}
+        >
+          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+
+          {error && (
+            <p className="text-center text-sm text-berry" role="alert">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {busy ? "Generating…" : "Generate images"}
+          </button>
+        </StudioFolderBoard>
+      </form>
+
+      {outputs && (
+        <div className="mx-auto max-w-3xl">
+          <OutputGrid outputs={outputs} annotated />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FRONT_BACK_DRAG_TYPE = "text/pokepatch-front-back-item";
+const FRONT_BACK_EMPTY_SLOTS = {
+  beforeFront: null,
+  beforeBack: null,
+  afterFront: null,
+  afterBack: null,
+};
+
+function FrontBackPairPhotoFormatter({
+  onBack,
+  onChangeGroupBy,
+  outputFormat,
+  onChangeOutputFormat,
+  cardMeta,
+  onChangeCardMeta,
+}) {
+  const [beforeItems, setBeforeItems] = useState([]);
+  const [afterItems, setAfterItems] = useState([]);
+  const [slots, setSlots] = useState(FRONT_BACK_EMPTY_SLOTS);
+  const [previewUrls, setPreviewUrls] = useState({});
+  const [activeSlot, setActiveSlot] = useState(null);
+  const [outputs, setOutputs] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const activeFormat =
+    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
+    PHOTO_OUTPUT_FORMATS[0];
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
+
+  useEffect(() => {
+    return () => {
+      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
+    };
+  }, [outputs]);
+
+  function addFiles(role, fileList) {
+    const images = Array.from(fileList).filter((file) =>
+      file.type.startsWith("image/"),
+    );
+    if (images.length === 0) {
+      setError("No images found in that folder.");
+      return;
+    }
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) => [
+      ...prev,
+      ...images.map((file) => ({ id: crypto.randomUUID(), file, crop: null })),
+    ]);
+    setError("");
+  }
+
+  function findItem(role, id) {
+    const items = role === "before" ? beforeItems : afterItems;
+    return items.find((item) => item.id === id) ?? null;
+  }
+
+  function availableItems(role) {
+    const items = role === "before" ? beforeItems : afterItems;
+    const used = new Set(
+      Object.entries(slots)
+        .filter(([slotKey, id]) => slotKey.startsWith(role) && id)
+        .map(([, id]) => id),
+    );
+    return items.filter((item) => !used.has(item.id));
+  }
+
+  function removeFolderItem(role, id) {
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) => prev.filter((item) => item.id !== id));
+    setSlots((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([slotKey, value]) => [
+          slotKey,
+          value === id ? null : value,
+        ]),
+      ),
+    );
+  }
+
+  function updateItemCrop(role, id, crop) {
+    const setter = role === "before" ? setBeforeItems : setAfterItems;
+    setter((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, crop } : item)),
+    );
+    setError("");
+  }
+
+  function clearFolder(role) {
+    if (role === "before") {
+      setBeforeItems([]);
+    } else {
+      setAfterItems([]);
+    }
+    setSlots((prev) => ({
+      ...prev,
+      ...(role === "before"
+        ? { beforeFront: null, beforeBack: null }
+        : { afterFront: null, afterBack: null }),
+    }));
+  }
+
+  function assignToSlot(slotKey, role, id) {
+    if (!findItem(role, id)) return;
+    setSlots((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(role) && next[key] === id) next[key] = null;
+      }
+      next[slotKey] = id;
+      return next;
+    });
+    setError("");
+  }
+
+  function clearSlot(slotKey) {
+    setSlots((prev) => ({ ...prev, [slotKey]: null }));
+  }
+
+  function returnToBank(role, id) {
+    setSlots((prev) =>
+      Object.fromEntries(
+        Object.entries(prev).map(([slotKey, value]) => [
+          slotKey,
+          value === id && slotKey.startsWith(role) ? null : value,
+        ]),
+      ),
+    );
+    setError("");
+  }
+
+  function handleBankItemDrop(event, role) {
+    const dragged = readDragItem(event);
+    if (dragged?.role === role) {
+      returnToBank(role, dragged.id);
+    }
+  }
+
+  function setDragItem(event, role, id) {
+    event.dataTransfer.setData(FRONT_BACK_DRAG_TYPE, `${role}:${id}`);
+    event.dataTransfer.effectAllowed = "move";
+  }
+
+  function readDragItem(event) {
+    const raw = event.dataTransfer.getData(FRONT_BACK_DRAG_TYPE);
+    if (!raw) return null;
+    const separator = raw.indexOf(":");
+    return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
+  }
+
+  async function handleGenerate(event) {
+    event.preventDefault();
+    setError("");
+
+    const selectedItems = [
+      slots.beforeFront ? findItem("before", slots.beforeFront) : null,
+      slots.beforeBack ? findItem("before", slots.beforeBack) : null,
+      slots.afterFront ? findItem("after", slots.afterFront) : null,
+      slots.afterBack ? findItem("after", slots.afterBack) : null,
+    ];
+    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+
+    const validationError = validatePhotoPairFiles(files, "front-back-pair");
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const metaError = validateCardMeta(cardMeta);
+    if (metaError) {
+      setError(metaError);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const next = await generatePhotoOutputs(
+        files,
+        "front-back-pair",
+        cardMetaToOverlayOptions(cardMeta),
+        outputFormat,
+      );
+      setOutputs((prev) => {
+        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sections = [
+    {
+      role: "before",
+      title: "Before",
+      slots: [
+        { key: "beforeFront", label: "Front" },
+        { key: "beforeBack", label: "Back" },
+      ],
+    },
+    {
+      role: "after",
+      title: "After",
+      slots: [
+        { key: "afterFront", label: "Front" },
+        { key: "afterBack", label: "Back" },
+      ],
+    },
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl animate-fade-up">
+      <div className="mx-auto max-w-3xl">
+        <BackButton onClick={onBack} />
+        <SectionHeading
+          subtitle={`Front & back side-by-side. Fill Before for one post; After is optional for a second. Output: ${activeFormat.sizeHint}.`}
+        >
+          1×2 formatter
+        </SectionHeading>
+      </div>
+
+      <form onSubmit={handleGenerate} className="space-y-6">
+        <div className="mx-auto max-w-3xl space-y-3">
+          <GroupModeToggle value="front-back-pair" onChange={onChangeGroupBy} />
+          <OutputFormatToggle
+            value={outputFormat}
+            onChange={onChangeOutputFormat}
+          />
+        </div>
+
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+          <SideBank
+            role="before"
+            title="Before bank"
+            totalCount={beforeItems.length}
+            availableItems={availableItems("before")}
+            previewUrls={previewUrls}
+            onAddFiles={(files) => addFiles("before", files)}
+            onRemoveItem={(id) => removeFolderItem("before", id)}
+            onClear={() => clearFolder("before")}
+            onItemDrop={(event) => handleBankItemDrop(event, "before")}
+          />
+
+          <div className="min-w-0 flex-1 space-y-6">
+            <div className="space-y-4">
+              {sections.map((section) => (
+                <div key={section.role} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+                    {section.title}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {section.slots.map(({ key, label }) => {
+                      const item = slots[key]
+                        ? findItem(section.role, slots[key])
+                        : null;
+                      const preview = item ? previewUrls[item.id] : null;
+                      const isActive = activeSlot === key;
+                      return (
+                        <div
+                          key={key}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                            setActiveSlot(key);
+                          }}
+                          onDragLeave={() =>
+                            setActiveSlot((prev) => (prev === key ? null : prev))
+                          }
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            setActiveSlot(null);
+                            const dragged = readDragItem(event);
+                            if (dragged?.role === section.role) {
+                              assignToSlot(key, section.role, dragged.id);
+                            }
+                          }}
+                          className={`overflow-hidden rounded-xl border bg-night/50 transition ${
+                            isActive
+                              ? "border-berry bg-berry/10"
+                              : item
+                                ? "border-ink/15"
+                                : "border-dashed border-ink/10"
+                          }`}
+                        >
+                          <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                            {label}
+                          </p>
+                          {item && preview ? (
+                            <div
+                              draggable
+                              onDragStart={(event) =>
+                                setDragItem(event, section.role, item.id)
+                              }
+                              className="cursor-grab p-3 active:cursor-grabbing"
+                            >
+                              <StudioCroppableThumb
+                                src={preview}
+                                alt={`${section.title} ${label} — ${item.file.name}`}
+                                label={`${section.title} ${label}`}
+                                crop={item.crop}
+                                previewClassName="mx-auto max-h-36 w-full object-contain"
+                                onCropChange={(crop) =>
+                                  updateItemCrop(section.role, item.id, crop)
+                                }
+                              />
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <p className="truncate text-xs text-ink/50">
+                                  {item.file.name}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    clearSlot(key);
+                                  }}
+                                  className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              <p className="mt-1 text-[10px] text-ink/35">
+                                Click to crop
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="px-3 py-10 text-center text-xs text-ink/30">
+                              Drop {section.title.toLowerCase()} {label.toLowerCase()} here
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+
+            {error && (
+              <p className="text-center text-sm text-berry" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? "Generating…" : "Generate images"}
+            </button>
+          </div>
+          <SideBank
+            role="after"
+            title="After bank"
+            totalCount={afterItems.length}
+            availableItems={availableItems("after")}
+            previewUrls={previewUrls}
+            onAddFiles={(files) => addFiles("after", files)}
+            onRemoveItem={(id) => removeFolderItem("after", id)}
+            onClear={() => clearFolder("after")}
+            onItemDrop={(event) => handleBankItemDrop(event, "after")}
+          />
+        </div>
+      </form>
+
+      {outputs && (
+        <div className="mx-auto max-w-3xl">
+          <OutputGrid outputs={outputs} annotated />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
   const [outputFormat, setOutputFormat] = useState("square");
@@ -826,6 +1397,32 @@ function PhotoFormatter({ onBack }) {
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
+
+  if (groupBy === "before-after-pair") {
+    return (
+      <BeforeAfterPairPhotoFormatter
+        onBack={onBack}
+        onChangeGroupBy={setGroupBy}
+        outputFormat={outputFormat}
+        onChangeOutputFormat={setOutputFormat}
+        cardMeta={cardMeta}
+        onChangeCardMeta={setCardMeta}
+      />
+    );
+  }
+
+  if (groupBy === "front-back-pair") {
+    return (
+      <FrontBackPairPhotoFormatter
+        onBack={onBack}
+        onChangeGroupBy={setGroupBy}
+        outputFormat={outputFormat}
+        onChangeOutputFormat={setOutputFormat}
+        cardMeta={cardMeta}
+        onChangeCardMeta={setCardMeta}
+      />
+    );
+  }
 
   return (
     <MediaFormatter
@@ -891,9 +1488,23 @@ function GridFormatter({ onBack }) {
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
+  const [previewUrls, setPreviewUrls] = useState({});
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const urls = Object.fromEntries(
+      [...beforeItems, ...afterItems].map((item) => [
+        item.id,
+        URL.createObjectURL(item.file),
+      ]),
+    );
+    setPreviewUrls(urls);
+    return () => {
+      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [beforeItems, afterItems]);
 
   useEffect(() => {
     return () => {
@@ -913,13 +1524,19 @@ function GridFormatter({ onBack }) {
       return;
     }
 
-    const files = pairs
+    const selectedItems = pairs
       .filter((pair) => pair.before && pair.after)
       .map((pair) => ({
-        before: beforeItems.find((item) => item.id === pair.before)?.file,
-        after: afterItems.find((item) => item.id === pair.after)?.file,
+        before: beforeItems.find((item) => item.id === pair.before) ?? null,
+        after: afterItems.find((item) => item.id === pair.after) ?? null,
       }))
       .filter((pair) => pair.before && pair.after);
+    const files = await Promise.all(
+      selectedItems.map(async (pair) => ({
+        before: await resolveStudioImageFile(pair.before, previewUrls[pair.before.id]),
+        after: await resolveStudioImageFile(pair.after, previewUrls[pair.after.id]),
+      })),
+    );
 
     if (files.length === 0) {
       setError("Pair at least one before image with an after image.");
@@ -979,9 +1596,7 @@ function GridFormatter({ onBack }) {
           pairs={pairs}
           setPairs={setPairs}
           onError={setError}
-        />
-
-        <div className="mx-auto max-w-3xl space-y-6">
+        >
           <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
 
           {error && (
@@ -997,7 +1612,7 @@ function GridFormatter({ onBack }) {
           >
             {busy ? "Generating…" : "Generate grid posts"}
           </button>
-        </div>
+        </StudioFolderBoard>
       </form>
 
       {outputs && (
