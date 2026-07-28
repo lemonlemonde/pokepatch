@@ -609,55 +609,49 @@ function MediaFormatter({
   }
 
   return (
-    <div className="mx-auto max-w-6xl animate-fade-up">
+    <div className="mx-auto max-w-3xl animate-fade-up">
       <BackButton onClick={onBack} />
       <SectionHeading subtitle={subtitle}>{title}</SectionHeading>
 
-      <div className="lg:flex lg:items-start lg:gap-6">
-        <aside className="mb-6 lg:sticky lg:top-4 lg:mb-0 lg:w-72 lg:shrink-0 lg:self-start lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto">
-          <StudioMediaBank
-            mediaType={mediaType}
-            bank={bank}
-            setBank={setBank}
-            slots={slots}
-            setSlots={setSlots}
-            onError={setError}
-            slotGroups={resolvedSlotGroups}
-            onAddPairRow={dynamicPairRows ? addPairRow : null}
-            onRemovePairRow={dynamicPairRows ? removePairRow : null}
-          />
-        </aside>
+      <form onSubmit={handleGenerate} className="space-y-6">
+        {controls}
 
-        <div className="min-w-0 flex-1">
-          <form onSubmit={handleGenerate} className="space-y-6">
-            {controls}
+        <StudioMediaBank
+          mediaType={mediaType}
+          bank={bank}
+          setBank={setBank}
+          slots={slots}
+          setSlots={setSlots}
+          onError={setError}
+          slotGroups={resolvedSlotGroups}
+          onAddPairRow={dynamicPairRows ? addPairRow : null}
+          onRemovePairRow={dynamicPairRows ? removePairRow : null}
+        />
 
-            {afterBank}
+        {afterBank}
 
-            {error && (
-              <p className="text-center text-sm text-berry" role="alert">
-                {error}
-              </p>
-            )}
+        {error && (
+          <p className="text-center text-sm text-berry" role="alert">
+            {error}
+          </p>
+        )}
 
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {busy ? busyLabel : generateLabel}
-            </button>
-          </form>
+        <button
+          type="submit"
+          disabled={busy}
+          className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {busy ? busyLabel : generateLabel}
+        </button>
+      </form>
 
-          {outputs && (
-            <OutputGrid
-              outputs={outputs}
-              renderPreview={renderPreview}
-              annotated={annotated}
-            />
-          )}
-        </div>
-      </div>
+      {outputs && (
+        <OutputGrid
+          outputs={outputs}
+          renderPreview={renderPreview}
+          annotated={annotated}
+        />
+      )}
     </div>
   );
 }
