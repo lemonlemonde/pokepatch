@@ -233,7 +233,9 @@ export default function QuoteForm() {
     status !== "success" &&
     status !== "uploading" &&
     status !== "submitting";
-  useUnsavedChangesGuard(quoteLeaveGuardActive);
+  const { dialog: unsavedChangesDialog } = useUnsavedChangesGuard(
+    quoteLeaveGuardActive
+  );
 
   // Logged-in customers use their account email; keep it in sync and locked.
   useEffect(() => {
@@ -600,6 +602,7 @@ export default function QuoteForm() {
   const showValidationError = hasFieldErrors(fieldErrors);
 
   return (
+    <>
     <form
       ref={formRef}
       onSubmit={handleSubmit}
@@ -1015,5 +1018,7 @@ export default function QuoteForm() {
         </Button>
       </div>
     </form>
+    {unsavedChangesDialog}
+    </>
   );
 }

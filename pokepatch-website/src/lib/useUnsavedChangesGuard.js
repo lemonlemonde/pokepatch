@@ -1,24 +1,32 @@
 "use client";
 
-import { useEffect } from "react";
-
-const DEFAULT_MESSAGE =
-  "You have unsaved changes. Leave without saving?";
+import { useCallback, useEffect, useRef, useState } from "react";
+import UnsavedChangesDialog from "@/components/UnsavedChangesDialog";
 
 /**
  * Guard against losing in-progress edits:
- * - beforeunload for refresh / tab close
- * - capture-phase click on same-origin <a> for in-app Link navigation
- *
- * Programmatic router.push/replace (e.g. admin tab buttons) must still call
- * confirmUnsavedChanges() (or window.confirm) themselves.
+ * - Native beforeunload for refresh / tab close (browsers block custom UI there)
+ * - Styled dialog for in-app <a> navigation and programmatic requestLeave()
  */
-export function confirmUnsavedChanges(message = DEFAULT_MESSAGE) {
-  if (typeof window === "undefined") return true;
-  return window.confirm(message);
-}
+export function useUnsavedChangesGuard(isDirty) {
+  const [pending, setPending] = useState(null);
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
 
-export function useUnsavedChangesGuard(isDirty, message = DEFAULT_MESSAGE) {
+  const closePending = useCallback((shouldLeave) => {
+    setPending((current) => {
+      if (current?.resolve) current.resolve(shouldLeave);
+      return null;
+    });
+  }, []);
+
+  const requestLeave = useCallback(() => {
+    if (!isDirtyRef.current) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      setPending({ resolve });
+    });
+  }, []);
+
   useEffect(() => {
     if (!isDirty) return undefined;
 
@@ -34,15 +42,21 @@ export function useUnsavedChangesGuard(isDirty, message = DEFAULT_MESSAGE) {
         return;
       }
 
-      const anchor = event.target instanceof Element
-        ? event.target.closest("a[href]")
-        : null;
+      const anchor =
+        event.target instanceof Element
+          ? event.target.closest("a[href]")
+          : null;
       if (!anchor) return;
       if (anchor.getAttribute("download") != null) return;
       if (anchor.target && anchor.target !== "_self") return;
 
       const href = anchor.getAttribute("href");
-      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+      if (
+        !href ||
+        href.startsWith("#") ||
+        href.startsWith("mailto:") ||
+        href.startsWith("tel:")
+      ) {
         return;
       }
 
@@ -61,10 +75,19 @@ export function useUnsavedChangesGuard(isDirty, message = DEFAULT_MESSAGE) {
         return;
       }
 
-      if (!confirmUnsavedChanges(message)) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      if (!isDirtyRef.current) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const destination = `${next.pathname}${next.search}${next.hash}`;
+      setPending({
+        resolve: (shouldLeave) => {
+          if (shouldLeave) {
+            window.location.assign(destination);
+          }
+        },
+      });
     }
 
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -73,5 +96,15 @@ export function useUnsavedChangesGuard(isDirty, message = DEFAULT_MESSAGE) {
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("click", onDocumentClick, true);
     };
-  }, [isDirty, message]);
+  }, [isDirty]);
+
+  const dialog = (
+    <UnsavedChangesDialog
+      open={Boolean(pending)}
+      onStay={() => closePending(false)}
+      onLeave={() => closePending(true)}
+    />
+  );
+
+  return { requestLeave, dialog };
 }

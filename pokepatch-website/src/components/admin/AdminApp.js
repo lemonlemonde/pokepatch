@@ -34,7 +34,6 @@ import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
-  confirmUnsavedChanges,
   useUnsavedChangesGuard,
 } from "@/lib/useUnsavedChangesGuard";
 import {
@@ -3654,7 +3653,8 @@ export default function AdminApp() {
   }, [draft, savedSnapshot]);
 
   const unsavedOrderEdit = dirty && tab === "orders-edit";
-  useUnsavedChangesGuard(unsavedOrderEdit);
+  const { requestLeave, dialog: unsavedChangesDialog } =
+    useUnsavedChangesGuard(unsavedOrderEdit);
 
   const activeTab =
     tab === "orders-all"
@@ -3800,7 +3800,7 @@ export default function AdminApp() {
   }, [authed, tab, routeOrderId]);
 
   async function handleLogout() {
-    if (unsavedOrderEdit && !confirmUnsavedChanges()) return;
+    if (unsavedOrderEdit && !(await requestLeave())) return;
     await adminLogout();
     setOrders([]);
     clearEditor();
@@ -4151,8 +4151,8 @@ export default function AdminApp() {
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
-  function leaveEditor({ skipConfirm = false } = {}) {
-    if (!skipConfirm && dirty && !confirmUnsavedChanges()) return;
+  async function leaveEditor({ skipConfirm = false } = {}) {
+    if (!skipConfirm && dirty && !(await requestLeave())) return;
     setSavePromptOpen(false);
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
@@ -4163,8 +4163,8 @@ export default function AdminApp() {
     router.replace(editReturnPath);
   }
 
-  function navigateAdmin(path) {
-    if (unsavedOrderEdit && !confirmUnsavedChanges()) return;
+  async function navigateAdmin(path) {
+    if (unsavedOrderEdit && !(await requestLeave())) return;
     if (tab === "orders-edit") {
       clearEditor();
       setEditorDismissed(true);
@@ -4617,6 +4617,7 @@ export default function AdminApp() {
           )}
         </>
       )}
+      {unsavedChangesDialog}
     </div>
   );
 }
