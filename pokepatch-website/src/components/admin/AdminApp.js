@@ -397,6 +397,7 @@ function orderToDraft(order) {
     has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method ?? "local_dropoff",
     general_notes: order.general_notes ?? "",
+    heard_about_source: order.heard_about_source ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
     pending_kind: isPendingOrderStatus(order.status)
@@ -3006,6 +3007,14 @@ function OrderEditor({
               <EditorLabel>Email</EditorLabel>
               <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
                 {draft.customer_email}
+              </p>
+            </div>
+          ) : null}
+          {draft.heard_about_source ? (
+            <div>
+              <EditorLabel>How did you hear about us?</EditorLabel>
+              <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
+                {draft.heard_about_source}
               </p>
             </div>
           ) : null}

@@ -17,6 +17,15 @@ import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
 
+const HEARD_ABOUT_OPTIONS = [
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook", label: "Facebook" },
+  { value: "discord", label: "Discord" },
+  { value: "card_show", label: "Card show" },
+  { value: "friend", label: "Friend" },
+  { value: "other", label: "Other" },
+];
+
 function copyFileList(fileList) {
   if (!fileList) return [];
   const copied = [];
@@ -196,6 +205,8 @@ export default function QuoteForm() {
   const [contactValues, setContactValues] = useState(emptyContactValues);
   const [lockedTypes, setLockedTypes] = useState({});
   const [preferredContactId, setPreferredContactId] = useState("email");
+  const [heardAbout, setHeardAbout] = useState("");
+  const [heardAboutOther, setHeardAboutOther] = useState("");
   const [cards, setCards] = useState([initialCard()]);
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState("idle");
@@ -513,11 +524,20 @@ export default function QuoteForm() {
         preferredValue = contactValues[effectivePreferredId].trim();
       }
 
+      const heardAboutOption = HEARD_ABOUT_OPTIONS.find(
+        (option) => option.value === heardAbout
+      );
+      const heardAboutSource =
+        heardAbout === "other"
+          ? heardAboutOther.trim()
+          : (heardAboutOption?.label ?? "");
+
       const payload = {
         id: orderId,
         customer_name: customerName.trim(),
         customer_email: email.trim().toLowerCase(),
         delivery_method: deliveryMethod,
+        heard_about_source: heardAboutSource,
         preferred_contact_type: preferredType,
         preferred_contact_value: preferredValue,
         contacts: filledContactTypes.map((type) => ({
@@ -985,6 +1005,43 @@ export default function QuoteForm() {
           )}
         </div>
       </section>
+
+      <div className="space-y-3">
+        <label htmlFor="heard_about_source" className="block">
+          <span className="text-sm font-bold text-ink">
+            How did you hear about us?
+          </span>
+        </label>
+        <select
+          id="heard_about_source"
+          value={heardAbout}
+          onChange={(e) => {
+            onFormInteraction();
+            setHeardAbout(e.target.value);
+            if (e.target.value !== "other") setHeardAboutOther("");
+          }}
+          className={fieldClassName()}
+        >
+          <option value="">Select an option</option>
+          {HEARD_ABOUT_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {heardAbout === "other" && (
+          <input
+            type="text"
+            value={heardAboutOther}
+            onChange={(e) => {
+              onFormInteraction();
+              setHeardAboutOther(e.target.value);
+            }}
+            placeholder="Tell us where you heard about us"
+            className={fieldClassName()}
+          />
+        )}
+      </div>
 
       <input
         type="text"
