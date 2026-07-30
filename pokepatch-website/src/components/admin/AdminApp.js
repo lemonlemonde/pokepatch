@@ -647,7 +647,7 @@ function OrderRevenueSummary({ completedTotal, pipelineTotal }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 text-sm">
       <p className="tabular-nums text-ink">
-        <span className="font-semibold text-ink/55">Completed</span>{" "}
+        <span className="font-semibold text-ink/55">Earned</span>{" "}
         <span className="font-bold text-status-green">
           {formatMoney(completedTotal)}
         </span>
@@ -1673,6 +1673,7 @@ function KanbanBoard({
   const [trashArmed, setTrashArmed] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [canceledExpanded, setCanceledExpanded] = useState(false);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   const columns = useMemo(() => groupOrdersByStatus(orders), [orders]);
   const revenue = useMemo(
@@ -1682,6 +1683,7 @@ function KanbanBoard({
         ...(columns.pending ?? []),
         ...(columns.new ?? []),
         ...(columns.in_progress ?? []),
+        ...(columns.ready ?? []),
       ]),
     }),
     [columns]
@@ -1787,7 +1789,16 @@ function KanbanBoard({
     });
   }
 
-  function renderColumn(status, { closed, dock = false, expanded = true, onToggleExpand }) {
+  function renderColumn(
+    status,
+    {
+      closed,
+      dock = false,
+      expanded = true,
+      onToggleExpand,
+      dockDropHint = "Drop orders here or see more",
+    }
+  ) {
     const rawOrders = columns[status.id] ?? [];
     const columnOrders = closed
       ? filterClosedColumnOrders(rawOrders)
@@ -1975,9 +1986,7 @@ function KanbanBoard({
         )}
         {dock && !expanded && (
           <p className="mt-1 text-xs text-ink/45">
-            {dragOrderId
-              ? "Drop here to cancel"
-              : "Collapsed — drop orders here or see more"}
+            {dragOrderId ? dockDropHint : `Collapsed — ${dockDropHint.toLowerCase()}`}
           </p>
         )}
       </section>
@@ -2004,18 +2013,25 @@ function KanbanBoard({
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
         )}
-        {COMPLETED_ORDER_STATUS
-          ? renderColumn(COMPLETED_ORDER_STATUS, { closed: true })
-          : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {COMPLETED_ORDER_STATUS
+          ? renderColumn(COMPLETED_ORDER_STATUS, {
+              closed: true,
+              dock: true,
+              expanded: completedExpanded,
+              onToggleExpand: setCompletedExpanded,
+              dockDropHint: "Drop here when picked up",
+            })
+          : null}
         {CANCELED_ORDER_STATUS
           ? renderColumn(CANCELED_ORDER_STATUS, {
               closed: true,
               dock: true,
               expanded: canceledExpanded,
               onToggleExpand: setCanceledExpanded,
+              dockDropHint: "Drop here to cancel",
             })
           : null}
         <div
@@ -3836,10 +3852,6 @@ export default function AdminApp() {
     orderId,
     nextPendingKind,
     previous,
-    notify = false,
-    subject = "",
-    body = "",
-    changelog = null,
   }) {
     const pendingKind = normalizePendingKind(nextPendingKind);
     const previousDraft = draft;
@@ -3861,20 +3873,6 @@ export default function AdminApp() {
 
     try {
       await adminSetPendingKind(orderId, pendingKind);
-      const refreshed = await adminListOrders();
-      setOrders(refreshed.map(orderToKanbanSummary));
-
-      if (notify && subject.trim() && (body.trim() || changelog)) {
-        await adminSendMessages({
-          order_ids: [orderId],
-          subject: subject.trim(),
-          body,
-          changelog,
-          thumb_by_card_id: buildCardThumbById(
-            selectedOrderId === orderId ? draft?.cards : []
-          ),
-        });
-      }
     } catch (err) {
       setOrders(previous);
       if (selectedOrderId === orderId) {
@@ -3985,10 +3983,6 @@ export default function AdminApp() {
     sameColumn,
     previous,
     moving,
-    notify = false,
-    subject = "",
-    body = "",
-    changelog = null,
   }) {
     setOrders((current) => {
       const without = current.filter((order) => order.id !== orderId);
@@ -4044,9 +4038,6 @@ export default function AdminApp() {
         await adminSetStatus(orderId, nextStatus, insertAt);
       }
 
-      const refreshed = await adminListOrders();
-      setOrders(refreshed.map(orderToKanbanSummary));
-
       if (selectedOrderId === orderId) {
         setDraft((current) => {
           if (!current) return current;
@@ -4064,23 +4055,24 @@ export default function AdminApp() {
           return next;
         });
       }
-
-      if (notify && subject.trim() && (body.trim() || changelog)) {
-        await adminSendMessages({
-          order_ids: [orderId],
-          subject: subject.trim(),
-          body,
-          changelog,
-          thumb_by_card_id: buildCardThumbById(
-            selectedOrderId === orderId ? draft?.cards : []
-          ),
-        });
-      }
     } catch (err) {
       setOrders(previous);
       setListError(err.message || "Could not update order place.");
       throw err;
     }
+  }
+
+  async function sendMoveNotification(orderId, { subject, body, changelog }) {
+    if (!subject.trim() || (!body.trim() && !changelog)) return;
+    await adminSendMessages({
+      order_ids: [orderId],
+      subject: subject.trim(),
+      body,
+      changelog,
+      thumb_by_card_id: buildCardThumbById(
+        selectedOrderId === orderId ? draft?.cards : []
+      ),
+    });
   }
 
   function handleRequestDelete(ordersToDelete) {
@@ -4296,31 +4288,35 @@ export default function AdminApp() {
     changelog = null,
   } = {}) {
     if (!movePrompt) return;
+    const prompt = movePrompt;
     setMoveSaving(true);
     setListError("");
     try {
-      if (movePrompt.kind === "pending_kind") {
-        await commitPendingKindChange({
-          ...movePrompt,
-          notify,
-          subject,
-          body,
-          changelog,
-        });
+      if (prompt.kind === "pending_kind") {
+        await commitPendingKindChange(prompt);
       } else {
-        await commitPlaceOrder({
-          ...movePrompt,
-          notify,
-          subject,
-          body,
-          changelog,
-        });
+        await commitPlaceOrder(prompt);
       }
       setMovePrompt(null);
+
+      if (notify) {
+        try {
+          await sendMoveNotification(prompt.orderId, {
+            subject,
+            body,
+            changelog,
+          });
+        } catch (notifyErr) {
+          setListError(
+            notifyErr.message ||
+              "Order moved, but the customer notification failed to send."
+          );
+        }
+      }
     } catch (err) {
       setListError(
         err.message ||
-          (movePrompt.kind === "pending_kind"
+          (prompt.kind === "pending_kind"
             ? "Could not update pending type."
             : "Could not update order place.")
       );

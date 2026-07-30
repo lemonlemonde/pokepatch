@@ -2,7 +2,12 @@ export const ORDER_STATUSES = [
   { id: "pending", label: "Pending" },
   { id: "new", label: "To do", customerLabel: "In queue" },
   { id: "in_progress", label: "In progress" },
-  { id: "completed", label: "Completed" },
+  {
+    id: "ready",
+    label: "Ready for customer",
+    customerLabel: "Ready for pickup",
+  },
+  { id: "completed", label: "Completed", customerLabel: "Completed" },
   { id: "canceled", label: "Canceled" },
 ];
 
@@ -65,12 +70,13 @@ export function cardStatusBadgeClass(statusId) {
   }
 }
 
-/** Statuses shown on the admin board by default. */
+/** Main kanban row: pending, active work, and awaiting customer pickup. */
 export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) =>
     status.id === "pending" ||
     status.id === "new" ||
-    status.id === "in_progress"
+    status.id === "in_progress" ||
+    status.id === "ready"
 );
 
 /** Closed statuses (completed + canceled). */
@@ -78,7 +84,7 @@ export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "completed" || status.id === "canceled"
 );
 
-/** Completed column on the main kanban row. */
+/** Picked-up orders dock beside canceled / delete (not on the main row). */
 export const COMPLETED_ORDER_STATUS = ORDER_STATUSES.find(
   (status) => status.id === "completed"
 );
@@ -181,6 +187,7 @@ export function normalizeOrderStatus(statusId) {
     return "pending";
   }
   if (statusId === "todo") return DEFAULT_ORDER_STATUS;
+  if (statusId === "ready_for_customer") return "ready";
   if (statusId === "delivered") return "completed";
   if (statusId === "cancelled") return "canceled";
   return DEFAULT_ORDER_STATUS;
@@ -197,7 +204,7 @@ export function isClosedOrderStatus(statusId) {
 
 /**
  * Blue = not started, peach/sky = pending (by kind), yellow = in progress,
- * green = done, muted = canceled.
+ * mint = ready, green = picked up, muted = canceled.
  */
 export function orderStatusBadgeClass(statusId, pendingKind = null) {
   switch (normalizeOrderStatus(statusId)) {
@@ -205,6 +212,8 @@ export function orderStatusBadgeClass(statusId, pendingKind = null) {
       return pendingKindBadgeClass(pendingKind);
     case "in_progress":
       return "bg-status-yellow text-night";
+    case "ready":
+      return "bg-mint text-night";
     case "completed":
       return "bg-status-green text-night";
     case "canceled":
@@ -221,6 +230,8 @@ export function orderStatusHeadingClass(statusId) {
       return "text-peach";
     case "in_progress":
       return "text-status-yellow";
+    case "ready":
+      return "text-mint";
     case "completed":
       return "text-status-green";
     case "canceled":
@@ -335,6 +346,12 @@ export const EDITOR_STATUS_OPTIONS = [
     status: "in_progress",
     pendingKind: null,
     label: "In progress",
+  },
+  {
+    value: "ready",
+    status: "ready",
+    pendingKind: null,
+    label: "Ready for customer",
   },
   {
     value: "completed",
