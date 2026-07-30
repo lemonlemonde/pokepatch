@@ -274,12 +274,14 @@ export default function QuoteForm() {
       .then(({ data }) => {
         if (!data) return;
         const nameLocked = { firstName: false, lastName: false };
-        if (data.first_name) {
-          setFirstName(data.first_name);
+        const profileFirst = (data.first_name ?? "").trim();
+        const profileLast = (data.last_name ?? "").trim();
+        if (profileFirst) {
+          setFirstName(profileFirst);
           nameLocked.firstName = true;
         }
-        if (data.last_name) {
-          setLastName(data.last_name);
+        if (profileLast) {
+          setLastName(profileLast);
           nameLocked.lastName = true;
         }
         setLockedName(nameLocked);
@@ -704,17 +706,6 @@ export default function QuoteForm() {
                 : undefined
             }
           />
-          {lockedName.firstName && (
-            <p className="mt-1 text-xs text-ink/60">
-              Your name comes from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
-          )}
         </div>
 
         <div>
@@ -742,7 +733,7 @@ export default function QuoteForm() {
                 : undefined
             }
           />
-          {lockedName.lastName && (
+          {(lockedName.firstName || lockedName.lastName) && (
             <p className="mt-1 text-xs text-ink/60">
               Your name comes from your account.{" "}
               <Link
