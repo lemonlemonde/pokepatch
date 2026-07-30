@@ -527,8 +527,7 @@ export function summarizeChangelog(changelog = {}) {
       else otherCardStatus += 1;
     }
   }
-  if (completedCards === 1) phrases.push("Your card has been completed");
-  else if (completedCards > 1) phrases.push("Your cards have been completed");
+  if (completedCards >= 1) phrases.push("Some cards on your order have been completed");
   if (inProgressCards >= 1) {
     phrases.push(
       inProgressCards === 1
