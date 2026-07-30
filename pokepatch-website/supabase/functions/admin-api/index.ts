@@ -1253,14 +1253,16 @@ function withAccountName<
   const profile = userId ? namesByUserId.get(userId) : undefined;
 
   if (profile) {
+    // Use the account name as-is (even if one side is blank). Do not fill
+    // the empty side from the order — that mixes two sources of truth.
     const firstName = (profile.first_name ?? "").trim();
     const lastName = (profile.last_name ?? "").trim();
     const combined = [firstName, lastName].filter(Boolean).join(" ");
 
     result = {
       ...order,
-      first_name: firstName || order.first_name,
-      last_name: lastName || order.last_name,
+      first_name: firstName,
+      last_name: lastName,
       customer_name: combined || order.customer_name,
     };
   }
