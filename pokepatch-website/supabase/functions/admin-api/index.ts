@@ -594,7 +594,7 @@ async function searchOrdersByCardText(
   const pattern = quotePostgrestValue(`%${escapeIlikePattern(q)}%`);
   let cardsQuery = supabase
     .from("cards")
-    .select("id, order_id, card_name, set_name, description, status, checklist")
+    .select("id, order_id, card_name, set_name, description, status")
     .or(
       `card_name.ilike.${pattern},set_name.ilike.${pattern},description.ilike.${pattern}`
     )
