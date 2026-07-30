@@ -30,6 +30,7 @@ declare
   v_card_status text;
   v_prev_card_status text;
   v_card_status_changed boolean := false;
+  v_card_checklist jsonb;
   v_status text;
   v_prev_status text;
   v_pending_kind text;
@@ -467,6 +468,12 @@ begin
           raise exception 'invalid card status';
         end if;
 
+        if v_card ? 'checklist' and jsonb_typeof(v_card -> 'checklist') = 'object' then
+          v_card_checklist := v_card -> 'checklist';
+        else
+          v_card_checklist := '{}'::jsonb;
+        end if;
+
         insert into public.cards (
           id,
           order_id,
@@ -475,7 +482,8 @@ begin
           description,
           market_value_raw_nm,
           status,
-          sort_order
+          sort_order,
+          checklist
         )
         values (
           v_card_id,
@@ -485,7 +493,8 @@ begin
           v_description,
           v_market_value,
           v_card_status,
-          v_card_sort
+          v_card_sort,
+          v_card_checklist
         );
       end if;
 
