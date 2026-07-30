@@ -433,7 +433,7 @@ Tabs:
 
 - **Orders** — kanban + order editor
 - **Gallery** — create/edit/delete public gallery restorations + media uploads (newest first)
-- **Studio** — before & after formatters for Instagram posts: front & back side-by-side, 2×2 grid (upload before/after folders and pair them into one or more posts), and video
+- **Studio** — 1×2 before & after photo formatter for Instagram posts (Before-After and Front-Back pair modes)
 
 ### Flow
 
@@ -504,8 +504,8 @@ pokepatch-website/
       CardPhotoPreviews.js       # Shared card photo thumbnails
       admin/AdminApp.js          # Kanban + order editor + gallery + studio tabs
       admin/GalleryManager.js    # Gallery CMS
-      StudioTool.js              # Before/after formatters (front & back, 2×2 grid, video)
-      StudioFolderBoard.js       # Grid formatter before/after folder uploads + manual pairing
+      StudioTool.js              # 1×2 before/after photo formatter
+      StudioFolderBoard.js       # Before/after folder uploads + manual pairing
     lib/
       supabaseClient.js          # Public Supabase client
       gallery.js                 # Public gallery fetch + fallbacks

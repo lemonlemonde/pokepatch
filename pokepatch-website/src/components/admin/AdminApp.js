@@ -7,6 +7,7 @@ import SectionHeading from "@/components/SectionHeading";
 import { AdminOrderCardPhotoGroups } from "@/components/CardPhotoPreviews";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import {
   adminDeleteOrders,
   adminDeletePhoto,
@@ -294,7 +295,7 @@ const ADMIN_TABS = [
     path: "/admin/studio/",
     title: "Studio",
     subtitle:
-      "Annotate photos, or format 1×2, 2×2 grid, and video before & after Instagram posts.",
+      "Format 1×2 before & after Instagram posts.",
   },
 ];
 
@@ -3699,6 +3700,11 @@ export default function AdminApp() {
         return;
       }
 
+      if (!isCustomerAuthEnabled()) {
+        setReady(true);
+        return;
+      }
+
       // Reuse an existing admin token if still valid.
       const ok = await adminValidate();
       if (cancelled) return;
@@ -3714,12 +3720,15 @@ export default function AdminApp() {
       if (authLoading) return;
 
       if (!user) {
+        setReady(true);
         router.replace("/login?redirect=/admin/orders/");
         return;
       }
 
       if (!isAdminAllowedEmail(user.email)) {
-        router.replace("/");
+        setAuthError(`${user.email} is not allowlisted for admin.`);
+        setAuthed(false);
+        setReady(true);
         return;
       }
 
@@ -4348,16 +4357,45 @@ export default function AdminApp() {
     );
   }
 
-  if (!authed) {
-    // Unsigned / unauthorized users are redirected in boot(); this is only for
-    // allowlisted users whose admin session mint failed.
+  if (!isCustomerAuthEnabled()) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16">
+      <div className="mx-auto max-w-lg space-y-3 px-4 py-16 text-center text-ink/70">
+        <p>Admin requires customer login.</p>
+        <p className="text-sm">
+          Add{" "}
+          <code className="rounded bg-night/50 px-1">
+            NEXT_PUBLIC_CUSTOMER_AUTH_ENABLED=true
+          </code>{" "}
+          and{" "}
+          <code className="rounded bg-night/50 px-1">
+            NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS
+          </code>{" "}
+          to <code className="rounded bg-night/50 px-1">.env.local</code>, then restart{" "}
+          <code className="rounded bg-night/50 px-1">npm run dev</code>.
+        </p>
+      </div>
+    );
+  }
+
+  if (!authed) {
+    return (
+      <div className="mx-auto max-w-lg space-y-4 px-4 py-16 text-center">
         <LoadingIndicator
-          label={
-            authError ? "Couldn't open admin. Try refreshing." : "Loading admin…"
-          }
+          label={authError ? "Couldn't open admin" : "Loading admin…"}
         />
+        {authError ? (
+          <p className="rounded-lg border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
+            {authError}
+          </p>
+        ) : null}
+        {!user ? (
+          <p className="text-sm text-ink/60">
+            <a href="/login/?redirect=/admin/orders/" className="font-semibold text-blush hover:underline">
+              Log in
+            </a>{" "}
+            with an allowlisted admin account to continue.
+          </p>
+        ) : null}
       </div>
     );
   }
