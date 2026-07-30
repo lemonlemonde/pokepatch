@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
-import { StudioCroppableThumb } from "@/components/StudioCropLightbox";
+import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
+import { downloadSlotImages } from "@/lib/studioSlotImage";
+import useStableObjectUrls from "@/lib/useStableObjectUrls";
 
-const PAIRS_PER_POST = 2;
 const DRAG_TYPE = "text/pokepatch-pair-item";
 const ROLES = [
   { key: "before", label: "Before" },
@@ -242,6 +243,8 @@ function PairSlot({
   onDragStartFilled,
   onClear,
   onCropChange,
+  onAnnotationsChange,
+  sibling,
 }) {
   return (
     <div
@@ -269,27 +272,43 @@ function PairSlot({
           className="cursor-grab p-3 active:cursor-grabbing"
         >
           <StudioCroppableThumb
+            item={item}
             src={previewUrl}
             alt={`${label} — ${item.file.name}`}
             label={label}
-            crop={item.crop}
-            previewClassName="mx-auto max-h-36 w-full object-contain"
+            previewClassName="rounded-lg"
             onCropChange={onCropChange}
+            onAnnotationsChange={onAnnotationsChange}
+            sibling={sibling}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-ink/50">{item.file.name}</p>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                onClear();
-              }}
-              className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
-            >
-              Remove
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  downloadSlotImages([{ item, previewUrl, label }]);
+                }}
+                className="text-xs font-semibold text-blush/90 hover:text-blush"
+              >
+                Download
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClear();
+                }}
+                className="text-xs font-semibold text-berry/90 hover:text-berry"
+              >
+                Remove
+              </button>
+            </div>
           </div>
-          <p className="mt-1 text-[10px] text-ink/35">Click to crop</p>
+          <p className="mt-1 text-[10px] text-ink/35">
+            Click to crop or annotate
+          </p>
         </div>
       ) : (
         <p className="px-3 py-10 text-center text-xs text-ink/30">
@@ -310,21 +329,13 @@ export default function StudioFolderBoard({
   onError,
   children = null,
 }) {
-  const [previewUrls, setPreviewUrls] = useState({});
   const [activeSlot, setActiveSlot] = useState(null);
 
-  useEffect(() => {
-    const urls = Object.fromEntries(
-      [...beforeItems, ...afterItems].map((item) => [
-        item.id,
-        URL.createObjectURL(item.file),
-      ]),
-    );
-    setPreviewUrls(urls);
-    return () => {
-      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [beforeItems, afterItems]);
+  const allItems = useMemo(
+    () => [...beforeItems, ...afterItems],
+    [beforeItems, afterItems],
+  );
+  const previewUrls = useStableObjectUrls(allItems);
 
   const itemsByRole = { before: beforeItems, after: afterItems };
   const settersByRole = { before: setBeforeItems, after: setAfterItems };
@@ -347,7 +358,12 @@ export default function StudioFolderBoard({
     }
     settersByRole[role]((prev) => [
       ...prev,
-      ...images.map((file) => ({ id: crypto.randomUUID(), file, crop: null })),
+      ...images.map((file) => ({
+        id: crypto.randomUUID(),
+        file,
+        crop: null,
+        annotations: null,
+      })),
     ]);
     onError("");
   }
@@ -357,6 +373,12 @@ export default function StudioFolderBoard({
       prev.map((item) => (item.id === id ? { ...item, crop } : item)),
     );
     onError("");
+  }
+
+  function updateItemAnnotations(role, id, annotations) {
+    settersByRole[role]((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, annotations } : item)),
+    );
   }
 
   function removeFolderItem(role, id) {
@@ -426,8 +448,20 @@ export default function StudioFolderBoard({
     }
   }
 
-  const completePairs = pairs.filter((pair) => pair.before && pair.after);
-  const postCount = Math.ceil(completePairs.length / PAIRS_PER_POST);
+  /** Filled slots in pair order — the "Download all" payload. */
+  const filledSlots = pairs.flatMap((pair, index) =>
+    ROLES.map(({ key: role, label }) => {
+      const slotItem = findItem(role, pair[role]);
+      const url = slotItem ? previewUrls[slotItem.id] : null;
+      return slotItem && url
+        ? {
+            item: slotItem,
+            previewUrl: url,
+            label: `pair-${index + 1}-${label}`,
+          }
+        : null;
+    }).filter(Boolean),
+  );
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
@@ -444,28 +478,13 @@ export default function StudioFolderBoard({
       />
 
       <div className="min-w-0 flex-1 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="font-secondary text-sm font-semibold text-blush/90">
-            Pair before &amp; after
-          </p>
-          <p className="text-xs text-ink/50">
-            {completePairs.length} pair{completePairs.length === 1 ? "" : "s"} →{" "}
-            {postCount} image{postCount === 1 ? "" : "s"} (2 pairs per 2×2)
-          </p>
-        </div>
+        <p className="font-secondary text-sm font-semibold text-blush/90">
+          Pair before &amp; after
+        </p>
 
         <div className="space-y-4">
-          {pairs.map((pair, index) => {
-            const postIndex = Math.floor(index / PAIRS_PER_POST);
-            const showPostHeading = index % PAIRS_PER_POST === 0;
-
-            return (
+          {pairs.map((pair, index) => (
               <div key={pair.id} className="space-y-2">
-                {showPostHeading && (
-                  <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                    Post {postIndex + 1} · 2×2
-                  </p>
-                )}
                 <div className="rounded-xl border border-ink/10 bg-night/40 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <p className="font-secondary text-xs font-semibold text-blush/80">
@@ -480,9 +499,36 @@ export default function StudioFolderBoard({
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    {ROLES.map(({ key: role, label }) => {
+                    {ROLES.map(({ key: role, label }, roleIndex) => {
                       const item = findItem(role, pair[role]);
                       const slotKey = `${pair.id}:${role}`;
+                      const siblingRole = ROLES[roleIndex === 0 ? 1 : 0];
+                      const siblingItem = findItem(
+                        siblingRole.key,
+                        pair[siblingRole.key],
+                      );
+                      const sibling =
+                        siblingItem && previewUrls[siblingItem.id]
+                          ? {
+                              item: siblingItem,
+                              src: previewUrls[siblingItem.id],
+                              alt: `${siblingRole.label} — ${siblingItem.file.name}`,
+                              label: siblingRole.label,
+                              side: roleIndex === 0 ? "right" : "left",
+                              onCropChange: (crop) =>
+                                updateItemCrop(
+                                  siblingRole.key,
+                                  siblingItem.id,
+                                  crop,
+                                ),
+                              onAnnotationsChange: (annotations) =>
+                                updateItemAnnotations(
+                                  siblingRole.key,
+                                  siblingItem.id,
+                                  annotations,
+                                ),
+                            }
+                          : null;
                       return (
                         <PairSlot
                           key={role}
@@ -505,14 +551,18 @@ export default function StudioFolderBoard({
                           onCropChange={(crop) =>
                             item && updateItemCrop(role, item.id, crop)
                           }
+                          onAnnotationsChange={(annotations) =>
+                            item &&
+                            updateItemAnnotations(role, item.id, annotations)
+                          }
+                          sibling={sibling}
                         />
                       );
                     })}
                   </div>
                 </div>
               </div>
-            );
-          })}
+          ))}
         </div>
 
         <button
@@ -522,6 +572,16 @@ export default function StudioFolderBoard({
         >
           + Add pair
         </button>
+
+        {filledSlots.length > 1 ? (
+          <button
+            type="button"
+            onClick={() => downloadSlotImages(filledSlots)}
+            className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-2.5 font-secondary text-sm font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+          >
+            Download all slot images ({filledSlots.length})
+          </button>
+        ) : null}
 
         {children}
       </div>

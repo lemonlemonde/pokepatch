@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
-import { StudioCroppableThumb } from "@/components/StudioCropLightbox";
+import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
+import { downloadSlotImages } from "@/lib/studioSlotImage";
+import useStableObjectUrls from "@/lib/useStableObjectUrls";
 
 export const EMPTY_SLOTS = [null, null, null, null];
 const DRAG_TYPE = "text/pokepatch-bank-id";
@@ -189,22 +191,38 @@ export default function StudioMediaBank({
   const [uploadDragging, setUploadDragging] = useState(false);
   const [bankDragging, setBankDragging] = useState(false);
   const [activeSlot, setActiveSlot] = useState(null);
-  const [internalPreviewUrls, setInternalPreviewUrls] = useState({});
+
+  // Empty list when the parent owns the URLs, so we don't mint a second set.
+  const ownedItems = useMemo(
+    () => (controlledPreviewUrls ? [] : bank),
+    [controlledPreviewUrls, bank],
+  );
+  const internalPreviewUrls = useStableObjectUrls(ownedItems);
 
   const previewUrls = controlledPreviewUrls ?? internalPreviewUrls;
   const placedIds = hideSlots ? new Set() : new Set(slots.filter(Boolean));
   const availableBank = bank.filter((item) => !placedIds.has(item.id));
 
-  useEffect(() => {
-    if (controlledPreviewUrls) return undefined;
-    const urls = Object.fromEntries(
-      bank.map((item) => [item.id, URL.createObjectURL(item.file)]),
-    );
-    setInternalPreviewUrls(urls);
-    return () => {
-      Object.values(urls).forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [bank, controlledPreviewUrls]);
+  /** Filled image slots, in slot-group order — the "Download all" payload. */
+  const filledImageSlots =
+    mediaType === "image" && !hideSlots
+      ? slotGroups.flatMap((group) =>
+          group.slots
+            .map(({ index, label: slotLabel }) => {
+              const bankId = slots[index];
+              const slotItem = bank.find((entry) => entry.id === bankId);
+              const url = bankId ? previewUrls[bankId] : null;
+              return slotItem && url
+                ? {
+                    item: slotItem,
+                    previewUrl: url,
+                    label: `${group.title}-${slotLabel}`,
+                  }
+                : null;
+            })
+            .filter(Boolean),
+        )
+      : [];
 
   function addToBank(fileList) {
     const files = config.pickFiles(fileList);
@@ -212,7 +230,12 @@ export default function StudioMediaBank({
       onError(config.unsupportedError);
       return;
     }
-    const newItems = files.map((file) => ({ id: createBankId(), file, crop: null }));
+    const newItems = files.map((file) => ({
+      id: createBankId(),
+      file,
+      crop: null,
+      annotations: null,
+    }));
     setBank((prev) => [...prev, ...newItems]);
     onError("");
   }
@@ -245,6 +268,7 @@ export default function StudioMediaBank({
       id: index === 0 ? primaryId : createBankId(),
       file,
       crop: null,
+      annotations: null,
     }));
 
     setBank((prev) => [...prev, ...newItems]);
@@ -277,6 +301,14 @@ export default function StudioMediaBank({
       prev.map((item) => (item.id === bankId ? { ...item, crop } : item)),
     );
     onError("");
+  }
+
+  function updateBankAnnotations(bankId, annotations) {
+    setBank((prev) =>
+      prev.map((item) =>
+        item.id === bankId ? { ...item, annotations } : item,
+      ),
+    );
   }
 
   function returnToBank(bankId) {
@@ -432,11 +464,31 @@ export default function StudioMediaBank({
                 ) : null}
               </div>
               <div className="grid grid-cols-2 gap-3">
-                {group.slots.map(({ index: slotIndex, label: slotLabel }) => {
+                {group.slots.map(({ index: slotIndex, label: slotLabel }, slotPosition) => {
                   const bankId = slots[slotIndex];
                   const item = bank.find((entry) => entry.id === bankId);
                   const preview = bankId ? previewUrls[bankId] : null;
                   const isActive = activeSlot === slotIndex;
+
+                  const siblingSlot = group.slots[slotPosition === 0 ? 1 : 0];
+                  const siblingBankId = slots[siblingSlot.index];
+                  const siblingItem = bank.find(
+                    (entry) => entry.id === siblingBankId,
+                  );
+                  const sibling =
+                    mediaType === "image" && siblingItem && previewUrls[siblingItem.id]
+                      ? {
+                          item: siblingItem,
+                          src: previewUrls[siblingItem.id],
+                          alt: `${group.title} ${siblingSlot.label} — ${siblingItem.file.name}`,
+                          label: `${group.title} · ${siblingSlot.label}`,
+                          side: slotPosition === 0 ? "right" : "left",
+                          onCropChange: (crop) =>
+                            updateBankCrop(siblingItem.id, crop),
+                          onAnnotationsChange: (annotations) =>
+                            updateBankAnnotations(siblingItem.id, annotations),
+                        }
+                      : null;
 
                   return (
                     <div
@@ -479,12 +531,16 @@ export default function StudioMediaBank({
                         >
                           {mediaType === "image" ? (
                             <StudioCroppableThumb
+                              item={item}
                               src={preview}
                               alt={`${group.title} ${slotLabel} — ${item.file.name}`}
                               label={`${group.title} · ${slotLabel}`}
-                              crop={item.crop}
-                              previewClassName="mx-auto max-h-36 w-full object-contain"
+                              previewClassName="rounded-lg"
                               onCropChange={(crop) => updateBankCrop(item.id, crop)}
+                              onAnnotationsChange={(annotations) =>
+                                updateBankAnnotations(item.id, annotations)
+                              }
+                              sibling={sibling}
                             />
                           ) : (
                             <StudioOpenableThumb
@@ -507,20 +563,40 @@ export default function StudioMediaBank({
                             <p className="truncate text-xs text-ink/50">
                               {item.file.name}
                             </p>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                clearSlot(slotIndex);
-                              }}
-                              className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
-                            >
-                              Remove
-                            </button>
+                            <div className="flex shrink-0 items-center gap-2">
+                              {mediaType === "image" ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    downloadSlotImages([
+                                      {
+                                        item,
+                                        previewUrl: preview,
+                                        label: `${group.title}-${slotLabel}`,
+                                      },
+                                    ]);
+                                  }}
+                                  className="text-xs font-semibold text-blush/90 hover:text-blush"
+                                >
+                                  Download
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  clearSlot(slotIndex);
+                                }}
+                                className="text-xs font-semibold text-berry/90 hover:text-berry"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </div>
                           {mediaType === "image" ? (
                             <p className="mt-1 text-[10px] text-ink/35">
-                              Click to crop
+                              Click to crop or annotate
                             </p>
                           ) : null}
                         </div>
@@ -542,6 +618,16 @@ export default function StudioMediaBank({
               className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
             >
               + Add pair
+            </button>
+          ) : null}
+
+          {filledImageSlots.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => downloadSlotImages(filledImageSlots)}
+              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-2.5 font-secondary text-sm font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+            >
+              Download all slot images ({filledImageSlots.length})
             </button>
           ) : null}
 
