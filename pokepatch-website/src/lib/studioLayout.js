@@ -1,6 +1,6 @@
 import logoSrc from "@/app/pokepatch_icon.png";
 
-/** Square feed canvas (2×2 grid, video, 1×2 default). */
+/** Square feed canvas (1×2 default). */
 export const INSTAGRAM_WIDTH = 1080;
 export const INSTAGRAM_HEIGHT = 1080;
 /** 9:16 Reels canvas (1×2 optional). */
@@ -35,18 +35,6 @@ export const BRAND_HANDLE = "@pokepatch.cards";
 export const LABEL_BLOCK_HEIGHT = LABEL_GAP + LABEL_FONT_SIZE;
 export const CARD_RADIUS = 8;
 
-// --- 2×2 grid formatter layout ---
-// Photos are typically 3024×4032 (3:4 portrait). Card cells are sized for that
-// aspect; GRID_*_GAP is the only space between the actual photo edges.
-export const GRID_CARD_ASPECT = 3024 / 4032; // width / height
-// Outer margin on the left/right (and contributes to the top with the brand band).
-export const GRID_EDGE_PADDING = 25;
-// Gap between the BEFORE | AFTER photo edges.
-export const GRID_COLUMN_GAP = 80;
-// Equal clear air from card edge → letter tops and letter bottoms → next cards.
-export const GRID_LABEL_GAP = 18;
-// Extra space at the bottom of the canvas only (on top of GRID_EDGE_PADDING).
-export const GRID_BOTTOM_PADDING = 10;
 // Restoration caption — slightly smaller / tighter than BEFORE/AFTER labels.
 export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
@@ -89,13 +77,6 @@ const REEL_TYPE_SCALE = 1.5;
 const BRANDING_MAX_FRAME = 72;
 const BRANDING_INNER_PAD = 14;
 const BRANDING_FONT_SIZE = 24;
-// Reserved top space so branding / card-info badges don't sit on the cards.
-export const GRID_TOP_BRAND_BAND =
-  CARD_INFO_EDGE_PADDING +
-  CARD_INFO_THUMB_SIZE +
-  2 * CARD_INFO_INNER_PAD_Y +
-  CARD_INFO_CLEARANCE -
-  GRID_EDGE_PADDING;
 
 function isTallCanvas(height) {
   return height > INSTAGRAM_HEIGHT;
@@ -188,43 +169,6 @@ function chipEdgePadding(ctx, basePadding) {
   return (
     basePadding + (isTallCanvas(ctx.canvas.height) ? REEL_CHIP_EDGE_NUDGE : 0)
   );
-}
-
-/** Ink bounds for BEFORE/AFTER (caps sit high in the em box; don't use font size). */
-function measureGridLabelInk(ctx) {
-  ctx.save();
-  ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
-  ctx.textBaseline = "alphabetic";
-  const before = ctx.measureText("BEFORE");
-  const after = ctx.measureText("AFTER");
-  ctx.restore();
-  const ascent = Math.max(
-    before.actualBoundingBoxAscent || LABEL_FONT_SIZE * 0.75,
-    after.actualBoundingBoxAscent || LABEL_FONT_SIZE * 0.75,
-  );
-  const descent = Math.max(
-    before.actualBoundingBoxDescent || LABEL_FONT_SIZE * 0.1,
-    after.actualBoundingBoxDescent || LABEL_FONT_SIZE * 0.1,
-  );
-  return { ascent, descent, height: ascent + descent };
-}
-
-/** Max 3:4 card size that fits the grid with the current gaps. */
-function getGridCardMaxSize(rowCount, cardsRegionHeight) {
-  const availableW = INSTAGRAM_WIDTH - 2 * GRID_EDGE_PADDING;
-  const maxH = Math.max(1, cardsRegionHeight / Math.max(rowCount, 1));
-  const maxW = Math.max(1, (availableW - GRID_COLUMN_GAP) / 2);
-
-  let cardW = maxW;
-  let cardH = cardW / GRID_CARD_ASPECT;
-  if (cardH > maxH) {
-    cardH = maxH;
-    cardW = cardH * GRID_CARD_ASPECT;
-  }
-  return {
-    cardW: Math.max(1, Math.floor(cardW)),
-    cardH: Math.max(1, Math.floor(cardH)),
-  };
 }
 
 let labelFontReady;
@@ -1011,123 +955,4 @@ export function drawPairedSidesFrame(
       ? reelCardInfoLayoutBelowContent(imageTop + blockHeight)
       : null;
   drawOverlays(ctx, logoImg, overlay, cardInfoLayout);
-}
-
-/**
- * Draw a 2×2 before/after grid. Each row is one before/after pair (before in
- * the left column, after in the right); up to 2 rows are supported. BEFORE /
- * AFTER labels sit in the middle band between the two rows (or under a single
- * row), with equal clear padding from card edges to the letter ink bounds.
- *
- * Cells are sized for 3024×4032 (3:4). Each card frame matches its image
- * (no shared square pad). Gaps are between the actual photo edges.
- *
- * Spacing knobs (grid-only — see GRID_* constants above):
- *   GRID_EDGE_PADDING     — left/right (and base) outer margin
- *   GRID_COLUMN_GAP       — space between BEFORE | AFTER photo edges
- *   GRID_LABEL_GAP        — equal space above & below BEFORE / AFTER text
- *   GRID_BOTTOM_PADDING   — extra bottom-only margin
- */
-export function drawGridFrame(ctx, rows, logoImg, overlay = null) {
-  enableHighQuality(ctx);
-  fillBackground(ctx);
-
-  const rowCount = rows.length;
-  const captionStack = overlay?.caption ? captionStackBelowChip() : null;
-  // With caption: equal chip → caption → images gaps. Without: brand clearance only.
-  const contentTop = captionStack
-    ? captionStack.imagesTop
-    : GRID_EDGE_PADDING + GRID_TOP_BRAND_BAND;
-  const contentBottom =
-    INSTAGRAM_HEIGHT - GRID_EDGE_PADDING - GRID_BOTTOM_PADDING;
-  const rowsRegionHeight = contentBottom - contentTop;
-  const labelInk = measureGridLabelInk(ctx);
-  const midBand = 2 * GRID_LABEL_GAP + labelInk.height;
-  const cardsRegionHeight = Math.max(1, rowsRegionHeight - midBand);
-  const { cardW: maxCardW, cardH: maxCardH } = getGridCardMaxSize(
-    rowCount,
-    cardsRegionHeight,
-  );
-  const centerX = INSTAGRAM_WIDTH / 2;
-  const beforeLabelX =
-    centerX - Math.floor(GRID_COLUMN_GAP / 2) - maxCardW / 2;
-  const afterLabelX = centerX + Math.ceil(GRID_COLUMN_GAP / 2) + maxCardW / 2;
-
-  const rowData = rows.map((row) => {
-    // Contain-fit into the 3:4 cell. Exact 3024×4032 photos fill it with no pad.
-    const leftMetrics = getContainMetrics(row.before, maxCardW, maxCardH);
-    const rightMetrics = getContainMetrics(row.after, maxCardW, maxCardH);
-    return {
-      leftMetrics,
-      rightMetrics,
-      leftResized: prepareResized(row.before, leftMetrics),
-      rightResized: prepareResized(row.after, rightMetrics),
-      leftW: leftMetrics.sw,
-      leftH: leftMetrics.sh,
-      rightW: rightMetrics.sw,
-      rightH: rightMetrics.sh,
-      rowH: Math.max(leftMetrics.sh, rightMetrics.sh),
-    };
-  });
-
-  const cardsHeight = rowData.reduce((sum, row) => sum + row.rowH, 0);
-  const blockHeight = cardsHeight + midBand;
-  // With caption, pin the card block under the equal gap; otherwise center.
-  let cursorY = captionStack
-    ? contentTop
-    : contentTop + Math.floor((rowsRegionHeight - blockHeight) / 2);
-
-  function drawRow(row, rowTop) {
-    const leftDrawX = centerX - Math.floor(GRID_COLUMN_GAP / 2) - row.leftW;
-    const rightDrawX = centerX + Math.ceil(GRID_COLUMN_GAP / 2);
-    const leftDrawY = rowTop + Math.floor((row.rowH - row.leftH) / 2);
-    const rightDrawY = rowTop + Math.floor((row.rowH - row.rightH) / 2);
-
-    drawCard(
-      ctx,
-      row.leftResized,
-      row.leftMetrics,
-      leftDrawX,
-      leftDrawY,
-      row.leftW,
-      row.leftH,
-    );
-    drawCard(
-      ctx,
-      row.rightResized,
-      row.rightMetrics,
-      rightDrawX,
-      rightDrawY,
-      row.rightW,
-      row.rightH,
-    );
-  }
-
-  if (captionStack) {
-    drawRestorationCaption(
-      ctx,
-      overlay.caption,
-      captionStack.captionCenterY,
-    );
-  }
-
-  // First row (or the only row).
-  drawRow(rowData[0], cursorY);
-  cursorY += rowData[0].rowH;
-
-  // BEFORE / AFTER: GRID_LABEL_GAP clear air above ink top and below ink bottom.
-  ctx.font = `500 ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
-  ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = LABEL_COLOR;
-  const labelY = cursorY + GRID_LABEL_GAP + labelInk.ascent;
-  drawTrackedText(ctx, "BEFORE", beforeLabelX, labelY, LABEL_TRACKING);
-  drawTrackedText(ctx, "AFTER", afterLabelX, labelY, LABEL_TRACKING);
-  cursorY += midBand;
-
-  // Second row, when present.
-  if (rowCount > 1) {
-    drawRow(rowData[1], cursorY);
-  }
-
-  drawOverlays(ctx, logoImg, overlay);
 }

@@ -10,13 +10,6 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
-import StudioMediaBank, {
-  BEFORE_AFTER_PAIR_SLOT_GROUPS,
-  beforeAfterPairSlotGroups,
-  EMPTY_SLOTS,
-  emptySlotsForPairRows,
-  FRONT_BACK_PAIR_SLOT_GROUPS,
-} from "@/components/StudioMediaBank";
 import StudioFolderBoard, {
   createPair,
   SideBank,
@@ -41,11 +34,6 @@ import {
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
 } from "@/lib/instagramStitch";
-import { stitchGridPosts } from "@/lib/instagramGridStitch";
-import {
-  extensionForMimeType,
-  stitchBothVideos,
-} from "@/lib/instagramVideoStitch";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -327,7 +315,6 @@ const PHOTO_GROUP_MODES = [
     label: "Front-Back Pair",
     subtitle:
       "Front & back side-by-side. Fill Before for one post; After is optional for a second.",
-    slotGroups: FRONT_BACK_PAIR_SLOT_GROUPS,
     dynamicPairRows: false,
   },
 ];
@@ -345,41 +332,15 @@ const PHOTO_OUTPUT_FORMATS = [
   },
 ];
 
-const COMPARISON_SUBTITLE =
-  "Before & after fronts side-by-side, then backs. Black background, white labels. 1080×1080.";
-const GRID_SUBTITLE =
-  "Load the before & after banks on each side, drag a pair into each slot, then export 2×2 grid posts (2 pairs each). Same black background, white labels, and branding. 1080×1080.";
-
 const STUDIO_BASE = "/admin/studio/";
 
 const STUDIO_OPTIONS = [
-  {
-    id: "annotate",
-    slug: "annotate",
-    title: "Annotate photos",
-    description:
-      "Upload regular photos and draw circles or rectangles on them. No grid, labels, or branding — just annotations.",
-  },
   {
     id: "photo",
     slug: "front-back",
     title: "1×2 formatter",
     description:
       "Before-After or Front-Back pair posts. Square (1:1) or Reels (9:16). Before-After supports as many pair rows as you need.",
-  },
-  {
-    id: "grid",
-    slug: "grid",
-    title: "2×2 grid formatter",
-    description:
-      "Upload a before folder and an after folder, pair them yourself, and export one or more 2×2 grid posts.",
-  },
-  {
-    id: "video",
-    slug: "video",
-    title: "Video formatter",
-    description:
-      "Side-by-side before & after videos for front and back. Same layout, labels, and branding as photos.",
   },
 ];
 
@@ -592,172 +553,6 @@ function OutputGrid({
   );
 }
 
-function MediaFormatter({
-  mediaType,
-  title,
-  subtitle,
-  emptySlotMessage,
-  generateLabel,
-  busyLabel,
-  onBack,
-  onGenerate,
-  renderPreview,
-  annotated = false,
-  controls = null,
-  afterBank = null,
-  resetKey = null,
-  slotGroups = BEFORE_AFTER_PAIR_SLOT_GROUPS,
-  dynamicPairRows = false,
-  validateFiles = null,
-  validateExtra = null,
-}) {
-  const [bank, setBank] = useState([]);
-  const [slots, setSlots] = useState(() =>
-    dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS,
-  );
-  const [outputs, setOutputs] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const previewUrls = useStableObjectUrls(bank);
-
-  const resolvedSlotGroups = dynamicPairRows
-    ? beforeAfterPairSlotGroups(Math.max(1, Math.floor(slots.length / 2)))
-    : slotGroups;
-
-  useEffect(() => {
-    return () => {
-      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
-    };
-  }, [outputs]);
-
-  useEffect(() => {
-    if (resetKey == null) return;
-    setOutputs((prev) => {
-      prev?.forEach(({ url }) => URL.revokeObjectURL(url));
-      return null;
-    });
-    setError("");
-  }, [resetKey]);
-
-  // Resize the slot array when switching between fixed 4-slot and dynamic pair rows.
-  useEffect(() => {
-    setSlots(dynamicPairRows ? emptySlotsForPairRows(1) : EMPTY_SLOTS);
-  }, [dynamicPairRows]);
-
-  async function getSlotFiles() {
-    return Promise.all(
-      slots.map(async (id) => {
-        const item = bank.find((entry) => entry.id === id);
-        if (!item || mediaType !== "image") return item?.file ?? null;
-        return resolveStudioImageFile(item, previewUrls[item.id]);
-      }),
-    );
-  }
-
-  function addPairRow() {
-    setSlots((prev) => [...prev, null, null]);
-    setError("");
-  }
-
-  function removePairRow(groupIndex) {
-    setSlots((prev) => {
-      if (prev.length <= 2) return prev;
-      const next = prev.filter(
-        (_, index) =>
-          index !== groupIndex * 2 && index !== groupIndex * 2 + 1,
-      );
-      return next.length >= 2 ? next : emptySlotsForPairRows(1);
-    });
-    setError("");
-  }
-
-  async function handleGenerate(event) {
-    event.preventDefault();
-    setError("");
-
-    const files = await getSlotFiles();
-    if (validateFiles) {
-      const validationError = validateFiles(files);
-      if (validationError) {
-        setError(validationError);
-        return;
-      }
-    } else if (files.some((file) => !file)) {
-      setError(emptySlotMessage);
-      return;
-    }
-
-    if (validateExtra) {
-      const extraError = validateExtra();
-      if (extraError) {
-        setError(extraError);
-        return;
-      }
-    }
-
-    setBusy(true);
-    try {
-      const next = await onGenerate(files);
-      setOutputs((prev) => {
-        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
-        return next;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-3xl animate-fade-up">
-      <BackButton onClick={onBack} />
-      <SectionHeading subtitle={subtitle}>{title}</SectionHeading>
-
-      <form onSubmit={handleGenerate} className="space-y-6">
-        {controls}
-
-        <StudioMediaBank
-          mediaType={mediaType}
-          bank={bank}
-          setBank={setBank}
-          slots={slots}
-          setSlots={setSlots}
-          onError={setError}
-          slotGroups={resolvedSlotGroups}
-          onAddPairRow={dynamicPairRows ? addPairRow : null}
-          onRemovePairRow={dynamicPairRows ? removePairRow : null}
-          previewUrls={previewUrls}
-        >
-          {afterBank}
-        </StudioMediaBank>
-
-        {error && (
-          <p className="text-center text-sm text-berry" role="alert">
-            {error}
-          </p>
-        )}
-
-        <button
-          type="submit"
-          disabled={busy}
-          className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {busy ? busyLabel : generateLabel}
-        </button>
-      </form>
-
-      {outputs && (
-        <OutputGrid
-          outputs={outputs}
-          renderPreview={renderPreview}
-          annotated={annotated}
-        />
-      )}
-    </div>
-  );
-}
-
 async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
@@ -846,25 +641,6 @@ async function resolveStudioItemsToFiles(items, previewUrls) {
         : null,
     ),
   );
-}
-
-async function generateVideoOutputs(files) {
-  const { front, back } = await stitchBothVideos(files);
-  const pairs = [
-    { key: "front", label: "Front", result: front },
-    { key: "back", label: "Back", result: back },
-  ];
-
-  return pairs.map(({ key, label, result }) => {
-    const ext = extensionForMimeType(result.mimeType);
-    return {
-      key,
-      label,
-      sizeHint: "1080×1080",
-      url: URL.createObjectURL(result.blob),
-      filename: `pokepatch-${key}.${ext}`,
-    };
-  });
 }
 
 function GroupModeToggle({ value, onChange }) {
@@ -1689,12 +1465,6 @@ function PhotoFormatter({ onBack }) {
   const [groupBy, setGroupBy] = useState("before-after-pair");
   const [outputFormat, setOutputFormat] = useState("square");
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
-  const activeMode =
-    PHOTO_GROUP_MODES.find((mode) => mode.id === groupBy) ??
-    PHOTO_GROUP_MODES[0];
-  const activeFormat =
-    PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
-    PHOTO_OUTPUT_FORMATS[0];
 
   // Card info (name/set/caption/front image) is shared across both 1×2
   // submodes and owned here; each submode persists its own photos/pairs
@@ -1749,368 +1519,7 @@ function PhotoFormatter({ onBack }) {
     );
   }
 
-  return (
-    <MediaFormatter
-      mediaType="image"
-      title="1×2 formatter"
-      subtitle={`${activeMode.subtitle} Output: ${activeFormat.sizeHint}.`}
-      emptySlotMessage="Fill at least one complete pair."
-      generateLabel="Generate images"
-      busyLabel="Generating…"
-      onBack={onBack}
-      onGenerate={(files) =>
-        generatePhotoOutputs(
-          files,
-          groupBy,
-          cardMetaToOverlayOptions(cardMeta),
-          outputFormat,
-        )
-      }
-      validateFiles={(files) => validatePhotoPairFiles(files, groupBy)}
-      validateExtra={() => validateCardMeta(cardMeta)}
-      annotated
-      resetKey={`${groupBy}:${outputFormat}`}
-      slotGroups={activeMode.slotGroups}
-      dynamicPairRows={Boolean(activeMode.dynamicPairRows)}
-      controls={
-        <div className="space-y-3">
-          <GroupModeToggle value={groupBy} onChange={setGroupBy} />
-          <OutputFormatToggle value={outputFormat} onChange={setOutputFormat} />
-        </div>
-      }
-      afterBank={
-        <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
-      }
-    />
-  );
-}
-
-function VideoFormatter({ onBack }) {
-  return (
-    <MediaFormatter
-      mediaType="video"
-      title="Video formatter"
-      subtitle={COMPARISON_SUBTITLE}
-      emptySlotMessage="Drag a video into each of the 4 slots."
-      generateLabel="Generate videos"
-      busyLabel="Generating…"
-      onBack={onBack}
-      onGenerate={generateVideoOutputs}
-      renderPreview={({ url }) => (
-        <video
-          src={url}
-          controls
-          playsInline
-          className="mx-auto max-w-full rounded-xl border border-ink/15 shadow-cozy-sm"
-        />
-      )}
-    />
-  );
-}
-
-const GRID_DRAFT_KEY = "grid";
-
-function GridFormatter({ onBack }) {
-  const [beforeItems, setBeforeItems] = useState([]);
-  const [afterItems, setAfterItems] = useState([]);
-  const [pairs, setPairs] = useState(() => [createPair(), createPair()]);
-  const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
-  const [outputs, setOutputs] = useState(null);
-  const [outputSources, setOutputSources] = useState([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  const allItems = useMemo(
-    () => [...beforeItems, ...afterItems],
-    [beforeItems, afterItems],
-  );
-  const previewUrls = useStableObjectUrls(allItems);
-
-  const hasContent =
-    beforeItems.length > 0 ||
-    afterItems.length > 0 ||
-    hasCardMetaContent(cardMeta);
-  const { requestLeave, dialog } = useUnsavedChangesGuard(hasContent);
-
-  const draftPayload = useMemo(
-    () => ({ beforeItems, afterItems, pairs, cardMeta }),
-    [beforeItems, afterItems, pairs, cardMeta],
-  );
-  const restored = useStudioDraft(GRID_DRAFT_KEY, draftPayload, hasContent);
-  useEffect(() => {
-    if (!restored) return;
-    setBeforeItems(restored.beforeItems ?? []);
-    setAfterItems(restored.afterItems ?? []);
-    setPairs(
-      restored.pairs?.length ? restored.pairs : [createPair(), createPair()],
-    );
-    if (restored.cardMeta) {
-      const frontFile = restored.cardMeta.frontFile ?? null;
-      setCardMeta({
-        ...restored.cardMeta,
-        frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
-      });
-    }
-  }, [restored]);
-
-  function clearAll() {
-    if (!window.confirm("Clear all photos and card info loaded here?")) {
-      return;
-    }
-    setBeforeItems([]);
-    setAfterItems([]);
-    setPairs([createPair(), createPair()]);
-    setCardMeta(createEmptyCardMeta());
-    deleteDraft(GRID_DRAFT_KEY);
-  }
-
-  useEffect(() => {
-    return () => {
-      outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
-    };
-  }, [outputs]);
-
-  async function handleGenerate(event) {
-    event.preventDefault();
-    setError("");
-
-    const partial = pairs.some(
-      (pair) => Boolean(pair.before) !== Boolean(pair.after),
-    );
-    if (partial) {
-      setError("Each pair needs both a before and an after (or remove it).");
-      return;
-    }
-
-    const selectedItems = pairs
-      .filter((pair) => pair.before && pair.after)
-      .map((pair) => ({
-        before: beforeItems.find((item) => item.id === pair.before) ?? null,
-        after: afterItems.find((item) => item.id === pair.after) ?? null,
-      }))
-      .filter((pair) => pair.before && pair.after);
-    const files = await Promise.all(
-      selectedItems.map(async (pair) => ({
-        before: await resolveStudioImageFile(pair.before, previewUrls[pair.before.id]),
-        after: await resolveStudioImageFile(pair.after, previewUrls[pair.after.id]),
-      })),
-    );
-
-    if (files.length === 0) {
-      setError("Pair at least one before image with an after image.");
-      return;
-    }
-
-    const metaError = validateCardMeta(cardMeta);
-    if (metaError) {
-      setError(metaError);
-      return;
-    }
-
-    // Matches instagramGridStitch.js's own PAIRS_PER_POST=2 batching: post k
-    // is built from selectedItems[2k] and selectedItems[2k+1].
-    const pairsPerPost = 2;
-    const nextSources = [];
-    for (
-      let postIndex = 0;
-      postIndex * pairsPerPost < selectedItems.length;
-      postIndex += 1
-    ) {
-      const group = selectedItems.slice(
-        postIndex * pairsPerPost,
-        postIndex * pairsPerPost + pairsPerPost,
-      );
-      nextSources.push(
-        group.flatMap((pair, groupIndex) => {
-          const pairNumber = postIndex * pairsPerPost + groupIndex + 1;
-          return [
-            {
-              item: pair.before,
-              previewUrl: previewUrls[pair.before.id],
-              label: `Pair ${pairNumber} · Before`,
-            },
-            {
-              item: pair.after,
-              previewUrl: previewUrls[pair.after.id],
-              label: `Pair ${pairNumber} · After`,
-            },
-          ];
-        }),
-      );
-    }
-
-    setBusy(true);
-    try {
-      const canvases = await stitchGridPosts(
-        files,
-        cardMetaToOverlayOptions(cardMeta),
-      );
-      const next = await Promise.all(
-        canvases.map(async (canvas, index) => {
-          const blob = await canvasToBlob(canvas);
-          return {
-            key: `post-${index + 1}`,
-            label: `Post ${index + 1}`,
-            sizeHint: "1080×1080",
-            url: URL.createObjectURL(blob),
-            filename: `pokepatch-grid-${index + 1}.png`,
-          };
-        }),
-      );
-      setOutputs((prev) => {
-        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
-        return next;
-      });
-      setOutputSources(nextSources);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-6xl animate-fade-up">
-      <div className="mx-auto max-w-3xl">
-        <div className="flex flex-wrap items-center gap-3">
-          <BackButton
-            onClick={async () => {
-              if (await requestLeave()) onBack();
-            }}
-          />
-          {hasContent ? <ClearAllButton onClick={clearAll} /> : null}
-        </div>
-        <SectionHeading subtitle={GRID_SUBTITLE}>
-          2×2 grid formatter
-        </SectionHeading>
-      </div>
-
-      <form onSubmit={handleGenerate} className="space-y-6">
-        <StudioFolderBoard
-          beforeItems={beforeItems}
-          afterItems={afterItems}
-          setBeforeItems={setBeforeItems}
-          setAfterItems={setAfterItems}
-          pairs={pairs}
-          setPairs={setPairs}
-          onError={setError}
-        >
-          <StudioCardMetaControls value={cardMeta} onChange={setCardMeta} />
-
-          {error && (
-            <p className="text-center text-sm text-berry" role="alert">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy ? "Generating…" : "Generate grid posts"}
-          </button>
-        </StudioFolderBoard>
-      </form>
-
-      {outputs && (
-        <div className="mx-auto max-w-3xl">
-          <OutputGrid outputs={outputs} outputSources={outputSources} annotated />
-        </div>
-      )}
-      {dialog}
-    </div>
-  );
-}
-
-function annotatedFilename(name) {
-  const base = name.replace(/\.[^.]+$/, "") || "photo";
-  return `${base}-annotated.png`;
-}
-
-const ANNOTATE_DRAFT_KEY = "annotate";
-
-function AnnotateFormatter({ onBack }) {
-  const [bank, setBank] = useState([]);
-  const [error, setError] = useState("");
-  // Stable per-item URLs: annotations reset when `url` changes, so they must
-  // not churn when another photo is added or an item is edited.
-  const previewUrls = useStableObjectUrls(bank);
-
-  const hasContent = bank.length > 0;
-  const { requestLeave, dialog } = useUnsavedChangesGuard(hasContent);
-
-  const draftPayload = useMemo(() => ({ bank }), [bank]);
-  const restored = useStudioDraft(ANNOTATE_DRAFT_KEY, draftPayload, hasContent);
-  useEffect(() => {
-    if (!restored) return;
-    setBank(restored.bank ?? []);
-  }, [restored]);
-
-  function clearAll() {
-    if (!window.confirm("Clear all photos and annotations loaded here?")) {
-      return;
-    }
-    setBank([]);
-    deleteDraft(ANNOTATE_DRAFT_KEY);
-  }
-
-  const outputs = bank
-    .map((item) => {
-      const url = previewUrls[item.id];
-      if (!url) return null;
-      return {
-        key: item.id,
-        label: item.file.name,
-        url,
-        filename: annotatedFilename(item.file.name),
-      };
-    })
-    .filter(Boolean);
-
-  return (
-    <div className="mx-auto max-w-3xl animate-fade-up">
-      <div className="flex flex-wrap items-center gap-3">
-        <BackButton
-          onClick={async () => {
-            if (await requestLeave()) onBack();
-          }}
-        />
-        {hasContent ? <ClearAllButton onClick={clearAll} /> : null}
-      </div>
-      <SectionHeading subtitle="Upload any photos and mark them with circles or rectangles. Original size is kept — no grid, labels, or branding.">
-        Annotate photos
-      </SectionHeading>
-
-      <div className="space-y-6">
-        <StudioMediaBank
-          mediaType="image"
-          bank={bank}
-          setBank={setBank}
-          onError={setError}
-          hideSlots
-          previewUrls={previewUrls}
-          inputId="annotate-images"
-          bankLabel="Photo bank"
-        />
-
-        {error ? (
-          <p className="text-center text-sm text-berry" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {outputs.length > 0 ? (
-          <OutputGrid outputs={outputs} annotated />
-        ) : (
-          <p className="text-center text-sm text-ink/50">
-            Upload one or more photos to start annotating.
-          </p>
-        )}
-      </div>
-      {dialog}
-    </div>
-  );
+  return null;
 }
 
 export default function StudioTool() {
@@ -2119,20 +1528,8 @@ export default function StudioTool() {
   const mode = modeFromPathname(pathname);
   const goBack = () => router.push(STUDIO_BASE);
 
-  if (mode === "annotate") {
-    return <AnnotateFormatter onBack={goBack} />;
-  }
-
   if (mode === "photo") {
     return <PhotoFormatter onBack={goBack} />;
-  }
-
-  if (mode === "grid") {
-    return <GridFormatter onBack={goBack} />;
-  }
-
-  if (mode === "video") {
-    return <VideoFormatter onBack={goBack} />;
   }
 
   return <StudioSelector onSelect={(id) => router.push(studioRoute(id))} />;
