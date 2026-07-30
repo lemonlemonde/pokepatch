@@ -392,6 +392,8 @@ function orderToDraft(order) {
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
   return {
+    first_name: order.first_name ?? "",
+    last_name: order.last_name ?? "",
     customer_name: order.customer_name ?? "",
     customer_email: order.customer_email ?? "",
     has_account: Boolean(order.has_account),
@@ -419,7 +421,6 @@ function draftPayload(draft) {
   const status = normalizeOrderStatus(draft.status);
   return {
     order: {
-      customer_name: draft.customer_name.trim(),
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
       photos_drive_url: draft.photos_drive_url.trim(),
@@ -477,9 +478,6 @@ function draftPayload(draft) {
 }
 
 function validateDraftForSave(draft) {
-  if (!draft.customer_name.trim()) {
-    return "Customer name is required.";
-  }
   const driveError = validateDriveUrl(draft.photos_drive_url);
   if (driveError) {
     return driveError;
@@ -2992,16 +2990,18 @@ function OrderEditor({
 
       <EditorSection title="Customer">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <EditorLabel>Customer name</EditorLabel>
-            <input
-              className={editorFieldClass()}
-              value={draft.customer_name}
-              onChange={(event) =>
-                updateDraft({ customer_name: event.target.value })
-              }
-            />
-          </label>
+          <div>
+            <EditorLabel>First name</EditorLabel>
+            <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
+              {draft.first_name || "—"}
+            </p>
+          </div>
+          <div>
+            <EditorLabel>Last name</EditorLabel>
+            <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
+              {draft.last_name || "—"}
+            </p>
+          </div>
           {draft.customer_email ? (
             <div>
               <EditorLabel>Email</EditorLabel>
