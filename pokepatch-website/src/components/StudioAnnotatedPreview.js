@@ -6,147 +6,22 @@ import MediaLightbox, {
 } from "@/components/MediaLightbox";
 import { canvasToBlob } from "@/lib/instagramStitch";
 import { INSTAGRAM_HEIGHT, INSTAGRAM_WIDTH } from "@/lib/studioLayout";
-
-const SHAPE_STROKE = "#f87171";
-const SHAPE_STROKE_WIDTH = 3;
-const DEFAULT_SIZE = 0.22;
-const MIN_SIZE = 0.04;
-const HANDLE_SIZE = 8;
-const ROTATE_HANDLE_OFFSET = 0.05;
-const ROTATE_SNAP_DEG = 15;
-
-function createId() {
-  return `shape-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function shapeCenter(shape) {
-  return {
-    cx: shape.x + shape.w / 2,
-    cy: shape.y + shape.h / 2,
-  };
-}
-
-function shapeRotation(shape) {
-  return shape.rotation || 0;
-}
-
-/**
- * Rotate a normalized (0–1) point around a center in *visual* space.
- * `aspect` is displayWidth/displayHeight — required because unit X ≠ unit Y
- * on non-square images (SVG viewBox 0–1 is anisotropic).
- */
-function rotateNormalized(x, y, cx, cy, degrees, aspect = 1) {
-  const a = aspect > 0 ? aspect : 1;
-  const rad = (degrees * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const dx = (x - cx) * a;
-  const dy = y - cy;
-  return {
-    x: cx + (dx * cos - dy * sin) / a,
-    y: cy + dx * sin + dy * cos,
-  };
-}
-
-/** Visual angle from center to point (matches on-screen geometry). */
-function visualAtan2(nx, ny, cx, cy, aspect = 1) {
-  const a = aspect > 0 ? aspect : 1;
-  return Math.atan2(ny - cy, (nx - cx) * a);
-}
-
-/** Map a world point into the shape's unrotated local frame. */
-function toLocalPoint(shape, nx, ny, aspect = 1) {
-  const { cx, cy } = shapeCenter(shape);
-  return rotateNormalized(nx, ny, cx, cy, -shapeRotation(shape), aspect);
-}
-
-function createShape(type, index = 0) {
-  const offset = (index % 5) * 0.04;
-  return {
-    id: createId(),
-    type,
-    x: clamp(0.39 + offset, 0, 1 - DEFAULT_SIZE),
-    y: clamp(0.39 + offset, 0, 1 - DEFAULT_SIZE),
-    w: DEFAULT_SIZE,
-    h: DEFAULT_SIZE,
-    rotation: 0,
-  };
-}
-
-function finalizeShapeSize(shape) {
-  let { x, y, w, h } = shape;
-  if (w < 0) {
-    x += w;
-    w = -w;
-  }
-  if (h < 0) {
-    y += h;
-    h = -h;
-  }
-  w = Math.max(MIN_SIZE, w);
-  h = Math.max(MIN_SIZE, h);
-  return { ...shape, x, y, w, h, rotation: shapeRotation(shape) };
-}
-
-function clampShapePosition(shape) {
-  return {
-    ...shape,
-    x: clamp(shape.x, 0, 1 - shape.w),
-    y: clamp(shape.y, 0, 1 - shape.h),
-  };
-}
-
-function normalizeShape(shape) {
-  return clampShapePosition(finalizeShapeSize(shape));
-}
-
-function hitTest(shape, nx, ny, aspect = 1) {
-  const local = toLocalPoint(shape, nx, ny, aspect);
-  const { x, y, w, h, type } = shape;
-  if (type === "circle") {
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const rx = w / 2;
-    const ry = h / 2;
-    if (rx <= 0 || ry <= 0) return false;
-    const dx = (local.x - cx) / rx;
-    const dy = (local.y - cy) / ry;
-    return dx * dx + dy * dy <= 1;
-  }
-  return (
-    local.x >= x && local.x <= x + w && local.y >= y && local.y <= y + h
-  );
-}
-
-function drawShapesOnCanvas(ctx, shapes, width, height) {
-  for (const shape of shapes) {
-    const x = shape.x * width;
-    const y = shape.y * height;
-    const w = shape.w * width;
-    const h = shape.h * height;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const rotationRad = (shapeRotation(shape) * Math.PI) / 180;
-
-    ctx.save();
-    ctx.lineWidth = Math.max(2, (SHAPE_STROKE_WIDTH * width) / 480);
-    ctx.strokeStyle = SHAPE_STROKE;
-    ctx.translate(cx, cy);
-    ctx.rotate(rotationRad);
-    ctx.beginPath();
-    if (shape.type === "circle") {
-      ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
-    } else {
-      ctx.rect(-w / 2, -h / 2, w, h);
-    }
-    ctx.stroke();
-    ctx.restore();
-  }
-}
+import { downloadBlob } from "@/lib/downloadFile";
+import useShapeDrag from "@/lib/useShapeDrag";
+import {
+  SHAPE_STROKE,
+  SHAPE_STROKE_WIDTH,
+  STROKE_REFERENCE_WIDTH,
+  HANDLE_SIZE,
+  HANDLES,
+  clamp,
+  shapeRotation,
+  createShape,
+  drawShapesOnCanvas,
+  handlePosition,
+  rotateHandlePosition,
+  getImageContentMetrics,
+} from "@/lib/shapeAnnotations";
 
 export async function compositeImageWithShapes(imageUrl, shapes) {
   const img = await new Promise((resolve, reject) => {
@@ -167,225 +42,10 @@ export async function compositeImageWithShapes(imageUrl, shapes) {
   return canvasToBlob(canvas);
 }
 
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-const HANDLES = [
-  { id: "nw", cursor: "nwse-resize" },
-  { id: "n", cursor: "ns-resize" },
-  { id: "ne", cursor: "nesw-resize" },
-  { id: "e", cursor: "ew-resize" },
-  { id: "se", cursor: "nwse-resize" },
-  { id: "s", cursor: "ns-resize" },
-  { id: "sw", cursor: "nesw-resize" },
-  { id: "w", cursor: "ew-resize" },
-];
-
-function localHandlePosition(shape, handleId) {
-  const { x, y, w, h } = shape;
-  switch (handleId) {
-    case "nw":
-      return { x, y };
-    case "n":
-      return { x: x + w / 2, y };
-    case "ne":
-      return { x: x + w, y };
-    case "e":
-      return { x: x + w, y: y + h / 2 };
-    case "se":
-      return { x: x + w, y: y + h };
-    case "s":
-      return { x: x + w / 2, y: y + h };
-    case "sw":
-      return { x, y: y + h };
-    case "w":
-      return { x, y: y + h / 2 };
-    default:
-      return { x, y };
-  }
-}
-
-function handlePosition(shape, handleId, aspect = 1) {
-  const local = localHandlePosition(shape, handleId);
-  const { cx, cy } = shapeCenter(shape);
-  return rotateNormalized(
-    local.x,
-    local.y,
-    cx,
-    cy,
-    shapeRotation(shape),
-    aspect,
-  );
-}
-
-function rotateHandlePosition(shape, aspect = 1) {
-  const { cx, cy } = shapeCenter(shape);
-  const local = { x: cx, y: shape.y - ROTATE_HANDLE_OFFSET };
-  return rotateNormalized(
-    local.x,
-    local.y,
-    cx,
-    cy,
-    shapeRotation(shape),
-    aspect,
-  );
-}
-
-const OPPOSITE_HANDLE = {
-  nw: "se",
-  n: "s",
-  ne: "sw",
-  e: "w",
-  se: "nw",
-  s: "n",
-  sw: "ne",
-  w: "e",
-};
-
-function resizeFromHandle(shape, handleId, nx, ny, constrainSquare = false) {
-  let { x, y, w, h } = shape;
-  const right = x + w;
-  const bottom = y + h;
-
-  switch (handleId) {
-    case "nw":
-      x = nx;
-      y = ny;
-      w = right - nx;
-      h = bottom - ny;
-      break;
-    case "n":
-      y = ny;
-      h = bottom - ny;
-      break;
-    case "ne":
-      y = ny;
-      w = nx - x;
-      h = bottom - ny;
-      break;
-    case "e":
-      w = nx - x;
-      break;
-    case "se":
-      w = nx - x;
-      h = ny - y;
-      break;
-    case "s":
-      h = ny - y;
-      break;
-    case "sw":
-      x = nx;
-      w = right - nx;
-      h = ny - y;
-      break;
-    case "w":
-      x = nx;
-      w = right - nx;
-      break;
-    default:
-      break;
-  }
-
-  if (constrainSquare) {
-    const isEdgeNS = handleId === "n" || handleId === "s";
-    const isEdgeEW = handleId === "e" || handleId === "w";
-    const size = isEdgeNS
-      ? Math.abs(h)
-      : isEdgeEW
-        ? Math.abs(w)
-        : Math.max(Math.abs(w), Math.abs(h));
-    const signedW = w < 0 ? -size : size;
-    const signedH = h < 0 ? -size : size;
-
-    switch (handleId) {
-      case "nw":
-        x = right - signedW;
-        y = bottom - signedH;
-        w = signedW;
-        h = signedH;
-        break;
-      case "ne":
-        y = bottom - signedH;
-        w = signedW;
-        h = signedH;
-        break;
-      case "se":
-        w = signedW;
-        h = signedH;
-        break;
-      case "sw":
-        x = right - signedW;
-        w = signedW;
-        h = signedH;
-        break;
-      case "n":
-      case "s": {
-        const midX = x + w / 2;
-        w = size;
-        h = signedH < 0 ? -size : size;
-        x = midX - w / 2;
-        if (handleId === "n") y = bottom - h;
-        break;
-      }
-      case "e":
-      case "w": {
-        const midY = y + h / 2;
-        h = size;
-        w = signedW < 0 ? -size : size;
-        y = midY - h / 2;
-        if (handleId === "w") x = right - w;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-
-  return { ...shape, x, y, w, h };
-}
-
-/**
- * Resize in local space, then keep the opposite edge/corner fixed in world
- * space so rotation-around-center doesn't make side drags feel like sliding.
- */
-function resizeRotatedShape(
-  shape,
-  handleId,
-  worldX,
-  worldY,
-  constrainSquare,
-  aspect = 1,
-) {
-  const oppositeId = OPPOSITE_HANDLE[handleId];
-  const anchorWorld = handlePosition(shape, oppositeId, aspect);
-  const local = toLocalPoint(shape, worldX, worldY, aspect);
-
-  let next = finalizeShapeSize(
-    resizeFromHandle(shape, handleId, local.x, local.y, constrainSquare),
-  );
-
-  const nextAnchor = handlePosition(next, oppositeId, aspect);
-  next = {
-    ...next,
-    x: next.x + (anchorWorld.x - nextAnchor.x),
-    y: next.y + (anchorWorld.y - nextAnchor.y),
-  };
-
-  return clampShapePosition(next);
-}
-
-function ShapeToolbar({ selectedId, onAdd, onDelete }) {
+export function ShapeToolbar({ selectedId, onAdd, onDelete }) {
   return (
     <div
-      className="mb-3 flex flex-wrap items-center justify-center gap-2"
+      className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-2"
       role="toolbar"
       aria-label="Shape tools"
     >
@@ -415,25 +75,104 @@ function ShapeToolbar({ selectedId, onAdd, onDelete }) {
   );
 }
 
-function getImageContentMetrics(img) {
-  if (!img) return null;
-  const rect = img.getBoundingClientRect();
-  const width = img.clientWidth;
-  const height = img.clientHeight;
-  if (width <= 0 || height <= 0) return null;
-  return {
-    // Viewport rect of the content box (excludes CSS border).
-    left: rect.left + img.clientLeft,
-    top: rect.top + img.clientTop,
-    width,
-    height,
-    // Position of the content box inside the surface wrapper.
-    offsetLeft: img.offsetLeft + img.clientLeft,
-    offsetTop: img.offsetTop + img.clientTop,
-  };
+/**
+ * Renders annotation shapes into an SVG whose viewBox is the shared
+ * authoring frame, so on-screen stroke weight matches the baked output.
+ * Shape coords are normalized 0–1 against that frame.
+ */
+export function ShapesLayer({ shapes, selectedId, viewW, viewH }) {
+  return (
+    <>
+      {shapes.map((shape) => {
+        const x = shape.x * viewW;
+        const y = shape.y * viewH;
+        const w = shape.w * viewW;
+        const h = shape.h * viewH;
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        const rotation = shapeRotation(shape);
+        const strokeW =
+          SHAPE_STROKE_WIDTH + (shape.id === selectedId ? 0.5 : 0);
+        const transform = rotation
+          ? `rotate(${rotation} ${cx} ${cy})`
+          : undefined;
+        const geometry =
+          shape.type === "circle"
+            ? { cx, cy, rx: w / 2, ry: h / 2 }
+            : { x, y, width: w, height: h };
+        const ShapeTag = shape.type === "circle" ? "ellipse" : "rect";
+        return (
+          <ShapeTag
+            key={shape.id}
+            {...geometry}
+            fill="none"
+            stroke={SHAPE_STROKE}
+            strokeWidth={strokeW}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            transform={transform}
+          />
+        );
+      })}
+    </>
+  );
 }
 
-function ShapeSurface({
+/**
+ * Selection handles for the active shape: 8 resize handles plus a rotate
+ * handle on a short leader line. Positioned in percentages over the frame.
+ */
+export function ShapeHandles({
+  selected,
+  aspect,
+  rotating,
+  onPointerDownHandle,
+}) {
+  if (!selected) return null;
+  const rotatePos = rotateHandlePosition(selected, aspect);
+  return (
+    <>
+      {HANDLES.map((handle) => {
+        const pos = handlePosition(selected, handle.id, aspect);
+        return (
+          <button
+            key={handle.id}
+            type="button"
+            aria-label={`Resize ${handle.id}`}
+            className="pointer-events-auto absolute rounded-sm border-2 border-cream shadow-sm"
+            style={{
+              width: HANDLE_SIZE,
+              height: HANDLE_SIZE,
+              left: `${pos.x * 100}%`,
+              top: `${pos.y * 100}%`,
+              transform: "translate(-50%, -50%)",
+              cursor: handle.cursor,
+              backgroundColor: SHAPE_STROKE,
+            }}
+            onPointerDown={(event) => onPointerDownHandle(event, handle.id)}
+          />
+        );
+      })}
+      <button
+        type="button"
+        aria-label="Rotate"
+        className="pointer-events-auto absolute rounded-full border-2 border-cream shadow-sm"
+        style={{
+          width: HANDLE_SIZE + 2,
+          height: HANDLE_SIZE + 2,
+          left: `${rotatePos.x * 100}%`,
+          top: `${rotatePos.y * 100}%`,
+          transform: "translate(-50%, -50%)",
+          cursor: rotating ? "grabbing" : "grab",
+          backgroundColor: SHAPE_STROKE,
+        }}
+        onPointerDown={(event) => onPointerDownHandle(event, "rotate")}
+      />
+    </>
+  );
+}
+
+export function ShapeSurface({
   url,
   alt,
   shapes,
@@ -445,14 +184,12 @@ function ShapeSurface({
 }) {
   const surfaceRef = useRef(null);
   const imageRef = useRef(null);
-  const [drag, setDrag] = useState(null);
   const [contentBox, setContentBox] = useState({
     offsetLeft: 0,
     offsetTop: 0,
     width: 0,
     height: 0,
   });
-  const selected = shapes.find((shape) => shape.id === selectedId) ?? null;
   const aspect =
     contentBox.width > 0 && contentBox.height > 0
       ? contentBox.width / contentBox.height
@@ -491,120 +228,24 @@ function ShapeSurface({
     };
   }, []);
 
-  function onPointerDownSurface(event) {
-    if (!interactive || event.button !== 0) return;
-    const point = clientToNormalized(event.clientX, event.clientY);
-    if (!point) return;
+  const drag = useShapeDrag({
+    shapes,
+    selectedId: interactive ? selectedId : null,
+    aspect,
+    clientToNormalized,
+    surfaceRef,
+    onSelect,
+    onShapesChange,
+  });
 
-    for (let i = shapes.length - 1; i >= 0; i -= 1) {
-      const shape = shapes[i];
-      if (hitTest(shape, point.x, point.y, aspect)) {
-        onSelect(shape.id);
-        setDrag({
-          mode: "move",
-          id: shape.id,
-          startX: point.x,
-          startY: point.y,
-          origin: { ...shape },
-        });
-        event.currentTarget.setPointerCapture(event.pointerId);
-        return;
-      }
-    }
-
-    onSelect(null);
-  }
-
-  function onPointerDownHandle(event, handleId) {
-    event.stopPropagation();
-    if (!interactive || !selected || event.button !== 0) return;
-    const point = clientToNormalized(event.clientX, event.clientY);
-    if (!point) return;
-
-    if (handleId === "rotate") {
-      const { cx, cy } = shapeCenter(selected);
-      setDrag({
-        mode: "rotate",
-        id: selected.id,
-        origin: { ...selected },
-        startAngle: visualAtan2(point.x, point.y, cx, cy, aspect),
-      });
-    } else {
-      setDrag({
-        mode: "resize",
-        id: selected.id,
-        handleId,
-        origin: { ...selected },
-      });
-    }
-    surfaceRef.current?.setPointerCapture(event.pointerId);
-  }
-
-  function onPointerMove(event) {
-    if (!interactive || !drag) return;
-    const point = clientToNormalized(event.clientX, event.clientY);
-    if (!point) return;
-
-    onShapesChange((prev) =>
-      prev.map((shape) => {
-        if (shape.id !== drag.id) return shape;
-
-        if (drag.mode === "move") {
-          const dx = point.x - drag.startX;
-          const dy = point.y - drag.startY;
-          return normalizeShape({
-            ...drag.origin,
-            x: drag.origin.x + dx,
-            y: drag.origin.y + dy,
-          });
-        }
-
-        if (drag.mode === "rotate") {
-          const { cx, cy } = shapeCenter(drag.origin);
-          const angle = visualAtan2(point.x, point.y, cx, cy, aspect);
-          let degrees =
-            shapeRotation(drag.origin) +
-            ((angle - drag.startAngle) * 180) / Math.PI;
-          if (event.shiftKey) {
-            degrees = Math.round(degrees / ROTATE_SNAP_DEG) * ROTATE_SNAP_DEG;
-          }
-          return { ...drag.origin, rotation: degrees };
-        }
-
-        return resizeRotatedShape(
-          drag.origin,
-          drag.handleId,
-          point.x,
-          point.y,
-          event.shiftKey,
-          aspect,
-        );
-      }),
-    );
-  }
-
-  function onPointerUp(event) {
-    if (!drag) return;
-    setDrag(null);
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // already released
-    }
-  }
-
-  const rotatePos = selected
-    ? rotateHandlePosition(selected, aspect)
-    : null;
-  const topCenter = selected ? handlePosition(selected, "n", aspect) : null;
   const overlayStyle = {
     left: contentBox.offsetLeft,
     top: contentBox.offsetTop,
     width: contentBox.width,
     height: contentBox.height,
   };
-  const viewW = Math.max(1, contentBox.width);
-  const viewH = Math.max(1, contentBox.height);
+  const viewW = STROKE_REFERENCE_WIDTH;
+  const viewH = STROKE_REFERENCE_WIDTH / aspect;
 
   return (
     <div
@@ -612,10 +253,10 @@ function ShapeSurface({
       className={`relative inline-block max-w-full touch-none select-none ${
         interactive ? "" : "pointer-events-none"
       }`}
-      onPointerDown={onPointerDownSurface}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerDown={interactive ? drag.onPointerDownSurface : undefined}
+      onPointerMove={interactive ? drag.onPointerMove : undefined}
+      onPointerUp={interactive ? drag.onPointerUp : undefined}
+      onPointerCancel={interactive ? drag.onPointerUp : undefined}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -632,95 +273,22 @@ function ShapeSurface({
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        {shapes.map((shape) => {
-          const isSelected = interactive && shape.id === selectedId;
-          const x = shape.x * viewW;
-          const y = shape.y * viewH;
-          const w = shape.w * viewW;
-          const h = shape.h * viewH;
-          const cx = x + w / 2;
-          const cy = y + h / 2;
-          const rotation = shapeRotation(shape);
-          const common = {
-            fill: "none",
-            stroke: SHAPE_STROKE,
-            strokeWidth: isSelected ? 3.5 : SHAPE_STROKE_WIDTH,
-            vectorEffect: "non-scaling-stroke",
-            transform: rotation
-              ? `rotate(${rotation} ${cx} ${cy})`
-              : undefined,
-          };
-          return shape.type === "circle" ? (
-            <ellipse
-              key={shape.id}
-              cx={cx}
-              cy={cy}
-              rx={w / 2}
-              ry={h / 2}
-              {...common}
-            />
-          ) : (
-            <rect
-              key={shape.id}
-              x={x}
-              y={y}
-              width={w}
-              height={h}
-              {...common}
-            />
-          );
-        })}
-        {interactive && selected && rotatePos && topCenter ? (
-          <line
-            x1={topCenter.x * viewW}
-            y1={topCenter.y * viewH}
-            x2={rotatePos.x * viewW}
-            y2={rotatePos.y * viewH}
-            stroke={SHAPE_STROKE}
-            strokeWidth={2}
-            vectorEffect="non-scaling-stroke"
-          />
-        ) : null}
+        <ShapesLayer
+          shapes={drag.liveShapes}
+          selectedId={interactive ? selectedId : null}
+          viewW={viewW}
+          viewH={viewH}
+        />
       </svg>
 
-      {interactive && selected && contentBox.width > 0 ? (
+      {interactive && drag.selected && contentBox.width > 0 ? (
         <div className="pointer-events-none absolute" style={overlayStyle}>
-          {HANDLES.map((handle) => {
-            const pos = handlePosition(selected, handle.id, aspect);
-            return (
-              <button
-                key={handle.id}
-                type="button"
-                aria-label={`Resize ${handle.id}`}
-                className="pointer-events-auto absolute rounded-sm border-2 border-cream bg-[#f87171] shadow-sm"
-                style={{
-                  width: HANDLE_SIZE,
-                  height: HANDLE_SIZE,
-                  left: `${pos.x * 100}%`,
-                  top: `${pos.y * 100}%`,
-                  transform: "translate(-50%, -50%)",
-                  cursor: handle.cursor,
-                }}
-                onPointerDown={(event) => onPointerDownHandle(event, handle.id)}
-              />
-            );
-          })}
-          {rotatePos ? (
-            <button
-              type="button"
-              aria-label="Rotate"
-              className="pointer-events-auto absolute rounded-full border-2 border-cream bg-[#f87171] shadow-sm"
-              style={{
-                width: HANDLE_SIZE + 2,
-                height: HANDLE_SIZE + 2,
-                left: `${rotatePos.x * 100}%`,
-                top: `${rotatePos.y * 100}%`,
-                transform: "translate(-50%, -50%)",
-                cursor: drag?.mode === "rotate" ? "grabbing" : "grab",
-              }}
-              onPointerDown={(event) => onPointerDownHandle(event, "rotate")}
-            />
-          ) : null}
+          <ShapeHandles
+            selected={drag.selected}
+            aspect={aspect}
+            rotating={drag.isRotating}
+            onPointerDownHandle={drag.onPointerDownHandle}
+          />
         </div>
       ) : null}
     </div>
@@ -865,5 +433,3 @@ export default function StudioAnnotatedPreview({
     </div>
   );
 }
-
-export { downloadBlob };
