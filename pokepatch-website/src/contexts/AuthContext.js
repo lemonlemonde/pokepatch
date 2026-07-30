@@ -71,6 +71,19 @@ async function savePendingProfile(sessionUser) {
   }
 }
 
+// Backfill first/last name on the profile from the most recent order placed
+// under this email, when the profile doesn't already have a name. Covers
+// account creation outside the same browser session as the quote form (the
+// pending-profile localStorage snapshot above only covers same-session).
+async function syncProfileNameFromOrders() {
+  if (!supabase) return;
+  try {
+    await supabase.rpc("sync_profile_name_from_latest_order");
+  } catch (err) {
+    console.error("Failed to sync profile name from orders:", err);
+  }
+}
+
 // Links any unclaimed orders (matched by email) to the current account.
 async function claimOrders() {
   if (!supabase) return;
@@ -79,6 +92,13 @@ async function claimOrders() {
   } catch (err) {
     console.error("Failed to claim orders:", err);
   }
+}
+
+// Run in sequence (not raced) since both may create the profile row —
+// letting the same-session localStorage snapshot (with contacts) win first.
+async function syncProfileOnSignIn(sessionUser) {
+  await savePendingProfile(sessionUser);
+  await syncProfileNameFromOrders();
 }
 
 export function AuthProvider({ children }) {
@@ -96,7 +116,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
-      if (session?.user) savePendingProfile(session.user);
+      if (session?.user) syncProfileOnSignIn(session.user);
     });
 
     // Listen for auth changes. Claim orders on any sign-in (including the
@@ -106,7 +126,7 @@ export function AuthProvider({ children }) {
     } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
-        savePendingProfile(session.user);
+        syncProfileOnSignIn(session.user);
         if (event === "SIGNED_IN") claimOrders();
       }
     });

@@ -421,6 +421,12 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   if (cardsError) throw cardsError;
   const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
   const emailSet = authEmailSet(authUsers);
+  const emailToUserId = new Map(authUsers.map((u) => [u.email, u.id]));
+  const namesByUserId = await fetchAccountNamesForOrders(
+    supabase,
+    orders,
+    emailToUserId
+  );
 
   const countByOrder = new Map<string, number>();
   const completedCountByOrder = new Map<string, number>();
@@ -483,7 +489,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       })
       .filter((row): row is { path: string; url: string } => Boolean(row));
     return {
-      ...order,
+      ...withAccountName(order, emailToUserId, namesByUserId),
       has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
@@ -539,11 +545,14 @@ type SearchOrderRow = {
   created_at: string | null;
   customer_name: string | null;
   customer_email: string | null;
+  user_id: string | null;
   delivery_method: string | null;
   status: string | null;
   pending_kind: string | null;
   general_notes: string | null;
   completed_at: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
 };
 
 function orderCreatedMs(order: SearchOrderRow | undefined): number {
@@ -614,16 +623,29 @@ async function searchOrdersByCardText(
   const orderIds = [
     ...new Set(matchedCards.map((card) => card.order_id as string)),
   ];
-  const { data: orders, error: ordersError } = await supabase
-    .from("orders")
-    .select(
-      "id, display_id, created_at, customer_name, customer_email, delivery_method, status, pending_kind, general_notes, completed_at"
-    )
-    .in("id", orderIds);
+  const [{ data: orders, error: ordersError }, authUsers] = await Promise.all([
+    supabase
+      .from("orders")
+      .select(
+        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, general_notes, completed_at"
+      )
+      .in("id", orderIds),
+    listAllAuthUsers(supabase),
+  ]);
   if (ordersError) throw ordersError;
 
+  const emailToUserId = new Map(authUsers.map((u) => [u.email, u.id]));
+  const namesByUserId = await fetchAccountNamesForOrders(
+    supabase,
+    (orders ?? []) as SearchOrderRow[],
+    emailToUserId
+  );
+
   const orderById = new Map(
-    ((orders ?? []) as SearchOrderRow[]).map((order) => [order.id, order])
+    ((orders ?? []) as SearchOrderRow[]).map((order) => [
+      order.id,
+      withAccountName(order, emailToUserId, namesByUserId),
+    ])
   );
 
   // Newest orders first; tie-break by higher display_id, then card id.
@@ -787,6 +809,12 @@ async function fetchOrderGraph(
   // Table may not exist until migration; treat as empty quote list.
   const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
   const emailSet = authEmailSet(authUsers);
+  const emailToUserId = new Map(authUsers.map((u) => [u.email, u.id]));
+  const namesByUserId = await fetchAccountNamesForOrders(
+    supabase,
+    orders,
+    emailToUserId
+  );
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
   let images: { id: number; card_id: string; image_type: string; storage_path: string }[] = [];
@@ -834,7 +862,7 @@ async function fetchOrderGraph(
   }
 
   const enriched = orders.map((order) => ({
-    ...order,
+    ...withAccountName(order, emailToUserId, namesByUserId),
     has_account: orderHasAccount(order, emailSet),
     contacts: contactsByOrder.get(order.id as string) ?? [],
     cards: (cardsByOrder.get(order.id as string) ?? []).map((card) => ({
@@ -1155,6 +1183,83 @@ function orderHasAccount(
   if (order.user_id) return true;
   const email = normalizeEmail(order.customer_email);
   return Boolean(email && emailSet.has(email));
+}
+
+type ProfileNameRow = {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+/** The account user id backing an order, if any — linked user_id first, else email match. */
+function resolveOrderAccountUserId(
+  order: { customer_email?: unknown; user_id?: unknown },
+  emailToUserId: Map<string, string>
+): string | null {
+  if (order.user_id) return String(order.user_id);
+  const email = normalizeEmail(order.customer_email);
+  return (email && emailToUserId.get(email)) || null;
+}
+
+/** customer_profiles first/last name, keyed by user_id, for every account behind these orders. */
+async function fetchAccountNamesForOrders(
+  supabase: ReturnType<typeof getServiceClient>,
+  orders: { customer_email?: unknown; user_id?: unknown }[],
+  emailToUserId: Map<string, string>
+): Promise<Map<string, ProfileNameRow>> {
+  const userIds = new Set<string>();
+  for (const order of orders) {
+    const userId = resolveOrderAccountUserId(order, emailToUserId);
+    if (userId) userIds.add(userId);
+  }
+  if (userIds.size === 0) return new Map();
+
+  const { data, error } = await supabase
+    .from("customer_profiles")
+    .select("user_id, first_name, last_name")
+    .in("user_id", [...userIds]);
+  if (error) throw error;
+
+  const map = new Map<string, ProfileNameRow>();
+  for (const row of (data ?? []) as ProfileNameRow[]) {
+    if ((row.first_name ?? "").trim() || (row.last_name ?? "").trim()) {
+      map.set(row.user_id, row);
+    }
+  }
+  return map;
+}
+
+/**
+ * Admin should always see the account's current first/last name, not
+ * whatever was submitted on the order, if that account has a saved name.
+ */
+function withAccountName<
+  T extends {
+    customer_email?: unknown;
+    user_id?: unknown;
+    customer_name?: unknown;
+    first_name?: unknown;
+    last_name?: unknown;
+  }
+>(
+  order: T,
+  emailToUserId: Map<string, string>,
+  namesByUserId: Map<string, ProfileNameRow>
+): T {
+  const userId = resolveOrderAccountUserId(order, emailToUserId);
+  const profile = userId ? namesByUserId.get(userId) : undefined;
+  if (!profile) return order;
+
+  const firstName = (profile.first_name ?? "").trim();
+  const lastName = (profile.last_name ?? "").trim();
+  const combined = [firstName, lastName].filter(Boolean).join(" ");
+
+  return {
+    ...order,
+    first_name: firstName || order.first_name,
+    last_name: lastName || order.last_name,
+    customer_name: combined || order.customer_name,
+  };
 }
 
 Deno.serve(async (req) => {
