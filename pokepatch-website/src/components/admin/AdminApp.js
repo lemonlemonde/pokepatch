@@ -63,6 +63,9 @@ import {
   parseEditorStatusValue,
   pendingKindShortLabel,
   pendingKindBadgeClass,
+  CARD_CHECKLIST_GROUPS,
+  normalizeCardChecklist,
+  cardChecklistGroupProgress,
 } from "@/lib/orderStatus";
 import {
   QUOTE_SERVICES,
@@ -100,6 +103,7 @@ function emptyAdminCard() {
     description: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
+    checklist: normalizeCardChecklist(null),
     images: [],
     pending_files: [],
   };
@@ -386,6 +390,7 @@ function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
+    checklist: normalizeCardChecklist(card.checklist),
     images: card.images ?? [],
     pending_files: [],
   }));
@@ -450,6 +455,7 @@ function draftPayload(draft) {
       description: card.description.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
+      checklist: normalizeCardChecklist(card.checklist),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))
@@ -2199,6 +2205,65 @@ function CardStatusPills({ value, onChange, ariaLabel }) {
   );
 }
 
+/** Manual admin-only workflow checklist for a card. Never gates status. */
+function CardChecklistToggles({ checklist, onChange }) {
+  const normalized = normalizeCardChecklist(checklist);
+  return (
+    <div className="space-y-2.5">
+      <EditorLabel>Checklist</EditorLabel>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {CARD_CHECKLIST_GROUPS.map((group) => (
+          <div key={group.id} className="space-y-1.5">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-ink/45">
+              {group.label}
+            </span>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex items-center gap-2 text-sm text-ink/80"
+                >
+                  <input
+                    type="checkbox"
+                    checked={normalized[item.id]}
+                    onChange={(event) =>
+                      onChange({
+                        ...normalized,
+                        [item.id]: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-ink/25 text-mint focus:ring-mint"
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Compact "1/2 · 1/2 · 1/2" completion badges for the collapsed card view. */
+function CardChecklistSummary({ checklist }) {
+  const groups = cardChecklistGroupProgress(checklist);
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/45">
+      {groups.map((group) => (
+        <span
+          key={group.id}
+          className={`font-medium tabular-nums ${
+            group.done === group.total ? "text-mint" : ""
+          }`}
+        >
+          {group.label} {group.done}/{group.total}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function EditorSubsection({ title, description, action, children }) {
   return (
     <div className="rounded-xl border border-ink/10 bg-night/[0.03] px-3.5 py-3.5 sm:px-4">
@@ -3294,6 +3359,7 @@ function OrderEditor({
                         </span>
                       </div>
                     ) : null}
+                    <CardChecklistSummary checklist={card.checklist} />
                   </div>
                 }
                 className={
@@ -3344,6 +3410,14 @@ function OrderEditor({
                       onFocus={() => expandCard(cardId)}
                     />
                   </label>
+                </div>
+                <div className="border-t border-ink/10 pt-4">
+                  <CardChecklistToggles
+                    checklist={card.checklist}
+                    onChange={(checklist) =>
+                      updateCard(cardIndex, { checklist })
+                    }
+                  />
                 </div>
                 <div className="border-t border-ink/10 pt-4">
                   <AdminOrderCardPhotoGroups

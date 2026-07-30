@@ -23,6 +23,59 @@ export const CARD_STATUSES = [
 export const DEFAULT_CARD_STATUS = "todo";
 export const DEFAULT_PENDING_KIND = "quote";
 
+/**
+ * Per-card admin workflow checklist. Purely informal — manual toggles only,
+ * never auto-set/reset and never gates card status or anything else.
+ */
+export const CARD_CHECKLIST_GROUPS = [
+  {
+    id: "before",
+    label: "Before",
+    items: [
+      { id: "before_scans", label: "Before scans" },
+      { id: "before_closeup_photos", label: "Before closeup photos" },
+    ],
+  },
+  {
+    id: "after",
+    label: "After",
+    items: [
+      { id: "after_scans", label: "After scans" },
+      { id: "after_closeup_photos", label: "After closeup photos" },
+    ],
+  },
+  {
+    id: "social",
+    label: "Social",
+    items: [
+      { id: "post_gallery", label: "Post on gallery" },
+      { id: "post_instagram", label: "Post on Instagram" },
+    ],
+  },
+];
+
+const CARD_CHECKLIST_ITEM_IDS = CARD_CHECKLIST_GROUPS.flatMap((group) =>
+  group.items.map((item) => item.id),
+);
+
+export function normalizeCardChecklist(checklist) {
+  const source = checklist && typeof checklist === "object" ? checklist : {};
+  return Object.fromEntries(
+    CARD_CHECKLIST_ITEM_IDS.map((id) => [id, source[id] === true]),
+  );
+}
+
+/** Per-group { id, label, done, total } progress for the collapsed card summary. */
+export function cardChecklistGroupProgress(checklist) {
+  const normalized = normalizeCardChecklist(checklist);
+  return CARD_CHECKLIST_GROUPS.map((group) => ({
+    id: group.id,
+    label: group.label,
+    done: group.items.filter((item) => normalized[item.id]).length,
+    total: group.items.length,
+  }));
+}
+
 const CARD_LABEL_BY_ID = Object.fromEntries(
   CARD_STATUSES.map((status) => [status.id, status.label]),
 );

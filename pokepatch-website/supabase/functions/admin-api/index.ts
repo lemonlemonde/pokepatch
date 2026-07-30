@@ -594,7 +594,7 @@ async function searchOrdersByCardText(
   const pattern = quotePostgrestValue(`%${escapeIlikePattern(q)}%`);
   let cardsQuery = supabase
     .from("cards")
-    .select("id, order_id, card_name, set_name, description, status")
+    .select("id, order_id, card_name, set_name, description, status, checklist")
     .or(
       `card_name.ilike.${pattern},set_name.ilike.${pattern},description.ilike.${pattern}`
     )
@@ -768,7 +768,7 @@ async function fetchOrderGraph(
     supabase
       .from("cards")
       .select(
-        "id, order_id, sort_order, card_name, set_name, description, market_value_raw_nm, status"
+        "id, order_id, sort_order, card_name, set_name, description, market_value_raw_nm, status, checklist"
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true })
