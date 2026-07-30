@@ -78,7 +78,10 @@ async function savePendingProfile(sessionUser) {
 async function syncProfileNameFromOrders() {
   if (!supabase) return;
   try {
-    await supabase.rpc("sync_profile_name_from_latest_order");
+    const { error } = await supabase.rpc("sync_profile_name_from_latest_order");
+    if (error) {
+      console.error("Failed to sync profile name from orders:", error);
+    }
   } catch (err) {
     console.error("Failed to sync profile name from orders:", err);
   }
@@ -88,7 +91,10 @@ async function syncProfileNameFromOrders() {
 async function claimOrders() {
   if (!supabase) return;
   try {
-    await supabase.rpc("claim_my_orders");
+    const { error } = await supabase.rpc("claim_my_orders");
+    if (error) {
+      console.error("Failed to claim orders:", error);
+    }
   } catch (err) {
     console.error("Failed to claim orders:", err);
   }
