@@ -11,11 +11,16 @@ import UnsavedChangesDialog from "@/components/UnsavedChangesDialog";
  */
 export function useUnsavedChangesGuard(isDirty) {
   const router = useRouter();
-  const [pending, setPending] = useState(null);
+  const [pending, setPending] = useState(false);
   const isDirtyRef = useRef(isDirty);
   const bypassRef = useRef(false);
   const askingRef = useRef(false);
   const dirtyUrlRef = useRef("");
+  // Holds the resolver for the in-flight prompt. Kept in a ref (not state) so
+  // resolving it — which can synchronously navigate via router.push — never
+  // runs inside a setState updater, which React forbids ("Cannot update a
+  // component while rendering a different component").
+  const resolverRef = useRef(null);
 
   isDirtyRef.current = isDirty;
 
@@ -26,22 +31,20 @@ export function useUnsavedChangesGuard(isDirty) {
   }, [isDirty]);
 
   const closePending = useCallback((shouldLeave) => {
-    setPending((current) => {
-      askingRef.current = false;
-      if (current?.resolve) current.resolve(shouldLeave);
-      return null;
-    });
+    const resolve = resolverRef.current;
+    resolverRef.current = null;
+    askingRef.current = false;
+    setPending(false);
+    if (resolve) resolve(shouldLeave);
   }, []);
 
   const openLeavePrompt = useCallback((onConfirmLeave) => {
     if (askingRef.current) return;
     askingRef.current = true;
-    setPending({
-      resolve: (shouldLeave) => {
-        askingRef.current = false;
-        if (shouldLeave) onConfirmLeave?.();
-      },
-    });
+    resolverRef.current = (shouldLeave) => {
+      if (shouldLeave) onConfirmLeave?.();
+    };
+    setPending(true);
   }, []);
 
   const requestLeave = useCallback(() => {
@@ -49,12 +52,8 @@ export function useUnsavedChangesGuard(isDirty) {
     if (askingRef.current) return Promise.resolve(false);
     askingRef.current = true;
     return new Promise((resolve) => {
-      setPending({
-        resolve: (shouldLeave) => {
-          askingRef.current = false;
-          resolve(shouldLeave);
-        },
-      });
+      resolverRef.current = resolve;
+      setPending(true);
     });
   }, []);
 
@@ -186,7 +185,7 @@ export function useUnsavedChangesGuard(isDirty) {
 
   const dialog = (
     <UnsavedChangesDialog
-      open={Boolean(pending)}
+      open={pending}
       onStay={() => closePending(false)}
       onLeave={() => closePending(true)}
     />
