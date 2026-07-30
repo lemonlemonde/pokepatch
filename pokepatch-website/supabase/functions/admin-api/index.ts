@@ -504,11 +504,37 @@ const ORDER_STATUS_IDS = new Set([
   "pending",
   "new",
   "in_progress",
+  "ready",
   "completed",
   "canceled",
 ]);
 
 const PENDING_KIND_IDS = new Set(["quote", "drop_off"]);
+
+/** Normalize kanban / editor status ids before RPC (legacy aliases included). */
+function normalizeOrderStatusForApi(raw: string): string {
+  let status = String(raw ?? "").trim();
+  if (
+    status === "on_hold" ||
+    status === "pending_quote" ||
+    status === "pending_dropoff"
+  ) {
+    status = "pending";
+  }
+  if (status === "ready_for_customer") {
+    status = "ready";
+  }
+  if (status === "cancelled") {
+    status = "canceled";
+  }
+  if (status === "todo") {
+    status = "new";
+  }
+  if (status === "delivered") {
+    status = "completed";
+  }
+  return status;
+}
 
 const SEARCH_RESULT_LIMIT = 10;
 /** Pull extra matches so we can re-rank by order created_at before cutting to 10. */
@@ -1207,22 +1233,11 @@ Deno.serve(async (req) => {
 
     if (action === "set_status") {
       const orderId = String(body.order_id ?? "");
-      let status = String(body.status ?? "");
+      const status = normalizeOrderStatusForApi(String(body.status ?? ""));
       if (!orderId || !status) {
         return jsonResponse(req, { ok: false, error: "order_id and status required" }, 400);
       }
-      if (
-        status === "on_hold" ||
-        status === "pending_quote" ||
-        status === "pending_dropoff"
-      ) {
-        status = "pending";
-      }
-      if (
-        !["pending", "new", "in_progress", "completed", "canceled"].includes(
-          status
-        )
-      ) {
+      if (!ORDER_STATUS_IDS.has(status)) {
         return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
       }
       const hasIndex = body.queue_index !== undefined && body.queue_index !== null;
@@ -1465,19 +1480,8 @@ Deno.serve(async (req) => {
           400
         );
       }
-      let reorderStatus = status;
-      if (
-        reorderStatus === "on_hold" ||
-        reorderStatus === "pending_quote" ||
-        reorderStatus === "pending_dropoff"
-      ) {
-        reorderStatus = "pending";
-      }
-      if (
-        !["pending", "new", "in_progress", "completed", "canceled"].includes(
-          reorderStatus
-        )
-      ) {
+      let reorderStatus = normalizeOrderStatusForApi(status);
+      if (!ORDER_STATUS_IDS.has(reorderStatus)) {
         return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
       }
 
