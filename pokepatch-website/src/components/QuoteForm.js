@@ -209,6 +209,7 @@ export default function QuoteForm() {
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [contactValues, setContactValues] = useState(emptyContactValues);
   const [lockedTypes, setLockedTypes] = useState({});
+  const [lockedName, setLockedName] = useState({ firstName: false, lastName: false });
   const [preferredContactId, setPreferredContactId] = useState("email");
   const [heardAbout, setHeardAbout] = useState("");
   const [heardAboutOther, setHeardAboutOther] = useState("");
@@ -269,8 +270,16 @@ export default function QuoteForm() {
       .maybeSingle()
       .then(({ data }) => {
         if (!data) return;
-        if (data.first_name) setFirstName(data.first_name);
-        if (data.last_name) setLastName(data.last_name);
+        const nameLocked = { firstName: false, lastName: false };
+        if (data.first_name) {
+          setFirstName(data.first_name);
+          nameLocked.firstName = true;
+        }
+        if (data.last_name) {
+          setLastName(data.last_name);
+          nameLocked.lastName = true;
+        }
+        setLockedName(nameLocked);
         if (Array.isArray(data.contacts) && data.contacts.length > 0) {
           const values = emptyContactValues();
           const locked = {};
@@ -684,6 +693,13 @@ export default function QuoteForm() {
             placeholder="First name"
             className={fieldClassName(fieldErrors?.firstName)}
             aria-invalid={fieldErrors?.firstName || undefined}
+            disabled={lockedName.firstName}
+            readOnly={lockedName.firstName}
+            title={
+              lockedName.firstName
+                ? "Saved on your account. Edit it in account settings."
+                : undefined
+            }
           />
         </div>
 
@@ -704,7 +720,25 @@ export default function QuoteForm() {
             placeholder="Last name"
             className={fieldClassName(fieldErrors?.lastName)}
             aria-invalid={fieldErrors?.lastName || undefined}
+            disabled={lockedName.lastName}
+            readOnly={lockedName.lastName}
+            title={
+              lockedName.lastName
+                ? "Saved on your account. Edit it in account settings."
+                : undefined
+            }
           />
+          {(lockedName.firstName || lockedName.lastName) && (
+            <p className="mt-1 text-xs text-ink/60">
+              Your name comes from your account.{" "}
+              <Link
+                href="/account"
+                className="font-semibold text-blush hover:underline"
+              >
+                Manage account
+              </Link>
+            </p>
+          )}
         </div>
 
         <div>
