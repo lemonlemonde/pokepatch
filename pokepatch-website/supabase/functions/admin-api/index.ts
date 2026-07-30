@@ -502,9 +502,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
 
 const ORDER_STATUS_IDS = new Set([
   "pending",
@@ -1232,6 +1232,8 @@ async function fetchAccountNamesForOrders(
 /**
  * Admin should always see the account's current first/last name, not
  * whatever was submitted on the order, if that account has a saved name.
+ * Legacy orders that only stored a single customer_name surface that value
+ * as first_name when first/last were never split.
  */
 function withAccountName<
   T extends {
@@ -1246,20 +1248,30 @@ function withAccountName<
   emailToUserId: Map<string, string>,
   namesByUserId: Map<string, ProfileNameRow>
 ): T {
+  let result: T = order;
   const userId = resolveOrderAccountUserId(order, emailToUserId);
   const profile = userId ? namesByUserId.get(userId) : undefined;
-  if (!profile) return order;
 
-  const firstName = (profile.first_name ?? "").trim();
-  const lastName = (profile.last_name ?? "").trim();
-  const combined = [firstName, lastName].filter(Boolean).join(" ");
+  if (profile) {
+    const firstName = (profile.first_name ?? "").trim();
+    const lastName = (profile.last_name ?? "").trim();
+    const combined = [firstName, lastName].filter(Boolean).join(" ");
 
-  return {
-    ...order,
-    first_name: firstName || order.first_name,
-    last_name: lastName || order.last_name,
-    customer_name: combined || order.customer_name,
-  };
+    result = {
+      ...order,
+      first_name: firstName || order.first_name,
+      last_name: lastName || order.last_name,
+      customer_name: combined || order.customer_name,
+    };
+  }
+
+  const first = String(result.first_name ?? "").trim();
+  const last = String(result.last_name ?? "").trim();
+  const legacyName = String(result.customer_name ?? "").trim();
+  if (!first && !last && legacyName) {
+    return { ...result, first_name: legacyName };
+  }
+  return result;
 }
 
 Deno.serve(async (req) => {
