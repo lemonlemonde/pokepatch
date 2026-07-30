@@ -98,6 +98,7 @@ function emptyAdminCard() {
     card_name: "",
     set_name: "",
     description: "",
+    admin_notes: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
     images: [],
@@ -381,6 +382,7 @@ function orderToDraft(order) {
     card_name: card.card_name ?? "",
     set_name: card.set_name ?? "",
     description: card.description ?? "",
+    admin_notes: card.admin_notes ?? "",
     market_value_raw_nm:
       card.market_value_raw_nm != null
         ? String(card.market_value_raw_nm)
@@ -447,6 +449,7 @@ function draftPayload(draft) {
       card_name: card.card_name.trim(),
       set_name: card.set_name.trim(),
       description: card.description.trim(),
+      admin_notes: card.admin_notes.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
     })),
@@ -3339,6 +3342,23 @@ function OrderEditor({
                       onChange={(event) =>
                         updateCard(cardIndex, {
                           description: event.target.value,
+                        })
+                      }
+                      onFocus={() => expandCard(cardId)}
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <EditorLabel>Admin notes</EditorLabel>
+                    <p className="mb-1 text-xs text-ink/50">
+                      Visible to the customer, read-only. Separate from the
+                      description above.
+                    </p>
+                    <textarea
+                      className={`${editorFieldClass()} min-h-[72px]`}
+                      value={card.admin_notes}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          admin_notes: event.target.value,
                         })
                       }
                       onFocus={() => expandCard(cardId)}
