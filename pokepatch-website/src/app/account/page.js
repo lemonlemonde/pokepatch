@@ -22,7 +22,8 @@ export default function AccountPage() {
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, loading: authLoading, signOut } = useAuth();
 
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [contactValues, setContactValues] = useState(() => emptyContactValues());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,13 +46,14 @@ export default function AccountPage() {
     setLoading(true);
     supabase
       .from("customer_profiles")
-      .select("full_name, contacts")
+      .select("first_name, last_name, contacts")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data, error: loadError }) => {
         if (loadError) throw loadError;
         if (data) {
-          setFullName(data.full_name ?? "");
+          setFirstName(data.first_name ?? "");
+          setLastName(data.last_name ?? "");
           if (Array.isArray(data.contacts)) {
             const values = emptyContactValues();
             for (const c of data.contacts) {
@@ -117,7 +119,8 @@ export default function AccountPage() {
         .upsert(
           {
             user_id: user.id,
-            full_name: fullName.trim() || null,
+            first_name: firstName.trim() || null,
+            last_name: lastName.trim() || null,
             contacts: cleanedContacts,
             updated_at: new Date().toISOString(),
           },
@@ -189,17 +192,35 @@ export default function AccountPage() {
 
             <div>
               <label
-                htmlFor="full_name"
+                htmlFor="first_name"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                Name
+                First name
               </label>
               <input
-                id="full_name"
+                id="first_name"
                 type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Your preferred name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="First name"
+                disabled={!editing}
+                className={fieldClassName()}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="last_name"
+                className="mb-1 block text-sm font-bold text-ink"
+              >
+                Last name
+              </label>
+              <input
+                id="last_name"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="Last name"
                 disabled={!editing}
                 className={fieldClassName()}
               />

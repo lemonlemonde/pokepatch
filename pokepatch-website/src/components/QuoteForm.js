@@ -102,9 +102,10 @@ function cardFieldErrors(card) {
   };
 }
 
-function getFieldErrors({ customerName, email, deliveryMethod, cards }) {
+function getFieldErrors({ firstName, lastName, email, deliveryMethod, cards }) {
   const errors = {
-    customerName: customerName.trim() === "",
+    firstName: firstName.trim() === "",
+    lastName: lastName.trim() === "",
     email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     deliveryMethod: deliveryMethod === "",
     cards: {},
@@ -131,7 +132,7 @@ function getFieldErrors({ customerName, email, deliveryMethod, cards }) {
 
 function hasFieldErrors(errors) {
   if (!errors) return false;
-  if (errors.customerName || errors.email || errors.deliveryMethod) {
+  if (errors.firstName || errors.lastName || errors.email || errors.deliveryMethod) {
     return true;
   }
   if (errors.noCards) return true;
@@ -141,8 +142,11 @@ function hasFieldErrors(errors) {
 function getFirstErrorElement(errors, cards) {
   if (!errors) return null;
 
-  if (errors.customerName) {
-    return document.getElementById("customer_name");
+  if (errors.firstName) {
+    return document.getElementById("customer_first_name");
+  }
+  if (errors.lastName) {
+    return document.getElementById("customer_last_name");
   }
   if (errors.email) {
     return document.getElementById("customer_email");
@@ -199,7 +203,8 @@ export default function QuoteForm() {
   const formStartedRef = useRef(false);
   const customerInfoCompletedRef = useRef(false);
   const cardDetailsCompletedRef = useRef(false);
-  const [customerName, setCustomerName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [contactValues, setContactValues] = useState(emptyContactValues);
@@ -225,11 +230,11 @@ export default function QuoteForm() {
   useEffect(() => {
     if (customerInfoCompletedRef.current) return;
     const hasEmail = email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (customerName.trim() && hasEmail && deliveryMethod) {
+    if (firstName.trim() && lastName.trim() && hasEmail && deliveryMethod) {
       customerInfoCompletedRef.current = true;
       capture("quote_form_step_completed", { step: "customer_info" });
     }
-  }, [customerName, email, deliveryMethod]);
+  }, [firstName, lastName, email, deliveryMethod]);
 
   useEffect(() => {
     if (cardDetailsCompletedRef.current) return;
@@ -259,12 +264,13 @@ export default function QuoteForm() {
     profileLoadedRef.current = true;
     supabase
       .from("customer_profiles")
-      .select("full_name, contacts")
+      .select("first_name, last_name, contacts")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
         if (!data) return;
-        if (data.full_name) setCustomerName(data.full_name);
+        if (data.first_name) setFirstName(data.first_name);
+        if (data.last_name) setLastName(data.last_name);
         if (Array.isArray(data.contacts) && data.contacts.length > 0) {
           const values = emptyContactValues();
           const locked = {};
@@ -450,7 +456,8 @@ export default function QuoteForm() {
     }
 
     const errors = getFieldErrors({
-      customerName,
+      firstName,
+      lastName,
       email,
       deliveryMethod,
       cards,
@@ -534,7 +541,8 @@ export default function QuoteForm() {
 
       const payload = {
         id: orderId,
-        customer_name: customerName.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
         customer_email: email.trim().toLowerCase(),
         delivery_method: deliveryMethod,
         heard_about_source: heardAboutSource,
@@ -571,7 +579,8 @@ export default function QuoteForm() {
             "pokepatch_pending_profile",
             JSON.stringify({
               email: email.trim().toLowerCase(),
-              full_name: customerName.trim(),
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
               contacts: filledContactTypes.map((type) => ({
                 contact_type: type.value,
                 value: contactValues[type.value].trim(),
@@ -592,7 +601,8 @@ export default function QuoteForm() {
       setStatus("success");
       setFormStarted(false);
       formStartedRef.current = false;
-      setCustomerName("");
+      setFirstName("");
+      setLastName("");
       setEmail("");
       setDeliveryMethod("");
       setContactValues(emptyContactValues());
@@ -658,22 +668,42 @@ export default function QuoteForm() {
         <h2 className="text-xl font-bold text-ink">Customer information</h2>
 
         <div>
-          <label htmlFor="customer_name" className="mb-1 block text-sm font-bold text-ink">
-            Name <span className="text-berry">*</span>
+          <label htmlFor="customer_first_name" className="mb-1 block text-sm font-bold text-ink">
+            First name <span className="text-berry">*</span>
           </label>
           <input
-            id="customer_name"
-            name="customer_name"
+            id="customer_first_name"
+            name="customer_first_name"
             type="text"
-            value={customerName}
+            value={firstName}
             onChange={(e) => {
               onFormInteraction();
-              clearFieldError("customerName");
-              setCustomerName(e.target.value);
+              clearFieldError("firstName");
+              setFirstName(e.target.value);
             }}
-            placeholder="Your preferred name"
-            className={fieldClassName(fieldErrors?.customerName)}
-            aria-invalid={fieldErrors?.customerName || undefined}
+            placeholder="First name"
+            className={fieldClassName(fieldErrors?.firstName)}
+            aria-invalid={fieldErrors?.firstName || undefined}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="customer_last_name" className="mb-1 block text-sm font-bold text-ink">
+            Last name <span className="text-berry">*</span>
+          </label>
+          <input
+            id="customer_last_name"
+            name="customer_last_name"
+            type="text"
+            value={lastName}
+            onChange={(e) => {
+              onFormInteraction();
+              clearFieldError("lastName");
+              setLastName(e.target.value);
+            }}
+            placeholder="Last name"
+            className={fieldClassName(fieldErrors?.lastName)}
+            aria-invalid={fieldErrors?.lastName || undefined}
           />
         </div>
 

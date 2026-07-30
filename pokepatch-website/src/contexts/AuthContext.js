@@ -41,7 +41,7 @@ async function savePendingProfile(sessionUser) {
     }
 
     const contacts = Array.isArray(pending?.contacts) ? pending.contacts : [];
-    if (!pending?.full_name && contacts.length === 0) {
+    if (!pending?.first_name && !pending?.last_name && contacts.length === 0) {
       window.localStorage.removeItem(PENDING_PROFILE_KEY);
       return;
     }
@@ -56,7 +56,8 @@ async function savePendingProfile(sessionUser) {
       await supabase.from("customer_profiles").upsert(
         {
           user_id: sessionUser.id,
-          full_name: pending.full_name || null,
+          first_name: pending.first_name || null,
+          last_name: pending.last_name || null,
           contacts,
           updated_at: new Date().toISOString(),
         },
