@@ -19,6 +19,8 @@ export default function ThankYouPage() {
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, signUp } = useAuth();
   const [showAccountCreation, setShowAccountCreation] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,8 +35,8 @@ export default function ThankYouPage() {
     }
   }, [user]);
 
-  // Pre-fill the email from the order they just submitted so the account links
-  // up and their entered contacts get saved to the new profile.
+  // Pre-fill from the order they just submitted so the account links up and
+  // their entered name + contacts get saved to the new profile.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -42,13 +44,22 @@ export default function ThankYouPage() {
       if (!raw) return;
       const pending = JSON.parse(raw);
       if (pending?.email) setEmail(pending.email);
+      if (pending?.first_name) setFirstName(pending.first_name);
+      if (pending?.last_name) setLastName(pending.last_name);
     } catch {
-      // Ignore storage/parse errors; email can be entered manually.
+      // Ignore storage/parse errors; fields can be entered manually.
     }
   }, []);
 
   const validateForm = () => {
     const errors = {};
+
+    if (!firstName.trim()) {
+      errors.firstName = true;
+    }
+    if (!lastName.trim()) {
+      errors.lastName = true;
+    }
 
     if (!email.trim()) {
       errors.email = true;
@@ -82,7 +93,7 @@ export default function ThankYouPage() {
     setLoading(true);
 
     try {
-      const data = await signUp(email, password);
+      const data = await signUp(email, password, firstName, lastName);
 
       if (data.session) {
         router.push("/my-orders");
@@ -145,6 +156,44 @@ export default function ThankYouPage() {
             )}
 
             <form onSubmit={handleCreateAccount} className="space-y-4">
+              <div>
+                <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
+                  First name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="first_name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, firstName: false }));
+                  }}
+                  placeholder="First name"
+                  className={fieldClassName(fieldErrors.firstName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
+                  Last name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="last_name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, lastName: false }));
+                  }}
+                  placeholder="Last name"
+                  className={fieldClassName(fieldErrors.lastName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
               <div>
                 <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
                   Email <span className="text-berry">*</span>

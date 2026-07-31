@@ -23,6 +23,8 @@ function LoginForm() {
   const { signIn, signUp, user } = useAuth();
 
   const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -50,7 +52,14 @@ function LoginForm() {
 
   const validateForm = () => {
     const errors = {};
-    
+
+    if (mode === "signup" && !firstName.trim()) {
+      errors.firstName = true;
+    }
+    if (mode === "signup" && !lastName.trim()) {
+      errors.lastName = true;
+    }
+
     if (!email.trim()) {
       errors.email = true;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -92,7 +101,7 @@ function LoginForm() {
         await signIn(email, password);
         router.push(redirectTo);
       } else {
-        const data = await signUp(email, password);
+        const data = await signUp(email, password, firstName, lastName);
 
         // With email confirmation on, signup returns no session. Send the user
         // to the confirm-your-email page instead of the protected redirect.
@@ -137,6 +146,48 @@ function LoginForm() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "signup" && (
+            <>
+              <div>
+                <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
+                  First name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="first_name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, firstName: false }));
+                  }}
+                  placeholder="First name"
+                  className={fieldClassName(fieldErrors.firstName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
+                  Last name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="last_name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, lastName: false }));
+                  }}
+                  placeholder="Last name"
+                  className={fieldClassName(fieldErrors.lastName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+            </>
+          )}
+
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
               Email <span className="text-berry">*</span>

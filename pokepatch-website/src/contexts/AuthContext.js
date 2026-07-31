@@ -140,7 +140,7 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, [enabled]);
 
-  const signUp = async (email, password) => {
+  const signUp = async (email, password, firstName, lastName) => {
     if (!enabled) authDisabledError();
     if (!supabase) throw new Error("Supabase not configured");
 
@@ -149,6 +149,13 @@ export function AuthProvider({ children }) {
       password,
       options: {
         emailRedirectTo: getAuthEmailRedirectTo("/my-orders"),
+        // Stored as JWT user_metadata immediately, even before email
+        // confirmation — sync_profile_name_from_latest_order reads it from
+        // there on first sign-in to fill in customer_profiles.
+        data: {
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+        },
       },
     });
 
