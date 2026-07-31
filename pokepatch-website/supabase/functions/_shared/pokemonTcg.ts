@@ -235,7 +235,7 @@ function firstTokenPrefix(normalizedValue: string): string {
 }
 
 /** One Lucene query per set word the admin typed (prefix match, case-insensitive). */
-export function buildCatalogSearchQueries(
+function buildCatalogSearchQueries(
   cardName: string,
   setName: string
 ): string[] {
