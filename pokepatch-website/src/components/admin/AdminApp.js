@@ -2241,19 +2241,33 @@ function ChecklistCheckbox({ checked, onChange, label }) {
   );
 }
 
-/** Manual admin-only workflow checklist for a card. Never gates status. */
-function CardChecklistToggles({ checklist, onChange }) {
+/**
+ * Manual admin-only workflow checklist for a card. Never gates status.
+ * `compact` renders groups in a tight horizontal row (for the card header,
+ * underneath the status pills) instead of the roomier editor grid.
+ */
+function CardChecklistToggles({ checklist, onChange, compact = false }) {
   const normalized = normalizeCardChecklist(checklist);
   return (
-    <div className="space-y-2.5">
-      <EditorLabel>Checklist</EditorLabel>
-      <div className="grid gap-3 sm:grid-cols-3">
+    <div className={compact ? "space-y-1" : "space-y-2.5"}>
+      {!compact ? <EditorLabel>Checklist</EditorLabel> : null}
+      <div
+        className={
+          compact
+            ? "flex flex-wrap justify-end gap-x-3 gap-y-1"
+            : "grid gap-3 sm:grid-cols-3"
+        }
+      >
         {CARD_CHECKLIST_GROUPS.map((group) => (
-          <div key={group.id} className="space-y-1.5">
-            <span className="block text-xs font-semibold uppercase tracking-wide text-ink/45">
+          <div key={group.id} className={compact ? "space-y-0.5" : "space-y-1.5"}>
+            <span
+              className={`block font-semibold uppercase tracking-wide text-ink/45 ${
+                compact ? "text-[10px]" : "text-xs"
+              }`}
+            >
               {group.label}
             </span>
-            <div className="space-y-1">
+            <div className={compact ? "flex gap-2.5" : "space-y-1"}>
               {group.items.map((item) => (
                 <ChecklistCheckbox
                   key={item.id}
@@ -2268,36 +2282,6 @@ function CardChecklistToggles({ checklist, onChange }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-/**
- * Interactive checklist rendered to the right of a collapsed card (outside
- * its column), so admins can tick items off without expanding the card.
- * Height matches the collapsed card via the absolutely-positioned wrapper.
- */
-function CardChecklistSidePanel({ checklist, onChange }) {
-  const normalized = normalizeCardChecklist(checklist);
-  return (
-    <div className="flex h-full flex-col justify-center gap-2.5 rounded-2xl border-2 border-ink/10 bg-cream px-3 py-2.5 shadow-cozy-sm">
-      {CARD_CHECKLIST_GROUPS.map((group) => (
-        <div key={group.id} className="space-y-0.5">
-          <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink/40">
-            {group.label}
-          </span>
-          {group.items.map((item) => (
-            <ChecklistCheckbox
-              key={item.id}
-              checked={normalized[item.id]}
-              label={item.label}
-              onChange={(value) =>
-                onChange({ ...normalized, [item.id]: value })
-              }
-            />
-          ))}
-        </div>
-      ))}
     </div>
   );
 }
@@ -3346,240 +3330,232 @@ function OrderEditor({
             );
 
             return (
-              <div key={card.id} className="relative">
-                <CollapsibleOrderCard
-                  id={`admin-order-card-${card.id}`}
-                  dataCardId={cardId}
-                  title={cardTitle}
-                  thumbUrl={thumbUrl}
-                  thumbStoragePath={thumbStoragePath}
-                  titleExtra={
+              <CollapsibleOrderCard
+                key={card.id}
+                id={`admin-order-card-${card.id}`}
+                dataCardId={cardId}
+                title={cardTitle}
+                thumbUrl={thumbUrl}
+                thumbStoragePath={thumbStoragePath}
+                titleExtra={
+                  <div className="flex flex-col items-end gap-1.5">
                     <CardStatusPills
                       value={card.status}
                       ariaLabel={`Card ${cardIndex + 1} status`}
                       onChange={(status) => updateCard(cardIndex, { status })}
                     />
-                  }
-                  action={
-                    <button
-                      type="button"
-                      onClick={() => removeCard(cardIndex)}
-                      disabled={saving}
-                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                    >
-                      Remove card
-                    </button>
-                  }
-                  expanded={isExpanded}
-                  onToggle={() => {
-                    if (isExpanded) collapseCard(cardId);
-                    else expandCard(cardId);
-                  }}
-                  collapsedSummary={
-                    <div className="space-y-0.5 text-xs">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/55">
-                        <span className="truncate">
-                          {readyServiceNames.length > 0
-                            ? readyServiceNames.join(" · ")
-                            : "No services"}
-                        </span>
-                        {lineAmounts.length > 0 ? (
-                          <span className="shrink-0 font-semibold tabular-nums text-ink">
-                            {formatMoney(servicesSubtotal)}
-                          </span>
-                        ) : null}
-                      </div>
-                      {cardHv > 0 ? (
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/50">
-                          <span>High-value fee</span>
-                          <span className="shrink-0 font-semibold tabular-nums text-ink/80">
-                            {formatMoney(cardHv)}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  }
-                  className={
-                    String(card.id) === String(highlightedCardId)
-                      ? hasReadyService
-                        ? "border-mint/50 border-l-mint ring-2 ring-blush/45"
-                        : "border-error/45 border-l-error ring-2 ring-blush/45"
-                      : hasReadyService
-                        ? "border-mint/40 border-l-mint"
-                        : "border-error/35 border-l-error/80"
-                  }
-                >
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <label className="block">
-                      <EditorLabel>Card name</EditorLabel>
-                      <input
-                        className={editorFieldClass()}
-                        value={card.card_name}
-                        onChange={(event) =>
-                          updateCard(cardIndex, {
-                            card_name: event.target.value,
-                          })
-                        }
-                        onFocus={() => expandCard(cardId)}
-                      />
-                    </label>
-                    <label className="block">
-                      <EditorLabel>Set</EditorLabel>
-                      <input
-                        className={editorFieldClass()}
-                        value={card.set_name}
-                        onChange={(event) =>
-                          updateCard(cardIndex, { set_name: event.target.value })
-                        }
-                        onFocus={() => expandCard(cardId)}
-                      />
-                    </label>
-                    <label className="block sm:col-span-2">
-                      <EditorLabel>Description</EditorLabel>
-                      <textarea
-                        className={`${editorFieldClass()} min-h-[72px]`}
-                        value={card.description}
-                        onChange={(event) =>
-                          updateCard(cardIndex, {
-                            description: event.target.value,
-                          })
-                        }
-                        onFocus={() => expandCard(cardId)}
-                      />
-                    </label>
-                  </div>
-                  <div className="border-t border-ink/10 pt-4 lg:hidden">
                     <CardChecklistToggles
+                      compact
                       checklist={card.checklist}
                       onChange={(checklist) =>
                         updateCard(cardIndex, { checklist })
                       }
                     />
                   </div>
-                  <div className="border-t border-ink/10 pt-4">
-                    <AdminOrderCardPhotoGroups
-                      customerItems={savedPhotoItems(customerImages)}
-                      updateItems={savedPhotoItems(adminImages)}
-                      pendingFiles={pendingFiles}
-                      onRemoveUpdate={
-                        removingPhotoId != null || saving
-                          ? undefined
-                          : (imageId) => removeAdminPhoto(cardIndex, imageId)
-                      }
-                      onRemovePending={
-                        saving
-                          ? undefined
-                          : (fileId) => removeCardPendingFile(cardIndex, fileId)
-                      }
-                    />
-                    <div className="mt-3">
-                      <input
-                        id={photoInputId}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        disabled={saving}
-                        onChange={(event) => {
-                          expandCard(cardId);
-                          addCardPendingFiles(cardIndex, event.target.files);
-                          event.target.value = "";
-                        }}
-                        className="sr-only"
-                      />
-                      <label
-                        htmlFor={photoInputId}
-                        className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                          saving
-                            ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                            : "bg-berry/15 text-berry hover:bg-berry/25"
-                        }`}
-                      >
-                        Add photos
-                      </label>
-                      <p className="mt-1.5 text-xs text-ink/50">
-                        New photos upload when you save. Customer photos can’t be
-                        removed.
-                      </p>
-                    </div>
-                  </div>
-  
-                  <div className="space-y-2 border-t border-ink/10 pt-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
-                        Services
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => addQuoteItem(card)}
-                        disabled={saving}
-                        className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
-                      >
-                        Add service
-                      </button>
-                    </div>
-                    {indices.length > 0 ? (
-                      <div className="space-y-2">
-                        {indices.map((index) =>
-                          renderQuoteServiceLine(quoteItems[index], index)
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-ink/45">
-                        No services yet — add one here.
-                      </p>
-                    )}
-                    <div className="space-y-2 border-t border-ink/10 pt-2">
-                      {renderQuoteHvLine(card)}
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
-                      <span className="font-medium text-ink/55">
-                        Card subtotal
+                }
+                action={
+                  <button
+                    type="button"
+                    onClick={() => removeCard(cardIndex)}
+                    disabled={saving}
+                    className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                  >
+                    Remove card
+                  </button>
+                }
+                expanded={isExpanded}
+                onToggle={() => {
+                  if (isExpanded) collapseCard(cardId);
+                  else expandCard(cardId);
+                }}
+                collapsedSummary={
+                  <div className="space-y-0.5 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/55">
+                      <span className="truncate">
+                        {readyServiceNames.length > 0
+                          ? readyServiceNames.join(" · ")
+                          : "No services"}
                       </span>
-                      <p className="text-right tabular-nums text-ink">
-                        {lineAmounts.length > 0 || cardHv > 0 ? (
-                          <>
-                            {lineAmounts.map((amount, i) => (
-                              <span key={`${cardId}-amt-${i}`}>
-                                {i > 0 ? (
-                                  <span className="text-ink/40"> + </span>
-                                ) : null}
-                                <span>{formatMoney(amount)}</span>
-                              </span>
-                            ))}
-                            {cardHv > 0 ? (
-                              <span>
-                                {lineAmounts.length > 0 ? (
-                                  <span className="text-ink/40"> + </span>
-                                ) : null}
-                                <span title="High-value fee">
-                                  {formatMoney(cardHv)}
-                                </span>
-                                <span className="text-ink/40"> HV fee</span>
-                              </span>
-                            ) : null}
-                            <span className="text-ink/40"> = </span>
-                            <span className="font-semibold">
-                              {formatMoney(subtotal)}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-semibold text-ink/45">
-                            {formatMoney(0)}
-                          </span>
-                        )}
-                      </p>
+                      {lineAmounts.length > 0 ? (
+                        <span className="shrink-0 font-semibold tabular-nums text-ink">
+                          {formatMoney(servicesSubtotal)}
+                        </span>
+                      ) : null}
                     </div>
+                    {cardHv > 0 ? (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/50">
+                        <span>High-value fee</span>
+                        <span className="shrink-0 font-semibold tabular-nums text-ink/80">
+                          {formatMoney(cardHv)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
-                </CollapsibleOrderCard>
-                <div className="absolute inset-y-0 left-full ml-3 hidden w-40 lg:block">
-                  <CardChecklistSidePanel
-                    checklist={card.checklist}
-                    onChange={(checklist) =>
-                      updateCard(cardIndex, { checklist })
+                }
+                className={
+                  String(card.id) === String(highlightedCardId)
+                    ? hasReadyService
+                      ? "border-mint/50 border-l-mint ring-2 ring-blush/45"
+                      : "border-error/45 border-l-error ring-2 ring-blush/45"
+                    : hasReadyService
+                      ? "border-mint/40 border-l-mint"
+                      : "border-error/35 border-l-error/80"
+                }
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <EditorLabel>Card name</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.card_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          card_name: event.target.value,
+                        })
+                      }
+                      onFocus={() => expandCard(cardId)}
+                    />
+                  </label>
+                  <label className="block">
+                    <EditorLabel>Set</EditorLabel>
+                    <input
+                      className={editorFieldClass()}
+                      value={card.set_name}
+                      onChange={(event) =>
+                        updateCard(cardIndex, { set_name: event.target.value })
+                      }
+                      onFocus={() => expandCard(cardId)}
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <EditorLabel>Description</EditorLabel>
+                    <textarea
+                      className={`${editorFieldClass()} min-h-[72px]`}
+                      value={card.description}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          description: event.target.value,
+                        })
+                      }
+                      onFocus={() => expandCard(cardId)}
+                    />
+                  </label>
+                </div>
+                <div className="border-t border-ink/10 pt-4">
+                  <AdminOrderCardPhotoGroups
+                    customerItems={savedPhotoItems(customerImages)}
+                    updateItems={savedPhotoItems(adminImages)}
+                    pendingFiles={pendingFiles}
+                    onRemoveUpdate={
+                      removingPhotoId != null || saving
+                        ? undefined
+                        : (imageId) => removeAdminPhoto(cardIndex, imageId)
+                    }
+                    onRemovePending={
+                      saving
+                        ? undefined
+                        : (fileId) => removeCardPendingFile(cardIndex, fileId)
                     }
                   />
+                  <div className="mt-3">
+                    <input
+                      id={photoInputId}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      disabled={saving}
+                      onChange={(event) => {
+                        expandCard(cardId);
+                        addCardPendingFiles(cardIndex, event.target.files);
+                        event.target.value = "";
+                      }}
+                      className="sr-only"
+                    />
+                    <label
+                      htmlFor={photoInputId}
+                      className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                        saving
+                          ? "cursor-not-allowed bg-ink/10 text-ink/40"
+                          : "bg-berry/15 text-berry hover:bg-berry/25"
+                      }`}
+                    >
+                      Add photos
+                    </label>
+                    <p className="mt-1.5 text-xs text-ink/50">
+                      New photos upload when you save. Customer photos can’t be
+                      removed.
+                    </p>
+                  </div>
                 </div>
-              </div>
+
+                <div className="space-y-2 border-t border-ink/10 pt-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
+                      Services
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => addQuoteItem(card)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
+                    >
+                      Add service
+                    </button>
+                  </div>
+                  {indices.length > 0 ? (
+                    <div className="space-y-2">
+                      {indices.map((index) =>
+                        renderQuoteServiceLine(quoteItems[index], index)
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-ink/45">
+                      No services yet — add one here.
+                    </p>
+                  )}
+                  <div className="space-y-2 border-t border-ink/10 pt-2">
+                    {renderQuoteHvLine(card)}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
+                    <span className="font-medium text-ink/55">
+                      Card subtotal
+                    </span>
+                    <p className="text-right tabular-nums text-ink">
+                      {lineAmounts.length > 0 || cardHv > 0 ? (
+                        <>
+                          {lineAmounts.map((amount, i) => (
+                            <span key={`${cardId}-amt-${i}`}>
+                              {i > 0 ? (
+                                <span className="text-ink/40"> + </span>
+                              ) : null}
+                              <span>{formatMoney(amount)}</span>
+                            </span>
+                          ))}
+                          {cardHv > 0 ? (
+                            <span>
+                              {lineAmounts.length > 0 ? (
+                                <span className="text-ink/40"> + </span>
+                              ) : null}
+                              <span title="High-value fee">
+                                {formatMoney(cardHv)}
+                              </span>
+                              <span className="text-ink/40"> HV fee</span>
+                            </span>
+                          ) : null}
+                          <span className="text-ink/40"> = </span>
+                          <span className="font-semibold">
+                            {formatMoney(subtotal)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="font-semibold text-ink/45">
+                          {formatMoney(0)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </CollapsibleOrderCard>
             );
           })
         )}
