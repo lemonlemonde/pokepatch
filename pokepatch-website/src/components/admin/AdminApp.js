@@ -2204,39 +2204,17 @@ function CardStatusPills({ value, onChange, ariaLabel }) {
   );
 }
 
-function CheckIcon({ className = "h-3 w-3" }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-/** Custom-styled checkbox: native input drives a peer-checked overlay checkmark. */
+/** Native checkbox, brand-colored via accent-color — simple and reliably legible. */
 function ChecklistCheckbox({ checked, onChange, label }) {
   return (
-    <label className="group flex cursor-pointer items-center gap-2 py-0.5 text-sm text-ink/70 select-none">
-      <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-          className="peer h-4 w-4 shrink-0 cursor-pointer appearance-none rounded-md border-2 border-ink/25 bg-cream transition-colors checked:border-mint checked:bg-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50 group-hover:border-mint/60"
-        />
-        <CheckIcon className="pointer-events-none absolute inset-0 m-auto h-3 w-3 text-night opacity-0 transition-opacity peer-checked:opacity-100" />
-      </span>
-      <span className="transition-colors peer-checked:text-ink group-hover:text-ink">
-        {label}
-      </span>
+    <label className="flex cursor-pointer items-center gap-1.5 py-0.5 text-sm text-ink/70 select-none hover:text-ink">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 shrink-0 cursor-pointer accent-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+      />
+      {label}
     </label>
   );
 }
@@ -2267,7 +2245,7 @@ function CardChecklistToggles({ checklist, onChange, compact = false }) {
             >
               {group.label}
             </span>
-            <div className={compact ? "flex gap-2.5" : "space-y-1"}>
+            <div className={compact ? "space-y-0.5" : "space-y-1"}>
               {group.items.map((item) => (
                 <ChecklistCheckbox
                   key={item.id}
@@ -3339,11 +3317,21 @@ function OrderEditor({
                 thumbStoragePath={thumbStoragePath}
                 titleExtra={
                   <div className="flex flex-col items-end gap-1.5">
-                    <CardStatusPills
-                      value={card.status}
-                      ariaLabel={`Card ${cardIndex + 1} status`}
-                      onChange={(status) => updateCard(cardIndex, { status })}
-                    />
+                    <div className="flex items-center gap-3">
+                      <CardStatusPills
+                        value={card.status}
+                        ariaLabel={`Card ${cardIndex + 1} status`}
+                        onChange={(status) => updateCard(cardIndex, { status })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeCard(cardIndex)}
+                        disabled={saving}
+                        className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                      >
+                        Remove card
+                      </button>
+                    </div>
                     <CardChecklistToggles
                       compact
                       checklist={card.checklist}
@@ -3352,16 +3340,6 @@ function OrderEditor({
                       }
                     />
                   </div>
-                }
-                action={
-                  <button
-                    type="button"
-                    onClick={() => removeCard(cardIndex)}
-                    disabled={saving}
-                    className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                  >
-                    Remove card
-                  </button>
                 }
                 expanded={isExpanded}
                 onToggle={() => {
