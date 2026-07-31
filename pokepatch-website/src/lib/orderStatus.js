@@ -32,24 +32,24 @@ export const CARD_CHECKLIST_GROUPS = [
     id: "before",
     label: "Before",
     items: [
-      { id: "before_scans", label: "Before scans" },
-      { id: "before_closeup_photos", label: "Before closeup photos" },
+      { id: "before_scans", label: "Scans" },
+      { id: "before_closeup_photos", label: "Closeups" },
     ],
   },
   {
     id: "after",
     label: "After",
     items: [
-      { id: "after_scans", label: "After scans" },
-      { id: "after_closeup_photos", label: "After closeup photos" },
+      { id: "after_scans", label: "Scans" },
+      { id: "after_closeup_photos", label: "Closeups" },
     ],
   },
   {
     id: "social",
     label: "Social",
     items: [
-      { id: "post_gallery", label: "Post on gallery" },
-      { id: "post_instagram", label: "Post on Instagram" },
+      { id: "post_gallery", label: "Gallery" },
+      { id: "post_instagram", label: "Instagram" },
     ],
   },
 ];
