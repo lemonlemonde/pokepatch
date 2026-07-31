@@ -126,7 +126,7 @@ export async function stitchBeforeAfterPairRows(
   );
 }
 
-/** Legacy Front + Back before/after posts (video / fixed 4-slot layout). */
+/** Front + Back before/after posts for the 1×2 Front-Back Pair mode. */
 export async function stitchBothPosts(
   files,
   overlayOptions = null,

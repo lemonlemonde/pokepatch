@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 
 const DEFAULT_TITLE = "Unsaved changes";
 const DEFAULT_BODY =
@@ -26,7 +27,7 @@ export default function UnsavedChangesDialog({
 
   if (!open) return null;
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6"
       role="presentation"
@@ -70,4 +71,13 @@ export default function UnsavedChangesDialog({
       </div>
     </div>
   );
+
+  // Portal to <body>: a `fixed` element confined to an ancestor that has a
+  // CSS transform (even a no-op one, e.g. Tailwind's `animate-fade-up`
+  // keyframe ends on `translateY(0)` with fill-mode `both`, so it stays
+  // applied after the animation finishes) only covers that ancestor's box,
+  // not the real viewport. Rendering inline broke exactly that way inside
+  // the studio pages. MediaLightbox already does this for the same reason.
+  if (typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }

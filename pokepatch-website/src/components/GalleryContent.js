@@ -10,10 +10,20 @@ function pairMediaKind(pair) {
 }
 
 function buildMediaList(items) {
-  return items.flatMap((item) =>
-    (item.pairs ?? []).flatMap((pair) => {
+  return items.flatMap((item) => {
+    const entries = [];
+    if (item.thumbnail) {
+      entries.push({
+        type: "image",
+        src: item.thumbnail,
+        poster: null,
+        alt: `${item.title} card`,
+        label: "Card",
+        sectionTitle: item.title,
+      });
+    }
+    for (const pair of item.pairs ?? []) {
       const kind = pairMediaKind(pair);
-      const entries = [];
       if (pair.before) {
         entries.push({
           type: kind,
@@ -34,9 +44,9 @@ function buildMediaList(items) {
           sectionTitle: item.title,
         });
       }
-      return entries;
-    }),
-  );
+    }
+    return entries;
+  });
 }
 
 function PlayBadge({ className = "" }) {
@@ -174,6 +184,29 @@ function itemKeyOf(item) {
   return item.id ?? item.title;
 }
 
+function CardThumbnail({ src, title, onOpen, priority = false }) {
+  if (!src) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen({ type: "image", src, label: "Card" })}
+      className="group relative block h-12 w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-ink/10 bg-night/10"
+      aria-label={`View ${title} card`}
+    >
+      <GalleryImage
+        src={src}
+        width={72}
+        alt={`${title} card`}
+        priority={priority}
+        className="object-cover transition duration-200 group-hover:scale-105"
+        sizes="36px"
+      />
+      <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/15" />
+    </button>
+  );
+}
+
 function GalleryItemCard({ item, index, onOpen }) {
   const pairs = (item.pairs ?? []).filter((pair) => pair.before || pair.after);
   const featured = pairs[0] ?? null;
@@ -195,21 +228,31 @@ function GalleryItemCard({ item, index, onOpen }) {
     >
       <div className="space-y-4 p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="min-w-0 text-left">
-            <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
-            {item.setName ? (
-              <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
-                {item.setName}
-              </p>
-            ) : null}
-            {postedLabel ? (
-              <time
-                dateTime={item.createdAt}
-                className="mt-1.5 block text-xs font-medium tracking-wide text-ink/55"
-              >
-                {postedLabel}
-              </time>
-            ) : null}
+          <div className="flex min-w-0 items-start gap-3">
+            {item.thumbnail && (
+              <CardThumbnail
+                src={item.thumbnail}
+                title={item.title}
+                onOpen={openMedia}
+                priority={index <= 1}
+              />
+            )}
+            <div className="min-w-0 text-left">
+              <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
+              {item.setName ? (
+                <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
+                  {item.setName}
+                </p>
+              ) : null}
+              {postedLabel ? (
+                <time
+                  dateTime={item.createdAt}
+                  className="mt-1.5 block text-xs font-medium tracking-wide text-ink/55"
+                >
+                  {postedLabel}
+                </time>
+              ) : null}
+            </div>
           </div>
 
           {damageTags.length > 0 && (

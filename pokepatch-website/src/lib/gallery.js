@@ -168,12 +168,17 @@ export function mapGalleryRowToItem(row) {
     mapPair(pair, pair.urls ?? {})
   );
 
+  const thumbnailPath = row.thumbnail_path ?? row.thumbnailPath ?? null;
+  const thumbnail =
+    row.urls?.thumbnail ?? publicUrlForPath(thumbnailPath) ?? null;
+
   return {
     id: row.id,
     title: row.title,
     setName: row.set_name ?? row.setName ?? "",
     damageTags: normalizeDamageTags(row.damage_tags ?? row.damageTags),
     createdAt: row.created_at ?? row.createdAt ?? null,
+    thumbnail,
     pairs,
   };
 }
@@ -342,6 +347,7 @@ export async function fetchPublishedGalleryItems() {
       set_name,
       damage_tags,
       created_at,
+      thumbnail_path,
       gallery_pairs (
         id,
         sort_order,

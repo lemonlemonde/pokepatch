@@ -11,7 +11,6 @@ export default function StudioOpenableThumb({
   src,
   alt,
   label,
-  mediaType = "image",
   className = "",
   children,
 }) {
@@ -59,7 +58,7 @@ export default function StudioOpenableThumb({
       {open && src ? (
         <MediaLightbox
           media={{
-            type: mediaType === "video" ? "video" : "image",
+            type: "image",
             src,
             alt: alt || label || "",
             label: label || alt || "",
