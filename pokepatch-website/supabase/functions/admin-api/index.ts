@@ -7,6 +7,7 @@ import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
 import {
   fetchPokemonTcgCard,
+  normalizeSearchText,
   searchPokemonTcgCatalog,
   tcgCardImageSmallUrl,
 } from "../_shared/pokemonTcg.ts";
@@ -2150,14 +2151,16 @@ Deno.serve(async (req) => {
     }
 
     if (action === "gallery_tcg_search") {
-      const cardName =
+      const cardName = normalizeSearchText(
         typeof body.card_name === "string"
-          ? body.card_name.trim()
+          ? body.card_name
           : typeof body.q === "string"
-            ? body.q.trim()
-            : "";
-      const setName =
-        typeof body.set_name === "string" ? body.set_name.trim() : "";
+            ? body.q
+            : ""
+      );
+      const setName = normalizeSearchText(
+        typeof body.set_name === "string" ? body.set_name : ""
+      );
       const page = Math.max(1, Number(body.page) || 1);
       const pageSize = Math.min(Math.max(Number(body.page_size) || 24, 1), 50);
 

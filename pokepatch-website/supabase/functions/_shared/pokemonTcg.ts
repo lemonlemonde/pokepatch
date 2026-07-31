@@ -1,8 +1,10 @@
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2";
 const REQUEST_TIMEOUT_MS = 18_000;
-const CATALOG_SEARCH_TIMEOUT_MS = 10_000;
+const CATALOG_SEARCH_TIMEOUT_MS = 8_000;
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const CATALOG_CACHE_MAX = 80;
+const CATALOG_RETRY_ATTEMPTS = 3;
+const CATALOG_RETRY_DELAY_MS = 250;
 
 type CatalogSearchResult = {
   candidates: TcgCardCandidate[];
@@ -39,55 +41,13 @@ function apiKeyHeader(): Record<string, string> {
   return key ? { "X-Api-Key": key } : {};
 }
 
-function escapeLucenePhrase(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/'/g, "\\'");
-}
-
 function escapeLuceneWildcard(value: string): string {
   return value.replace(/([\\+\-!():^"[\]{}~?|&/])/g, "\\$1");
 }
 
-/** Informal gallery set labels → Pokémon TCG API set.name values. */
-const SET_NAME_ALIASES: Record<string, string> = {
-  "xy promos": "XY Black Star Promos",
-  "xy black star promos": "XY Black Star Promos",
-  "delta species": "EX Delta Species",
-  "unseen forces": "EX Unseen Forces",
-  "black and white": "Black & White",
-  "crown zenith: galarian gallery": "Crown Zenith Galarian Gallery",
-  "crown zenith galarian gallery": "Crown Zenith Galarian Gallery",
-};
-
-/** Informal gallery set labels → Pokémon TCG API set.id values (most reliable for search). */
-const SET_ID_ALIASES: Record<string, string> = {
-  "ascended heroes": "me2pt5",
-  "guardians rising": "sm2",
-  "xy promos": "xyp",
-  "xy black star promos": "xyp",
-  "ex delta species": "ex11",
-  "ex unseen forces": "ex10",
-  "black and white": "bw1",
-  "black & white": "bw1",
-  "gym challenge": "gym2",
-  "crown zenith: galarian gallery": "swsh12pt5gg",
-  "crown zenith galarian gallery": "swsh12pt5gg",
-  "galarian gallery": "swsh12pt5gg",
-};
-
-/** Map informal admin set names to API-friendly set.name phrases. */
-function normalizeSetNameForTcgSearch(setName: string): string {
-  const trimmed = setName.trim().replace(/\s*:\s*/g, " ");
-  const key = trimmed.toLowerCase();
-  return SET_NAME_ALIASES[key] ?? trimmed;
-}
-
-function normalizeSetIdForTcgSearch(setName: string): string | null {
-  const trimmed = setName.trim().replace(/\s*:\s*/g, " ");
-  const key = trimmed.toLowerCase();
-  return SET_ID_ALIASES[key] ?? null;
+/** Fold user input for case-insensitive API prefix search. */
+export function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function tcgCardImageSmallUrl(
@@ -126,6 +86,10 @@ async function tcgFetch(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<R
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function fetchPokemonTcgCard(
   cardId: string
 ): Promise<TcgCardCandidate | null> {
@@ -139,11 +103,11 @@ export async function fetchPokemonTcgCard(
   ];
 
   for (const path of paths) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < CATALOG_RETRY_ATTEMPTS; attempt++) {
       try {
         const response = await tcgFetch(path, 12_000);
         if (!response.ok) {
-          await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+          await sleep(350 * (attempt + 1));
           continue;
         }
         const payload = (await response.json()) as {
@@ -155,7 +119,7 @@ export async function fetchPokemonTcgCard(
         const card = mapCard(row ?? {});
         if (card) return card;
       } catch {
-        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+        await sleep(350 * (attempt + 1));
       }
     }
   }
@@ -169,7 +133,7 @@ function catalogCacheKey(
   page: number,
   pageSize: number
 ): string {
-  return `${cardName.trim().toLowerCase()}|${setName.trim().toLowerCase()}|${page}|${pageSize}`;
+  return `${normalizeSearchText(cardName)}|${normalizeSearchText(setName)}|${page}|${pageSize}`;
 }
 
 function readCatalogCache(key: string): CatalogSearchResult | null {
@@ -193,6 +157,20 @@ function writeCatalogCache(key: string, result: CatalogSearchResult): void {
   });
 }
 
+function emptyCatalogResult(
+  page: number,
+  pageSize: number,
+  queryUsed: string | null = null
+): CatalogSearchResult {
+  return {
+    candidates: [],
+    totalCount: 0,
+    page,
+    pageSize,
+    query_used: queryUsed,
+  };
+}
+
 async function fetchCatalogPage(
   q: string,
   page: number,
@@ -205,98 +183,86 @@ async function fetchCatalogPage(
     select: "id,name,number,images,set",
   });
 
-  const response = await tcgFetch(
-    `/cards?${params}`,
-    CATALOG_SEARCH_TIMEOUT_MS
-  );
-  if (!response.ok) {
-    throw new Error(`TCG API ${response.status}`);
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < CATALOG_RETRY_ATTEMPTS; attempt++) {
+    try {
+      const response = await tcgFetch(
+        `/cards?${params}`,
+        CATALOG_SEARCH_TIMEOUT_MS
+      );
+      if (!response.ok) {
+        lastError = new Error(`TCG API ${response.status}`);
+        await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      const payload = (await response.json().catch(() => null)) as {
+        data?: TcgApiCard[];
+        totalCount?: number;
+        page?: number;
+        pageSize?: number;
+      } | null;
+      if (!payload) {
+        lastError = new Error("TCG API invalid response");
+        await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      const candidates = (payload.data ?? [])
+        .map(mapCard)
+        .filter((row): row is TcgCardCandidate => Boolean(row));
+
+      return {
+        candidates,
+        totalCount: payload.totalCount ?? candidates.length,
+        page: payload.page ?? page,
+        pageSize: payload.pageSize ?? pageSize,
+        query_used: q,
+      };
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+    }
   }
 
-  const payload = (await response.json()) as {
-    data?: TcgApiCard[];
-    totalCount?: number;
-    page?: number;
-    pageSize?: number;
-  };
-
-  const candidates = (payload.data ?? [])
-    .map(mapCard)
-    .filter((row): row is TcgCardCandidate => Boolean(row));
-
-  return {
-    candidates,
-    totalCount: payload.totalCount ?? candidates.length,
-    page: payload.page ?? page,
-    pageSize: payload.pageSize ?? pageSize,
-    query_used: q,
-  };
+  throw lastError ?? new Error("TCG catalog search failed");
 }
 
-/** set.name tokens that often 500 on the Pokémon TCG API — try after safer tokens. */
-const DEPRIORITIZED_SET_TOKENS = new Set(["gallery", "galarian"]);
-
-function catalogSetSearchClauses(setName: string): string[] {
-  const clauses: string[] = [];
-  const setId = normalizeSetIdForTcgSearch(setName);
-  if (setId) clauses.push(`set.id:${setId}`);
-
-  const tokens = normalizeSetNameForTcgSearch(setName)
-    .toLowerCase()
-    .split(/\s+/)
-    .map((t) => t.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
-    .filter((t) => t.length > 2);
-
-  const sorted = [...tokens].sort((a, b) => {
-    const aRank = DEPRIORITIZED_SET_TOKENS.has(a) ? 1 : 0;
-    const bRank = DEPRIORITIZED_SET_TOKENS.has(b) ? 1 : 0;
-    return aRank - bRank;
-  });
-
-  for (const token of sorted) {
-    clauses.push(`set.name:${escapeLuceneWildcard(token)}*`);
-  }
-
-  return [...new Set(clauses)];
+/** First word prefix — API rejects wildcards inside multi-word terms. */
+function firstTokenPrefix(normalizedValue: string): string {
+  const token = normalizedValue.split(/\s+/).filter(Boolean)[0] ?? "";
+  return token ? escapeLuceneWildcard(token) : "";
 }
 
-/** Build catalog queries (prefix-based — avoids slow leading wildcards). */
-export function buildCatalogSearchQueriesFromFields(
+/** One Lucene query per set word the admin typed (prefix match, case-insensitive). */
+export function buildCatalogSearchQueries(
   cardName: string,
   setName: string
 ): string[] {
-  const name = cardName.trim().toLowerCase();
-  const set = setName.trim();
-  const queries: string[] = [];
+  const name = normalizeSearchText(cardName);
+  const set = normalizeSearchText(setName);
+  const namePrefix = firstTokenPrefix(name);
+  const setTokens = [
+    ...new Set(
+      set
+        .split(/\s+/)
+        .filter((token) => token.length >= 2)
+        .map((token) => escapeLuceneWildcard(token))
+    ),
+  ];
 
-  if (name.length >= 2 && set.length >= 2) {
-    const nameTokens = name.split(/\s+/).filter(Boolean);
-    const firstToken = escapeLuceneWildcard(nameTokens[0] ?? name);
-    const setClauses = catalogSetSearchClauses(set);
-
-    for (const setClause of setClauses) {
-      queries.push(`name:${firstToken}* ${setClause}`);
-    }
-    if (nameTokens.length > 1) {
-      const phrase = escapeLucenePhrase(name);
-      for (const setClause of setClauses.slice(0, 3)) {
-        queries.push(`name:"${phrase}" ${setClause}`);
-      }
-    }
-  } else if (name.length >= 3) {
-    const nameTokens = name.split(/\s+/).filter(Boolean);
-    const firstToken = escapeLuceneWildcard(nameTokens[0] ?? name);
-    queries.push(`name:${firstToken}*`);
-    if (nameTokens.length > 1) {
-      queries.push(`name:"${escapeLucenePhrase(name)}"`);
-    }
-  } else if (set.length >= 2) {
-    for (const setClause of catalogSetSearchClauses(set)) {
-      queries.push(setClause);
-    }
+  if (namePrefix.length >= 2 && setTokens.length > 0) {
+    return setTokens.map(
+      (setPrefix) => `name:${namePrefix}* set.name:${setPrefix}*`
+    );
   }
-
-  return [...new Set(queries.filter(Boolean))];
+  if (name.length >= 3 && namePrefix.length >= 2) {
+    return [`name:${namePrefix}*`];
+  }
+  if (setTokens.length > 0) {
+    return setTokens.map((setPrefix) => `set.name:${setPrefix}*`);
+  }
+  return [];
 }
 
 /** Paginated search across the full Pokémon TCG API catalog. */
@@ -311,53 +277,26 @@ export async function searchPokemonTcgCatalog(
   const cached = readCatalogCache(cacheKey);
   if (cached) return cached;
 
-  const attempts = buildCatalogSearchQueriesFromFields(cardName, setName);
-  if (attempts.length === 0) {
-    return {
-      candidates: [],
-      totalCount: 0,
-      page: safePage,
-      pageSize: safeSize,
-      query_used: null,
-    };
+  const queries = buildCatalogSearchQueries(cardName, setName);
+  if (queries.length === 0) {
+    return emptyCatalogResult(safePage, safeSize);
   }
 
-  let lastError: Error | null = null;
-  let lastEmpty: CatalogSearchResult | null = null;
+  let lastResult = emptyCatalogResult(safePage, safeSize, queries[0]);
 
-  for (const q of attempts) {
+  for (const query of queries) {
     try {
-      const result = await fetchCatalogPage(q, safePage, safeSize);
-      if (result.candidates.length > 0 || result.totalCount > 0) {
+      const result = await fetchCatalogPage(query, safePage, safeSize);
+      lastResult = result;
+      if (result.candidates.length > 0) {
         writeCatalogCache(cacheKey, result);
         return result;
       }
-      lastEmpty = result;
     } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      console.warn("TCG catalog search attempt failed:", q, lastError.message);
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("TCG catalog search attempt failed:", query, message);
     }
   }
 
-  if (lastError) {
-    console.error(
-      "TCG catalog search exhausted:",
-      cardName,
-      setName,
-      lastError.message
-    );
-  }
-
-  if (lastEmpty) {
-    writeCatalogCache(cacheKey, lastEmpty);
-    return lastEmpty;
-  }
-
-  return {
-    candidates: [],
-    totalCount: 0,
-    page: safePage,
-    pageSize: safeSize,
-    query_used: attempts[0] ?? null,
-  };
+  return lastResult;
 }

@@ -19,17 +19,21 @@ function cardImageUrl(card) {
   );
 }
 
+function normalizeSearchInput(value) {
+  return value.trim().toLowerCase();
+}
+
 function canSearch(cardName, setName) {
-  const name = cardName.trim();
-  const set = setName.trim();
+  const name = normalizeSearchInput(cardName);
+  const set = normalizeSearchInput(setName);
   if (name.length >= 2 && set.length >= MIN_SET_LENGTH) return true;
   if (set.length >= MIN_SET_LENGTH) return true;
   return name.length >= MIN_NAME_ONLY_LENGTH;
 }
 
 function searchInputError(cardName, setName) {
-  const name = cardName.trim();
-  const set = setName.trim();
+  const name = normalizeSearchInput(cardName);
+  const set = normalizeSearchInput(setName);
   if (!name && !set) return "Enter a card name or set to search.";
   if (set.length > 0 && name.length < 2) {
     return "Enter a card name, or at least 2 characters in set.";
@@ -159,8 +163,8 @@ export default function GalleryCardSearch({
   }, []);
 
   function submitSearch() {
-    const nameQuery = cardName.trim();
-    const setQuery = setName.trim();
+    const nameQuery = normalizeSearchInput(cardName);
+    const setQuery = normalizeSearchInput(setName);
     setLastQuery({ cardName: nameQuery, setName: setQuery });
     runSearch(nameQuery, setQuery, 1, false);
   }
