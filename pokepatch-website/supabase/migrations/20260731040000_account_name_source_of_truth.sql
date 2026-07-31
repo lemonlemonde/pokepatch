@@ -1,9 +1,16 @@
 -- Make the account (customer_profiles) the source of truth for a customer's
--- name in both directions:
+-- name, kept in sync in every direction:
 --   1. New order submitted under an email that already has a named account
 --      (whether or not the submitter is logged in) -> the order is stamped
 --      with the account's current name, not whatever was typed on the form.
---   2. Sign-in with no saved profile name yet -> backfill it, preferring the
+--   2. New order submitted while logged in, and the account is missing a
+--      side of the name (or has no profile row yet) -> whatever the
+--      customer just typed for that missing side is saved onto their own
+--      account immediately, so they're never asked for it again and their
+--      account page reflects it right away. Anonymous submissions that only
+--      matched by email never write back — only an authenticated session
+--      may modify its own profile.
+--   3. Sign-in with no saved profile name yet -> backfill it, preferring the
 --      name collected at signup (JWT user_metadata) over guessing from past
 --      orders (kept for accounts created before signup required a name).
 
@@ -99,6 +106,34 @@ begin
     if coalesce(v_account_last_name, '') <> '' then
       v_last_name := v_account_last_name;
     end if;
+  end if;
+
+  -- If the submitter is logged in and their own account is missing a side
+  -- of the name, save whatever they just typed for that side back onto the
+  -- account now — otherwise a customer whose account only has a first name
+  -- would be asked to retype their last name on every single quote, and
+  -- their account page would stay blank even after they've told us. Never
+  -- do this for an anonymous submission that merely matched an email —
+  -- only the account's own logged-in session may write to its profile.
+  if v_user_id is not null then
+    insert into public.customer_profiles (user_id, first_name, last_name, updated_at)
+    values (v_user_id, v_first_name, v_last_name, now())
+    on conflict (user_id) do update
+    set
+      first_name = case
+        when coalesce(public.customer_profiles.first_name, '') = ''
+          then excluded.first_name
+        else public.customer_profiles.first_name
+      end,
+      last_name = case
+        when coalesce(public.customer_profiles.last_name, '') = ''
+          then excluded.last_name
+        else public.customer_profiles.last_name
+      end,
+      updated_at = now()
+    where
+      coalesce(public.customer_profiles.first_name, '') = ''
+      or coalesce(public.customer_profiles.last_name, '') = '';
   end if;
 
   v_customer_name := trim(v_first_name || ' ' || v_last_name);

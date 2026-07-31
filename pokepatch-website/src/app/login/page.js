@@ -308,6 +308,7 @@ function LoginForm() {
                 onClick={() => {
                   setMode("signup");
                   setError("");
+                  setNotice("");
                   setFieldErrors({});
                 }}
                 className="font-semibold text-blush hover:underline"
@@ -322,6 +323,7 @@ function LoginForm() {
                 onClick={() => {
                   setMode("login");
                   setError("");
+                  setNotice("");
                   setFieldErrors({});
                   setConfirmPassword("");
                 }}
