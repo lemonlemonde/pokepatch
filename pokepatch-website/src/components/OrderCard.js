@@ -120,6 +120,34 @@ function SectionLabel({ children, showUpdate = false, className = "" }) {
   );
 }
 
+function CardPokePatchNote({ note, variant = "expanded" }) {
+  const text = String(note ?? "").trim();
+  if (!text) return null;
+
+  if (variant === "collapsed") {
+    return (
+      <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink/50">
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full bg-mint"
+          aria-hidden="true"
+        />
+        Note from PokePatch
+      </span>
+    );
+  }
+
+  return (
+    <div className="border-t border-mint/20 bg-mint/[0.07] px-3 py-3 sm:px-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
+        Note from PokePatch
+      </p>
+      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink/90">
+        {text}
+      </p>
+    </div>
+  );
+}
+
 function formatDate(dateString) {
   const date = new Date(dateString);
   return date.toLocaleDateString("en-US", {
@@ -319,22 +347,38 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     (isExpanded && expectMessages && (!messagesReady || messagesLoading));
 
   useEffect(() => {
-    if (isExpanded && !orderDetails && supabase) {
-      setLoading(true);
-      supabase
-        .rpc("get_my_order", { p_order_id: order.id })
-        .then(({ data, error }) => {
-          if (error) throw error;
-          setOrderDetails(data);
-        })
-        .catch((err) => {
-          setError(err.message || "Failed to load order details");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+    if (!isExpanded) {
+      setOrderDetails(null);
+      setError("");
+      setExpandedCardId(null);
+      return;
     }
-  }, [isExpanded, order.id, orderDetails]);
+    if (!supabase) return undefined;
+
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+
+    supabase
+      .rpc("get_my_order", { p_order_id: order.id })
+      .then(({ data, error: loadError }) => {
+        if (cancelled) return;
+        if (loadError) throw loadError;
+        setOrderDetails(data);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setOrderDetails(null);
+        setError(err.message || "Failed to load order details");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isExpanded, order.id]);
 
   useEffect(() => {
     if (!isExpanded || !supabase) return undefined;
@@ -1032,6 +1076,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 {card.set_name}
                               </p>
                             )}
+                            <CardPokePatchNote
+                              note={card.admin_note}
+                              variant="collapsed"
+                            />
                             <p className="mt-0.5 text-[11px] text-ink/60">
                               {photoCount} {photoCount === 1 ? "photo" : "photos"}
                             </p>
@@ -1042,52 +1090,61 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         </button>
 
                         {isCardOpen && (
-                          <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div>
-                                <p className={LABEL_CLS}>Description</p>
-                                {card.description ? (
-                                  <p className="mt-1 text-sm text-ink/80">
-                                    {card.description}
+                          <>
+                            <CardPokePatchNote note={card.admin_note} />
+                            <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div>
+                                  <p className={LABEL_CLS}>
+                                    {card.admin_note
+                                      ? "Your description"
+                                      : "Description"}
                                   </p>
-                                ) : (
-                                  <p className="mt-1 text-sm italic text-ink/60">
-                                    No description provided.
-                                  </p>
-                                )}
+                                  {card.description ? (
+                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-ink/80">
+                                      {card.description}
+                                    </p>
+                                  ) : (
+                                    <p className="mt-1 text-sm italic text-ink/60">
+                                      No description provided.
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
 
-                            <div className="sm:w-1/2 sm:shrink-0">
-                              <p className={`${LABEL_CLS} mb-2`}>
-                                Photos · {photoCount}
-                              </p>
-                              <div className="grid grid-cols-3 gap-2">
-                                {(card.images || []).map((image, imageIndex) => (
-                                  <Photo
-                                    key={image.id}
-                                    url={thumbUrls[image.storage_path]}
-                                    alt={`${card.card_name} - ${image.image_type}`}
-                                    badge={imageBadge(image.image_type)}
-                                    onOpen={
-                                      thumbUrls[image.storage_path]
-                                        ? () =>
-                                            setLightbox({
-                                              cardId: card.id,
-                                              index: imageIndex,
-                                            })
-                                        : undefined
-                                    }
-                                    onThumbError={() =>
-                                      resolveFullAfterBadThumb(
-                                        image.storage_path
-                                      )
-                                    }
-                                  />
-                                ))}
+                              <div className="sm:w-1/2 sm:shrink-0">
+                                <p className={`${LABEL_CLS} mb-2`}>
+                                  Photos · {photoCount}
+                                </p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {(card.images || []).map(
+                                    (image, imageIndex) => (
+                                      <Photo
+                                        key={image.id}
+                                        url={thumbUrls[image.storage_path]}
+                                        alt={`${card.card_name} - ${image.image_type}`}
+                                        badge={imageBadge(image.image_type)}
+                                        onOpen={
+                                          thumbUrls[image.storage_path]
+                                            ? () =>
+                                                setLightbox({
+                                                  cardId: card.id,
+                                                  index: imageIndex,
+                                                })
+                                            : undefined
+                                        }
+                                        onThumbError={() =>
+                                          resolveFullAfterBadThumb(
+                                            image.storage_path
+                                          )
+                                        }
+                                      />
+                                    )
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          </>
                         )}
                       </div>
                     );
