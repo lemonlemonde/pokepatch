@@ -65,7 +65,6 @@ import {
   pendingKindBadgeClass,
   CARD_CHECKLIST_GROUPS,
   normalizeCardChecklist,
-  cardChecklistGroupProgress,
 } from "@/lib/orderStatus";
 import {
   QUOTE_SERVICES,
@@ -2273,25 +2272,6 @@ function CardChecklistToggles({ checklist, onChange }) {
   );
 }
 
-/** Compact "1/2 · 1/2 · 1/2" completion badges for the collapsed card view. */
-function CardChecklistSummary({ checklist }) {
-  const groups = cardChecklistGroupProgress(checklist);
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/45">
-      {groups.map((group) => (
-        <span
-          key={group.id}
-          className={`font-medium tabular-nums ${
-            group.done === group.total ? "text-mint" : ""
-          }`}
-        >
-          {group.label} {group.done}/{group.total}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Interactive checklist rendered to the right of a collapsed card (outside
  * its column), so admins can tick items off without expanding the card.
@@ -3417,7 +3397,6 @@ function OrderEditor({
                           </span>
                         </div>
                       ) : null}
-                      <CardChecklistSummary checklist={card.checklist} />
                     </div>
                   }
                   className={
@@ -3469,7 +3448,7 @@ function OrderEditor({
                       />
                     </label>
                   </div>
-                  <div className="border-t border-ink/10 pt-4">
+                  <div className="border-t border-ink/10 pt-4 lg:hidden">
                     <CardChecklistToggles
                       checklist={card.checklist}
                       onChange={(checklist) =>
@@ -3592,16 +3571,14 @@ function OrderEditor({
                     </div>
                   </div>
                 </CollapsibleOrderCard>
-                {!isExpanded ? (
-                  <div className="absolute inset-y-0 left-full ml-3 hidden w-40 lg:block">
-                    <CardChecklistSidePanel
-                      checklist={card.checklist}
-                      onChange={(checklist) =>
-                        updateCard(cardIndex, { checklist })
-                      }
-                    />
-                  </div>
-                ) : null}
+                <div className="absolute inset-y-0 left-full ml-3 hidden w-40 lg:block">
+                  <CardChecklistSidePanel
+                    checklist={card.checklist}
+                    onChange={(checklist) =>
+                      updateCard(cardIndex, { checklist })
+                    }
+                  />
+                </div>
               </div>
             );
           })

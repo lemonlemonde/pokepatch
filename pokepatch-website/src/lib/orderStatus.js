@@ -65,17 +65,6 @@ export function normalizeCardChecklist(checklist) {
   );
 }
 
-/** Per-group { id, label, done, total } progress for the collapsed card summary. */
-export function cardChecklistGroupProgress(checklist) {
-  const normalized = normalizeCardChecklist(checklist);
-  return CARD_CHECKLIST_GROUPS.map((group) => ({
-    id: group.id,
-    label: group.label,
-    done: group.items.filter((item) => normalized[item.id]).length,
-    total: group.items.length,
-  }));
-}
-
 const CARD_LABEL_BY_ID = Object.fromEntries(
   CARD_STATUSES.map((status) => [status.id, status.label]),
 );
