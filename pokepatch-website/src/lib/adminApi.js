@@ -485,6 +485,31 @@ export async function adminUploadGalleryPairSide(
   return payload.item;
 }
 
+export async function adminUploadGalleryThumbnail(itemId, file, { thumb = null } = {}) {
+  const formData = new FormData();
+  formData.append("kind", "gallery_thumbnail");
+  formData.append("item_id", itemId);
+  formData.append("file", file);
+  if (thumb) formData.append("thumb", thumb);
+
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    formData,
+  });
+  return payload.item;
+}
+
+export async function adminClearGalleryThumbnail(itemId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_thumbnail_clear",
+      item_id: itemId,
+    },
+  });
+  return payload.item;
+}
+
 export async function adminMessageHistory({ email, order_id, limit } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

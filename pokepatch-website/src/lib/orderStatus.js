@@ -28,6 +28,48 @@ export const CARD_STATUSES = [
 export const DEFAULT_CARD_STATUS = "todo";
 export const DEFAULT_PENDING_KIND = "quote";
 
+/**
+ * Per-card admin workflow checklist. Purely informal — manual toggles only,
+ * never auto-set/reset and never gates card status or anything else.
+ */
+export const CARD_CHECKLIST_GROUPS = [
+  {
+    id: "before",
+    label: "Before",
+    items: [
+      { id: "before_scans", label: "Scans" },
+      { id: "before_closeup_photos", label: "Closeups" },
+    ],
+  },
+  {
+    id: "after",
+    label: "After",
+    items: [
+      { id: "after_scans", label: "Scans" },
+      { id: "after_closeup_photos", label: "Closeups" },
+    ],
+  },
+  {
+    id: "social",
+    label: "Social",
+    items: [
+      { id: "post_gallery", label: "Gallery" },
+      { id: "post_instagram", label: "Instagram" },
+    ],
+  },
+];
+
+const CARD_CHECKLIST_ITEM_IDS = CARD_CHECKLIST_GROUPS.flatMap((group) =>
+  group.items.map((item) => item.id),
+);
+
+export function normalizeCardChecklist(checklist) {
+  const source = checklist && typeof checklist === "object" ? checklist : {};
+  return Object.fromEntries(
+    CARD_CHECKLIST_ITEM_IDS.map((id) => [id, source[id] === true]),
+  );
+}
+
 const CARD_LABEL_BY_ID = Object.fromEntries(
   CARD_STATUSES.map((status) => [status.id, status.label]),
 );

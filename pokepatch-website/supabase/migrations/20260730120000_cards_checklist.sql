@@ -1,7 +1,9 @@
--- Per-card admin notes (customer-facing via order save changelog).
+-- Per-card admin workflow checklist (before/after scans+photos, social posting).
+-- Manual only: never set/reset automatically, never gates card status.
 
 ALTER TABLE public.cards
-  ADD COLUMN IF NOT EXISTS admin_note text;
+  ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE OR REPLACE FUNCTION public.update_order(p_order_id uuid, p_order jsonb DEFAULT NULL::jsonb, p_contacts jsonb DEFAULT NULL::jsonb, p_cards jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -24,12 +26,11 @@ declare
   v_card_name text;
   v_set_name text;
   v_description text;
-  v_admin_note text;
-  v_card_checklist jsonb;
   v_market_value numeric(10, 2);
   v_card_status text;
   v_prev_card_status text;
   v_card_status_changed boolean := false;
+  v_card_checklist jsonb;
   v_status text;
   v_prev_status text;
   v_pending_kind text;
@@ -154,10 +155,7 @@ begin
       if v_status in ('on_hold', 'pending_quote', 'pending_dropoff') then
         v_status := 'pending';
       end if;
-      if v_status = 'ready_for_customer' then
-        v_status := 'ready';
-      end if;
-      if v_status not in ('new', 'pending', 'in_progress', 'ready', 'completed', 'canceled') then
+      if v_status not in ('new', 'pending', 'in_progress', 'completed', 'canceled') then
         raise exception 'invalid status';
       end if;
 
@@ -378,12 +376,6 @@ begin
           where id = v_card_id;
         end if;
 
-        if v_card ? 'admin_note' then
-          update public.cards
-          set admin_note = nullif(trim(coalesce(v_card ->> 'admin_note', '')), '')
-          where id = v_card_id;
-        end if;
-
         if v_card ? 'market_value_raw_nm' then
           if v_card ->> 'market_value_raw_nm' is null
              or trim(coalesce(v_card ->> 'market_value_raw_nm', '')) = '' then
@@ -446,7 +438,6 @@ begin
 
         v_set_name := nullif(trim(coalesce(v_card ->> 'set_name', '')), '');
         v_description := nullif(trim(coalesce(v_card ->> 'description', '')), '');
-        v_admin_note := nullif(trim(coalesce(v_card ->> 'admin_note', '')), '');
 
         if v_card ->> 'market_value_raw_nm' is null
            or trim(coalesce(v_card ->> 'market_value_raw_nm', '')) = '' then
@@ -489,7 +480,6 @@ begin
           card_name,
           set_name,
           description,
-          admin_note,
           market_value_raw_nm,
           status,
           sort_order,
@@ -501,7 +491,6 @@ begin
           v_card_name,
           v_set_name,
           v_description,
-          v_admin_note,
           v_market_value,
           v_card_status,
           v_card_sort,
@@ -561,127 +550,6 @@ begin
   );
 end;
 $function$;
+
 REVOKE ALL ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) FROM public;
 GRANT EXECUTE ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) TO service_role;
-CREATE OR REPLACE FUNCTION public.get_my_order(p_order_id uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $$
-declare
-  v_user_id uuid;
-  v_order public.orders%rowtype;
-  v_contacts jsonb;
-  v_cards jsonb;
-  v_quote_items jsonb;
-begin
-  v_user_id := auth.uid();
-  if v_user_id is null then
-    raise exception 'not authenticated';
-  end if;
-
-  select * into v_order
-  from public.orders
-  where id = p_order_id and user_id = v_user_id;
-
-  if not found then
-    raise exception 'order not found or access denied';
-  end if;
-
-  select jsonb_agg(
-    jsonb_build_object(
-      'id', c.id,
-      'contact_type', c.contact_type,
-      'value', c.value
-    )
-    order by c.id
-  ) into v_contacts
-  from public.contacts c
-  where c.order_id = v_order.id;
-
-  select jsonb_agg(
-    jsonb_build_object(
-      'id', card.id,
-      'card_name', card.card_name,
-      'set_name', card.set_name,
-      'description', card.description,
-      'admin_note', card.admin_note,
-      'market_value_raw_nm', card.market_value_raw_nm,
-      'status', card.status,
-      'queue_position', (
-        SELECT q.queue_position
-        FROM (
-          SELECT
-            c2.id AS card_id,
-            ROW_NUMBER() OVER (
-              ORDER BY
-                o2.queue_priority ASC NULLS LAST,
-                o2.created_at ASC NULLS LAST,
-                c2.id ASC
-            )::integer AS queue_position
-          FROM public.cards c2
-          INNER JOIN public.orders o2 ON o2.id = c2.order_id
-          WHERE o2.status = 'new'
-            AND c2.status IN ('todo', 'in_progress')
-        ) q
-        WHERE q.card_id = card.id
-          AND v_order.status = 'new'
-          AND card.status IN ('todo', 'in_progress')
-      ),
-      'images', (
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', ci.id,
-            'image_type', ci.image_type,
-            'storage_path', ci.storage_path
-          )
-          order by ci.id
-        )
-        from public.card_images ci
-        where ci.card_id = card.id
-      )
-    )
-    order by card.sort_order, card.id
-  ) into v_cards
-  from public.cards card
-  where card.order_id = v_order.id;
-
-  select jsonb_agg(
-    jsonb_build_object(
-      'id', qi.id,
-      'sort_order', qi.sort_order,
-      'card_name', qi.card_name,
-      'set_name', qi.set_name,
-      'service_key', qi.service_key,
-      'service_label', qi.service_label,
-      'quote_base_amount', qi.quote_base_amount,
-      'high_value_surcharge', qi.high_value_surcharge
-    )
-    order by qi.sort_order, qi.id
-  ) into v_quote_items
-  from public.order_quote_items qi
-  where qi.order_id = v_order.id;
-
-  return jsonb_build_object(
-    'id', v_order.id,
-    'display_id', v_order.display_id,
-    'created_at', v_order.created_at,
-    'customer_name', v_order.customer_name,
-    'delivery_method', v_order.delivery_method,
-    'general_notes', v_order.general_notes,
-    'photos_drive_url', v_order.photos_drive_url,
-    'preferred_contact_type', v_order.preferred_contact_type,
-    'preferred_contact_value', v_order.preferred_contact_value,
-    'quote_bulk_counts', v_order.quote_bulk_counts,
-    'quote_override_label', v_order.quote_override_label,
-    'quote_override_amount', v_order.quote_override_amount,
-    'status', v_order.status,
-    'contacts', coalesce(v_contacts, '[]'::jsonb),
-    'cards', coalesce(v_cards, '[]'::jsonb),
-    'quote_items', coalesce(v_quote_items, '[]'::jsonb)
-  );
-end;
-$$;
-REVOKE ALL ON FUNCTION public.get_my_order(uuid) FROM public;
-GRANT EXECUTE ON FUNCTION public.get_my_order(uuid) TO authenticated;

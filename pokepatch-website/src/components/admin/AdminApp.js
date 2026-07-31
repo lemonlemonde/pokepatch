@@ -64,6 +64,8 @@ import {
   parseEditorStatusValue,
   pendingKindShortLabel,
   pendingKindBadgeClass,
+  CARD_CHECKLIST_GROUPS,
+  normalizeCardChecklist,
 } from "@/lib/orderStatus";
 import {
   QUOTE_SERVICES,
@@ -102,6 +104,7 @@ function emptyAdminCard() {
     admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
+    checklist: normalizeCardChecklist(null),
     images: [],
     pending_files: [],
   };
@@ -389,6 +392,7 @@ function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
+    checklist: normalizeCardChecklist(card.checklist),
     images: card.images ?? [],
     pending_files: [],
   }));
@@ -454,6 +458,7 @@ function draftPayload(draft) {
       admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
+      checklist: normalizeCardChecklist(card.checklist),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))
@@ -1116,21 +1121,43 @@ function KanbanCard({
             {formatMoney(orderAmount(order))}
           </p>
         </div>
-        <p className="mt-1 text-sm font-semibold text-ink">
-          {order.customer_name}
-        </p>
-        <div className="mt-1.5">
-          <AccountStatusBadge hasAccount={order.has_account} />
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="mt-1 text-sm font-semibold text-ink">
+              {order.customer_name}
+            </p>
+            <div className="mt-1.5">
+              <AccountStatusBadge hasAccount={order.has_account} />
+            </div>
+            <p className="mt-1 text-xs text-ink/60">
+              {showCardProgress
+                ? `${cardsCompleted}/${cardCount} cards complete`
+                : `${cardCount} card${cardCount === 1 ? "" : "s"}`}{" "}
+              · {deliveryLabel(order.delivery_method)}
+            </p>
+            <p className="mt-0.5 text-xs text-ink/50">
+              {formatDate(order.created_at)}
+            </p>
+          </div>
+          {order.checklist_progress ? (
+            <div className="mt-1 shrink-0 space-y-0.5 text-right text-[11px] font-medium tabular-nums">
+              {Object.entries(order.checklist_progress).map(
+                ([groupId, progress]) => (
+                  <p
+                    key={groupId}
+                    className={
+                      progress.total > 0 && progress.done === progress.total
+                        ? "text-mint"
+                        : "text-ink/50"
+                    }
+                  >
+                    {progress.done}/{progress.total} {groupId}
+                  </p>
+                )
+              )}
+            </div>
+          ) : null}
         </div>
-        <p className="mt-1 text-xs text-ink/60">
-          {showCardProgress
-            ? `${cardsCompleted}/${cardCount} cards complete`
-            : `${cardCount} card${cardCount === 1 ? "" : "s"}`}{" "}
-          · {deliveryLabel(order.delivery_method)}
-        </p>
-        <p className="mt-0.5 text-xs text-ink/50">
-          {formatDate(order.created_at)}
-        </p>
         <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
           {previewUrls.length === 0 ? (
             <div className="aspect-[3/4] w-12 rounded-md bg-night/50" />
@@ -2193,29 +2220,109 @@ function CollapsibleOrderCard({
   );
 }
 
-function CardStatusPills({ value, onChange, ariaLabel }) {
-  const selectedId = normalizeCardStatus(value);
+/** Native checkbox, brand-colored via accent-color — simple, reliable, easy to hit. */
+function ChecklistCheckbox({ checked, onChange, label }) {
   return (
-    <span className="flex flex-wrap gap-1" role="group" aria-label={ariaLabel}>
-      {CARD_STATUSES.map((status) => {
-        const selected = selectedId === status.id;
-        return (
-          <button
-            key={status.id}
-            type="button"
-            onClick={() => onChange(status.id)}
-            aria-pressed={selected}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-              selected
-                ? cardStatusBadgeClass(status.id)
-                : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
-            }`}
-          >
-            {status.label}
-          </button>
-        );
-      })}
-    </span>
+    <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs text-ink/70 select-none hover:bg-ink/5 hover:text-ink">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+      />
+      {label}
+    </label>
+  );
+}
+
+/**
+ * One checklist group as a small "done/total" chip (sits under its matching
+ * status chip). Click opens a popover with the actual toggles — keeps the
+ * card header compact while the checkboxes stay a comfortable size to hit.
+ */
+function ChecklistGroupChip({ group, checklist, onChange }) {
+  const normalized = normalizeCardChecklist(checklist);
+  const done = group.items.filter((item) => normalized[item.id]).length;
+  const total = group.items.length;
+  const complete = total > 0 && done === total;
+
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const buttonRef = useRef(null);
+  const popoverRef = useRef(null);
+
+  function openPopover() {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (rect) {
+      setPos({ top: rect.bottom + 6, left: rect.left + rect.width / 2 });
+    }
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDocMouseDown(event) {
+      if (
+        buttonRef.current?.contains(event.target) ||
+        popoverRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    }
+    function onKeyDown(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => (open ? setOpen(false) : openPopover())}
+        aria-expanded={open}
+        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums transition ${
+          complete
+            ? "bg-mint/20 text-mint"
+            : "bg-ink/5 text-ink/50 hover:bg-ink/10 hover:text-ink/70"
+        }`}
+      >
+        {done}/{total} {group.label}
+      </button>
+      {open && pos && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              ref={popoverRef}
+              className="fixed z-[200] w-40 -translate-x-1/2 rounded-xl border-2 border-ink/15 bg-cream p-2.5 shadow-cozy"
+              style={{ top: pos.top, left: pos.left }}
+            >
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink/40">
+                {group.label}
+              </span>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <ChecklistCheckbox
+                    key={item.id}
+                    checked={normalized[item.id]}
+                    label={item.label}
+                    onChange={(value) =>
+                      onChange({ ...normalized, [item.id]: value })
+                    }
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </>
   );
 }
 
@@ -3271,21 +3378,46 @@ function OrderEditor({
                 thumbUrl={thumbUrl}
                 thumbStoragePath={thumbStoragePath}
                 titleExtra={
-                  <CardStatusPills
-                    value={card.status}
-                    ariaLabel={`Card ${cardIndex + 1} status`}
-                    onChange={(status) => updateCard(cardIndex, { status })}
-                  />
-                }
-                action={
-                  <button
-                    type="button"
-                    onClick={() => removeCard(cardIndex)}
-                    disabled={saving}
-                    className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                  >
-                    Remove card
-                  </button>
+                  <div className="grid grid-cols-[repeat(4,auto)_auto] items-center justify-items-center gap-x-2 gap-y-1">
+                    {CARD_STATUSES.map((status) => {
+                      const selected = normalizeCardStatus(card.status) === status.id;
+                      return (
+                        <button
+                          key={status.id}
+                          type="button"
+                          onClick={() => updateCard(cardIndex, { status: status.id })}
+                          aria-pressed={selected}
+                          aria-label={`Card ${cardIndex + 1} status: ${status.label}`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                            selected
+                              ? cardStatusBadgeClass(status.id)
+                              : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+                          }`}
+                        >
+                          {status.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => removeCard(cardIndex)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                    >
+                      Remove card
+                    </button>
+                    <div />
+                    {CARD_CHECKLIST_GROUPS.map((group) => (
+                      <ChecklistGroupChip
+                        key={group.id}
+                        group={group}
+                        checklist={card.checklist}
+                        onChange={(checklist) =>
+                          updateCard(cardIndex, { checklist })
+                        }
+                      />
+                    ))}
+                  </div>
                 }
                 expanded={isExpanded}
                 onToggle={() => {
