@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import {
   adminClearGalleryPairSide,
+  adminApplyGalleryTcgThumbnail,
   adminClearGalleryThumbnail,
   adminCreateGalleryItem,
   adminCreateGalleryPair,
@@ -15,8 +17,17 @@ import {
   adminUploadGalleryPairSide,
   adminUploadGalleryThumbnail,
 } from "@/lib/adminApi";
-import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative, galleryPosterPublicUrl, galleryThumbPublicUrl } from "@/lib/gallery";
 import {
+  CARD_THUMB_ASPECT_CLASS,
+  CARD_THUMB_IMAGE_CLASS,
+  DAMAGE_TAGS,
+  normalizeDamageTags,
+  formatPostedRelative,
+  galleryPosterPublicUrl,
+  galleryThumbPublicUrl,
+} from "@/lib/gallery";
+import {
+  CARD_THUMB_MAX_DIMENSION,
   compressImageForUpload,
   makeThumbForUpload,
   makeVideoPosterForUpload,
@@ -78,6 +89,10 @@ function emptyDraft() {
   return {
     title: "",
     set_name: "",
+    card_number: "",
+    tcg_lookup_title: "",
+    tcg_lookup_set_name: "",
+    tcg_card_id: "",
     damage_tags: [],
     published: true,
   };
@@ -87,6 +102,10 @@ function itemToDraft(item) {
   return {
     title: item.title ?? "",
     set_name: item.set_name ?? "",
+    card_number: item.card_number ?? "",
+    tcg_lookup_title: item.tcg_lookup_title ?? "",
+    tcg_lookup_set_name: item.tcg_lookup_set_name ?? "",
+    tcg_card_id: item.tcg_card_id ?? "",
     damage_tags: normalizeDamageTags(item.damage_tags),
     published: item.published !== false,
   };
@@ -212,6 +231,7 @@ function SideUpload({
 
 function ThumbnailUpload({
   previewUrl,
+  previewCacheKey,
   stagedFile,
   uploading,
   onStage,
@@ -238,11 +258,8 @@ function ThumbnailUpload({
       <p className="text-xs font-bold uppercase tracking-wide text-ink/60">
         Card thumbnail
       </p>
-      <p className="mt-1 text-xs text-ink/50">
-        Small card icon beside the title on /gallery.
-      </p>
       <div
-        className={`mt-2 aspect-[3/4] max-w-[200px] overflow-hidden rounded-lg border border-dashed transition ${
+        className={`mt-2 ${CARD_THUMB_ASPECT_CLASS} max-w-[200px] overflow-hidden rounded-lg border border-dashed transition ${
           uploading
             ? "opacity-60"
             : dragging
@@ -265,14 +282,15 @@ function ThumbnailUpload({
           <ObjectPreview
             file={stagedFile}
             kind="image"
-            className="h-full w-full object-cover"
+            className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
         ) : previewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={galleryThumbPublicUrl(previewUrl) || previewUrl}
+            key={`${previewUrl}:${previewCacheKey ?? ""}`}
+            src={galleryThumbPublicUrl(previewUrl, previewCacheKey) || previewUrl}
             alt="Card thumbnail"
-            className="h-full w-full object-cover"
+            className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
         ) : (
           <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-night/40 hover:text-ink/55">
@@ -314,6 +332,24 @@ function ThumbnailUpload({
   );
 }
 
+function cardImageUrl(card) {
+  return (
+    card?.image_small ||
+    (card?.id ? `https://images.scrydex.com/pokemon/${card.id}/small` : "")
+  );
+}
+
+function cardFromItem(item) {
+  if (!item?.tcg_card_id) return null;
+  return {
+    id: item.tcg_card_id,
+    name: item.title || item.tcg_lookup_title || "",
+    set_name: item.set_name || item.tcg_lookup_set_name || "",
+    number: item.card_number ?? "",
+    image_small: cardImageUrl({ id: item.tcg_card_id }),
+  };
+}
+
 export default function GalleryManager() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -326,49 +362,132 @@ export default function GalleryManager() {
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const [reordering, setReordering] = useState(false);
+  const [selectedCard, setSelectedCard] = useState(null);
+  const [applyingCard, setApplyingCard] = useState(false);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setListError("");
+  const refresh = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setListError("");
+    }
     try {
       const rows = sortItemsNewestFirst(await adminListGallery());
       setItems(rows);
       return rows;
     } catch (err) {
-      setListError(err.message || "Could not load gallery.");
+      if (!silent) {
+        setListError(err.message || "Could not load gallery.");
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
+
+  function upsertItem(item) {
+    setItems((current) => {
+      if (!current.some((row) => row.id === item.id)) {
+        return sortItemsNewestFirst([item, ...current]);
+      }
+      return current.map((row) => (row.id === item.id ? item : row));
+    });
+  }
+
+  function syncEditorFromItem(item, { resetStaged = false } = {}) {
+    setSelectedId(item.id);
+    setDraft(itemToDraft(item));
+    setSelectedCard(cardFromItem(item));
+    if (resetStaged) {
+      setStaged({});
+      setStagedThumbnail(null);
+      setCaptionDrafts({});
+    }
+    setEditorError("");
+  }
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   function openItem(item) {
-    setSelectedId(item.id);
-    setDraft(itemToDraft(item));
-    setStaged({});
-    setStagedThumbnail(null);
-    setCaptionDrafts({});
-    setEditorError("");
+    syncEditorFromItem(item, { resetStaged: true });
   }
 
   function startCreate() {
     setSelectedId(null);
     setDraft(emptyDraft());
+    setSelectedCard(null);
     setStaged({});
     setStagedThumbnail(null);
     setCaptionDrafts({});
     setEditorError("");
   }
 
+  function handleSelectCard(card) {
+    setSelectedCard(card);
+  }
+
+  async function handleConfirmCard(card) {
+    if (!card?.id || !draft) return;
+
+    setApplyingCard(true);
+    setEditorError("");
+    try {
+      let item = selected;
+      if (!item) {
+        item = await adminCreateGalleryItem({
+          title: (card.name ?? "").trim(),
+          set_name: (card.set_name ?? "").trim(),
+          card_number: (card.number ?? "").trim(),
+          tcg_lookup_title: (card.name ?? "").trim(),
+          tcg_lookup_set_name: (card.set_name ?? "").trim(),
+          tcg_card_id: card.id,
+          damage_tags: draft.damage_tags,
+          published: draft.published,
+        });
+        upsertItem(item);
+        setSelectedId(item.id);
+      }
+
+      item = await adminApplyGalleryTcgThumbnail(item.id, card.id);
+
+      upsertItem(item);
+      syncEditorFromItem(item);
+      setStagedThumbnail(null);
+    } catch (err) {
+      setEditorError(err.message || "Could not apply card.");
+      if (selected) {
+        syncEditorFromItem(selected);
+        setSelectedCard(cardFromItem(selected));
+      } else {
+        setSelectedCard(null);
+      }
+    } finally {
+      setApplyingCard(false);
+    }
+  }
+
+  function handleClearCard() {
+    setSelectedCard(null);
+    setDraft((current) => ({
+      ...current,
+      title: "",
+      set_name: "",
+      card_number: "",
+      tcg_card_id: "",
+      tcg_lookup_title: "",
+      tcg_lookup_set_name: "",
+    }));
+  }
+
   function closeEditor() {
     setSelectedId(null);
     setDraft(null);
+    setSelectedCard(null);
     setStaged({});
     setStagedThumbnail(null);
     setCaptionDrafts({});
@@ -397,6 +516,10 @@ export default function GalleryManager() {
         item = await adminCreateGalleryItem({
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
+          card_number: draft.card_number.trim(),
+          tcg_lookup_title: draft.tcg_lookup_title.trim(),
+          tcg_lookup_set_name: draft.tcg_lookup_set_name.trim(),
+          tcg_card_id: draft.tcg_card_id.trim(),
           damage_tags: draft.damage_tags,
           published: draft.published,
         });
@@ -404,22 +527,32 @@ export default function GalleryManager() {
         item = await adminSaveGalleryItem(item.id, {
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
+          card_number: draft.card_number.trim(),
+          tcg_lookup_title: draft.tcg_lookup_title.trim(),
+          tcg_lookup_set_name: draft.tcg_lookup_set_name.trim(),
+          tcg_card_id: draft.tcg_card_id.trim(),
           damage_tags: draft.damage_tags,
           published: draft.published,
         });
       }
 
-      // Upload staged card thumbnail.
+      // Card icon: one small WebP only (≤320px) — no raw PNG, no oversized main file.
       if (stagedThumbnail) {
         const { file: uploadFile, error: compressError } =
-          await compressImageForUpload(stagedThumbnail);
+          await compressImageForUpload(stagedThumbnail, {
+            maxDimension: CARD_THUMB_MAX_DIMENSION,
+          });
         if (compressError || !uploadFile) {
           throw new Error(compressError || "Couldn't process this image.");
         }
-        const { file: thumb } = await makeThumbForUpload(uploadFile, {
-          maxDimension: GALLERY_THUMB_MAX_DIMENSION,
-        });
-        item = await adminUploadGalleryThumbnail(item.id, uploadFile, { thumb });
+        item = await adminUploadGalleryThumbnail(item.id, uploadFile);
+      }
+
+      // Apply official card art when a card is selected (unless manual upload staged).
+      const cardId = draft.tcg_card_id.trim();
+      const cardChanged = cardId && cardId !== (selected?.tcg_card_id ?? "");
+      if (!stagedThumbnail && cardId && (!item.urls?.thumbnail || cardChanged)) {
+        item = await adminApplyGalleryTcgThumbnail(item.id, cardId);
       }
 
       // Upload any staged pair sides for the selected item.
@@ -461,9 +594,8 @@ export default function GalleryManager() {
         item = await adminSaveGalleryPairCaption(pairId, caption);
       }
 
-      const rows = await refresh();
-      const fresh = rows?.find((row) => row.id === item.id) ?? item;
-      openItem(fresh);
+      upsertItem(item);
+      syncEditorFromItem(item, { resetStaged: true });
     } catch (err) {
       setEditorError(err.message || "Save failed.");
     } finally {
@@ -546,6 +678,43 @@ export default function GalleryManager() {
     }
   }
 
+  async function handleGenerateAllMissingThumbnails() {
+    const missing = items.filter(
+      (item) => !item.urls?.thumbnail && item.tcg_card_id
+    );
+    if (missing.length === 0) return;
+    if (
+      !window.confirm(
+        `Apply card thumbnails for ${missing.length} item${missing.length === 1 ? "" : "s"} with a selected card but no thumbnail yet?`
+      )
+    ) {
+      return;
+    }
+
+    setSaving(true);
+    setEditorError("");
+    let failed = 0;
+    try {
+      for (const row of missing) {
+        try {
+          await adminApplyGalleryTcgThumbnail(row.id, row.tcg_card_id);
+        } catch {
+          failed += 1;
+        }
+      }
+      const rows = await refresh({ silent: Boolean(selectedId) });
+      if (selectedId && rows) {
+        const fresh = rows.find((row) => row.id === selectedId);
+        if (fresh) syncEditorFromItem(fresh);
+      }
+      if (failed) {
+        setEditorError(`${failed} thumbnail${failed === 1 ? "" : "s"} failed.`);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleClearThumbnail() {
     if (!selected) return;
     setSaving(true);
@@ -580,17 +749,17 @@ export default function GalleryManager() {
 
   function renderEditor() {
     if (!draft) return null;
+    const cardLocked = Boolean(draft.tcg_card_id?.trim());
+    const lockedFieldClassName = cardLocked
+      ? `${fieldClassName()} bg-night/20 text-ink/80`
+      : fieldClassName();
+
     return (
       <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-bold text-ink">
-              {selected ? `Edit — ${selected.title}` : "New gallery item"}
-            </h2>
-            <p className="mt-1 text-sm text-ink/60">
-              Save metadata, then add as many before/after pairs as you want.
-            </p>
-          </div>
+          <h2 className="text-xl font-bold text-ink">
+            {selected ? `Edit — ${selected.title}` : "New gallery item"}
+          </h2>
           <button
             type="button"
             onClick={closeEditor}
@@ -600,29 +769,58 @@ export default function GalleryManager() {
           </button>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <GalleryCardSearch
+          selectedCard={selectedCard}
+          appliedCardId={selected?.tcg_card_id ?? ""}
+          onSelect={handleSelectCard}
+          onConfirm={handleConfirmCard}
+          onClear={handleClearCard}
+          confirming={applyingCard}
+          initialCardName={draft.title.trim() || ""}
+          initialSetName={draft.set_name.trim() || ""}
+          disabled={saving || applyingCard}
+        />
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1">
-            <span className="text-sm font-semibold text-ink">Title</span>
+            <span className="text-sm font-semibold text-ink">Card name</span>
             <input
               value={draft.title}
+              readOnly={cardLocked}
               onChange={(event) =>
                 setDraft({ ...draft, title: event.target.value })
               }
-              className={fieldClassName()}
-              placeholder="Card name"
+              className={lockedFieldClassName}
+              placeholder="e.g. Pikachu ex"
             />
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Set</span>
             <input
               value={draft.set_name}
+              readOnly={cardLocked}
               onChange={(event) =>
                 setDraft({ ...draft, set_name: event.target.value })
               }
-              className={fieldClassName()}
-              placeholder="e.g. Base Set, Evolving Skies"
+              className={lockedFieldClassName}
+              placeholder="e.g. Ascended Heroes"
             />
           </label>
+          <label className="block space-y-1">
+            <span className="text-sm font-semibold text-ink">Card number</span>
+            <input
+              value={draft.card_number}
+              readOnly={cardLocked}
+              onChange={(event) =>
+                setDraft({ ...draft, card_number: event.target.value })
+              }
+              className={lockedFieldClassName}
+              placeholder="e.g. 277/297"
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1 sm:col-span-2">
             <span className="text-sm font-semibold text-ink">Damage tags</span>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -667,9 +865,20 @@ export default function GalleryManager() {
         {(selected || draft) && (
           <div className="mt-5">
             <ThumbnailUpload
-              previewUrl={selected?.urls?.thumbnail}
+              previewUrl={
+                selected?.urls?.thumbnail ||
+                (selectedCard?.id === selected?.tcg_card_id
+                  ? cardImageUrl(selectedCard)
+                  : null)
+              }
+              previewCacheKey={
+                selected?.updated_at ||
+                selected?.tcg_card_id ||
+                selectedCard?.id ||
+                null
+              }
               stagedFile={stagedThumbnail}
-              uploading={saving}
+              uploading={saving || applyingCard}
               onStage={setStagedThumbnail}
               onClear={() => {
                 if (stagedThumbnail) {
@@ -870,18 +1079,27 @@ export default function GalleryManager() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-ink/70">
-          Newest restorations appear first. Each card’s first pair shows on the gallery;
-          the rest open under Show more.
-        </p>
-        <button
-          type="button"
-          onClick={startCreate}
-          className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
-        >
-          New gallery item
-        </button>
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={
+              saving ||
+              !items.some((item) => !item.urls?.thumbnail && item.tcg_card_id)
+            }
+            onClick={handleGenerateAllMissingThumbnails}
+            className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink hover:border-blush disabled:opacity-50"
+          >
+            Generate missing thumbnails
+          </button>
+          <button
+            type="button"
+            onClick={startCreate}
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
+          >
+            New gallery item
+          </button>
+        </div>
       </div>
 
       {listError && (
@@ -926,6 +1144,7 @@ export default function GalleryManager() {
                         ? `${formatPostedRelative(item.created_at)} · `
                         : ""}
                       {item.set_name ? `${item.set_name} · ` : ""}
+                      {item.card_number ? `#${item.card_number} · ` : ""}
                       {(item.pairs ?? []).length} pair
                       {(item.pairs ?? []).length === 1 ? "" : "s"}
                       {(item.damage_tags ?? []).length
@@ -947,7 +1166,7 @@ export default function GalleryManager() {
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="h-12 w-9 rounded object-cover"
+                      className={`w-9 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/10`}
                     />
                   ) : item.pairs?.[0]?.urls?.before ? (
                     // eslint-disable-next-line @next/next/no-img-element

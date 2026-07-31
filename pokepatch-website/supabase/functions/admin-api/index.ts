@@ -5,9 +5,17 @@ import {
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
+import {
+  fetchPokemonTcgCard,
+  normalizeSearchText,
+  searchPokemonTcgCatalog,
+  tcgCardImageSmallUrl,
+} from "../_shared/pokemonTcg.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
+const GALLERY_ITEM_COLUMNS =
+  "id, created_at, updated_at, title, set_name, card_number, damage_tags, published, thumbnail_path, tcg_lookup_title, tcg_lookup_set_name, tcg_card_id";
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 /** Unique order photo paths are never overwritten — long Cache-Control. */
 const IMMUTABLE_CACHE_CONTROL = "604800";
@@ -19,6 +27,8 @@ const GALLERY_CACHE_CONTROL = "86400";
  * raw 30MB scan can never land in Storage and leak egress on every view.
  */
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
+/** Card icon uploads are tiny WebP only (client compresses to ≤320px). */
+const MAX_GALLERY_CARD_THUMB_BYTES = 512 * 1024;
 
 function thumbPath(storagePath: string): string {
   if (storagePath.endsWith(".thumb.webp") || storagePath.endsWith(".poster.webp")) {
@@ -160,11 +170,20 @@ function rpcErrorMessage(err: unknown): string {
 
 function galleryPublicUrl(
   supabase: ReturnType<typeof getServiceClient>,
-  path: string | null | undefined
+  path: string | null | undefined,
+  cacheKey?: string | null
 ): string | null {
   if (!path) return null;
   const { data } = supabase.storage.from(GALLERY_BUCKET).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  const url = data?.publicUrl ?? null;
+  if (!url || !cacheKey) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(String(cacheKey))}`;
+}
+
+function tcgThumbnailStoragePath(itemId: string, cardId: string): string {
+  const slug = cardId.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 80);
+  return `item-${itemId}/tcg-${slug}.thumb.webp`;
 }
 
 function detectMediaKindFromPath(path: string | null | undefined): "image" | "video" {
@@ -194,10 +213,14 @@ function enrichGalleryItem(
     (a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)
   );
   const thumbnailPath = item.thumbnail_path as string | null | undefined;
+  const cacheKey =
+    (item.updated_at as string | null | undefined) ||
+    (item.tcg_card_id as string | null | undefined) ||
+    null;
   return {
     ...item,
     urls: {
-      thumbnail: galleryPublicUrl(supabase, thumbnailPath),
+      thumbnail: galleryPublicUrl(supabase, thumbnailPath, cacheKey),
     },
     pairs: sorted.map((pair) => enrichPair(supabase, pair)),
   };
@@ -1012,7 +1035,7 @@ async function listGalleryItems(supabase: ReturnType<typeof getServiceClient>) {
   const { data, error } = await supabase
     .from("gallery_items")
     .select(
-      "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+      GALLERY_ITEM_COLUMNS
     )
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -1033,7 +1056,7 @@ async function getGalleryItem(
   const { data, error } = await supabase
     .from("gallery_items")
     .select(
-      "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+      GALLERY_ITEM_COLUMNS
     )
     .eq("id", id)
     .maybeSingle();
@@ -1160,10 +1183,17 @@ async function handleGalleryThumbnailUpload(
   if (!file.type.startsWith("image/")) {
     return jsonResponse(req, { ok: false, error: "image required" }, 400);
   }
-  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+  if (file.type !== "image/webp") {
     return jsonResponse(
       req,
-      { ok: false, error: "image too large — compress it before uploading" },
+      { ok: false, error: "thumbnail must be compressed WebP" },
+      400
+    );
+  }
+  if (file.size > MAX_GALLERY_CARD_THUMB_BYTES) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "thumbnail too large — recompress before uploading" },
       413
     );
   }
@@ -1179,28 +1209,17 @@ async function handleGalleryThumbnailUpload(
   }
 
   const previousPath = existing.thumbnail_path as string | null;
-  const path = `item-${itemId}/thumbnail-${sanitizeFilename(file.name)}`;
+  // Stored as .thumb.webp so gallery URL helpers serve this file directly (no sibling).
+  const path = `item-${itemId}/card-icon.thumb.webp`;
 
   const { error: uploadError } = await supabase.storage
     .from(GALLERY_BUCKET)
     .upload(path, file, {
       upsert: true,
-      contentType: file.type || undefined,
+      contentType: "image/webp",
       cacheControl: GALLERY_CACHE_CONTROL,
     });
   if (uploadError) throw uploadError;
-
-  const thumb = form.get("thumb");
-  if (thumb instanceof File) {
-    const { error: thumbError } = await supabase.storage
-      .from(GALLERY_BUCKET)
-      .upload(thumbPath(path), thumb, {
-        upsert: true,
-        contentType: thumb.type || "image/webp",
-        cacheControl: GALLERY_CACHE_CONTROL,
-      });
-    if (thumbError) console.error("gallery thumbnail thumb upload failed", thumbError);
-  }
 
   const { error: updateError } = await supabase
     .from("gallery_items")
@@ -1221,6 +1240,119 @@ async function handleGalleryThumbnailUpload(
   return jsonResponse(req, { ok: true, item });
 }
 
+async function saveGalleryItemThumbnailBytes(
+  supabase: ReturnType<typeof getServiceClient>,
+  itemId: string,
+  bytes: Uint8Array,
+  contentType: string,
+  storagePath?: string
+) {
+  const { data: existing, error: existingError } = await supabase
+    .from("gallery_items")
+    .select("id, thumbnail_path")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) {
+    throw new Error("gallery item not found");
+  }
+
+  const previousPath = existing.thumbnail_path as string | null;
+  const path = storagePath ?? `item-${itemId}/card-icon.thumb.webp`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(GALLERY_BUCKET)
+    .upload(path, bytes, {
+      upsert: true,
+      contentType: contentType || "image/png",
+      cacheControl: GALLERY_CACHE_CONTROL,
+    });
+  if (uploadError) throw uploadError;
+
+  const { error: updateError } = await supabase
+    .from("gallery_items")
+    .update({
+      thumbnail_path: path,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId);
+  if (updateError) throw updateError;
+
+  if (previousPath && previousPath !== path) {
+    await supabase.storage
+      .from(GALLERY_BUCKET)
+      .remove(pathsWithSiblings([previousPath]));
+  }
+}
+
+async function downloadCardImageBytes(card: {
+  id: string;
+  image_small: string;
+  image_large: string;
+}): Promise<{ bytes: Uint8Array; contentType: string }> {
+  const urls = [
+    card.image_small,
+    card.image_large,
+    tcgCardImageSmallUrl(card.id),
+  ].filter((url, index, all) => Boolean(url) && all.indexOf(url) === index);
+
+  for (const url of urls) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) continue;
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const contentType =
+        response.headers.get("content-type")?.trim() || "image/png";
+      return { bytes, contentType };
+    } catch {
+      /* try next source */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  throw new Error("could not download card image");
+}
+
+async function applyTcgCardThumbnail(
+  supabase: ReturnType<typeof getServiceClient>,
+  itemId: string,
+  cardId: string
+) {
+  const card = await fetchPokemonTcgCard(cardId);
+  if (!card) {
+    throw new Error("card not found");
+  }
+
+  const { bytes, contentType } = await downloadCardImageBytes(card);
+
+  await saveGalleryItemThumbnailBytes(
+    supabase,
+    itemId,
+    bytes,
+    contentType,
+    tcgThumbnailStoragePath(itemId, cardId)
+  );
+
+  const { error: lookupError } = await supabase
+    .from("gallery_items")
+    .update({
+      tcg_card_id: card.id,
+      tcg_lookup_title: card.name,
+      tcg_lookup_set_name: card.set_name || null,
+      title: card.name,
+      set_name: card.set_name || null,
+      card_number: card.number || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId);
+  if (lookupError) throw lookupError;
+
+  return card;
+}
+
 function normalizeGalleryPatch(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
 
@@ -1235,6 +1367,18 @@ function normalizeGalleryPatch(body: Record<string, unknown>) {
   }
   if (typeof body.published === "boolean") {
     patch.published = body.published;
+  }
+  if (typeof body.tcg_lookup_title === "string") {
+    patch.tcg_lookup_title = body.tcg_lookup_title.trim() || null;
+  }
+  if (typeof body.tcg_lookup_set_name === "string") {
+    patch.tcg_lookup_set_name = body.tcg_lookup_set_name.trim() || null;
+  }
+  if (typeof body.tcg_card_id === "string") {
+    patch.tcg_card_id = body.tcg_card_id.trim() || null;
+  }
+  if (typeof body.card_number === "string") {
+    patch.card_number = body.card_number.trim() || null;
   }
 
   return patch;
@@ -1323,6 +1467,13 @@ Deno.serve(async (req) => {
       }
       if (kind === "gallery_thumbnail") {
         return await handleGalleryThumbnailUpload(req, form, supabase);
+      }
+      if (kind !== "order") {
+        return jsonResponse(
+          req,
+          { ok: false, error: `unknown upload kind: ${kind || "(missing)"}` },
+          400
+        );
       }
       return await handleOrderUpload(req, form, supabase);
     }
@@ -1646,13 +1797,29 @@ Deno.serve(async (req) => {
         set_name: typeof body.set_name === "string" ? body.set_name.trim() : "",
         damage_tags: sanitizeDamageTags(body.damage_tags),
         published: body.published !== false,
+        tcg_lookup_title:
+          typeof body.tcg_lookup_title === "string"
+            ? body.tcg_lookup_title.trim() || null
+            : null,
+        tcg_lookup_set_name:
+          typeof body.tcg_lookup_set_name === "string"
+            ? body.tcg_lookup_set_name.trim() || null
+            : null,
+        tcg_card_id:
+          typeof body.tcg_card_id === "string"
+            ? body.tcg_card_id.trim() || null
+            : null,
+        card_number:
+          typeof body.card_number === "string"
+            ? body.card_number.trim() || null
+            : null,
       };
 
       const { data, error } = await supabase
         .from("gallery_items")
         .insert(insertRow)
         .select(
-          "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+          GALLERY_ITEM_COLUMNS
         )
         .single();
       if (error) throw error;
@@ -1675,6 +1842,31 @@ Deno.serve(async (req) => {
       }
       if (patch.title === "") {
         return jsonResponse(req, { ok: false, error: "title required" }, 400);
+      }
+
+      const { data: existingRow, error: existingError } = await supabase
+        .from("gallery_items")
+        .select("tcg_card_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existingRow) {
+        return jsonResponse(req, { ok: false, error: "not found" }, 404);
+      }
+
+      const pinnedCardId = String(existingRow.tcg_card_id ?? "").trim();
+      if (pinnedCardId) {
+        delete patch.title;
+        delete patch.set_name;
+        delete patch.card_number;
+        delete patch.tcg_lookup_title;
+        delete patch.tcg_lookup_set_name;
+        delete patch.tcg_card_id;
+      }
+
+      const mutableKeys = Object.keys(patch).filter((key) => key !== "updated_at");
+      if (mutableKeys.length === 0) {
+        return jsonResponse(req, { ok: false, error: "no fields to update" }, 400);
       }
 
       patch.updated_at = new Date().toISOString();
@@ -1958,6 +2150,104 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, item });
     }
 
+    if (action === "gallery_tcg_search") {
+      const cardName = normalizeSearchText(
+        typeof body.card_name === "string"
+          ? body.card_name
+          : typeof body.q === "string"
+            ? body.q
+            : ""
+      );
+      const setName = normalizeSearchText(
+        typeof body.set_name === "string" ? body.set_name : ""
+      );
+      const page = Math.max(1, Number(body.page) || 1);
+      const pageSize = Math.min(Math.max(Number(body.page_size) || 24, 1), 50);
+
+      if (cardName.length < 2 && setName.length < 2) {
+        return jsonResponse(
+          req,
+          {
+            ok: false,
+            error: "Enter card name (3+ chars) or set (2+ chars)",
+          },
+          400
+        );
+      }
+
+      if (
+        cardName.length > 0 &&
+        cardName.length < 3 &&
+        setName.length < 2
+      ) {
+        return jsonResponse(
+          req,
+          {
+            ok: false,
+            error: "Add a set name, or enter at least 3 characters for card name",
+          },
+          400
+        );
+      }
+
+      try {
+        const result = await searchPokemonTcgCatalog(cardName, setName, {
+          page,
+          pageSize,
+        });
+        return jsonResponse(req, {
+          ok: true,
+          candidates: result.candidates,
+          total_count: result.totalCount,
+          page: result.page,
+          page_size: result.pageSize,
+          query_used: result.query_used,
+        });
+      } catch (err) {
+        console.error("gallery_tcg_search", err);
+        return jsonResponse(req, {
+          ok: true,
+          candidates: [],
+          total_count: 0,
+          page,
+          page_size: pageSize,
+          query_used: null,
+        });
+      }
+    }
+
+    if (action === "gallery_tcg_apply") {
+      const itemId = String(body.item_id ?? "");
+      const cardId = String(body.card_id ?? "");
+      if (!itemId || !cardId) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "item_id and card_id required" },
+          400
+        );
+      }
+
+      const { data: itemRow, error: itemError } = await supabase
+        .from("gallery_items")
+        .select("id")
+        .eq("id", itemId)
+        .maybeSingle();
+      if (itemError) throw itemError;
+      if (!itemRow) {
+        return jsonResponse(req, { ok: false, error: "gallery item not found" }, 404);
+      }
+
+      try {
+        const card = await applyTcgCardThumbnail(supabase, itemId, cardId);
+        const item = await getGalleryItem(supabase, itemId);
+        return jsonResponse(req, { ok: true, item, card });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not apply TCG thumbnail";
+        return jsonResponse(req, { ok: false, error: message }, 502);
+      }
+    }
+
     if (action === "messages_list_orders") {
       const rawLimit = Number(body.limit ?? 200);
       const limit = Number.isFinite(rawLimit)
@@ -2213,7 +2503,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    return jsonResponse(req, { ok: false, error: "unknown action" }, 400);
+    return jsonResponse(req, { ok: false, error: `unknown action: ${action || "(missing)"}` }, 400);
   } catch (err) {
     const message = rpcErrorMessage(err);
     if (message.includes("unauthorized")) {
