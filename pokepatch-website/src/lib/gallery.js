@@ -13,6 +13,11 @@ export const DAMAGE_TAGS = [
 
 export const DAMAGE_TAG_IDS = new Set(DAMAGE_TAGS.map((tag) => tag.id));
 
+/** Pokémon TCG API card art (~734×1024). Use for thumbnail frames — not 3:4. */
+export const CARD_THUMB_ASPECT_CLASS = "aspect-[734/1024]";
+/** Show the full card image without cropping inside the frame. */
+export const CARD_THUMB_IMAGE_CLASS = "object-contain";
+
 export function normalizeDamageTags(raw) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set();
@@ -73,24 +78,42 @@ function publicUrlForPath(path) {
   return data?.publicUrl ?? null;
 }
 
+function withCacheBust(url, cacheKey) {
+  if (!url || !cacheKey) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(String(cacheKey))}`;
+}
+
 /**
  * Public URL for a gallery still's list/thumbnail sibling (.thumb.webp).
  * Falls back to the full object URL when path is missing or local/static.
  */
-export function galleryThumbPublicUrl(pathOrUrl) {
+export function galleryThumbPublicUrl(pathOrUrl, cacheKey) {
   if (!pathOrUrl || typeof pathOrUrl !== "string") return null;
   if (pathOrUrl.startsWith("/") || pathOrUrl.startsWith("blob:")) {
     return pathOrUrl;
   }
+  let base = null;
+  let existingQuery = "";
   if (pathOrUrl.startsWith("http")) {
-    // Already a full URL — prefer sibling .thumb.webp when it's a Storage object URL.
+    const queryIndex = pathOrUrl.indexOf("?");
+    const baseUrl = queryIndex === -1 ? pathOrUrl : pathOrUrl.slice(0, queryIndex);
+    existingQuery = queryIndex === -1 ? "" : pathOrUrl.slice(queryIndex + 1);
     const marker = "/storage/v1/object/public/gallery/";
-    const idx = pathOrUrl.indexOf(marker);
-    if (idx === -1) return pathOrUrl;
-    const objectPath = pathOrUrl.slice(idx + marker.length).split("?")[0];
-    return publicUrlForPath(thumbPath(decodeURIComponent(objectPath))) || pathOrUrl;
+    const idx = baseUrl.indexOf(marker);
+    if (idx === -1) {
+      base = baseUrl;
+    } else {
+      const objectPath = baseUrl.slice(idx + marker.length);
+      base =
+        publicUrlForPath(thumbPath(decodeURIComponent(objectPath))) || baseUrl;
+    }
+  } else {
+    base = publicUrlForPath(thumbPath(pathOrUrl)) || publicUrlForPath(pathOrUrl);
   }
-  return publicUrlForPath(thumbPath(pathOrUrl)) || publicUrlForPath(pathOrUrl);
+  if (cacheKey) return withCacheBust(base, cacheKey);
+  if (existingQuery) return `${base}?${existingQuery}`;
+  return base;
 }
 
 /**
@@ -169,13 +192,16 @@ export function mapGalleryRowToItem(row) {
   );
 
   const thumbnailPath = row.thumbnail_path ?? row.thumbnailPath ?? null;
-  const thumbnail =
+  const cacheKey = row.updated_at ?? row.tcg_card_id ?? null;
+  const rawThumbnail =
     row.urls?.thumbnail ?? publicUrlForPath(thumbnailPath) ?? null;
+  const thumbnail = withCacheBust(rawThumbnail, cacheKey);
 
   return {
     id: row.id,
     title: row.title,
     setName: row.set_name ?? row.setName ?? "",
+    cardNumber: row.card_number ?? row.cardNumber ?? "",
     damageTags: normalizeDamageTags(row.damage_tags ?? row.damageTags),
     createdAt: row.created_at ?? row.createdAt ?? null,
     thumbnail,
@@ -345,9 +371,12 @@ export async function fetchPublishedGalleryItems() {
       id,
       title,
       set_name,
+      card_number,
       damage_tags,
       created_at,
+      updated_at,
       thumbnail_path,
+      tcg_card_id,
       gallery_pairs (
         id,
         sort_order,
