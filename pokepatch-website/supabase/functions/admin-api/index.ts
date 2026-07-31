@@ -193,8 +193,12 @@ function enrichGalleryItem(
   const sorted = [...pairs].sort(
     (a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)
   );
+  const thumbnailPath = item.thumbnail_path as string | null | undefined;
   return {
     ...item,
+    urls: {
+      thumbnail: galleryPublicUrl(supabase, thumbnailPath),
+    },
     pairs: sorted.map((pair) => enrichPair(supabase, pair)),
   };
 }
@@ -971,7 +975,9 @@ async function handleOrderUpload(
 async function listGalleryItems(supabase: ReturnType<typeof getServiceClient>) {
   const { data, error } = await supabase
     .from("gallery_items")
-    .select("id, created_at, updated_at, title, set_name, damage_tags, published")
+    .select(
+      "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+    )
     .order("created_at", { ascending: false });
   if (error) throw error;
   const items = data ?? [];
@@ -990,7 +996,9 @@ async function getGalleryItem(
 ) {
   const { data, error } = await supabase
     .from("gallery_items")
-    .select("id, created_at, updated_at, title, set_name, damage_tags, published")
+    .select(
+      "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+    )
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -1099,6 +1107,84 @@ async function handleGalleryUpload(
   return jsonResponse(req, { ok: true, item });
 }
 
+async function handleGalleryThumbnailUpload(
+  req: Request,
+  form: FormData,
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const itemId = String(form.get("item_id") ?? "");
+  const file = form.get("file");
+
+  if (!itemId) {
+    return jsonResponse(req, { ok: false, error: "item_id required" }, 400);
+  }
+  if (!(file instanceof File)) {
+    return jsonResponse(req, { ok: false, error: "file required" }, 400);
+  }
+  if (!file.type.startsWith("image/")) {
+    return jsonResponse(req, { ok: false, error: "image required" }, 400);
+  }
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "image too large — compress it before uploading" },
+      413
+    );
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("gallery_items")
+    .select("id, thumbnail_path")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) {
+    return jsonResponse(req, { ok: false, error: "gallery item not found" }, 404);
+  }
+
+  const previousPath = existing.thumbnail_path as string | null;
+  const path = `item-${itemId}/thumbnail-${sanitizeFilename(file.name)}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(GALLERY_BUCKET)
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type || undefined,
+      cacheControl: GALLERY_CACHE_CONTROL,
+    });
+  if (uploadError) throw uploadError;
+
+  const thumb = form.get("thumb");
+  if (thumb instanceof File) {
+    const { error: thumbError } = await supabase.storage
+      .from(GALLERY_BUCKET)
+      .upload(thumbPath(path), thumb, {
+        upsert: true,
+        contentType: thumb.type || "image/webp",
+        cacheControl: GALLERY_CACHE_CONTROL,
+      });
+    if (thumbError) console.error("gallery thumbnail thumb upload failed", thumbError);
+  }
+
+  const { error: updateError } = await supabase
+    .from("gallery_items")
+    .update({
+      thumbnail_path: path,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId);
+  if (updateError) throw updateError;
+
+  if (previousPath && previousPath !== path) {
+    await supabase.storage
+      .from(GALLERY_BUCKET)
+      .remove(pathsWithSiblings([previousPath]));
+  }
+
+  const item = await getGalleryItem(supabase, itemId);
+  return jsonResponse(req, { ok: true, item });
+}
+
 function normalizeGalleryPatch(body: Record<string, unknown>) {
   const patch: Record<string, unknown> = {};
 
@@ -1198,6 +1284,9 @@ Deno.serve(async (req) => {
       const kind = String(form.get("kind") ?? "order");
       if (kind === "gallery") {
         return await handleGalleryUpload(req, form, supabase);
+      }
+      if (kind === "gallery_thumbnail") {
+        return await handleGalleryThumbnailUpload(req, form, supabase);
       }
       return await handleOrderUpload(req, form, supabase);
     }
@@ -1526,7 +1615,9 @@ Deno.serve(async (req) => {
       const { data, error } = await supabase
         .from("gallery_items")
         .insert(insertRow)
-        .select("id, created_at, updated_at, title, set_name, damage_tags, published")
+        .select(
+          "id, created_at, updated_at, title, set_name, damage_tags, published, thumbnail_path"
+        )
         .single();
       if (error) throw error;
 
@@ -1573,6 +1664,16 @@ Deno.serve(async (req) => {
       const paths = pairs
         .flatMap((pair) => [pair.before_path, pair.after_path])
         .filter((path): path is string => Boolean(path));
+
+      const { data: itemRow, error: itemFetchError } = await supabase
+        .from("gallery_items")
+        .select("thumbnail_path")
+        .eq("id", id)
+        .maybeSingle();
+      if (itemFetchError) throw itemFetchError;
+      if (itemRow?.thumbnail_path) {
+        paths.push(itemRow.thumbnail_path as string);
+      }
 
       const { error: deleteError } = await supabase
         .from("gallery_items")
@@ -1782,6 +1883,42 @@ Deno.serve(async (req) => {
         .eq("id", existing.item_id);
 
       const item = await getGalleryItem(supabase, existing.item_id as string);
+      return jsonResponse(req, { ok: true, item });
+    }
+
+    if (action === "gallery_thumbnail_clear") {
+      const itemId = String(body.item_id ?? "");
+      if (!itemId) {
+        return jsonResponse(req, { ok: false, error: "item_id required" }, 400);
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("gallery_items")
+        .select("id, thumbnail_path")
+        .eq("id", itemId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) {
+        return jsonResponse(req, { ok: false, error: "not found" }, 404);
+      }
+
+      const previousPath = existing.thumbnail_path as string | null;
+      const { error: updateError } = await supabase
+        .from("gallery_items")
+        .update({
+          thumbnail_path: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", itemId);
+      if (updateError) throw updateError;
+
+      if (previousPath) {
+        await supabase.storage
+          .from(GALLERY_BUCKET)
+          .remove(pathsWithSiblings([previousPath]));
+      }
+
+      const item = await getGalleryItem(supabase, itemId);
       return jsonResponse(req, { ok: true, item });
     }
 

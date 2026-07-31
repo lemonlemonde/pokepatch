@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   adminClearGalleryPairSide,
+  adminClearGalleryThumbnail,
   adminCreateGalleryItem,
   adminCreateGalleryPair,
   adminDeleteGalleryItem,
@@ -12,6 +13,7 @@ import {
   adminSaveGalleryItem,
   adminSaveGalleryPairCaption,
   adminUploadGalleryPairSide,
+  adminUploadGalleryThumbnail,
 } from "@/lib/adminApi";
 import { DAMAGE_TAGS, normalizeDamageTags, formatPostedRelative, galleryPosterPublicUrl, galleryThumbPublicUrl } from "@/lib/gallery";
 import {
@@ -208,6 +210,110 @@ function SideUpload({
   );
 }
 
+function ThumbnailUpload({
+  previewUrl,
+  stagedFile,
+  uploading,
+  onStage,
+  onClear,
+}) {
+  const [dragging, setDragging] = useState(false);
+  const hasSomething = Boolean(stagedFile || previewUrl);
+
+  function acceptDroppedFile(fileList) {
+    const file = Array.from(fileList ?? []).find((entry) =>
+      entry.type.startsWith("image/"),
+    );
+    if (file) onStage(file);
+  }
+
+  function handleFileInput(event) {
+    const file = event.target.files?.[0] ?? null;
+    onStage(file);
+    event.target.value = "";
+  }
+
+  return (
+    <div className="rounded-xl border border-ink/10 bg-night/20 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink/60">
+        Card thumbnail
+      </p>
+      <p className="mt-1 text-xs text-ink/50">
+        Small card icon beside the title on /gallery.
+      </p>
+      <div
+        className={`mt-2 aspect-[3/4] max-w-[200px] overflow-hidden rounded-lg border border-dashed transition ${
+          uploading
+            ? "opacity-60"
+            : dragging
+              ? "border-berry bg-berry/10"
+              : "border-ink/15 bg-night/30"
+        }`}
+        onDragOver={(event) => {
+          event.preventDefault();
+          if (!uploading) setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          if (uploading) return;
+          acceptDroppedFile(event.dataTransfer.files);
+        }}
+      >
+        {stagedFile ? (
+          <ObjectPreview
+            file={stagedFile}
+            kind="image"
+            className="h-full w-full object-cover"
+          />
+        ) : previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={galleryThumbPublicUrl(previewUrl) || previewUrl}
+            alt="Card thumbnail"
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-night/40 hover:text-ink/55">
+            <span>Drop image here</span>
+            <span className="text-ink/30">or click to browse</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-blush">
+          {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={uploading}
+            onChange={handleFileInput}
+          />
+        </label>
+        {hasSomething && (
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={onClear}
+            className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function GalleryManager() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -215,6 +321,7 @@ export default function GalleryManager() {
   const [selectedId, setSelectedId] = useState(null);
   const [draft, setDraft] = useState(null);
   const [staged, setStaged] = useState({});
+  const [stagedThumbnail, setStagedThumbnail] = useState(null);
   const [captionDrafts, setCaptionDrafts] = useState({});
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
@@ -245,6 +352,7 @@ export default function GalleryManager() {
     setSelectedId(item.id);
     setDraft(itemToDraft(item));
     setStaged({});
+    setStagedThumbnail(null);
     setCaptionDrafts({});
     setEditorError("");
   }
@@ -253,6 +361,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(emptyDraft());
     setStaged({});
+    setStagedThumbnail(null);
     setCaptionDrafts({});
     setEditorError("");
   }
@@ -261,6 +370,7 @@ export default function GalleryManager() {
     setSelectedId(null);
     setDraft(null);
     setStaged({});
+    setStagedThumbnail(null);
     setCaptionDrafts({});
     setEditorError("");
   }
@@ -297,6 +407,19 @@ export default function GalleryManager() {
           damage_tags: draft.damage_tags,
           published: draft.published,
         });
+      }
+
+      // Upload staged card thumbnail.
+      if (stagedThumbnail) {
+        const { file: uploadFile, error: compressError } =
+          await compressImageForUpload(stagedThumbnail);
+        if (compressError || !uploadFile) {
+          throw new Error(compressError || "Couldn't process this image.");
+        }
+        const { file: thumb } = await makeThumbForUpload(uploadFile, {
+          maxDimension: GALLERY_THUMB_MAX_DIMENSION,
+        });
+        item = await adminUploadGalleryThumbnail(item.id, uploadFile, { thumb });
       }
 
       // Upload any staged pair sides for the selected item.
@@ -423,6 +546,21 @@ export default function GalleryManager() {
     }
   }
 
+  async function handleClearThumbnail() {
+    if (!selected) return;
+    setSaving(true);
+    setEditorError("");
+    try {
+      setStagedThumbnail(null);
+      const item = await adminClearGalleryThumbnail(selected.id);
+      replaceSelected(item);
+    } catch (err) {
+      setEditorError(err.message || "Could not remove thumbnail.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDelete() {
     if (!selected) return;
     if (!window.confirm(`Delete “${selected.title}” from the gallery?`)) return;
@@ -525,6 +663,24 @@ export default function GalleryManager() {
             Published on /gallery
           </label>
         </div>
+
+        {(selected || draft) && (
+          <div className="mt-5">
+            <ThumbnailUpload
+              previewUrl={selected?.urls?.thumbnail}
+              stagedFile={stagedThumbnail}
+              uploading={saving}
+              onStage={setStagedThumbnail}
+              onClear={() => {
+                if (stagedThumbnail) {
+                  setStagedThumbnail(null);
+                  return;
+                }
+                if (selected) handleClearThumbnail();
+              }}
+            />
+          </div>
+        )}
 
         {selected && (
           <div className="mt-6 space-y-4">
@@ -781,7 +937,19 @@ export default function GalleryManager() {
                     </span>
                   </button>
 
-                  {item.pairs?.[0]?.urls?.before && (
+                  {item.urls?.thumbnail ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={
+                        galleryThumbPublicUrl(item.urls.thumbnail) ||
+                        item.urls.thumbnail
+                      }
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="h-12 w-9 rounded object-cover"
+                    />
+                  ) : item.pairs?.[0]?.urls?.before ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={
@@ -796,7 +964,7 @@ export default function GalleryManager() {
                       decoding="async"
                       className="h-12 w-9 rounded object-cover"
                     />
-                  )}
+                  ) : null}
                 </div>
 
                 {selectedId === item.id && (
