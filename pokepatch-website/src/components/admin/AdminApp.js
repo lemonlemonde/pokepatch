@@ -2178,86 +2178,37 @@ function CollapsibleOrderCard({
   );
 }
 
-function CardStatusPills({ value, onChange, ariaLabel }) {
-  const selectedId = normalizeCardStatus(value);
-  return (
-    <span className="flex flex-wrap gap-1" role="group" aria-label={ariaLabel}>
-      {CARD_STATUSES.map((status) => {
-        const selected = selectedId === status.id;
-        return (
-          <button
-            key={status.id}
-            type="button"
-            onClick={() => onChange(status.id)}
-            aria-pressed={selected}
-            className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-              selected
-                ? cardStatusBadgeClass(status.id)
-                : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
-            }`}
-          >
-            {status.label}
-          </button>
-        );
-      })}
-    </span>
-  );
-}
-
 /** Native checkbox, brand-colored via accent-color — simple and reliably legible. */
 function ChecklistCheckbox({ checked, onChange, label }) {
   return (
-    <label className="flex cursor-pointer items-center gap-1.5 py-0.5 text-sm text-ink/70 select-none hover:text-ink">
+    <label className="flex cursor-pointer items-center gap-1 text-[10px] leading-tight text-ink/65 select-none hover:text-ink">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4 shrink-0 cursor-pointer accent-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
+        className="h-2.5 w-2.5 shrink-0 cursor-pointer appearance-none rounded-full border border-ink/35 bg-cream transition-colors checked:border-mint checked:bg-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
       />
       {label}
     </label>
   );
 }
 
-/**
- * Manual admin-only workflow checklist for a card. Never gates status.
- * `compact` renders groups in a tight horizontal row (for the card header,
- * underneath the status pills) instead of the roomier editor grid.
- */
-function CardChecklistToggles({ checklist, onChange, compact = false }) {
+/** One checklist group (label + its checkboxes), stacked to sit under a status chip. */
+function ChecklistGroupColumn({ group, checklist, onChange }) {
   const normalized = normalizeCardChecklist(checklist);
   return (
-    <div className={compact ? "space-y-1" : "space-y-2.5"}>
-      {!compact ? <EditorLabel>Checklist</EditorLabel> : null}
-      <div
-        className={
-          compact
-            ? "flex flex-wrap justify-end gap-x-3 gap-y-1"
-            : "grid gap-3 sm:grid-cols-3"
-        }
-      >
-        {CARD_CHECKLIST_GROUPS.map((group) => (
-          <div key={group.id} className={compact ? "space-y-0.5" : "space-y-1.5"}>
-            <span
-              className={`block font-semibold uppercase tracking-wide text-ink/45 ${
-                compact ? "text-[10px]" : "text-xs"
-              }`}
-            >
-              {group.label}
-            </span>
-            <div className={compact ? "space-y-0.5" : "space-y-1"}>
-              {group.items.map((item) => (
-                <ChecklistCheckbox
-                  key={item.id}
-                  checked={normalized[item.id]}
-                  label={item.label}
-                  onChange={(value) =>
-                    onChange({ ...normalized, [item.id]: value })
-                  }
-                />
-              ))}
-            </div>
-          </div>
+    <div className="text-center">
+      <span className="block text-[9px] font-semibold uppercase tracking-wide text-ink/40">
+        {group.label}
+      </span>
+      <div className="space-y-0.5">
+        {group.items.map((item) => (
+          <ChecklistCheckbox
+            key={item.id}
+            checked={normalized[item.id]}
+            label={item.label}
+            onChange={(value) => onChange({ ...normalized, [item.id]: value })}
+          />
         ))}
       </div>
     </div>
@@ -3316,29 +3267,45 @@ function OrderEditor({
                 thumbUrl={thumbUrl}
                 thumbStoragePath={thumbStoragePath}
                 titleExtra={
-                  <div className="flex flex-col items-end gap-1.5">
-                    <div className="flex items-center gap-3">
-                      <CardStatusPills
-                        value={card.status}
-                        ariaLabel={`Card ${cardIndex + 1} status`}
-                        onChange={(status) => updateCard(cardIndex, { status })}
+                  <div className="grid grid-cols-[repeat(4,auto)_auto] items-center justify-items-center gap-x-2 gap-y-1">
+                    {CARD_STATUSES.map((status) => {
+                      const selected = normalizeCardStatus(card.status) === status.id;
+                      return (
+                        <button
+                          key={status.id}
+                          type="button"
+                          onClick={() => updateCard(cardIndex, { status: status.id })}
+                          aria-pressed={selected}
+                          aria-label={`Card ${cardIndex + 1} status: ${status.label}`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                            selected
+                              ? cardStatusBadgeClass(status.id)
+                              : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+                          }`}
+                        >
+                          {status.label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => removeCard(cardIndex)}
+                      disabled={saving}
+                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
+                    >
+                      Remove card
+                    </button>
+                    <div />
+                    {CARD_CHECKLIST_GROUPS.map((group) => (
+                      <ChecklistGroupColumn
+                        key={group.id}
+                        group={group}
+                        checklist={card.checklist}
+                        onChange={(checklist) =>
+                          updateCard(cardIndex, { checklist })
+                        }
                       />
-                      <button
-                        type="button"
-                        onClick={() => removeCard(cardIndex)}
-                        disabled={saving}
-                        className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                      >
-                        Remove card
-                      </button>
-                    </div>
-                    <CardChecklistToggles
-                      compact
-                      checklist={card.checklist}
-                      onChange={(checklist) =>
-                        updateCard(cardIndex, { checklist })
-                      }
-                    />
+                    ))}
                   </div>
                 }
                 expanded={isExpanded}
