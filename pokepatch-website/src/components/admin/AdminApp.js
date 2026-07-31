@@ -99,6 +99,7 @@ function emptyAdminCard() {
     card_name: "",
     set_name: "",
     description: "",
+    admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
     images: [],
@@ -382,6 +383,7 @@ function orderToDraft(order) {
     card_name: card.card_name ?? "",
     set_name: card.set_name ?? "",
     description: card.description ?? "",
+    admin_note: card.admin_note ?? "",
     market_value_raw_nm:
       card.market_value_raw_nm != null
         ? String(card.market_value_raw_nm)
@@ -449,6 +451,7 @@ function draftPayload(draft) {
       card_name: card.card_name.trim(),
       set_name: card.set_name.trim(),
       description: card.description.trim(),
+      admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
     })),
@@ -3359,6 +3362,20 @@ function OrderEditor({
                         })
                       }
                       onFocus={() => expandCard(cardId)}
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <EditorLabel>Note</EditorLabel>
+                    <textarea
+                      className={`${editorFieldClass()} min-h-[72px]`}
+                      value={card.admin_note}
+                      onChange={(event) =>
+                        updateCard(cardIndex, {
+                          admin_note: event.target.value,
+                        })
+                      }
+                      onFocus={() => expandCard(cardId)}
+                      placeholder="Optional note for the customer about this card…"
                     />
                   </label>
                 </div>

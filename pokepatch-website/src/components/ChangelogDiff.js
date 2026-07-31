@@ -359,7 +359,7 @@ function DiffText({ text }) {
   }
 
   const labeled = raw.match(
-    /^(Added|Removed|Applied discount|Removed discount|Applied|Updated|High-value fee|Quote total):\s+(.+)$/i
+    /^(Added|Removed|Applied discount|Removed discount|Applied|Updated|High-value fee|Quote total|Note):\s+(.+)$/i
   );
   if (labeled) {
     const verb = labeled[1];
