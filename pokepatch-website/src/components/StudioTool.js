@@ -34,6 +34,10 @@ import {
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
 } from "@/lib/instagramStitch";
+import {
+  DEFAULT_PACKAGE_CAPTION,
+  downloadStudioPackageZip,
+} from "@/lib/studioPackageZip";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -437,8 +441,10 @@ function OutputGrid({
   outputSources = null,
   renderPreview,
   annotated = false,
+  exportersRef: externalExportersRef = null,
 }) {
-  const exportersRef = useRef(new Map());
+  const internalExportersRef = useRef(new Map());
+  const exportersRef = externalExportersRef ?? internalExportersRef;
 
   const setExporter = useCallback((key, exporter) => {
     if (exporter) exportersRef.current.set(key, exporter);
@@ -724,6 +730,10 @@ function BeforeAfterPairPhotoFormatter({
   const [outputSources, setOutputSources] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
+  const [altTextByKey, setAltTextByKey] = useState({});
+  const [packaging, setPackaging] = useState(false);
+  const exportersRef = useRef(new Map());
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
@@ -763,6 +773,8 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems([]);
     setAfterItems([]);
     setPairs([createPair()]);
+    setCaption(DEFAULT_PACKAGE_CAPTION);
+    setAltTextByKey({});
     onChangeCardMeta(createEmptyCardMeta());
     deleteDraft(BEFORE_AFTER_PAIR_DRAFT_KEY);
     deleteDraft(PHOTO_SHARED_DRAFT_KEY);
@@ -840,6 +852,29 @@ function BeforeAfterPairPhotoFormatter({
     }
   }
 
+  async function handleDownloadPackage() {
+    if (!outputs?.length) return;
+    setPackaging(true);
+    setError("");
+    try {
+      await downloadStudioPackageZip({
+        outputs,
+        outputSources,
+        exporters: exportersRef.current,
+        altTextByKey,
+        caption,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not build the download package.",
+      );
+    } finally {
+      setPackaging(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl animate-fade-up">
       <div className="mx-auto max-w-3xl">
@@ -899,7 +934,58 @@ function BeforeAfterPairPhotoFormatter({
 
       {outputs && (
         <div className="mx-auto max-w-3xl">
-          <OutputGrid outputs={outputs} outputSources={outputSources} annotated />
+          <OutputGrid
+            outputs={outputs}
+            outputSources={outputSources}
+            annotated
+            exportersRef={exportersRef}
+          />
+
+          <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
+            <p className="font-secondary text-sm font-semibold text-ink">
+              Download package
+            </p>
+
+            <label className="block space-y-1.5">
+              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                Caption
+              </span>
+              <textarea
+                value={caption}
+                onChange={(event) => setCaption(event.target.value)}
+                rows={6}
+                className={`${INPUT_CLASS} resize-y`}
+              />
+            </label>
+
+            {outputs.map((output) => (
+              <label key={output.key} className="block space-y-1.5">
+                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  {output.label} — alt text
+                </span>
+                <textarea
+                  value={altTextByKey[output.key] ?? ""}
+                  onChange={(event) =>
+                    setAltTextByKey((current) => ({
+                      ...current,
+                      [output.key]: event.target.value,
+                    }))
+                  }
+                  rows={2}
+                  className={`${INPUT_CLASS} resize-y`}
+                />
+              </label>
+            ))}
+
+            <button
+              type="button"
+              onClick={handleDownloadPackage}
+              disabled={packaging}
+              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {packaging ? "Building package…" : "Download package (.zip)"}
+            </button>
+          </div>
         </div>
       )}
       {dialog}
