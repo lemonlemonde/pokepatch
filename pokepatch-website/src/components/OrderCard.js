@@ -1056,6 +1056,15 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                   </p>
                                 )}
                               </div>
+
+                              {card.admin_notes ? (
+                                <div>
+                                  <p className={LABEL_CLS}>Notes from us</p>
+                                  <p className="mt-1 text-sm text-ink/80">
+                                    {card.admin_notes}
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
 
                             <div className="sm:w-1/2 sm:shrink-0">
