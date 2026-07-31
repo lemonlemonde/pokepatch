@@ -2177,6 +2177,104 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "card_options") {
+      const { data, error } = await supabase
+        .from("cards")
+        .select("card_name, set_name");
+      if (error) throw error;
+
+      const names = new Set<string>();
+      const sets = new Set<string>();
+      for (const row of data ?? []) {
+        const name = typeof row.card_name === "string" ? row.card_name.trim() : "";
+        const set = typeof row.set_name === "string" ? row.set_name.trim() : "";
+        if (name) names.add(name);
+        if (set) sets.add(set);
+      }
+
+      return jsonResponse(req, {
+        ok: true,
+        card_names: [...names].sort((a, b) => a.localeCompare(b)),
+        set_names: [...sets].sort((a, b) => a.localeCompare(b)),
+      });
+    }
+
+    if (action === "set_library_list") {
+      const { data, error } = await supabase
+        .from("set_library")
+        .select("id, set_name, abbreviation, created_at")
+        .order("set_name", { ascending: true });
+      if (error) throw error;
+      return jsonResponse(req, { ok: true, items: data ?? [] });
+    }
+
+    if (action === "set_library_create") {
+      const setName = typeof body.set_name === "string" ? body.set_name.trim() : "";
+      const abbreviation =
+        typeof body.abbreviation === "string" ? body.abbreviation.trim() : "";
+      if (!setName) {
+        return jsonResponse(req, { ok: false, error: "set_name required" }, 400);
+      }
+      if (!abbreviation) {
+        return jsonResponse(req, { ok: false, error: "abbreviation required" }, 400);
+      }
+
+      const { data, error } = await supabase
+        .from("set_library")
+        .insert({ set_name: setName, abbreviation })
+        .select("id, set_name, abbreviation, created_at")
+        .single();
+      if (error) throw error;
+
+      return jsonResponse(req, { ok: true, item: data });
+    }
+
+    if (action === "set_library_save") {
+      const id = String(body.id ?? "");
+      if (!id) {
+        return jsonResponse(req, { ok: false, error: "id required" }, 400);
+      }
+
+      const patch: Record<string, string> = {};
+      if (typeof body.set_name === "string") {
+        const setName = body.set_name.trim();
+        if (!setName) {
+          return jsonResponse(req, { ok: false, error: "set_name required" }, 400);
+        }
+        patch.set_name = setName;
+      }
+      if (typeof body.abbreviation === "string") {
+        const abbreviation = body.abbreviation.trim();
+        if (!abbreviation) {
+          return jsonResponse(req, { ok: false, error: "abbreviation required" }, 400);
+        }
+        patch.abbreviation = abbreviation;
+      }
+      if (Object.keys(patch).length === 0) {
+        return jsonResponse(req, { ok: false, error: "no fields to update" }, 400);
+      }
+
+      const { data, error } = await supabase
+        .from("set_library")
+        .update(patch)
+        .eq("id", id)
+        .select("id, set_name, abbreviation, created_at")
+        .single();
+      if (error) throw error;
+
+      return jsonResponse(req, { ok: true, item: data });
+    }
+
+    if (action === "set_library_delete") {
+      const id = String(body.id ?? "");
+      if (!id) {
+        return jsonResponse(req, { ok: false, error: "id required" }, 400);
+      }
+      const { error } = await supabase.from("set_library").delete().eq("id", id);
+      if (error) throw error;
+      return jsonResponse(req, { ok: true });
+    }
+
     return jsonResponse(req, { ok: false, error: "unknown action" }, 400);
   } catch (err) {
     const message = rpcErrorMessage(err);

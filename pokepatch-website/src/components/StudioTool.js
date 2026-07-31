@@ -34,6 +34,7 @@ import {
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
 } from "@/lib/instagramStitch";
+import { useCardOptions } from "@/lib/cardOptions";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -113,7 +114,10 @@ function StudioCardMetaControls({ value, onChange }) {
   const frontInputId = useId();
   const cardInfoSwitchId = useId();
   const captionSwitchId = useId();
+  const cardNameListId = useId();
+  const setNameListId = useId();
   const [uploadDragging, setUploadDragging] = useState(false);
+  const { cardNames, setNames } = useCardOptions();
 
   useEffect(() => {
     const url = value.frontPreviewUrl;
@@ -255,7 +259,13 @@ function StudioCardMetaControls({ value, onChange }) {
                   onChange={(event) => patch({ card: event.target.value })}
                   placeholder="Sylveon-GX (Secret Rare)"
                   className={INPUT_CLASS}
+                  list={cardNameListId}
                 />
+                <datalist id={cardNameListId}>
+                  {cardNames.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </label>
               <label className="block space-y-1.5">
                 <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
@@ -267,7 +277,13 @@ function StudioCardMetaControls({ value, onChange }) {
                   onChange={(event) => patch({ set: event.target.value })}
                   placeholder="Guardians Rising"
                   className={INPUT_CLASS}
+                  list={setNameListId}
                 />
+                <datalist id={setNameListId}>
+                  {setNames.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
               </label>
             </div>
           </div>

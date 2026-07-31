@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { useCardOptions } from "@/lib/cardOptions";
 import {
   adminClearGalleryPairSide,
   adminClearGalleryThumbnail,
@@ -326,6 +327,9 @@ export default function GalleryManager() {
   const [saving, setSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const [reordering, setReordering] = useState(false);
+  const cardNameListId = useId();
+  const setNameListId = useId();
+  const { cardNames, setNames } = useCardOptions();
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -610,7 +614,13 @@ export default function GalleryManager() {
               }
               className={fieldClassName()}
               placeholder="Card name"
+              list={cardNameListId}
             />
+            <datalist id={cardNameListId}>
+              {cardNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Set</span>
@@ -621,7 +631,13 @@ export default function GalleryManager() {
               }
               className={fieldClassName()}
               placeholder="e.g. Base Set, Evolving Skies"
+              list={setNameListId}
             />
+            <datalist id={setNameListId}>
+              {setNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </label>
           <label className="block space-y-1 sm:col-span-2">
             <span className="text-sm font-semibold text-ink">Damage tags</span>

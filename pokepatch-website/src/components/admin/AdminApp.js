@@ -29,6 +29,7 @@ import { compressImageForUpload, makeThumbForUpload, thumbPath } from "@/lib/ima
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
+import SetLibraryManager from "@/components/admin/SetLibraryManager";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
@@ -296,6 +297,14 @@ const ADMIN_TABS = [
     title: "Studio",
     subtitle:
       "Format 1×2 before & after Instagram posts.",
+  },
+  {
+    id: "set-library",
+    label: "Set library",
+    path: "/admin/set-library/",
+    title: "Set library",
+    subtitle:
+      "Curate short abbreviations for Pokémon sets, for Google Drive folder naming and other shorthand lookups.",
   },
 ];
 
@@ -4447,6 +4456,7 @@ export default function AdminApp() {
 
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
+      {tab === "set-library" && <SetLibraryManager />}
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (
