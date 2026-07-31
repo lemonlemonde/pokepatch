@@ -8,6 +8,10 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  isExistingAccountSignup,
+  sendExistingAccountNotice,
+} from "@/lib/accountNotice";
 
 function fieldClassName(invalid = false) {
   return invalid
@@ -30,6 +34,7 @@ function LoginForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
@@ -83,6 +88,7 @@ function LoginForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!isSupabaseConfigured) {
       setError("Authentication is not configured. Please contact support.");
@@ -102,6 +108,18 @@ function LoginForm() {
         router.push(redirectTo);
       } else {
         const data = await signUp(email, password, firstName, lastName);
+
+        if (isExistingAccountSignup(data)) {
+          // Supabase silently no-ops signUp for an already-registered email
+          // instead of erroring (anti-enumeration). Send a real notice email
+          // so the customer knows to log in instead of waiting on a
+          // confirmation email that will never come.
+          sendExistingAccountNotice(email);
+          setNotice(
+            "An account with that email already exists. We've emailed a reminder to log in — or just log in below."
+          );
+          return;
+        }
 
         // With email confirmation on, signup returns no session. Send the user
         // to the confirm-your-email page instead of the protected redirect.
@@ -142,6 +160,12 @@ function LoginForm() {
         {error && (
           <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
             {error}
+          </p>
+        )}
+
+        {notice && (
+          <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+            {notice}
           </p>
         )}
 

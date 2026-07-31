@@ -2,11 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  isExistingAccountSignup,
+  sendExistingAccountNotice,
+} from "@/lib/accountNotice";
 
 function fieldClassName(invalid = false) {
   return invalid
@@ -26,6 +31,7 @@ export default function ThankYouPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   // If already logged in, don't show account creation
@@ -84,6 +90,7 @@ export default function ThankYouPage() {
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!validateForm()) {
       setError("Please check the form for errors.");
@@ -94,6 +101,18 @@ export default function ThankYouPage() {
 
     try {
       const data = await signUp(email, password, firstName, lastName);
+
+      if (isExistingAccountSignup(data)) {
+        // Supabase silently no-ops signUp for an already-registered email
+        // instead of erroring (anti-enumeration). Send a real notice email
+        // so the customer knows to log in instead of waiting on a
+        // confirmation email that will never come.
+        sendExistingAccountNotice(email);
+        setNotice(
+          "An account with that email already exists. We've emailed a reminder."
+        );
+        return;
+      }
 
       if (data.session) {
         router.push("/my-orders");
@@ -152,6 +171,18 @@ export default function ThankYouPage() {
             {error && (
               <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
                 {error}
+              </p>
+            )}
+
+            {notice && (
+              <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+                {notice}{" "}
+                <Link
+                  href="/login"
+                  className="font-bold text-blush hover:underline"
+                >
+                  Log in
+                </Link>
               </p>
             )}
 
