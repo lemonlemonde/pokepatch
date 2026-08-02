@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { DAMAGE_TAGS, formatPostedRelative, galleryPosterPublicUrl } from "@/lib/gallery";
+import {
+  CARD_THUMB_ASPECT_CLASS,
+  CARD_THUMB_IMAGE_CLASS,
+  DAMAGE_TAGS,
+  formatPostedRelative,
+  galleryPosterPublicUrl,
+} from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
 import MediaLightbox from "@/components/MediaLightbox";
 
@@ -191,7 +197,7 @@ function CardThumbnail({ src, title, onOpen, priority = false }) {
     <button
       type="button"
       onClick={() => onOpen({ type: "image", src, label: "Card" })}
-      className="group relative block h-12 w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-ink/10 bg-night/10"
+      className={`group relative block w-9 shrink-0 cursor-zoom-in overflow-hidden rounded-md border border-ink/10 bg-night/10 ${CARD_THUMB_ASPECT_CLASS}`}
       aria-label={`View ${title} card`}
     >
       <GalleryImage
@@ -199,7 +205,7 @@ function CardThumbnail({ src, title, onOpen, priority = false }) {
         width={72}
         alt={`${title} card`}
         priority={priority}
-        className="object-cover transition duration-200 group-hover:scale-105"
+        className={`${CARD_THUMB_IMAGE_CLASS} transition duration-200 group-hover:scale-105`}
         sizes="36px"
       />
       <span className="pointer-events-none absolute inset-0 bg-night/0 transition group-hover:bg-night/15" />
@@ -239,9 +245,19 @@ function GalleryItemCard({ item, index, onOpen }) {
             )}
             <div className="min-w-0 text-left">
               <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
-              {item.setName ? (
+              {(item.setName || item.cardNumber) ? (
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
-                  {item.setName}
+                  {item.setName ? <span>{item.setName}</span> : null}
+                  {item.setName && item.cardNumber ? (
+                    <span className="mx-1.5 font-normal text-ink/35">·</span>
+                  ) : null}
+                  {item.cardNumber ? (
+                    <span className="font-semibold normal-case tracking-wide text-ink/45">
+                      {item.cardNumber.startsWith("#")
+                        ? item.cardNumber
+                        : `#${item.cardNumber}`}
+                    </span>
+                  ) : null}
                 </p>
               ) : null}
               {postedLabel ? (
