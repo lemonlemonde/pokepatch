@@ -102,6 +102,11 @@ export default function AccountPage() {
     if (e) e.preventDefault();
     if (!user || !supabase) return;
 
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("First and last name are required.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     setSuccess("");
@@ -195,7 +200,7 @@ export default function AccountPage() {
                 htmlFor="first_name"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                First name
+                First name <span className="text-berry">*</span>
               </label>
               <input
                 id="first_name"
@@ -213,7 +218,7 @@ export default function AccountPage() {
                 htmlFor="last_name"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                Last name
+                Last name <span className="text-berry">*</span>
               </label>
               <input
                 id="last_name"

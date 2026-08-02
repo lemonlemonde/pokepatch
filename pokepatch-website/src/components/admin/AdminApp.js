@@ -398,10 +398,17 @@ function orderToDraft(order) {
   }));
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
+  const firstName = (order.first_name ?? "").trim();
+  const lastName = (order.last_name ?? "").trim();
+  const customerName = (order.customer_name ?? "").trim();
+  // Pre-split orders only have customer_name — show it as first name.
+  const displayFirstName =
+    firstName || (!lastName && customerName ? customerName : "");
+
   return {
-    first_name: order.first_name ?? "",
-    last_name: order.last_name ?? "",
-    customer_name: order.customer_name ?? "",
+    first_name: displayFirstName,
+    last_name: lastName,
+    customer_name: customerName,
     customer_email: order.customer_email ?? "",
     has_account: Boolean(order.has_account),
     delivery_method: order.delivery_method ?? "local_dropoff",

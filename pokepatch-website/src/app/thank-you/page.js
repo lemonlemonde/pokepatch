@@ -2,11 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  isExistingAccountSignup,
+  sendExistingAccountNotice,
+} from "@/lib/accountNotice";
 
 function fieldClassName(invalid = false) {
   return invalid
@@ -19,11 +24,14 @@ export default function ThankYouPage() {
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, signUp } = useAuth();
   const [showAccountCreation, setShowAccountCreation] = useState(false);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   // If already logged in, don't show account creation
@@ -33,8 +41,8 @@ export default function ThankYouPage() {
     }
   }, [user]);
 
-  // Pre-fill the email from the order they just submitted so the account links
-  // up and their entered contacts get saved to the new profile.
+  // Pre-fill from the order they just submitted so the account links up and
+  // their entered name + contacts get saved to the new profile.
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -42,13 +50,22 @@ export default function ThankYouPage() {
       if (!raw) return;
       const pending = JSON.parse(raw);
       if (pending?.email) setEmail(pending.email);
+      if (pending?.first_name) setFirstName(pending.first_name);
+      if (pending?.last_name) setLastName(pending.last_name);
     } catch {
-      // Ignore storage/parse errors; email can be entered manually.
+      // Ignore storage/parse errors; fields can be entered manually.
     }
   }, []);
 
   const validateForm = () => {
     const errors = {};
+
+    if (!firstName.trim()) {
+      errors.firstName = true;
+    }
+    if (!lastName.trim()) {
+      errors.lastName = true;
+    }
 
     if (!email.trim()) {
       errors.email = true;
@@ -73,6 +90,7 @@ export default function ThankYouPage() {
   const handleCreateAccount = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!validateForm()) {
       setError("Please check the form for errors.");
@@ -82,7 +100,19 @@ export default function ThankYouPage() {
     setLoading(true);
 
     try {
-      const data = await signUp(email, password);
+      const data = await signUp(email, password, firstName, lastName);
+
+      if (isExistingAccountSignup(data)) {
+        // Supabase silently no-ops signUp for an already-registered email
+        // instead of erroring (anti-enumeration). Send a real notice email
+        // so the customer knows to log in instead of waiting on a
+        // confirmation email that will never come.
+        sendExistingAccountNotice(email);
+        setNotice(
+          "An account with that email already exists. We've emailed a reminder."
+        );
+        return;
+      }
 
       if (data.session) {
         router.push("/my-orders");
@@ -144,7 +174,57 @@ export default function ThankYouPage() {
               </p>
             )}
 
+            {notice && (
+              <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+                {notice}{" "}
+                <Link
+                  href="/login"
+                  className="font-bold text-blush hover:underline"
+                >
+                  Log in
+                </Link>
+              </p>
+            )}
+
             <form onSubmit={handleCreateAccount} className="space-y-4">
+              <div>
+                <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
+                  First name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="first_name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, firstName: false }));
+                  }}
+                  placeholder="First name"
+                  className={fieldClassName(fieldErrors.firstName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
+                  Last name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="last_name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, lastName: false }));
+                  }}
+                  placeholder="Last name"
+                  className={fieldClassName(fieldErrors.lastName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
               <div>
                 <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
                   Email <span className="text-berry">*</span>
