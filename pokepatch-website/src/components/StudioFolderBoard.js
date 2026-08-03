@@ -79,7 +79,13 @@ function setDragItem(event, role, id) {
   event.dataTransfer.effectAllowed = "move";
 }
 
-function readDragItem(event) {
+/**
+ * `{ role, id }` for a bank/slot thumbnail dragged inside this board, or null
+ * for anything else (an OS file drag carries no such payload). Exported so
+ * drop targets outside the board — e.g. the card-info front image — can accept
+ * the same thumbnails.
+ */
+export function readDragItem(event) {
   const raw = event.dataTransfer.getData(DRAG_TYPE);
   if (!raw) return null;
   const separator = raw.indexOf(":");

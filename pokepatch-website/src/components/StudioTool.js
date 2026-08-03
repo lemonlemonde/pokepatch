@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioFolderBoard, {
   createPair,
+  readDragItem as readPairBankDragItem,
   SideBank,
 } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
@@ -19,12 +20,10 @@ import {
   downloadSlotImages,
   resolveStudioImageFile,
 } from "@/lib/studioSlotImage";
-import {
-  CroppedShapePreview,
-  StudioCroppableThumb,
-} from "@/components/StudioSlotEditor";
+import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
+import useDebouncedValue from "@/lib/useDebouncedValue";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
@@ -34,6 +33,10 @@ import {
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
 } from "@/lib/instagramStitch";
+import {
+  DEFAULT_PACKAGE_CAPTION,
+  downloadStudioPackageZip,
+} from "@/lib/studioPackageZip";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -109,7 +112,17 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
   );
 }
 
-function StudioCardMetaControls({ value, onChange }) {
+/**
+ * `resolveDroppedItemFile` lets the front image accept a thumbnail dragged out
+ * of an image bank, not just an OS file drop. Each formatter owns its own bank
+ * items and drag payload format, so it passes a resolver that turns the drag
+ * event back into that item's `File` (or null when the drag isn't one of ours).
+ */
+function StudioCardMetaControls({
+  value,
+  onChange,
+  resolveDroppedItemFile = null,
+}) {
   const frontInputId = useId();
   const cardInfoSwitchId = useId();
   const captionSwitchId = useId();
@@ -147,6 +160,17 @@ function StudioCardMetaControls({ value, onChange }) {
   function handleUploadDrop(event) {
     event.preventDefault();
     setUploadDragging(false);
+
+    // A bank thumbnail carries an item reference rather than a file, so it has
+    // to be resolved first — `dataTransfer.files` is empty for those drags.
+    // `setFrontFile` mints its own object URL from the File, so the bank keeps
+    // owning (and revoking) its preview URL independently of this one.
+    const bankFile = resolveDroppedItemFile?.(event) ?? null;
+    if (bankFile) {
+      setFrontFile(bankFile);
+      return;
+    }
+
     const file = Array.from(event.dataTransfer.files ?? []).find((entry) =>
       entry.type.startsWith("image/"),
     );
@@ -232,6 +256,11 @@ function StudioCardMetaControls({ value, onChange }) {
                     <p className="text-xs text-ink/70">
                       Drop image here or browse
                     </p>
+                    {resolveDroppedItemFile ? (
+                      <p className="text-[10px] text-ink/40">
+                        or drag one in from a bank
+                      </p>
+                    ) : null}
                   </label>
                 )}
               </div>
@@ -429,21 +458,32 @@ function downloadAllFromUrls(outputs) {
  * conditional, and before-after-pair falls back to the key `"any"` when
  * there's exactly one output, so key-matching can't be relied on).
  * `outputSources[i]` is the list of source slot images
- * (`{ item, previewUrl, label }`, same shape `downloadSlotImages` takes)
- * that fed `outputs[i]`.
+ * (`{ item, previewUrl, label, exportName }`, same shape `downloadSlotImages`
+ * takes) that fed `outputs[i]`.
+ *
+ * `onAltTextChange`, when given, turns on a per-post alt text field under each
+ * image — only the package download consumes alt text, so formatters without
+ * one leave it off.
  */
 function OutputGrid({
   outputs,
   outputSources = null,
   renderPreview,
   annotated = false,
+  exportersRef: externalExportersRef = null,
+  altTextByKey = {},
+  onAltTextChange = null,
 }) {
-  const exportersRef = useRef(new Map());
+  const internalExportersRef = useRef(new Map());
+  const exportersRef = externalExportersRef ?? internalExportersRef;
 
-  const setExporter = useCallback((key, exporter) => {
-    if (exporter) exportersRef.current.set(key, exporter);
-    else exportersRef.current.delete(key);
-  }, []);
+  const setExporter = useCallback(
+    (key, exporter) => {
+      if (exporter) exportersRef.current.set(key, exporter);
+      else exportersRef.current.delete(key);
+    },
+    [exportersRef],
+  );
 
   async function downloadAllAnnotated() {
     for (let index = 0; index < outputs.length; index += 1) {
@@ -482,6 +522,31 @@ function OutputGrid({
       <div className="grid gap-10 sm:grid-cols-2">
         {outputs.map((output, index) => {
           const sources = outputSources?.[index] ?? [];
+          const sourcesButton =
+            sources.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => downloadSlotImages(sources)}
+                className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+              >
+                Download source imgs
+              </button>
+            ) : null;
+          const altTextField = onAltTextChange ? (
+            <label className="block space-y-1.5 text-left">
+              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                Alt text
+              </span>
+              <textarea
+                value={altTextByKey[output.key] ?? ""}
+                onChange={(event) =>
+                  onAltTextChange(output.key, event.target.value)
+                }
+                rows={2}
+                className={`${INPUT_CLASS} resize-y`}
+              />
+            </label>
+          ) : null;
           return (
             <div key={output.key} className="space-y-4 text-center">
               <p className="font-secondary text-sm text-ink/60">
@@ -497,54 +562,26 @@ function OutputGrid({
                   onExporterChange={(exporter) =>
                     setExporter(output.key, exporter)
                   }
-                />
+                  extraActions={sourcesButton}
+                >
+                  {altTextField}
+                </StudioAnnotatedPreview>
               ) : (
                 <>
                   {renderPreview(output)}
-                  <a
-                    href={output.url}
-                    download={output.filename}
-                    className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-                  >
-                    Download {output.label.toLowerCase()}
-                  </a>
+                  {altTextField}
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <a
+                      href={output.url}
+                      download={output.filename}
+                      className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                    >
+                      Download {output.label.toLowerCase()}
+                    </a>
+                    {sourcesButton}
+                  </div>
                 </>
               )}
-
-              {sources.length > 0 ? (
-                <div className="space-y-3 border-t border-ink/10 pt-4">
-                  <p className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
-                    Source images
-                  </p>
-                  <div className="flex flex-wrap items-start justify-center gap-4">
-                    {sources.map((source, sourceIndex) => (
-                      <div
-                        key={source.item?.id ?? sourceIndex}
-                        className="w-28 space-y-1.5"
-                      >
-                        <p className="text-[11px] text-ink/50">
-                          {source.label}
-                        </p>
-                        <CroppedShapePreview
-                          src={source.previewUrl}
-                          alt={source.label}
-                          crop={source.item?.crop}
-                          annotations={source.item?.annotations ?? []}
-                          fitHeight="7rem"
-                          className="rounded-lg border border-ink/15"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => downloadSlotImages([source])}
-                          className="text-[11px] font-semibold text-blush/90 hover:text-blush"
-                        >
-                          Download
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -553,6 +590,11 @@ function OutputGrid({
   );
 }
 
+/**
+ * `blob` is kept alongside `url` so an output can be written to the draft and
+ * rebuilt after a refresh — object URLs die with the page, blobs clone into
+ * IndexedDB.
+ */
 async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
@@ -561,11 +603,19 @@ async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
         key,
         label,
         sizeHint,
+        blob,
         url: URL.createObjectURL(blob),
         filename: `pokepatch-${key}.png`,
       };
     }),
   );
+}
+
+/** Re-mint object URLs for outputs read back out of a draft. */
+function outputsFromDraft(stored) {
+  return (stored ?? [])
+    .filter((output) => output?.blob)
+    .map((output) => ({ ...output, url: URL.createObjectURL(output.blob) }));
 }
 
 function validatePhotoPairFiles(files, groupBy) {
@@ -709,6 +759,14 @@ function OutputFormatToggle({ value, onChange }) {
 
 const BEFORE_AFTER_PAIR_DRAFT_KEY = "photo:before-after-pair";
 
+/**
+ * The caption and alt text reach the draft this far behind the field, so a
+ * burst of typing doesn't re-write a payload that carries every uploaded photo
+ * and generated image with it. Photo edits still save on the draft's own
+ * shorter debounce.
+ */
+const TEXT_DRAFT_DEBOUNCE_MS = 2000;
+
 function BeforeAfterPairPhotoFormatter({
   onBack,
   onChangeGroupBy,
@@ -721,9 +779,17 @@ function BeforeAfterPairPhotoFormatter({
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair()]);
   const [outputs, setOutputs] = useState(null);
-  const [outputSources, setOutputSources] = useState([]);
+  // Sources are held as `{ role, itemId, label, exportName }` refs rather than
+  // resolved entries: the item objects and their preview URLs belong to the
+  // banks, so storing copies in a draft would duplicate every File and hand
+  // back items that are no longer the same objects the board is editing.
+  const [outputSourceRefs, setOutputSourceRefs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
+  const [altTextByKey, setAltTextByKey] = useState({});
+  const [packaging, setPackaging] = useState(false);
+  const exportersRef = useRef(new Map());
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
@@ -734,15 +800,61 @@ function BeforeAfterPairPhotoFormatter({
   );
   const previewUrls = useStableObjectUrls(allItems);
 
+  const outputSources = useMemo(
+    () =>
+      outputSourceRefs.map((refs) =>
+        (refs ?? [])
+          .map(({ role, itemId, label, exportName }) => ({
+            item: (role === "before" ? beforeItems : afterItems).find(
+              (entry) => entry.id === itemId,
+            ),
+            previewUrl: previewUrls[itemId],
+            label,
+            exportName,
+          }))
+          // A source whose photo has since been deleted from the bank drops out
+          // rather than rendering as a broken entry.
+          .filter((source) => source.item && source.previewUrl),
+      ),
+    [outputSourceRefs, beforeItems, afterItems, previewUrls],
+  );
+
   const hasContent =
     beforeItems.length > 0 ||
     afterItems.length > 0 ||
     hasCardMetaContent(cardMeta);
   const { requestLeave, dialog } = useUnsavedChangesGuard(hasContent);
 
+  const [draftCaption, flushDraftCaption] = useDebouncedValue(
+    caption,
+    TEXT_DRAFT_DEBOUNCE_MS,
+  );
+  const [draftAltText, flushDraftAltText] = useDebouncedValue(
+    altTextByKey,
+    TEXT_DRAFT_DEBOUNCE_MS,
+  );
+
   const draftPayload = useMemo(
-    () => ({ beforeItems, afterItems, pairs }),
-    [beforeItems, afterItems, pairs],
+    () => ({
+      beforeItems,
+      afterItems,
+      pairs,
+      caption: draftCaption,
+      altTextByKey: draftAltText,
+      // `url` is a dead object URL by the time this is read back — only `blob`
+      // survives, and `outputsFromDraft` mints a fresh URL from it.
+      outputs: outputs?.map(({ url, ...rest }) => rest) ?? null,
+      outputSourceRefs,
+    }),
+    [
+      beforeItems,
+      afterItems,
+      pairs,
+      draftCaption,
+      draftAltText,
+      outputs,
+      outputSourceRefs,
+    ],
   );
   const restored = useStudioDraft(
     BEFORE_AFTER_PAIR_DRAFT_KEY,
@@ -754,7 +866,21 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems(restored.beforeItems ?? []);
     setAfterItems(restored.afterItems ?? []);
     setPairs(restored.pairs?.length ? restored.pairs : [createPair()]);
-  }, [restored]);
+    // Drafts predating these fields have none of them; fall back to the default
+    // caption rather than blanking the field. Flushed as well as set, so the
+    // photos landing in the same commit can't trigger a save that writes the
+    // pre-restore text back over what was just read.
+    const restoredCaption = restored.caption ?? DEFAULT_PACKAGE_CAPTION;
+    const restoredAltText = restored.altTextByKey ?? {};
+    setCaption(restoredCaption);
+    flushDraftCaption(restoredCaption);
+    setAltTextByKey(restoredAltText);
+    flushDraftAltText(restoredAltText);
+    setOutputSourceRefs(restored.outputSourceRefs ?? []);
+    const restoredOutputs = outputsFromDraft(restored.outputs);
+    setOutputs(restoredOutputs.length ? restoredOutputs : null);
+    // Both flushes are stable, so listing them can't re-run this restore.
+  }, [restored, flushDraftCaption, flushDraftAltText]);
 
   function clearAll() {
     if (!window.confirm("Clear all photos and card info loaded here?")) {
@@ -763,9 +889,26 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems([]);
     setAfterItems([]);
     setPairs([createPair()]);
+    setCaption(DEFAULT_PACKAGE_CAPTION);
+    flushDraftCaption(DEFAULT_PACKAGE_CAPTION);
+    setAltTextByKey({});
+    flushDraftAltText({});
+    setOutputs((prev) => {
+      prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+      return null;
+    });
+    setOutputSourceRefs([]);
     onChangeCardMeta(createEmptyCardMeta());
     deleteDraft(BEFORE_AFTER_PAIR_DRAFT_KEY);
     deleteDraft(PHOTO_SHARED_DRAFT_KEY);
+  }
+
+  /** Bank/slot thumbnail → its underlying File, for the card-info front image. */
+  function resolveDroppedItemFile(event) {
+    const dragged = readPairBankDragItem(event);
+    if (!dragged) return null;
+    const items = dragged.role === "before" ? beforeItems : afterItems;
+    return items.find((item) => item.id === dragged.id)?.file ?? null;
   }
 
   useEffect(() => {
@@ -806,17 +949,21 @@ function BeforeAfterPairPhotoFormatter({
     }
 
     // One output per complete pair, in the same order — `generatePhotoOutputs`
-    // (stitchBeforeAfterPairRows) never drops or reorders a complete pair.
-    const nextSources = completePairs.map((pair) => [
+    // (stitchBeforeAfterPairRows) never drops or reorders a complete pair. The
+    // pair number comes from this index rather than the output key, which is
+    // `"any"` (not `"pair-1"`) when there's only one pair.
+    const nextSourceRefs = completePairs.map((pair, index) => [
       {
-        item: beforeItems.find((item) => item.id === pair.before),
-        previewUrl: previewUrls[pair.before],
+        role: "before",
+        itemId: pair.before,
         label: "Before",
+        exportName: `before-pair-${index + 1}`,
       },
       {
-        item: afterItems.find((item) => item.id === pair.after),
-        previewUrl: previewUrls[pair.after],
+        role: "after",
+        itemId: pair.after,
         label: "After",
+        exportName: `after-pair-${index + 1}`,
       },
     ]);
 
@@ -832,11 +979,41 @@ function BeforeAfterPairPhotoFormatter({
         prev?.forEach(({ url }) => URL.revokeObjectURL(url));
         return next;
       });
-      setOutputSources(nextSources);
+      setOutputSourceRefs(nextSourceRefs);
+      // The caption and alt text are deliberately left alone here: regenerating
+      // is usually a tweak to the same post (a crop, a format switch), and
+      // retyping the text every time is worse than the one case this gives up —
+      // alt text is keyed by output key (`pair-N`, or `any` for a lone pair),
+      // so swapping a pair's photos leaves the old text on that slot. Only
+      // "Clear all" resets them.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDownloadPackage() {
+    if (!outputs?.length) return;
+    setPackaging(true);
+    setError("");
+    try {
+      await downloadStudioPackageZip({
+        outputs,
+        outputSources,
+        exporters: exportersRef.current,
+        altTextByKey,
+        caption,
+        cardMeta,
+      });
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not build the download package.",
+      );
+    } finally {
+      setPackaging(false);
     }
   }
 
@@ -879,7 +1056,11 @@ function BeforeAfterPairPhotoFormatter({
           setPairs={setPairs}
           onError={setError}
         >
-          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+          <StudioCardMetaControls
+            value={cardMeta}
+            onChange={onChangeCardMeta}
+            resolveDroppedItemFile={resolveDroppedItemFile}
+          />
 
           {error && (
             <p className="text-center text-sm text-berry" role="alert">
@@ -899,7 +1080,53 @@ function BeforeAfterPairPhotoFormatter({
 
       {outputs && (
         <div className="mx-auto max-w-3xl">
-          <OutputGrid outputs={outputs} outputSources={outputSources} annotated />
+          <OutputGrid
+            outputs={outputs}
+            outputSources={outputSources}
+            annotated
+            exportersRef={exportersRef}
+            altTextByKey={altTextByKey}
+            onAltTextChange={(key, value) =>
+              setAltTextByKey((current) => ({ ...current, [key]: value }))
+            }
+          />
+
+          <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
+            <p className="font-secondary text-sm font-semibold text-ink">
+              Download package
+            </p>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  Caption
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
+                  disabled={caption === DEFAULT_PACKAGE_CAPTION}
+                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Restore default
+                </button>
+              </span>
+              <textarea
+                value={caption}
+                onChange={(event) => setCaption(event.target.value)}
+                rows={6}
+                className={`${INPUT_CLASS} resize-y`}
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={handleDownloadPackage}
+              disabled={packaging || busy}
+              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {packaging ? "Building package…" : "Download package (.zip)"}
+            </button>
+          </div>
         </div>
       )}
       {dialog}
@@ -1106,6 +1333,13 @@ function FrontBackPairPhotoFormatter({
     if (!raw) return null;
     const separator = raw.indexOf(":");
     return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
+  }
+
+  /** Bank/slot thumbnail → its underlying File, for the card-info front image. */
+  function resolveDroppedItemFile(event) {
+    const dragged = readDragItem(event);
+    if (!dragged) return null;
+    return findItem(dragged.role, dragged.id)?.file ?? null;
   }
 
   async function handleGenerate(event) {
@@ -1419,7 +1653,11 @@ function FrontBackPairPhotoFormatter({
               </button>
             ) : null}
 
-            <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+            <StudioCardMetaControls
+              value={cardMeta}
+              onChange={onChangeCardMeta}
+              resolveDroppedItemFile={resolveDroppedItemFile}
+            />
 
             {error && (
               <p className="text-center text-sm text-berry" role="alert">

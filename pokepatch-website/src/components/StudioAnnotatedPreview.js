@@ -297,12 +297,17 @@ export function ShapeSurface({
 
 /**
  * Studio output preview: click to enlarge in MediaLightbox and edit shapes there.
+ *
+ * `children` render between the image and the download row (the per-post alt
+ * text field); `extraActions` render alongside the download button.
  */
 export default function StudioAnnotatedPreview({
   label,
   url,
   filename,
   onExporterChange,
+  extraActions = null,
+  children = null,
 }) {
   const [shapes, setShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -389,13 +394,18 @@ export default function StudioAnnotatedPreview({
         Click image to enlarge and edit shapes
       </p>
 
-      <button
-        type="button"
-        onClick={handleDownload}
-        className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-      >
-        Download {label.toLowerCase()}
-      </button>
+      {children}
+
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+        >
+          Download {label.toLowerCase()}
+        </button>
+        {extraActions}
+      </div>
 
       {open ? (
         <MediaLightbox

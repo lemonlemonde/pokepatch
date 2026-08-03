@@ -1951,10 +1951,14 @@ function KanbanBoard({
             )}
           </div>
         )}
+        {/* No `overscroll-contain` on the list: the column is height-capped
+            (72vh) while the page keeps scrolling below it, so the wheel has to
+            chain out to the page once this list hits its top/bottom — with
+            containment, hovering any column traps the scroll. */}
         {showList && (
           <div
             data-kanban-scroll
-            className={`min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-0.5 ${
+            className={`min-h-0 space-y-2 overflow-y-auto pr-0.5 ${
               dock
                 ? "max-h-48 flex-none"
                 : // Mobile: ~4 cards tall, then scroll (keeps stacked columns short).

@@ -137,14 +137,21 @@ export function resizeCrop(origin, handleId, nx, ny, aspectRatio, imageAspect) {
   return clampCrop({ x, y, w, h });
 }
 
+/** File extension matching an exported image blob's mime type. */
+export function imageExtForBlob(blob) {
+  if (blob?.type === "image/png") return "png";
+  if (blob?.type === "image/webp") return "webp";
+  return "jpg";
+}
+
+/** Drop the extension from an upload's filename, for renaming an export. */
+export function imageBaseName(originalName) {
+  return (originalName || "image").replace(/\.[^.]+$/, "");
+}
+
 function blobToFile(blob, originalName, suffix, fallbackType) {
-  const baseName = (originalName || "image").replace(/\.[^.]+$/, "");
-  const ext =
-    blob.type === "image/png"
-      ? "png"
-      : blob.type === "image/webp"
-        ? "webp"
-        : "jpg";
+  const baseName = imageBaseName(originalName);
+  const ext = imageExtForBlob(blob);
   return new File([blob], `${baseName}-${suffix}.${ext}`, {
     type: blob.type || fallbackType || "image/jpeg",
   });
@@ -225,7 +232,7 @@ export async function resolveStudioImageFile(item, imageUrl) {
   return blobToFile(blob, item.file.name, "edited", item.file.type);
 }
 
-function slugify(value) {
+export function slugify(value) {
   return (value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -233,26 +240,38 @@ function slugify(value) {
 }
 
 /**
+ * Export name for one slot image. An `exportName` on the entry replaces the
+ * whole name — a generated post's sources use `before-pair-1` so the file says
+ * which pair it belongs to instead of repeating the upload's filename. Without
+ * one it falls back to `<slot-label>-<original name>`, which is what the
+ * editor's own per-slot download wants.
+ *
+ * Shared so a slot downloaded on its own and the same slot inside a zip
+ * package always land on the same filename.
+ *
+ * @param entry { item, label, exportName }
+ */
+export function slotImageFileName(entry, blob) {
+  const ext = imageExtForBlob(blob);
+  if (entry?.exportName) return `${slugify(entry.exportName)}.${ext}`;
+  const prefix = slugify(entry?.label);
+  const baseName = imageBaseName(entry?.item?.file?.name);
+  return `${prefix ? `${prefix}-` : ""}${baseName}.${ext}`;
+}
+
+/**
  * Export each slot's cropped + annotated image. Staggered because browsers
  * drop rapid-fire programmatic downloads (same cadence as the existing
  * "Download all" for generated outputs).
  *
- * @param entries [{ item, previewUrl, label }]
+ * @param entries [{ item, previewUrl, label, exportName }]
  */
 export async function downloadSlotImages(entries) {
   const usable = entries.filter((entry) => entry?.item?.file && entry.previewUrl);
   for (let index = 0; index < usable.length; index += 1) {
-    const { item, previewUrl, label } = usable[index];
-    const blob = await renderStudioSlotBlob(item, previewUrl);
-    const ext =
-      blob.type === "image/png"
-        ? "png"
-        : blob.type === "image/webp"
-          ? "webp"
-          : "jpg";
-    const baseName = (item.file.name || "image").replace(/\.[^.]+$/, "");
-    const prefix = slugify(label);
-    downloadBlob(blob, `${prefix ? `${prefix}-` : ""}${baseName}.${ext}`);
+    const entry = usable[index];
+    const blob = await renderStudioSlotBlob(entry.item, entry.previewUrl);
+    downloadBlob(blob, slotImageFileName(entry, blob));
     if (index < usable.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
