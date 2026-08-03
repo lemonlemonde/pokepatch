@@ -589,6 +589,11 @@ function OutputGrid({
   );
 }
 
+/**
+ * `blob` is kept alongside `url` so an output can be written to the draft and
+ * rebuilt after a refresh — object URLs die with the page, blobs clone into
+ * IndexedDB.
+ */
 async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
@@ -597,11 +602,19 @@ async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
         key,
         label,
         sizeHint,
+        blob,
         url: URL.createObjectURL(blob),
         filename: `pokepatch-${key}.png`,
       };
     }),
   );
+}
+
+/** Re-mint object URLs for outputs read back out of a draft. */
+function outputsFromDraft(stored) {
+  return (stored ?? [])
+    .filter((output) => output?.blob)
+    .map((output) => ({ ...output, url: URL.createObjectURL(output.blob) }));
 }
 
 function validatePhotoPairFiles(files, groupBy) {
@@ -757,7 +770,11 @@ function BeforeAfterPairPhotoFormatter({
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair()]);
   const [outputs, setOutputs] = useState(null);
-  const [outputSources, setOutputSources] = useState([]);
+  // Sources are held as `{ role, itemId, label, exportName }` refs rather than
+  // resolved entries: the item objects and their preview URLs belong to the
+  // banks, so storing copies in a draft would duplicate every File and hand
+  // back items that are no longer the same objects the board is editing.
+  const [outputSourceRefs, setOutputSourceRefs] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
@@ -774,6 +791,25 @@ function BeforeAfterPairPhotoFormatter({
   );
   const previewUrls = useStableObjectUrls(allItems);
 
+  const outputSources = useMemo(
+    () =>
+      outputSourceRefs.map((refs) =>
+        (refs ?? [])
+          .map(({ role, itemId, label, exportName }) => ({
+            item: (role === "before" ? beforeItems : afterItems).find(
+              (entry) => entry.id === itemId,
+            ),
+            previewUrl: previewUrls[itemId],
+            label,
+            exportName,
+          }))
+          // A source whose photo has since been deleted from the bank drops out
+          // rather than rendering as a broken entry.
+          .filter((source) => source.item && source.previewUrl),
+      ),
+    [outputSourceRefs, beforeItems, afterItems, previewUrls],
+  );
+
   const hasContent =
     beforeItems.length > 0 ||
     afterItems.length > 0 ||
@@ -781,8 +817,26 @@ function BeforeAfterPairPhotoFormatter({
   const { requestLeave, dialog } = useUnsavedChangesGuard(hasContent);
 
   const draftPayload = useMemo(
-    () => ({ beforeItems, afterItems, pairs }),
-    [beforeItems, afterItems, pairs],
+    () => ({
+      beforeItems,
+      afterItems,
+      pairs,
+      caption,
+      altTextByKey,
+      // `url` is a dead object URL by the time this is read back — only `blob`
+      // survives, and `outputsFromDraft` mints a fresh URL from it.
+      outputs: outputs?.map(({ url, ...rest }) => rest) ?? null,
+      outputSourceRefs,
+    }),
+    [
+      beforeItems,
+      afterItems,
+      pairs,
+      caption,
+      altTextByKey,
+      outputs,
+      outputSourceRefs,
+    ],
   );
   const restored = useStudioDraft(
     BEFORE_AFTER_PAIR_DRAFT_KEY,
@@ -794,6 +848,13 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems(restored.beforeItems ?? []);
     setAfterItems(restored.afterItems ?? []);
     setPairs(restored.pairs?.length ? restored.pairs : [createPair()]);
+    // Drafts predating these fields have none of them; fall back to the default
+    // caption rather than blanking the field.
+    setCaption(restored.caption ?? DEFAULT_PACKAGE_CAPTION);
+    setAltTextByKey(restored.altTextByKey ?? {});
+    setOutputSourceRefs(restored.outputSourceRefs ?? []);
+    const restoredOutputs = outputsFromDraft(restored.outputs);
+    setOutputs(restoredOutputs.length ? restoredOutputs : null);
   }, [restored]);
 
   function clearAll() {
@@ -805,6 +866,11 @@ function BeforeAfterPairPhotoFormatter({
     setPairs([createPair()]);
     setCaption(DEFAULT_PACKAGE_CAPTION);
     setAltTextByKey({});
+    setOutputs((prev) => {
+      prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+      return null;
+    });
+    setOutputSourceRefs([]);
     onChangeCardMeta(createEmptyCardMeta());
     deleteDraft(BEFORE_AFTER_PAIR_DRAFT_KEY);
     deleteDraft(PHOTO_SHARED_DRAFT_KEY);
@@ -859,16 +925,16 @@ function BeforeAfterPairPhotoFormatter({
     // (stitchBeforeAfterPairRows) never drops or reorders a complete pair. The
     // pair number comes from this index rather than the output key, which is
     // `"any"` (not `"pair-1"`) when there's only one pair.
-    const nextSources = completePairs.map((pair, index) => [
+    const nextSourceRefs = completePairs.map((pair, index) => [
       {
-        item: beforeItems.find((item) => item.id === pair.before),
-        previewUrl: previewUrls[pair.before],
+        role: "before",
+        itemId: pair.before,
         label: "Before",
         exportName: `before-pair-${index + 1}`,
       },
       {
-        item: afterItems.find((item) => item.id === pair.after),
-        previewUrl: previewUrls[pair.after],
+        role: "after",
+        itemId: pair.after,
         label: "After",
         exportName: `after-pair-${index + 1}`,
       },
@@ -886,7 +952,7 @@ function BeforeAfterPairPhotoFormatter({
         prev?.forEach(({ url }) => URL.revokeObjectURL(url));
         return next;
       });
-      setOutputSources(nextSources);
+      setOutputSourceRefs(nextSourceRefs);
       // Alt text describes specific photos, and output keys (`pair-N`, or
       // `any` for a lone pair) are reused by the next generation — keeping the
       // old text would silently ship it against different images.
