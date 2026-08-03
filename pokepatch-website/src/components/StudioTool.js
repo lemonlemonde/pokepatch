@@ -980,13 +980,12 @@ function BeforeAfterPairPhotoFormatter({
         return next;
       });
       setOutputSourceRefs(nextSourceRefs);
-      // Alt text describes specific photos, and output keys (`pair-N`, or
-      // `any` for a lone pair) are reused by the next generation — keeping the
-      // old text would silently ship it against different images. Flushed so
-      // the new outputs, saved on the shorter debounce, can't be paired with
-      // the outgoing text.
-      setAltTextByKey({});
-      flushDraftAltText({});
+      // The caption and alt text are deliberately left alone here: regenerating
+      // is usually a tweak to the same post (a crop, a format switch), and
+      // retyping the text every time is worse than the one case this gives up —
+      // alt text is keyed by output key (`pair-N`, or `any` for a lone pair),
+      // so swapping a pair's photos leaves the old text on that slot. Only
+      // "Clear all" resets them.
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
