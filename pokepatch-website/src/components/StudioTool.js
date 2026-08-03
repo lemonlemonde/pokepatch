@@ -909,6 +909,7 @@ function BeforeAfterPairPhotoFormatter({
         exporters: exportersRef.current,
         altTextByKey,
         caption,
+        cardMeta,
       });
     } catch (err) {
       setError(

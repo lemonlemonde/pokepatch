@@ -232,7 +232,7 @@ export async function resolveStudioImageFile(item, imageUrl) {
   return blobToFile(blob, item.file.name, "edited", item.file.type);
 }
 
-function slugify(value) {
+export function slugify(value) {
   return (value || "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")

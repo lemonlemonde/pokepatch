@@ -3,8 +3,11 @@ import {
   imageBaseName,
   renderStudioSlotBlob,
   slotImageFileName,
+  slugify,
 } from "@/lib/studioSlotImage";
 import { downloadBlob } from "@/lib/downloadFile";
+
+const DEFAULT_PACKAGE_ZIP_NAME = "pokepatch-package.zip";
 
 export const DEFAULT_PACKAGE_CAPTION = `Restoration Performed
 • Edge lifting
@@ -38,6 +41,17 @@ function uniqueName(name, taken) {
 }
 
 /**
+ * `<card>-<set>.zip` off the card-info fields, dropping whichever is blank and
+ * falling back to the generic name when both are. Slugified because these are
+ * free-text fields — "Sylveon-GX (Secret Rare)" carries parens and spaces that
+ * make for an awkward filename.
+ */
+export function packageZipName({ card = "", set = "" } = {}) {
+  const parts = [card, set].map((part) => slugify(part)).filter(Boolean);
+  return parts.length ? `${parts.join("-")}.zip` : DEFAULT_PACKAGE_ZIP_NAME;
+}
+
+/**
  * Builds and downloads a zip containing:
  * - gallery/: every slot image (crop + annotations baked in), deduped by item id
  * - insta/: every generated pair output
@@ -48,6 +62,7 @@ function uniqueName(name, taken) {
  * @param exporters Map<key, () => Promise<{blob, filename}>> — optional annotated-output exporters
  * @param altTextByKey { [outputKey]: string }
  * @param caption string
+ * @param cardMeta { card, set } — names the zip file; optional
  */
 export async function downloadStudioPackageZip({
   outputs,
@@ -55,6 +70,7 @@ export async function downloadStudioPackageZip({
   exporters = new Map(),
   altTextByKey = {},
   caption = "",
+  cardMeta = null,
 }) {
   const zip = new JSZip();
   const gallery = zip.folder("gallery");
@@ -101,5 +117,5 @@ export async function downloadStudioPackageZip({
   instaText.file("caption.txt", caption ?? "");
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
-  downloadBlob(zipBlob, "pokepatch-package.zip");
+  downloadBlob(zipBlob, packageZipName(cardMeta ?? {}));
 }
