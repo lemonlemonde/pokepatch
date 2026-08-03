@@ -23,6 +23,7 @@ import {
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
+import useDebouncedValue from "@/lib/useDebouncedValue";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
@@ -758,6 +759,14 @@ function OutputFormatToggle({ value, onChange }) {
 
 const BEFORE_AFTER_PAIR_DRAFT_KEY = "photo:before-after-pair";
 
+/**
+ * The caption and alt text reach the draft this far behind the field, so a
+ * burst of typing doesn't re-write a payload that carries every uploaded photo
+ * and generated image with it. Photo edits still save on the draft's own
+ * shorter debounce.
+ */
+const TEXT_DRAFT_DEBOUNCE_MS = 2000;
+
 function BeforeAfterPairPhotoFormatter({
   onBack,
   onChangeGroupBy,
@@ -816,13 +825,22 @@ function BeforeAfterPairPhotoFormatter({
     hasCardMetaContent(cardMeta);
   const { requestLeave, dialog } = useUnsavedChangesGuard(hasContent);
 
+  const [draftCaption, flushDraftCaption] = useDebouncedValue(
+    caption,
+    TEXT_DRAFT_DEBOUNCE_MS,
+  );
+  const [draftAltText, flushDraftAltText] = useDebouncedValue(
+    altTextByKey,
+    TEXT_DRAFT_DEBOUNCE_MS,
+  );
+
   const draftPayload = useMemo(
     () => ({
       beforeItems,
       afterItems,
       pairs,
-      caption,
-      altTextByKey,
+      caption: draftCaption,
+      altTextByKey: draftAltText,
       // `url` is a dead object URL by the time this is read back — only `blob`
       // survives, and `outputsFromDraft` mints a fresh URL from it.
       outputs: outputs?.map(({ url, ...rest }) => rest) ?? null,
@@ -832,8 +850,8 @@ function BeforeAfterPairPhotoFormatter({
       beforeItems,
       afterItems,
       pairs,
-      caption,
-      altTextByKey,
+      draftCaption,
+      draftAltText,
       outputs,
       outputSourceRefs,
     ],
@@ -849,13 +867,20 @@ function BeforeAfterPairPhotoFormatter({
     setAfterItems(restored.afterItems ?? []);
     setPairs(restored.pairs?.length ? restored.pairs : [createPair()]);
     // Drafts predating these fields have none of them; fall back to the default
-    // caption rather than blanking the field.
-    setCaption(restored.caption ?? DEFAULT_PACKAGE_CAPTION);
-    setAltTextByKey(restored.altTextByKey ?? {});
+    // caption rather than blanking the field. Flushed as well as set, so the
+    // photos landing in the same commit can't trigger a save that writes the
+    // pre-restore text back over what was just read.
+    const restoredCaption = restored.caption ?? DEFAULT_PACKAGE_CAPTION;
+    const restoredAltText = restored.altTextByKey ?? {};
+    setCaption(restoredCaption);
+    flushDraftCaption(restoredCaption);
+    setAltTextByKey(restoredAltText);
+    flushDraftAltText(restoredAltText);
     setOutputSourceRefs(restored.outputSourceRefs ?? []);
     const restoredOutputs = outputsFromDraft(restored.outputs);
     setOutputs(restoredOutputs.length ? restoredOutputs : null);
-  }, [restored]);
+    // Both flushes are stable, so listing them can't re-run this restore.
+  }, [restored, flushDraftCaption, flushDraftAltText]);
 
   function clearAll() {
     if (!window.confirm("Clear all photos and card info loaded here?")) {
@@ -865,7 +890,9 @@ function BeforeAfterPairPhotoFormatter({
     setAfterItems([]);
     setPairs([createPair()]);
     setCaption(DEFAULT_PACKAGE_CAPTION);
+    flushDraftCaption(DEFAULT_PACKAGE_CAPTION);
     setAltTextByKey({});
+    flushDraftAltText({});
     setOutputs((prev) => {
       prev?.forEach(({ url }) => URL.revokeObjectURL(url));
       return null;
@@ -955,8 +982,11 @@ function BeforeAfterPairPhotoFormatter({
       setOutputSourceRefs(nextSourceRefs);
       // Alt text describes specific photos, and output keys (`pair-N`, or
       // `any` for a lone pair) are reused by the next generation — keeping the
-      // old text would silently ship it against different images.
+      // old text would silently ship it against different images. Flushed so
+      // the new outputs, saved on the shorter debounce, can't be paired with
+      // the outgoing text.
       setAltTextByKey({});
+      flushDraftAltText({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
