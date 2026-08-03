@@ -55,14 +55,15 @@ export function packageZipName({ card = "", set = "" } = {}) {
  * Builds and downloads a zip containing:
  * - gallery/: every slot image (crop + annotations baked in), deduped by item id
  * - insta/: every generated pair output
- * - insta/text/: one alt-text .txt per pair, and one caption.txt
+ * - insta/text/: one alt-text .txt per pair, caption.txt, and cardname/cardset
+ *   .txt when those fields are filled
  *
  * @param outputs [{ key, label, url, filename }] — generated pair images
  * @param outputSources [[{ item, previewUrl, label, exportName }]] — parallel to outputs, slot inputs per pair
  * @param exporters Map<key, () => Promise<{blob, filename}>> — optional annotated-output exporters
  * @param altTextByKey { [outputKey]: string }
  * @param caption string
- * @param cardMeta { card, set } — names the zip file; optional
+ * @param cardMeta { card, set } — names the zip file and its own .txt files; optional
  */
 export async function downloadStudioPackageZip({
   outputs,
@@ -115,6 +116,14 @@ export async function downloadStudioPackageZip({
   }
 
   instaText.file("caption.txt", caption ?? "");
+
+  // Verbatim, not slugified — unlike the zip's own name these are meant to be
+  // copy-pasted into a post. Skipped when blank rather than shipping an empty
+  // file, matching how alt text is handled.
+  const card = cardMeta?.card?.trim();
+  const set = cardMeta?.set?.trim();
+  if (card) instaText.file("cardname.txt", card);
+  if (set) instaText.file("cardset.txt", set);
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   downloadBlob(zipBlob, packageZipName(cardMeta ?? {}));
