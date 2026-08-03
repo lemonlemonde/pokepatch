@@ -12,6 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
 import StudioFolderBoard, {
   createPair,
+  readDragItem as readPairBankDragItem,
   SideBank,
 } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
@@ -113,7 +114,17 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
   );
 }
 
-function StudioCardMetaControls({ value, onChange }) {
+/**
+ * `resolveDroppedItemFile` lets the front image accept a thumbnail dragged out
+ * of an image bank, not just an OS file drop. Each formatter owns its own bank
+ * items and drag payload format, so it passes a resolver that turns the drag
+ * event back into that item's `File` (or null when the drag isn't one of ours).
+ */
+function StudioCardMetaControls({
+  value,
+  onChange,
+  resolveDroppedItemFile = null,
+}) {
   const frontInputId = useId();
   const cardInfoSwitchId = useId();
   const captionSwitchId = useId();
@@ -151,6 +162,17 @@ function StudioCardMetaControls({ value, onChange }) {
   function handleUploadDrop(event) {
     event.preventDefault();
     setUploadDragging(false);
+
+    // A bank thumbnail carries an item reference rather than a file, so it has
+    // to be resolved first — `dataTransfer.files` is empty for those drags.
+    // `setFrontFile` mints its own object URL from the File, so the bank keeps
+    // owning (and revoking) its preview URL independently of this one.
+    const bankFile = resolveDroppedItemFile?.(event) ?? null;
+    if (bankFile) {
+      setFrontFile(bankFile);
+      return;
+    }
+
     const file = Array.from(event.dataTransfer.files ?? []).find((entry) =>
       entry.type.startsWith("image/"),
     );
@@ -236,6 +258,11 @@ function StudioCardMetaControls({ value, onChange }) {
                     <p className="text-xs text-ink/70">
                       Drop image here or browse
                     </p>
+                    {resolveDroppedItemFile ? (
+                      <p className="text-[10px] text-ink/40">
+                        or drag one in from a bank
+                      </p>
+                    ) : null}
                   </label>
                 )}
               </div>
@@ -783,6 +810,14 @@ function BeforeAfterPairPhotoFormatter({
     deleteDraft(PHOTO_SHARED_DRAFT_KEY);
   }
 
+  /** Bank/slot thumbnail → its underlying File, for the card-info front image. */
+  function resolveDroppedItemFile(event) {
+    const dragged = readPairBankDragItem(event);
+    if (!dragged) return null;
+    const items = dragged.role === "before" ? beforeItems : afterItems;
+    return items.find((item) => item.id === dragged.id)?.file ?? null;
+  }
+
   useEffect(() => {
     return () => {
       outputs?.forEach(({ url }) => URL.revokeObjectURL(url));
@@ -921,7 +956,11 @@ function BeforeAfterPairPhotoFormatter({
           setPairs={setPairs}
           onError={setError}
         >
-          <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+          <StudioCardMetaControls
+            value={cardMeta}
+            onChange={onChangeCardMeta}
+            resolveDroppedItemFile={resolveDroppedItemFile}
+          />
 
           {error && (
             <p className="text-center text-sm text-berry" role="alert">
@@ -1199,6 +1238,13 @@ function FrontBackPairPhotoFormatter({
     if (!raw) return null;
     const separator = raw.indexOf(":");
     return { role: raw.slice(0, separator), id: raw.slice(separator + 1) };
+  }
+
+  /** Bank/slot thumbnail → its underlying File, for the card-info front image. */
+  function resolveDroppedItemFile(event) {
+    const dragged = readDragItem(event);
+    if (!dragged) return null;
+    return findItem(dragged.role, dragged.id)?.file ?? null;
   }
 
   async function handleGenerate(event) {
@@ -1512,7 +1558,11 @@ function FrontBackPairPhotoFormatter({
               </button>
             ) : null}
 
-            <StudioCardMetaControls value={cardMeta} onChange={onChangeCardMeta} />
+            <StudioCardMetaControls
+              value={cardMeta}
+              onChange={onChangeCardMeta}
+              resolveDroppedItemFile={resolveDroppedItemFile}
+            />
 
             {error && (
               <p className="text-center text-sm text-berry" role="alert">
