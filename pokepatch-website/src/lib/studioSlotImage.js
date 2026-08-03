@@ -240,14 +240,23 @@ function slugify(value) {
 }
 
 /**
- * Export name for one slot image: `<slot-label>-<original name>.<ext>`. Shared
- * so a slot downloaded on its own and the same slot inside a zip package land
- * on the same filename.
+ * Export name for one slot image. An `exportName` on the entry replaces the
+ * whole name — a generated post's sources use `before-pair-1` so the file says
+ * which pair it belongs to instead of repeating the upload's filename. Without
+ * one it falls back to `<slot-label>-<original name>`, which is what the
+ * editor's own per-slot download wants.
+ *
+ * Shared so a slot downloaded on its own and the same slot inside a zip
+ * package always land on the same filename.
+ *
+ * @param entry { item, label, exportName }
  */
-export function slotImageFileName(item, label, blob) {
-  const prefix = slugify(label);
-  const baseName = imageBaseName(item?.file?.name);
-  return `${prefix ? `${prefix}-` : ""}${baseName}.${imageExtForBlob(blob)}`;
+export function slotImageFileName(entry, blob) {
+  const ext = imageExtForBlob(blob);
+  if (entry?.exportName) return `${slugify(entry.exportName)}.${ext}`;
+  const prefix = slugify(entry?.label);
+  const baseName = imageBaseName(entry?.item?.file?.name);
+  return `${prefix ? `${prefix}-` : ""}${baseName}.${ext}`;
 }
 
 /**
@@ -255,14 +264,14 @@ export function slotImageFileName(item, label, blob) {
  * drop rapid-fire programmatic downloads (same cadence as the existing
  * "Download all" for generated outputs).
  *
- * @param entries [{ item, previewUrl, label }]
+ * @param entries [{ item, previewUrl, label, exportName }]
  */
 export async function downloadSlotImages(entries) {
   const usable = entries.filter((entry) => entry?.item?.file && entry.previewUrl);
   for (let index = 0; index < usable.length; index += 1) {
-    const { item, previewUrl, label } = usable[index];
-    const blob = await renderStudioSlotBlob(item, previewUrl);
-    downloadBlob(blob, slotImageFileName(item, label, blob));
+    const entry = usable[index];
+    const blob = await renderStudioSlotBlob(entry.item, entry.previewUrl);
+    downloadBlob(blob, slotImageFileName(entry, blob));
     if (index < usable.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }

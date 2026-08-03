@@ -40,10 +40,11 @@ function uniqueName(name, taken) {
 /**
  * Builds and downloads a zip containing:
  * - gallery/: every slot image (crop + annotations baked in), deduped by item id
- * - insta/: every generated pair output, one alt-text .txt per pair, and one caption.txt
+ * - insta/: every generated pair output
+ * - insta/text/: one alt-text .txt per pair, and one caption.txt
  *
  * @param outputs [{ key, label, url, filename }] — generated pair images
- * @param outputSources [[{ item, previewUrl, label }]] — parallel to outputs, slot inputs per pair
+ * @param outputSources [[{ item, previewUrl, label, exportName }]] — parallel to outputs, slot inputs per pair
  * @param exporters Map<key, () => Promise<{blob, filename}>> — optional annotated-output exporters
  * @param altTextByKey { [outputKey]: string }
  * @param caption string
@@ -58,6 +59,7 @@ export async function downloadStudioPackageZip({
   const zip = new JSZip();
   const gallery = zip.folder("gallery");
   const insta = zip.folder("insta");
+  const instaText = insta.folder("text");
 
   const seenSlotIds = new Set();
   const galleryNames = new Set();
@@ -70,7 +72,7 @@ export async function downloadStudioPackageZip({
       seenSlotIds.add(item.id);
       const blob = await renderStudioSlotBlob(item, source.previewUrl);
       gallery.file(
-        uniqueName(slotImageFileName(item, source.label, blob), galleryNames),
+        uniqueName(slotImageFileName(source, blob), galleryNames),
         blob,
       );
     }
@@ -92,11 +94,11 @@ export async function downloadStudioPackageZip({
 
     const altText = altTextByKey[output.key]?.trim();
     if (altText) {
-      insta.file(`${imageBaseName(name)}.alt.txt`, altText);
+      instaText.file(`${imageBaseName(name)}.alt.txt`, altText);
     }
   }
 
-  insta.file("caption.txt", caption ?? "");
+  instaText.file("caption.txt", caption ?? "");
 
   const zipBlob = await zip.generateAsync({ type: "blob" });
   downloadBlob(zipBlob, "pokepatch-package.zip");

@@ -20,10 +20,7 @@ import {
   downloadSlotImages,
   resolveStudioImageFile,
 } from "@/lib/studioSlotImage";
-import {
-  CroppedShapePreview,
-  StudioCroppableThumb,
-} from "@/components/StudioSlotEditor";
+import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
@@ -460,8 +457,12 @@ function downloadAllFromUrls(outputs) {
  * conditional, and before-after-pair falls back to the key `"any"` when
  * there's exactly one output, so key-matching can't be relied on).
  * `outputSources[i]` is the list of source slot images
- * (`{ item, previewUrl, label }`, same shape `downloadSlotImages` takes)
- * that fed `outputs[i]`.
+ * (`{ item, previewUrl, label, exportName }`, same shape `downloadSlotImages`
+ * takes) that fed `outputs[i]`.
+ *
+ * `onAltTextChange`, when given, turns on a per-post alt text field under each
+ * image — only the package download consumes alt text, so formatters without
+ * one leave it off.
  */
 function OutputGrid({
   outputs,
@@ -469,6 +470,8 @@ function OutputGrid({
   renderPreview,
   annotated = false,
   exportersRef: externalExportersRef = null,
+  altTextByKey = {},
+  onAltTextChange = null,
 }) {
   const internalExportersRef = useRef(new Map());
   const exportersRef = externalExportersRef ?? internalExportersRef;
@@ -518,6 +521,31 @@ function OutputGrid({
       <div className="grid gap-10 sm:grid-cols-2">
         {outputs.map((output, index) => {
           const sources = outputSources?.[index] ?? [];
+          const sourcesButton =
+            sources.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => downloadSlotImages(sources)}
+                className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+              >
+                Download source imgs
+              </button>
+            ) : null;
+          const altTextField = onAltTextChange ? (
+            <label className="block space-y-1.5 text-left">
+              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                Alt text
+              </span>
+              <textarea
+                value={altTextByKey[output.key] ?? ""}
+                onChange={(event) =>
+                  onAltTextChange(output.key, event.target.value)
+                }
+                rows={2}
+                className={`${INPUT_CLASS} resize-y`}
+              />
+            </label>
+          ) : null;
           return (
             <div key={output.key} className="space-y-4 text-center">
               <p className="font-secondary text-sm text-ink/60">
@@ -533,54 +561,26 @@ function OutputGrid({
                   onExporterChange={(exporter) =>
                     setExporter(output.key, exporter)
                   }
-                />
+                  extraActions={sourcesButton}
+                >
+                  {altTextField}
+                </StudioAnnotatedPreview>
               ) : (
                 <>
                   {renderPreview(output)}
-                  <a
-                    href={output.url}
-                    download={output.filename}
-                    className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-                  >
-                    Download {output.label.toLowerCase()}
-                  </a>
+                  {altTextField}
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <a
+                      href={output.url}
+                      download={output.filename}
+                      className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                    >
+                      Download {output.label.toLowerCase()}
+                    </a>
+                    {sourcesButton}
+                  </div>
                 </>
               )}
-
-              {sources.length > 0 ? (
-                <div className="space-y-3 border-t border-ink/10 pt-4">
-                  <p className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
-                    Source images
-                  </p>
-                  <div className="flex flex-wrap items-start justify-center gap-4">
-                    {sources.map((source, sourceIndex) => (
-                      <div
-                        key={source.item?.id ?? sourceIndex}
-                        className="w-28 space-y-1.5"
-                      >
-                        <p className="text-[11px] text-ink/50">
-                          {source.label}
-                        </p>
-                        <CroppedShapePreview
-                          src={source.previewUrl}
-                          alt={source.label}
-                          crop={source.item?.crop}
-                          annotations={source.item?.annotations ?? []}
-                          fitHeight="7rem"
-                          className="rounded-lg border border-ink/15"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => downloadSlotImages([source])}
-                          className="text-[11px] font-semibold text-blush/90 hover:text-blush"
-                        >
-                          Download
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
             </div>
           );
         })}
@@ -856,17 +856,21 @@ function BeforeAfterPairPhotoFormatter({
     }
 
     // One output per complete pair, in the same order — `generatePhotoOutputs`
-    // (stitchBeforeAfterPairRows) never drops or reorders a complete pair.
-    const nextSources = completePairs.map((pair) => [
+    // (stitchBeforeAfterPairRows) never drops or reorders a complete pair. The
+    // pair number comes from this index rather than the output key, which is
+    // `"any"` (not `"pair-1"`) when there's only one pair.
+    const nextSources = completePairs.map((pair, index) => [
       {
         item: beforeItems.find((item) => item.id === pair.before),
         previewUrl: previewUrls[pair.before],
         label: "Before",
+        exportName: `before-pair-${index + 1}`,
       },
       {
         item: afterItems.find((item) => item.id === pair.after),
         previewUrl: previewUrls[pair.after],
         label: "After",
+        exportName: `after-pair-${index + 1}`,
       },
     ]);
 
@@ -985,6 +989,10 @@ function BeforeAfterPairPhotoFormatter({
             outputSources={outputSources}
             annotated
             exportersRef={exportersRef}
+            altTextByKey={altTextByKey}
+            onAltTextChange={(key, value) =>
+              setAltTextByKey((current) => ({ ...current, [key]: value }))
+            }
           />
 
           <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
@@ -1003,25 +1011,6 @@ function BeforeAfterPairPhotoFormatter({
                 className={`${INPUT_CLASS} resize-y`}
               />
             </label>
-
-            {outputs.map((output) => (
-              <label key={output.key} className="block space-y-1.5">
-                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
-                  {output.label} — alt text
-                </span>
-                <textarea
-                  value={altTextByKey[output.key] ?? ""}
-                  onChange={(event) =>
-                    setAltTextByKey((current) => ({
-                      ...current,
-                      [output.key]: event.target.value,
-                    }))
-                  }
-                  rows={2}
-                  className={`${INPUT_CLASS} resize-y`}
-                />
-              </label>
-            ))}
 
             <button
               type="button"
