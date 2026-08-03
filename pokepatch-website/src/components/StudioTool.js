@@ -1002,8 +1002,18 @@ function BeforeAfterPairPhotoFormatter({
             </p>
 
             <label className="block space-y-1.5">
-              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
-                Caption
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                  Caption
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
+                  disabled={caption === DEFAULT_PACKAGE_CAPTION}
+                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Restore default
+                </button>
               </span>
               <textarea
                 value={caption}
