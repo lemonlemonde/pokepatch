@@ -446,10 +446,13 @@ function OutputGrid({
   const internalExportersRef = useRef(new Map());
   const exportersRef = externalExportersRef ?? internalExportersRef;
 
-  const setExporter = useCallback((key, exporter) => {
-    if (exporter) exportersRef.current.set(key, exporter);
-    else exportersRef.current.delete(key);
-  }, []);
+  const setExporter = useCallback(
+    (key, exporter) => {
+      if (exporter) exportersRef.current.set(key, exporter);
+      else exportersRef.current.delete(key);
+    },
+    [exportersRef],
+  );
 
   async function downloadAllAnnotated() {
     for (let index = 0; index < outputs.length; index += 1) {
@@ -845,6 +848,10 @@ function BeforeAfterPairPhotoFormatter({
         return next;
       });
       setOutputSources(nextSources);
+      // Alt text describes specific photos, and output keys (`pair-N`, or
+      // `any` for a lone pair) are reused by the next generation — keeping the
+      // old text would silently ship it against different images.
+      setAltTextByKey({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -980,7 +987,7 @@ function BeforeAfterPairPhotoFormatter({
             <button
               type="button"
               onClick={handleDownloadPackage}
-              disabled={packaging}
+              disabled={packaging || busy}
               className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {packaging ? "Building package…" : "Download package (.zip)"}

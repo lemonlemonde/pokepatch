@@ -1,5 +1,9 @@
 import JSZip from "jszip";
-import { renderStudioSlotBlob } from "@/lib/studioSlotImage";
+import {
+  imageBaseName,
+  renderStudioSlotBlob,
+  slotImageFileName,
+} from "@/lib/studioSlotImage";
 import { downloadBlob } from "@/lib/downloadFile";
 
 export const DEFAULT_PACKAGE_CAPTION = `Restoration Performed
@@ -14,18 +18,23 @@ Restore your collection with PokePatch.cards
 
 🔗 link in bio`;
 
-function extForBlob(blob, fallback = "jpg") {
-  if (blob.type === "image/png") return "png";
-  if (blob.type === "image/webp") return "webp";
-  if (blob.type === "image/jpeg") return "jpg";
-  return fallback;
-}
-
-function slugify(value) {
-  return (value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+/**
+ * A repeated name silently overwrites the earlier zip entry, so suffix
+ * duplicates rather than dropping an image: two uploads sharing a filename is
+ * routine (`IMG_1234.jpg` straight off a phone).
+ */
+function uniqueName(name, taken) {
+  if (!taken.has(name)) {
+    taken.add(name);
+    return name;
+  }
+  const base = imageBaseName(name);
+  const ext = name.slice(base.length);
+  let suffix = 2;
+  while (taken.has(`${base}-${suffix}${ext}`)) suffix += 1;
+  const unique = `${base}-${suffix}${ext}`;
+  taken.add(unique);
+  return unique;
 }
 
 /**
@@ -51,6 +60,7 @@ export async function downloadStudioPackageZip({
   const insta = zip.folder("insta");
 
   const seenSlotIds = new Set();
+  const galleryNames = new Set();
   for (const sources of outputSources ?? []) {
     for (const source of sources ?? []) {
       const item = source?.item;
@@ -59,24 +69,30 @@ export async function downloadStudioPackageZip({
       }
       seenSlotIds.add(item.id);
       const blob = await renderStudioSlotBlob(item, source.previewUrl);
-      const ext = extForBlob(blob);
-      const baseName = (item.file.name || "image").replace(/\.[^.]+$/, "");
-      const prefix = slugify(source.label);
-      gallery.file(`${prefix ? `${prefix}-` : ""}${baseName}.${ext}`, blob);
+      gallery.file(
+        uniqueName(slotImageFileName(item, source.label, blob), galleryNames),
+        blob,
+      );
     }
   }
 
+  const instaNames = new Set();
   for (const output of outputs ?? []) {
     const exporter = exporters.get(output.key);
-    const { blob, filename } = exporter
+    const exported = exporter
       ? await exporter()
-      : { blob: await fetch(output.url).then((res) => res.blob()), filename: output.filename };
-    insta.file(filename, blob);
+      : {
+          blob: await fetch(output.url).then((res) => res.blob()),
+          filename: output.filename,
+        };
+    // Alt text has to hang off the *written* name so the pairing survives a
+    // suffixed duplicate.
+    const name = uniqueName(exported.filename, instaNames);
+    insta.file(name, exported.blob);
 
     const altText = altTextByKey[output.key]?.trim();
     if (altText) {
-      const baseName = filename.replace(/\.[^.]+$/, "");
-      insta.file(`${baseName}.alt.txt`, altText);
+      insta.file(`${imageBaseName(name)}.alt.txt`, altText);
     }
   }
 

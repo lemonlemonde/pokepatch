@@ -137,14 +137,21 @@ export function resizeCrop(origin, handleId, nx, ny, aspectRatio, imageAspect) {
   return clampCrop({ x, y, w, h });
 }
 
+/** File extension matching an exported image blob's mime type. */
+export function imageExtForBlob(blob) {
+  if (blob?.type === "image/png") return "png";
+  if (blob?.type === "image/webp") return "webp";
+  return "jpg";
+}
+
+/** Drop the extension from an upload's filename, for renaming an export. */
+export function imageBaseName(originalName) {
+  return (originalName || "image").replace(/\.[^.]+$/, "");
+}
+
 function blobToFile(blob, originalName, suffix, fallbackType) {
-  const baseName = (originalName || "image").replace(/\.[^.]+$/, "");
-  const ext =
-    blob.type === "image/png"
-      ? "png"
-      : blob.type === "image/webp"
-        ? "webp"
-        : "jpg";
+  const baseName = imageBaseName(originalName);
+  const ext = imageExtForBlob(blob);
   return new File([blob], `${baseName}-${suffix}.${ext}`, {
     type: blob.type || fallbackType || "image/jpeg",
   });
@@ -233,6 +240,17 @@ function slugify(value) {
 }
 
 /**
+ * Export name for one slot image: `<slot-label>-<original name>.<ext>`. Shared
+ * so a slot downloaded on its own and the same slot inside a zip package land
+ * on the same filename.
+ */
+export function slotImageFileName(item, label, blob) {
+  const prefix = slugify(label);
+  const baseName = imageBaseName(item?.file?.name);
+  return `${prefix ? `${prefix}-` : ""}${baseName}.${imageExtForBlob(blob)}`;
+}
+
+/**
  * Export each slot's cropped + annotated image. Staggered because browsers
  * drop rapid-fire programmatic downloads (same cadence as the existing
  * "Download all" for generated outputs).
@@ -244,15 +262,7 @@ export async function downloadSlotImages(entries) {
   for (let index = 0; index < usable.length; index += 1) {
     const { item, previewUrl, label } = usable[index];
     const blob = await renderStudioSlotBlob(item, previewUrl);
-    const ext =
-      blob.type === "image/png"
-        ? "png"
-        : blob.type === "image/webp"
-          ? "webp"
-          : "jpg";
-    const baseName = (item.file.name || "image").replace(/\.[^.]+$/, "");
-    const prefix = slugify(label);
-    downloadBlob(blob, `${prefix ? `${prefix}-` : ""}${baseName}.${ext}`);
+    downloadBlob(blob, slotImageFileName(item, label, blob));
     if (index < usable.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
