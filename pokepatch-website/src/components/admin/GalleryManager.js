@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
+import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
   adminClearGalleryPairSide,
   adminApplyGalleryTcgThumbnail,
@@ -332,13 +333,6 @@ function ThumbnailUpload({
   );
 }
 
-function cardImageUrl(card) {
-  return (
-    card?.image_small ||
-    (card?.id ? `https://images.scrydex.com/pokemon/${card.id}/small` : "")
-  );
-}
-
 function cardFromItem(item) {
   if (!item?.tcg_card_id) return null;
   return {
@@ -346,7 +340,7 @@ function cardFromItem(item) {
     name: item.title || item.tcg_lookup_title || "",
     set_name: item.set_name || item.tcg_lookup_set_name || "",
     number: item.card_number ?? "",
-    image_small: cardImageUrl({ id: item.tcg_card_id }),
+    image_small: tcgCardImageUrl({ id: item.tcg_card_id }),
   };
 }
 
@@ -868,7 +862,7 @@ export default function GalleryManager() {
               previewUrl={
                 selected?.urls?.thumbnail ||
                 (selectedCard?.id === selected?.tcg_card_id
-                  ? cardImageUrl(selectedCard)
+                  ? tcgCardImageUrl(selectedCard)
                   : null)
               }
               previewCacheKey={

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminSearchGalleryTcg } from "@/lib/adminApi";
 import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
+import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 
 const PAGE_SIZE = 12;
 const MIN_SET_LENGTH = 2;
@@ -10,13 +11,6 @@ const MIN_NAME_ONLY_LENGTH = 3;
 
 function fieldClassName() {
   return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
-
-function cardImageUrl(card) {
-  return (
-    card?.image_small ||
-    (card?.id ? `https://images.scrydex.com/pokemon/${card.id}/small` : "")
-  );
 }
 
 function normalizeSearchInput(value) {
@@ -62,7 +56,7 @@ function CardResultButton({ card, selected, onSelect }) {
       <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={cardImageUrl(card)}
+          src={tcgCardImageUrl(card)}
           alt=""
           loading="lazy"
           decoding="async"
@@ -181,7 +175,7 @@ export default function GalleryCardSearch({
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-blush/40 bg-cream/90 p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={cardImageUrl(selectedCard)}
+            src={tcgCardImageUrl(selectedCard)}
             alt=""
             className={`w-12 shrink-0 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/20`}
           />
