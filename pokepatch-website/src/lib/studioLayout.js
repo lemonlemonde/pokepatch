@@ -7,6 +7,14 @@ export const INSTAGRAM_HEIGHT = 1080;
 export const REEL_WIDTH = 1080;
 export const REEL_HEIGHT = 1920;
 
+/**
+ * Supersampling factor for the export canvas. Every layout number below stays
+ * in 1080-space; the stitchers scale the backing store by this and apply a
+ * matching transform, so text, the logo, card borders and shadows all rasterize
+ * natively at the higher resolution instead of being upscaled after the fact.
+ */
+export const STUDIO_EXPORT_SCALE = 3;
+
 /** @typedef {'square' | 'reel'} StudioOutputFormat */
 
 /** Canvas size for a 1×2 output format. Defaults to square. */
@@ -15,6 +23,30 @@ export function getOutputCanvasSize(format = "square") {
     return { width: REEL_WIDTH, height: REEL_HEIGHT };
   }
   return { width: INSTAGRAM_WIDTH, height: INSTAGRAM_HEIGHT };
+}
+
+/**
+ * Logical (pre-supersample) canvas size, stamped on by the stitchers. Layout
+ * code must read these instead of the canvas's own width/height — the raw
+ * backing store is `STUDIO_EXPORT_SCALE` times larger, which would make
+ * `isTallCanvas` mistake a square post for a Reel.
+ */
+export function stampLogicalSize(canvas, width, height) {
+  canvas.__logicalWidth = width;
+  canvas.__logicalHeight = height;
+}
+
+export function logicalWidth(ctx) {
+  return ctx.canvas.__logicalWidth ?? ctx.canvas.width;
+}
+
+export function logicalHeight(ctx) {
+  return ctx.canvas.__logicalHeight ?? ctx.canvas.height;
+}
+
+/** Device pixels per logical unit on this context. */
+export function exportScale(ctx) {
+  return ctx.canvas.width / logicalWidth(ctx);
 }
 
 // --- 1×2 formatter layout (comparison / paired-sides) ---
@@ -167,7 +199,7 @@ function captionStackCentered(canvasHeight, imagesAndLabelsHeight) {
 
 function chipEdgePadding(ctx, basePadding) {
   return (
-    basePadding + (isTallCanvas(ctx.canvas.height) ? REEL_CHIP_EDGE_NUDGE : 0)
+    basePadding + (isTallCanvas(logicalHeight(ctx)) ? REEL_CHIP_EDGE_NUDGE : 0)
   );
 }
 
@@ -270,8 +302,8 @@ export function getSourceDimensions(source) {
 }
 
 export function fillBackground(ctx) {
-  const width = ctx.canvas.width;
-  const height = ctx.canvas.height;
+  const width = logicalWidth(ctx);
+  const height = logicalHeight(ctx);
   const gradient = ctx.createRadialGradient(
     width / 2,
     height * 0.42,
@@ -308,18 +340,12 @@ export function getSharedTargetSize(leftMetrics, rightMetrics, maxSlotWidth) {
   return { targetSw, targetSh: Math.max(leftH, rightH) };
 }
 
-export function prepareResized(source, metrics) {
-  const resized = document.createElement("canvas");
-  resized.width = metrics.newW;
-  resized.height = metrics.newH;
-  const ctx = resized.getContext("2d");
-  enableHighQuality(ctx);
-  ctx.drawImage(source, 0, 0, metrics.newW, metrics.newH);
-  return resized;
-}
-
-function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
-  // Same width as the taller card's frame; preserve aspect (no crop).
+/**
+ * Where the card actually lands inside the shared frame. Same width as the
+ * taller card's frame, aspect preserved (no crop), shrunk to fit if that would
+ * overflow the frame height.
+ */
+export function getCardDrawSize(metrics, targetSw, targetSh) {
   let drawW = targetSw;
   let drawH = Math.round(metrics.sh * (targetSw / metrics.sw));
   if (drawH > targetSh) {
@@ -327,14 +353,84 @@ function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
     drawW = Math.round(drawW * fit);
     drawH = targetSh;
   }
+  return { drawW, drawH };
+}
+
+/**
+ * Repeated halving down to the target instead of one long jump.
+ *
+ * Canvas' `imageSmoothingQuality: "high"` only samples a small neighbourhood,
+ * so taking a 4000px photo straight to a ~500px slot undersamples periodic
+ * detail — that's what puts stripes/moiré through holo and foil patterns.
+ * Halving stays within the filter's reach at every step and averages the
+ * discarded pixels in, which is what actually kills the aliasing.
+ */
+function downscaleTo(source, targetW, targetH) {
+  const { width: sourceWidth, height: sourceHeight } =
+    getSourceDimensions(source);
+  let current = source;
+  let width = sourceWidth;
+  let height = sourceHeight;
+
+  // `&&` so a step never clamps one axis while halving the other — the halved
+  // canvas has to stay in the source's aspect for the averaging to be uniform.
+  while (width > targetW * 2 && height > targetH * 2) {
+    width = Math.max(targetW, Math.round(width / 2));
+    height = Math.max(targetH, Math.round(height / 2));
+    const step = document.createElement("canvas");
+    step.width = width;
+    step.height = height;
+    const stepCtx = step.getContext("2d");
+    enableHighQuality(stepCtx);
+    stepCtx.drawImage(current, 0, 0, width, height);
+    current = step;
+  }
+
+  const resized = document.createElement("canvas");
+  resized.width = targetW;
+  resized.height = targetH;
+  const ctx = resized.getContext("2d");
+  enableHighQuality(ctx);
+  ctx.drawImage(current, 0, 0, targetW, targetH);
+  return resized;
+}
+
+/**
+ * Resample a source straight to its final *device*-pixel size. Callers pass the
+ * post-supersample dimensions so the image is resampled exactly once — the old
+ * two-stage path fitted to the slot first and then let `drawCard` rescale to
+ * the shared frame width, which upscaled the narrower card of every pair back
+ * up from an already-shrunken intermediate.
+ */
+export function prepareResized(source, targetW, targetH) {
+  return downscaleTo(source, Math.max(1, targetW), Math.max(1, targetH));
+}
+
+/** `prepareResized` at the size this card will occupy on `ctx`, in device pixels. */
+function prepareCardResized(ctx, source, metrics, targetSw, targetSh) {
+  const { drawW, drawH } = getCardDrawSize(metrics, targetSw, targetSh);
+  const scale = exportScale(ctx);
+  return prepareResized(
+    source,
+    Math.round(drawW * scale),
+    Math.round(drawH * scale),
+  );
+}
+
+function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
+  const { drawW, drawH } = getCardDrawSize(metrics, targetSw, targetSh);
   // Equal white extension above and below when this card is shorter.
   const imageX = drawX + Math.floor((targetSw - drawW) / 2);
   const imageY = drawY + Math.floor((targetSh - drawH) / 2);
 
   ctx.save();
+  // Shadow blur and offset are in device pixels — the canvas transform doesn't
+  // touch them — so they have to be scaled by hand or the drop shadow shrinks
+  // to half its intended size on a supersampled export.
+  const shadowScale = exportScale(ctx);
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
-  ctx.shadowBlur = 28;
-  ctx.shadowOffsetY = 10;
+  ctx.shadowBlur = 28 * shadowScale;
+  ctx.shadowOffsetY = 10 * shadowScale;
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.roundRect(drawX, drawY, targetSw, targetSh, CARD_RADIUS);
@@ -346,17 +442,9 @@ function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
   ctx.beginPath();
   ctx.roundRect(drawX, drawY, targetSw, targetSh, CARD_RADIUS);
   ctx.clip();
-  ctx.drawImage(
-    resized,
-    metrics.sx,
-    metrics.sy,
-    metrics.sw,
-    metrics.sh,
-    imageX,
-    imageY,
-    drawW,
-    drawH,
-  );
+  // `resized` is already at the exact device-pixel size this rect covers, so
+  // this is a 1:1 blit — no second resample.
+  ctx.drawImage(resized, imageX, imageY, drawW, drawH);
   ctx.restore();
 
   ctx.strokeStyle = "rgba(0, 0, 0, 0.12)";
@@ -399,7 +487,7 @@ function drawColumn(
   targetSh,
   imageTop,
 ) {
-  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
+  const type = typeMetrics(isTallCanvas(logicalHeight(ctx)));
   const drawX = columnX + Math.floor((slotWidth - targetSw) / 2);
   drawCard(ctx, resized, metrics, drawX, imageTop, targetSw, targetSh);
 
@@ -431,10 +519,10 @@ function drawBadgeBackground(ctx, blockX, blockY, blockW, blockH) {
 }
 
 export function drawBranding(ctx, logoImg) {
-  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
+  const type = typeMetrics(isTallCanvas(logicalHeight(ctx)));
   const padding = chipEdgePadding(ctx, 24);
   const maxFrameSize = type.brandLogoFrame;
-  const gap = reelTyped(10, isTallCanvas(ctx.canvas.height));
+  const gap = reelTyped(10, isTallCanvas(logicalHeight(ctx)));
   const fontSize = type.brandFont;
   const innerPad = type.brandInnerPad;
 
@@ -458,9 +546,9 @@ export function drawBranding(ctx, logoImg) {
   const textWidth = ctx.measureText(BRAND_HANDLE).width;
   const blockW = innerPad + logoW + gap + textWidth + innerPad;
   const blockH = Math.max(logoH, fontSize) + innerPad * 2;
-  const tall = isTallCanvas(ctx.canvas.height);
+  const tall = isTallCanvas(logicalHeight(ctx));
   const blockX =
-    ctx.canvas.width -
+    logicalWidth(ctx) -
     padding -
     blockW -
     (tall ? REEL_BRANDING_RIGHT_EXTRA : 0);
@@ -618,7 +706,7 @@ function drawLabeledLine(ctx, label, value, x, y, fontSize) {
  */
 export function drawCardInfo(ctx, cardInfo, layout = null) {
   const { frontImg, card, set } = cardInfo;
-  const tall = isTallCanvas(ctx.canvas.height);
+  const tall = isTallCanvas(logicalHeight(ctx));
   const type = typeMetrics(tall);
   const padding = chipEdgePadding(ctx, CARD_INFO_EDGE_PADDING);
   const thumbBox =
@@ -649,7 +737,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
     ? reelTyped(REEL_CARD_INFO_TEXT_WIDTH, tall)
     : Math.max(
         80,
-        ctx.canvas.width -
+        logicalWidth(ctx) -
           2 * padding -
           padLeft -
           thumbBox -
@@ -694,7 +782,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const blockX =
     layout?.blockX ??
     (tall
-      ? Math.floor((ctx.canvas.width - blockW) / 2) - REEL_CARD_INFO_LEFT_SHIFT
+      ? Math.floor((logicalWidth(ctx) - blockW) / 2) - REEL_CARD_INFO_LEFT_SHIFT
       : padding);
   const blockY = layout?.blockY ?? padding;
 
@@ -707,7 +795,15 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   ctx.beginPath();
   ctx.roundRect(thumbX, thumbY, thumbW, thumbH, thumbRadius);
   ctx.clip();
-  ctx.drawImage(frontImg, thumbX, thumbY, thumbW, thumbH);
+  // Same stepped downscale as the cards — the chip is a ~10-30× reduction of a
+  // full-res photo, which is exactly where a single drawImage aliases worst.
+  const scale = exportScale(ctx);
+  const thumb = prepareResized(
+    frontImg,
+    Math.round(thumbW * scale),
+    Math.round(thumbH * scale),
+  );
+  ctx.drawImage(thumb, thumbX, thumbY, thumbW, thumbH);
   ctx.restore();
 
   const textX = blockX + padLeft + thumbBox + textGap;
@@ -725,14 +821,14 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
 
 /** Centered caption; `centerY` is the vertical middle of the text. */
 function drawRestorationCaption(ctx, caption, centerY) {
-  const type = typeMetrics(isTallCanvas(ctx.canvas.height));
+  const type = typeMetrics(isTallCanvas(logicalHeight(ctx)));
   ctx.font = `500 ${type.captionFont}px ${LABEL_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.fillStyle = LABEL_COLOR;
   drawTrackedText(
     ctx,
     caption,
-    ctx.canvas.width / 2,
+    logicalWidth(ctx) / 2,
     centerY,
     type.captionTracking,
   );
@@ -763,7 +859,7 @@ export function drawComparisonFrame(
   logoImg,
   overlay = null,
 ) {
-  const canvasHeight = ctx.canvas.height;
+  const canvasHeight = logicalHeight(ctx);
   const tall = isTallCanvas(canvasHeight);
   const type = typeMetrics(tall);
   const cols = pairLayout(tall);
@@ -812,8 +908,20 @@ export function drawComparisonFrame(
       ? pinnedStack.imagesTop
       : contentTop + Math.floor((availableH - targetSh) / 2);
 
-  const leftResized = prepareResized(leftSource, leftMetrics);
-  const rightResized = prepareResized(rightSource, rightMetrics);
+  const leftResized = prepareCardResized(
+    ctx,
+    leftSource,
+    leftMetrics,
+    targetSw,
+    targetSh,
+  );
+  const rightResized = prepareCardResized(
+    ctx,
+    rightSource,
+    rightMetrics,
+    targetSw,
+    targetSh,
+  );
 
   enableHighQuality(ctx);
   fillBackground(ctx);
@@ -865,8 +973,8 @@ export function drawPairedSidesFrame(
   logoImg,
   overlay = null,
 ) {
-  const canvasHeight = ctx.canvas.height;
-  const canvasWidth = ctx.canvas.width;
+  const canvasHeight = logicalHeight(ctx);
+  const canvasWidth = logicalWidth(ctx);
   const tall = isTallCanvas(canvasHeight);
   const type = typeMetrics(tall);
   const cols = pairLayout(tall);
@@ -912,8 +1020,20 @@ export function drawPairedSidesFrame(
       ? pinnedStack.imagesTop
       : contentTop + Math.floor((availableH - blockHeight) / 2);
 
-  const leftResized = prepareResized(leftSource, leftMetrics);
-  const rightResized = prepareResized(rightSource, rightMetrics);
+  const leftResized = prepareCardResized(
+    ctx,
+    leftSource,
+    leftMetrics,
+    targetSw,
+    targetSh,
+  );
+  const rightResized = prepareCardResized(
+    ctx,
+    rightSource,
+    rightMetrics,
+    targetSw,
+    targetSh,
+  );
 
   enableHighQuality(ctx);
   fillBackground(ctx);
