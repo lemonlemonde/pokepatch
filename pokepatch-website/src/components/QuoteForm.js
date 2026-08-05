@@ -277,7 +277,7 @@ export default function QuoteForm() {
     profileLoadedRef.current = true;
     supabase
       .from("customer_profiles")
-      .select("first_name, last_name, contacts")
+      .select("first_name, last_name, contacts, preferred_contact_type")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -310,6 +310,10 @@ export default function QuoteForm() {
           setContactValues((prev) => ({ ...prev, ...saved }));
           setLockedTypes(locked);
         }
+        // Preferred contact method saved on the account (written back by
+        // create_order when a previous order first supplied it).
+        const savedPreferred = (data.preferred_contact_type ?? "").trim();
+        if (savedPreferred) setPreferredContactId(savedPreferred);
       });
   }, [user]);
 
