@@ -54,7 +54,9 @@ export default function ServiceModifiersCard({ panels = [], accent = "mint" }) {
                       className="flex items-center justify-between gap-3"
                     >
                       <span className="text-ink/70">{item.label}</span>
-                      <span className="font-bold text-berry">{item.value}</span>
+                      <span className="text-base font-bold text-berry">
+                        {item.value}
+                      </span>
                     </li>
                   ))}
                 </ul>
