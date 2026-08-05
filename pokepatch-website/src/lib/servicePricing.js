@@ -47,11 +47,7 @@ export const QUOTE_SERVICES = [
     listPrice: 10,
     priceDisplay: "$10",
     unit: "/ card",
-    features: [
-      "Graded slab opened",
-      "Card removed intact",
-      "Pairs with any restoration",
-    ],
+    features: ["Graded slab opened", "Pairs with any restoration"],
     accent: "sky",
   },
   {
