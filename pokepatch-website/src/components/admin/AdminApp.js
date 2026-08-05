@@ -33,6 +33,7 @@ import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
+import RestorationGuide from "@/components/admin/RestorationGuide";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   useUnsavedChangesGuard,
@@ -300,6 +301,14 @@ const ADMIN_TABS = [
     title: "Studio",
     subtitle:
       "Format 1×2 before & after Instagram posts.",
+  },
+  {
+    id: "guide",
+    label: "Restoration Guide",
+    path: "/admin/guide/",
+    title: "Restoration guide",
+    subtitle:
+      "Restoration tree: dirt and scratches first, then any damage branches that apply, cool press when needed, and wrap up.",
   },
 ];
 
@@ -4596,6 +4605,7 @@ export default function AdminApp() {
 
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
+      {tab === "guide" && <RestorationGuide />}
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (
