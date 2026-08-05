@@ -13,7 +13,7 @@ export const REEL_HEIGHT = 1920;
  * matching transform, so text, the logo, card borders and shadows all rasterize
  * natively at the higher resolution instead of being upscaled after the fact.
  */
-export const STUDIO_EXPORT_SCALE = 3;
+export const STUDIO_EXPORT_SCALE = 6;
 
 /** @typedef {'square' | 'reel'} StudioOutputFormat */
 
