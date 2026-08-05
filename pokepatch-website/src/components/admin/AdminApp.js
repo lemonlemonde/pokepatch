@@ -71,6 +71,8 @@ import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
   ADJUSTMENT_KIND_OPTIONS,
+  bulkDiscountPercentForCardCount,
+  BULK_TIER_RANGES_LABEL,
   cardsWithQuoteHv,
   defaultBaseAmount,
   defaultServiceLabel,
@@ -2830,6 +2832,10 @@ function OrderEditor({
     draft.quote_card_hv ?? {}
   );
   const receiptAdjustments = draft.quote_adjustments ?? [];
+  // Informational only — bulk discounts are still added as an adjustment row.
+  const bulkDiscountPercent = bulkDiscountPercentForCardCount(
+    (draft.cards ?? []).length
+  );
   const quoteLinesByCard = useMemo(() => {
     const cards = draft.cards ?? [];
     const indicesByCardId = new Map(
@@ -3670,6 +3676,14 @@ function OrderEditor({
               </button>
             }
           >
+            {bulkDiscountPercent > 0 ? (
+              <p className="mb-2 rounded-xl border border-mint/40 bg-mint/20 px-3 py-2 text-xs font-semibold text-ink/70">
+                {(draft.cards ?? []).length} cards — eligible for a{" "}
+                {bulkDiscountPercent}% bulk discount ({BULK_TIER_RANGES_LABEL}).
+                Add it as a discount row with {bulkDiscountPercent} in the %
+                field.
+              </p>
+            ) : null}
             {(draft.quote_adjustments ?? []).length === 0 ? (
               <p className="text-sm text-ink/45">
                 No adjustments yet. Add a row for a discount, delivery, or
