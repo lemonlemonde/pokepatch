@@ -185,6 +185,31 @@ export function AuthProvider({ children }) {
     return data;
   };
 
+  // Sends the recovery email. Supabase does not reveal whether the address is
+  // registered, and neither does the caller — the UI says the same thing
+  // either way so this can't be used to probe for accounts.
+  const resetPassword = async (email) => {
+    if (!enabled) authDisabledError();
+    if (!supabase) throw new Error("Supabase not configured");
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: getAuthEmailRedirectTo("/reset-password"),
+    });
+
+    if (error) throw error;
+  };
+
+  // Called from /reset-password, where the recovery link has already put a
+  // session in place.
+  const updatePassword = async (password) => {
+    if (!enabled) authDisabledError();
+    if (!supabase) throw new Error("Supabase not configured");
+
+    const { error } = await supabase.auth.updateUser({ password });
+
+    if (error) throw error;
+  };
+
   const signOut = async () => {
     if (!enabled) return;
     if (!supabase) throw new Error("Supabase not configured");
@@ -198,6 +223,8 @@ export function AuthProvider({ children }) {
     signUp,
     signIn,
     signOut,
+    resetPassword,
+    updatePassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
