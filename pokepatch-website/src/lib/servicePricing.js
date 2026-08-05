@@ -102,7 +102,7 @@ const BULK_PRICING_MARKETING = {
 
 const HIGH_VALUE_MARKETING = {
   title: "High-Value Handling",
-  features: ["Added on top of restoration service"],
+  features: ["Applied per card"],
   bulk: [
     { label: "$200–$499", value: "+4%" },
     { label: "$500+", value: "+8%" },
