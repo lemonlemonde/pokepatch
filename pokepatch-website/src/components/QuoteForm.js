@@ -39,7 +39,10 @@ function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-function fieldClassName(invalid = false) {
+function fieldClassName(invalid = false, locked = false) {
+  if (locked) {
+    return "w-full scroll-mt-24 cursor-not-allowed rounded-xl border-2 border-ink/10 bg-ink/10 px-4 py-2 text-ink/50 outline-none";
+  }
   return invalid
     ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
@@ -209,6 +212,7 @@ export default function QuoteForm() {
   const [deliveryMethod, setDeliveryMethod] = useState("");
   const [contactValues, setContactValues] = useState(emptyContactValues);
   const [lockedTypes, setLockedTypes] = useState({});
+  const [lockedName, setLockedName] = useState({ firstName: false, lastName: false });
   const [preferredContactId, setPreferredContactId] = useState("email");
   const [heardAbout, setHeardAbout] = useState("");
   const [heardAboutOther, setHeardAboutOther] = useState("");
@@ -269,8 +273,18 @@ export default function QuoteForm() {
       .maybeSingle()
       .then(({ data }) => {
         if (!data) return;
-        if (data.first_name) setFirstName(data.first_name);
-        if (data.last_name) setLastName(data.last_name);
+        const nameLocked = { firstName: false, lastName: false };
+        const profileFirst = (data.first_name ?? "").trim();
+        const profileLast = (data.last_name ?? "").trim();
+        if (profileFirst) {
+          setFirstName(profileFirst);
+          nameLocked.firstName = true;
+        }
+        if (profileLast) {
+          setLastName(profileLast);
+          nameLocked.lastName = true;
+        }
+        setLockedName(nameLocked);
         if (Array.isArray(data.contacts) && data.contacts.length > 0) {
           const values = emptyContactValues();
           const locked = {};
@@ -682,8 +696,15 @@ export default function QuoteForm() {
               setFirstName(e.target.value);
             }}
             placeholder="First name"
-            className={fieldClassName(fieldErrors?.firstName)}
+            className={fieldClassName(fieldErrors?.firstName, lockedName.firstName)}
             aria-invalid={fieldErrors?.firstName || undefined}
+            disabled={lockedName.firstName}
+            readOnly={lockedName.firstName}
+            title={
+              lockedName.firstName
+                ? "Saved on your account. Edit it in account settings."
+                : undefined
+            }
           />
         </div>
 
@@ -702,9 +723,27 @@ export default function QuoteForm() {
               setLastName(e.target.value);
             }}
             placeholder="Last name"
-            className={fieldClassName(fieldErrors?.lastName)}
+            className={fieldClassName(fieldErrors?.lastName, lockedName.lastName)}
             aria-invalid={fieldErrors?.lastName || undefined}
+            disabled={lockedName.lastName}
+            readOnly={lockedName.lastName}
+            title={
+              lockedName.lastName
+                ? "Saved on your account. Edit it in account settings."
+                : undefined
+            }
           />
+          {(lockedName.firstName || lockedName.lastName) && (
+            <p className="mt-1 text-xs text-ink/60">
+              Your name comes from your account.{" "}
+              <Link
+                href="/account"
+                className="font-semibold text-blush hover:underline"
+              >
+                Manage account
+              </Link>
+            </p>
+          )}
         </div>
 
         <div>
@@ -727,7 +766,7 @@ export default function QuoteForm() {
               setEmail(e.target.value);
             }}
             placeholder="you@example.com"
-            className={fieldClassName(fieldErrors?.email)}
+            className={fieldClassName(fieldErrors?.email, !!user)}
             aria-invalid={fieldErrors?.email || undefined}
             disabled={!!user}
             readOnly={!!user}

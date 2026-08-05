@@ -8,6 +8,10 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  isExistingAccountSignup,
+  sendExistingAccountNotice,
+} from "@/lib/accountNotice";
 
 function fieldClassName(invalid = false) {
   return invalid
@@ -23,11 +27,14 @@ function LoginForm() {
   const { signIn, signUp, user } = useAuth();
 
   const [mode, setMode] = useState("login"); // "login" or "signup"
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   useEffect(() => {
@@ -50,7 +57,14 @@ function LoginForm() {
 
   const validateForm = () => {
     const errors = {};
-    
+
+    if (mode === "signup" && !firstName.trim()) {
+      errors.firstName = true;
+    }
+    if (mode === "signup" && !lastName.trim()) {
+      errors.lastName = true;
+    }
+
     if (!email.trim()) {
       errors.email = true;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -74,6 +88,7 @@ function LoginForm() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!isSupabaseConfigured) {
       setError("Authentication is not configured. Please contact support.");
@@ -92,7 +107,19 @@ function LoginForm() {
         await signIn(email, password);
         router.push(redirectTo);
       } else {
-        const data = await signUp(email, password);
+        const data = await signUp(email, password, firstName, lastName);
+
+        if (isExistingAccountSignup(data)) {
+          // Supabase silently no-ops signUp for an already-registered email
+          // instead of erroring (anti-enumeration). Send a real notice email
+          // so the customer knows to log in instead of waiting on a
+          // confirmation email that will never come.
+          sendExistingAccountNotice(email);
+          setNotice(
+            "An account with that email already exists. We've emailed a reminder to log in — or just log in below."
+          );
+          return;
+        }
 
         // With email confirmation on, signup returns no session. Send the user
         // to the confirm-your-email page instead of the protected redirect.
@@ -136,7 +163,55 @@ function LoginForm() {
           </p>
         )}
 
+        {notice && (
+          <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+            {notice}
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === "signup" && (
+            <>
+              <div>
+                <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
+                  First name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="first_name"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => {
+                    setFirstName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, firstName: false }));
+                  }}
+                  placeholder="First name"
+                  className={fieldClassName(fieldErrors.firstName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
+                  Last name <span className="text-berry">*</span>
+                </label>
+                <input
+                  id="last_name"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, lastName: false }));
+                  }}
+                  placeholder="Last name"
+                  className={fieldClassName(fieldErrors.lastName)}
+                  disabled={loading}
+                  required
+                />
+              </div>
+            </>
+          )}
+
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
               Email <span className="text-berry">*</span>
@@ -233,6 +308,7 @@ function LoginForm() {
                 onClick={() => {
                   setMode("signup");
                   setError("");
+                  setNotice("");
                   setFieldErrors({});
                 }}
                 className="font-semibold text-blush hover:underline"
@@ -247,6 +323,7 @@ function LoginForm() {
                 onClick={() => {
                   setMode("login");
                   setError("");
+                  setNotice("");
                   setFieldErrors({});
                   setConfirmPassword("");
                 }}

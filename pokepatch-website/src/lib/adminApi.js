@@ -106,7 +106,11 @@ function apiUrl() {
   return `${getSupabaseUrl()}/functions/v1/admin-api`;
 }
 
-async function adminRequest(url, { token, body, formData, method = "POST" } = {}) {
+async function adminRequest(
+  url,
+  { token, body, formData, method = "POST" } = {},
+  { signal } = {}
+) {
   const anonKey = getAnonKey();
   const headers = {
     apikey: anonKey,
@@ -123,6 +127,7 @@ async function adminRequest(url, { token, body, formData, method = "POST" } = {}
     method,
     headers,
     body: formData ?? (body ? JSON.stringify(body) : undefined),
+    signal,
   });
 
   let payload = null;
@@ -373,6 +378,10 @@ export async function adminListGallery() {
 export async function adminCreateGalleryItem({
   title,
   set_name = "",
+  card_number = "",
+  tcg_lookup_title = "",
+  tcg_lookup_set_name = "",
+  tcg_card_id = "",
   damage_tags = [],
   published = true,
 } = {}) {
@@ -382,6 +391,10 @@ export async function adminCreateGalleryItem({
       action: "gallery_create",
       title,
       set_name,
+      card_number,
+      tcg_lookup_title,
+      tcg_lookup_set_name,
+      tcg_card_id,
       damage_tags,
       published,
     },
@@ -507,6 +520,48 @@ export async function adminClearGalleryThumbnail(itemId) {
       item_id: itemId,
     },
   });
+  return payload.item;
+}
+
+export async function adminSearchGalleryTcg(
+  { cardName = "", setName = "", page = 1, pageSize = 24 } = {},
+  { signal } = {}
+) {
+  const payload = await adminRequest(
+    apiUrl(),
+    {
+      token: getStoredAdminToken(),
+      body: {
+        action: "gallery_tcg_search",
+        card_name: cardName,
+        set_name: setName,
+        page,
+        page_size: pageSize,
+      },
+    },
+    { signal }
+  );
+  return {
+    candidates: payload.candidates ?? [],
+    totalCount: payload.total_count ?? 0,
+    page: payload.page ?? page,
+    pageSize: payload.page_size ?? pageSize,
+    queryUsed: payload.query_used ?? null,
+  };
+}
+
+export async function adminApplyGalleryTcgThumbnail(itemId, cardId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "gallery_tcg_apply",
+      item_id: itemId,
+      card_id: cardId,
+    },
+  });
+  if (!payload.item) {
+    throw new Error("Could not apply card thumbnail.");
+  }
   return payload.item;
 }
 

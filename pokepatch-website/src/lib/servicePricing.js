@@ -4,57 +4,51 @@ export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
   PRESSING: "precision_pressing",
   ADVANCED: "advanced_restoration",
+  SLAB: "slab_cracking",
   CUSTOM: "custom",
 };
 
-/** Services that can appear on a quote line (excludes marketing-only HV card). */
+/** Services that can appear on a quote line (excludes marketing-only cards). */
 export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.SURFACE,
     title: "Surface Cleaning",
-    listPrice: 9,
-    priceDisplay: "$9",
+    listPrice: 15,
+    priceDisplay: "$15",
     unit: "/ card",
     features: [
       "Surface cleaning",
       "Scratch minimization",
       "Shine enhancement",
     ],
-    // Highest matching tier wins. Off is vs list price.
-    bulkTiers: [
-      { minCount: 10, perCardOff: 2, label: "10+ cards", value: "$7 / card" },
-      { minCount: 25, perCardOff: 3, label: "25+ cards", value: "$6 / card" },
-    ],
     accent: "blush",
   },
   {
     key: SERVICE_KEYS.PRESSING,
     title: "Flattening",
-    listPrice: 28,
-    priceDisplay: "$28",
+    listPrice: 30,
+    priceDisplay: "$30",
     unit: "/ card",
     features: ["Minor bends", "Light warping", "Subtle edge lift"],
-    bulkTiers: [
-      { minCount: 10, perCardOff: 5, label: "10+ cards", value: "$5 off / card" },
-    ],
     accent: "lavender",
   },
   {
     key: SERVICE_KEYS.ADVANCED,
     title: "Heavy Damage",
-    listPrice: 45,
-    priceDisplay: "$45+",
+    listPrice: 50,
+    priceDisplay: "$50+",
     unit: "/ card",
     features: ["Creases", "Heavy dents", "Severe warping"],
-    bulkTiers: [
-      {
-        minCount: 25,
-        perCardOff: 10,
-        label: "25+ cards",
-        value: "$10 off / card",
-      },
-    ],
     accent: "peach",
+  },
+  {
+    key: SERVICE_KEYS.SLAB,
+    title: "Slab Cracking",
+    listPrice: 10,
+    priceDisplay: "$10",
+    unit: "/ card",
+    features: ["Open graded slabs", "Pairs with any restoration"],
+    accent: "sky",
   },
   {
     key: SERVICE_KEYS.CUSTOM,
@@ -63,20 +57,53 @@ export const QUOTE_SERVICES = [
     priceDisplay: null,
     unit: null,
     features: [],
-    bulkTiers: [],
     accent: "mint",
   },
 ];
 
+/**
+ * Order-level bulk discount, applied to the whole order (not per service).
+ * Highest matching tier wins.
+ */
+export const BULK_DISCOUNT_TIERS = [
+  { minCards: 10, percent: 7.5 },
+  { minCards: 25, percent: 10 },
+];
+
+/** Discount % for a card count; 0 when below the first tier. */
+export function bulkDiscountPercentForCardCount(cardCount) {
+  const count = Math.floor(Number(cardCount));
+  if (!Number.isFinite(count)) return 0;
+  let percent = 0;
+  for (const tier of BULK_DISCOUNT_TIERS) {
+    if (count >= tier.minCards) percent = tier.percent;
+  }
+  return percent;
+}
+
+/** Short admin/customer hint for the bulk tiers. */
+export const BULK_TIER_RANGES_LABEL = BULK_DISCOUNT_TIERS.map(
+  (tier) => `${tier.minCards}+ cards → ${tier.percent}% off`
+).join(", ");
+
+const BULK_PRICING_MARKETING = {
+  title: "Bulk Pricing",
+  features: ["Applied to your whole order"],
+  bulk: BULK_DISCOUNT_TIERS.map((tier) => ({
+    label: `${tier.minCards}+ cards`,
+    value: `${tier.percent}% off`,
+  })),
+  bulkLabel: "Order Discounts",
+};
+
 const HIGH_VALUE_MARKETING = {
   title: "High-Value Handling",
-  features: ["Added on top of restoration service"],
+  features: ["Applied per card"],
   bulk: [
     { label: "$200–$499", value: "+4%" },
     { label: "$500+", value: "+8%" },
   ],
   bulkLabel: "Surcharge Tiers",
-  accent: "mint",
 };
 
 /** Short admin/customer hint for default HV market-value tiers. */
@@ -86,20 +113,22 @@ function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
 }
 
-/** Homepage ServiceCard props (includes High-Value Handling). */
+/** Homepage ServiceCard props (per-card services only). */
 export function marketingServices() {
-  return [
-    ...QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
-      (service) => ({
-        title: service.title,
-        price: service.priceDisplay,
-        unit: service.unit,
-        features: service.features,
-        accent: service.accent,
-      })
-    ),
-    HIGH_VALUE_MARKETING,
-  ];
+  return QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
+    (service) => ({
+      title: service.title,
+      price: service.priceDisplay,
+      unit: service.unit,
+      features: service.features,
+      accent: service.accent,
+    })
+  );
+}
+
+/** Order-level modifiers — rendered together in one split card. */
+export function marketingModifiers() {
+  return [BULK_PRICING_MARKETING, HIGH_VALUE_MARKETING];
 }
 
 export function defaultBaseAmount(serviceKey) {

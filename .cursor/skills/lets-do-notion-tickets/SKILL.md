@@ -1,7 +1,7 @@
 ---
 name: lets-do-notion-tickets
 description: >-
-  Batch-plan and optionally execute Notion Tasks tickets in Not started or Up next.
+  Batch-plan and optionally execute Notion Tasks tickets in Up next.
   Use only when the user explicitly names this skill (e.g. lets-do-notion-tickets /
   "lets do notion tickets"). Reads Notion as source of truth, maps dependencies, asks
   clarifying questions, maintains an updated plan, and executes specific tickets only
@@ -19,7 +19,7 @@ disable-model-invocation: true
 
 ## Source of truth
 
-Notion **Tasks** database via Notion MCP (`user-notionApi`). Scope: tickets with Status **Not started** or **Up next**.
+Notion **Tasks** database via Notion MCP (`user-notionApi`). Scope: tickets with Status **Up next** only. Ignore **Not started** tickets entirely — do not load, plan, or propose them.
 
 Use `API-post-search` (and page/property retrieve as needed) to load each ticket’s title, Status, Cursor-owned, track, priority, due date, and body. Do not invent tickets from memory.
 
@@ -72,7 +72,7 @@ Every ticket has a **Cursor-owned** property that is set to **🐭 not started**
 
 | Event | Cursor-owned | Status |
 |-------|--------------|--------|
-| Default / not started by agent | 🐭 not started | (unchanged; typically Not started or Up next) |
+| Default / not started by agent | 🐭 not started | (unchanged; typically Up next) |
 | Once a branch is started | 🐭 in progress | **In progress** |
 | Once work is completed and the ticket should be considered done | 🐭 needs review | Still **In progress** (do not change) |
 
@@ -141,7 +141,7 @@ Keep it scannable (bullets). Do not mark tickets Done in Notion from this summar
 
 ## Notion MCP tips
 
-- List candidates: `API-post-search` with `filter: { property: "object", value: "page" }`, then keep Status ∈ {Not started, Up next}.
+- List candidates: `API-post-search` with `filter: { property: "object", value: "page" }`, then keep only Status = **Up next** (drop Not started).
 - **Always** read each page description/body (`API-retrieve-page-markdown` / block children) for every candidate before proposing or ranking deps. Titles alone are forbidden as the sole input. Empty bodies still require a fetch.
 - When starting/finishing work, patch **Status** and **Cursor-owned** per the lifecycle table (exact option names include the mouse emoji). These two properties are pre-authorized — see above; do not gate them on user approval.
 - When marking **🐭 needs review**, append only the PR URL to the ticket description (no other body edits).

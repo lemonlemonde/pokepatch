@@ -44,6 +44,14 @@ function valuesEqual(a, b) {
   return String(a) === String(b);
 }
 
+function isQuoteRelatedChange(line) {
+  const raw = String(line ?? "");
+  if (raw.startsWith("Status:")) return false;
+  if (raw.startsWith("Note:")) return false;
+  if (raw === "Removed note") return false;
+  return true;
+}
+
 function findCardIdForQuoteItem(item, cards) {
   const name = (item?.card_name ?? "").trim().toLowerCase();
   const set = (item?.set_name ?? "").trim().toLowerCase();
@@ -310,6 +318,23 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     );
   }
 
+  // Per-card admin note changes.
+  for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
+    const before = beforeCards.get(cardId)?.row;
+    const after = afterCards.get(cardId)?.row;
+    const beforeNote = String(before?.admin_note ?? "").trim();
+    const afterNote = String(after?.admin_note ?? "").trim();
+    if (beforeNote === afterNote) continue;
+    const group = ensureCardGroup(cardId);
+    if (!beforeNote && afterNote) {
+      group.changes.push(`Note: ${afterNote}`);
+    } else if (beforeNote && !afterNote) {
+      group.changes.push("Removed note");
+    } else {
+      group.changes.push(`Note: ${beforeNote} → ${afterNote}`);
+    }
+  }
+
   const beforeItems = indexById(beforePayload?.quote_items);
   const afterItems = indexById(afterPayload?.quote_items);
   const quoteSubtotal = quoteItemsSubtotal(
@@ -545,12 +570,20 @@ export function summarizeChangelog(changelog = {}) {
 
   const quoteTouched =
     Boolean(quoteSummary) ||
-    orderChanges.some((line) => !String(line).startsWith("Status:")) ||
-    cardGroups.some((g) =>
-      (g.changes ?? []).some((line) => !String(line).startsWith("Status:"))
-    );
+    orderChanges.some(isQuoteRelatedChange) ||
+    cardGroups.some((g) => (g.changes ?? []).some(isQuoteRelatedChange));
   if (quoteTouched) {
     phrases.push("Your order quote has been updated");
+  }
+
+  const noteTouched = cardGroups.some((g) =>
+    (g.changes ?? []).some(
+      (line) =>
+        String(line).startsWith("Note:") || String(line) === "Removed note"
+    )
+  );
+  if (noteTouched && !quoteTouched) {
+    phrases.push("A note has been added to your order");
   }
 
   if (phrases.length === 0 && (cardGroups.length > 0 || orderChanges.length > 0)) {
