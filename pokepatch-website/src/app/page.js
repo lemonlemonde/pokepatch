@@ -3,10 +3,11 @@ import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
+import ServiceModifiersCard from "@/components/ServiceModifiersCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
 import QueueCount from "@/components/QueueCount";
-import { marketingServices } from "@/lib/servicePricing";
+import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
 
 const steps = [
   {
@@ -28,6 +29,7 @@ const steps = [
 ];
 
 const services = marketingServices();
+const modifiers = marketingModifiers();
 
 const faqs = [
   {
@@ -146,11 +148,7 @@ export default function Home() {
           {services.map((service) => (
             <ServiceCard key={service.title} {...service} />
           ))}
-          <div className="pixel-border flex items-center justify-center rounded-2xl border-sky/10 bg-sky/30 px-6 py-4 text-center sm:col-span-2 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]">
-            <p className="text-sm font-semibold text-ink/70">
-              DM for bulk pricing of large orders
-            </p>
-          </div>
+          <ServiceModifiersCard panels={modifiers} accent="mint" />
         </div>
       </section>
 
