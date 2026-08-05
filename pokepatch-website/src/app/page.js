@@ -3,10 +3,11 @@ import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
 import logo from "./pokepatch_icon.png";
 import ServiceCard from "@/components/ServiceCard";
+import ServiceModifiersCard from "@/components/ServiceModifiersCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
 import QueueCount from "@/components/QueueCount";
-import { marketingServices } from "@/lib/servicePricing";
+import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
 
 const steps = [
   {
@@ -28,6 +29,7 @@ const steps = [
 ];
 
 const services = marketingServices();
+const modifiers = marketingModifiers();
 
 const faqs = [
   {
@@ -146,6 +148,7 @@ export default function Home() {
           {services.map((service) => (
             <ServiceCard key={service.title} {...service} />
           ))}
+          <ServiceModifiersCard panels={modifiers} accent="mint" />
         </div>
       </section>
 

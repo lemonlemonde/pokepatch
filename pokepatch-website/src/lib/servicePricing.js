@@ -98,7 +98,6 @@ const BULK_PRICING_MARKETING = {
     value: `${tier.percent}% off`,
   })),
   bulkLabel: "Order Discounts",
-  accent: "mint",
 };
 
 const HIGH_VALUE_MARKETING = {
@@ -109,7 +108,6 @@ const HIGH_VALUE_MARKETING = {
     { label: "$500+", value: "+8%" },
   ],
   bulkLabel: "Surcharge Tiers",
-  accent: "mint",
 };
 
 /** Short admin/customer hint for default HV market-value tiers. */
@@ -119,21 +117,22 @@ function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
 }
 
-/** Homepage ServiceCard props (adds the Bulk Pricing + High-Value cards). */
+/** Homepage ServiceCard props (per-card services only). */
 export function marketingServices() {
-  return [
-    ...QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
-      (service) => ({
-        title: service.title,
-        price: service.priceDisplay,
-        unit: service.unit,
-        features: service.features,
-        accent: service.accent,
-      })
-    ),
-    BULK_PRICING_MARKETING,
-    HIGH_VALUE_MARKETING,
-  ];
+  return QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
+    (service) => ({
+      title: service.title,
+      price: service.priceDisplay,
+      unit: service.unit,
+      features: service.features,
+      accent: service.accent,
+    })
+  );
+}
+
+/** Order-level modifiers — rendered together in one split card. */
+export function marketingModifiers() {
+  return [BULK_PRICING_MARKETING, HIGH_VALUE_MARKETING];
 }
 
 export function defaultBaseAmount(serviceKey) {
