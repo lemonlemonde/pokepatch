@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { adminSearchGalleryTcg } from "@/lib/adminApi";
-import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
+import {
+  CARD_THUMB_ASPECT_CLASS,
+  CARD_THUMB_IMAGE_CLASS,
+  tcgCardThumbFallbackUrl,
+  tcgCardThumbUrl,
+} from "@/lib/gallery";
 
 const PAGE_SIZE = 12;
 const MIN_SET_LENGTH = 2;
@@ -12,11 +17,13 @@ function fieldClassName() {
   return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
-function cardImageUrl(card) {
-  return (
-    card?.image_small ||
-    (card?.id ? `https://images.scrydex.com/pokemon/${card.id}/small` : "")
-  );
+/** Swap to the TCG API art once, for cards Scrydex doesn't carry. */
+function thumbFallbackHandler(card) {
+  return (event) => {
+    const fallback = tcgCardThumbFallbackUrl(card);
+    if (!fallback || event.currentTarget.src === fallback) return;
+    event.currentTarget.src = fallback;
+  };
 }
 
 function normalizeSearchInput(value) {
@@ -62,10 +69,11 @@ function CardResultButton({ card, selected, onSelect }) {
       <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={cardImageUrl(card)}
+          src={tcgCardThumbUrl(card)}
           alt=""
           loading="lazy"
           decoding="async"
+          onError={thumbFallbackHandler(card)}
           className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
         />
       </div>
@@ -181,8 +189,9 @@ export default function GalleryCardSearch({
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-blush/40 bg-cream/90 p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={cardImageUrl(selectedCard)}
+            src={tcgCardThumbUrl(selectedCard)}
             alt=""
+            onError={thumbFallbackHandler(selectedCard)}
             className={`w-12 shrink-0 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/20`}
           />
           <div className="min-w-0 flex-1">

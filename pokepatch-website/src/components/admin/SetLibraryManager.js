@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   adminCreateSetLibraryEntry,
   adminDeleteSetLibraryEntry,
+  adminListSetCatalog,
   adminListSetLibrary,
   adminSaveSetLibraryEntry,
+  adminSyncSetCatalog,
 } from "@/lib/adminApi";
 
 function fieldClassName() {
@@ -18,6 +20,13 @@ function sortByName(rows) {
   );
 }
 
+function formatSyncedAt(value) {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "never";
+  return date.toLocaleString();
+}
+
 export default function SetLibraryManager() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +36,12 @@ export default function SetLibraryManager() {
   const [newEntry, setNewEntry] = useState({ set_name: "", abbreviation: "" });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState("");
+
+  const [catalog, setCatalog] = useState([]);
+  const [catalogSyncedAt, setCatalogSyncedAt] = useState(null);
+  const [catalogError, setCatalogError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -49,15 +64,54 @@ export default function SetLibraryManager() {
     }
   }, []);
 
+  const refreshCatalog = useCallback(async () => {
+    setCatalogError("");
+    try {
+      const { items: rows, syncedAt } = await adminListSetCatalog();
+      setCatalog(rows);
+      setCatalogSyncedAt(syncedAt);
+    } catch (err) {
+      setCatalogError(err.message || "Could not load the set catalogue.");
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    refreshCatalog();
+  }, [refresh, refreshCatalog]);
+
+  const visibleCatalog = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return catalog;
+    return catalog.filter(
+      (row) =>
+        row.name?.toLowerCase().includes(needle) ||
+        row.series?.toLowerCase().includes(needle) ||
+        row.abbreviation?.toLowerCase().includes(needle)
+    );
+  }, [catalog, search]);
 
   function patchDraft(id, partial) {
     setDrafts((current) => ({
       ...current,
       [id]: { ...current[id], ...partial },
     }));
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setCatalogError("");
+    try {
+      await adminSyncSetCatalog();
+      await refreshCatalog();
+    } catch (err) {
+      setCatalogError(
+        err.message ||
+          "Sync failed. The Pokémon TCG API is frequently unavailable — try again."
+      );
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function handleCreate() {
@@ -73,6 +127,7 @@ export default function SetLibraryManager() {
       await adminCreateSetLibraryEntry(setName, abbreviation);
       setNewEntry({ set_name: "", abbreviation: "" });
       await refresh();
+      await refreshCatalog();
     } catch (err) {
       setFormError(err.message || "Could not add this set.");
     } finally {
@@ -91,6 +146,7 @@ export default function SetLibraryManager() {
         abbreviation: draft.abbreviation.trim(),
       });
       await refresh();
+      await refreshCatalog();
     } catch (err) {
       setListError(err.message || "Could not save this set.");
     } finally {
@@ -105,6 +161,7 @@ export default function SetLibraryManager() {
     try {
       await adminDeleteSetLibraryEntry(id);
       await refresh();
+      await refreshCatalog();
     } catch (err) {
       setListError(err.message || "Could not delete this set.");
     } finally {
@@ -115,12 +172,104 @@ export default function SetLibraryManager() {
   return (
     <div className="flex flex-col gap-6">
       <p className="text-sm text-ink/70">
-        Curate short abbreviations for Pokémon sets — used for Google Drive
-        folder naming and other shorthand lookups.
+        Every Pokémon set, mirrored locally from the Pokémon TCG API. Each set
+        carries its official short code — override it below when the code is
+        missing or you want different Google Drive folder shorthand.
       </p>
 
       <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
-        <h2 className="text-lg font-bold text-ink">Add a set</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-ink">Set catalogue</h2>
+            <p className="text-xs text-ink/55">
+              {catalog.length} sets · last synced {formatSyncedAt(catalogSyncedAt)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncing}
+            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-60"
+          >
+            {syncing ? "Syncing…" : "Sync from Pokémon TCG API"}
+          </button>
+        </div>
+
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className={`mt-4 ${fieldClassName()}`}
+          placeholder="Filter by set, series, or code"
+        />
+
+        {catalogError && (
+          <p className="mt-3 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+            {catalogError}
+          </p>
+        )}
+
+        {catalog.length === 0 ? (
+          <p className="mt-4 rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+            Catalogue is empty. Run a sync to pull every set.
+          </p>
+        ) : (
+          <ul className="mt-4 max-h-[28rem] space-y-1 overflow-y-auto pr-1">
+            {visibleCatalog.map((row) => (
+              <li
+                key={row.id}
+                className="flex items-center gap-3 rounded-lg border border-ink/10 bg-cream px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-ink">
+                    {row.name}
+                  </p>
+                  <p className="truncate text-xs text-ink/55">
+                    {row.series || "—"}
+                    {row.release_date ? ` · ${row.release_date}` : ""}
+                  </p>
+                </div>
+                {row.abbreviation ? (
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-bold ${
+                      row.abbreviation_overridden
+                        ? "bg-blush/30 text-ink"
+                        : "bg-night/10 text-ink/70"
+                    }`}
+                    title={
+                      row.abbreviation_overridden
+                        ? "Overridden below"
+                        : "Official code from the Pokémon TCG API"
+                    }
+                  >
+                    {row.abbreviation}
+                  </span>
+                ) : (
+                  <span className="text-xs text-ink/40">no code</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setNewEntry({
+                      set_name: row.name,
+                      abbreviation: row.abbreviation ?? "",
+                    })
+                  }
+                  className="rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink hover:border-blush"
+                >
+                  Override
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
+        <h2 className="text-lg font-bold text-ink">Abbreviation overrides</h2>
+        <p className="mt-1 text-xs text-ink/55">
+          These win over the synced code. Only needed where the official code is
+          missing or wrong for your naming.
+        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-[2fr_1fr_auto]">
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Set name</span>
@@ -173,10 +322,10 @@ export default function SetLibraryManager() {
       )}
 
       {loading ? (
-        <p className="text-sm text-ink/60">Loading set library…</p>
+        <p className="text-sm text-ink/60">Loading overrides…</p>
       ) : items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
-          No sets yet. Add your first set above.
+          No overrides yet — the catalogue codes are being used as-is.
         </p>
       ) : (
         <ul className="space-y-2">

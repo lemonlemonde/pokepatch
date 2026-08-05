@@ -611,6 +611,30 @@ export async function adminListCardOptions() {
   };
 }
 
+/** Reads the locally synced set mirror — never hits the Pokémon TCG API. */
+export async function adminListSetCatalog() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_catalog_list" },
+  });
+  return {
+    items: payload.items ?? [],
+    syncedAt: payload.synced_at ?? null,
+  };
+}
+
+/** Refreshes the mirror from the Pokémon TCG API. Slow — admin-triggered. */
+export async function adminSyncSetCatalog() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_catalog_sync" },
+  });
+  return {
+    synced: payload.synced ?? 0,
+    syncedAt: payload.synced_at ?? null,
+  };
+}
+
 export async function adminListSetLibrary() {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

@@ -6,6 +6,7 @@ import {
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
 import {
+  fetchAllPokemonTcgSets,
   fetchPokemonTcgCard,
   normalizeSearchText,
   searchPokemonTcgCatalog,
@@ -1318,10 +1319,12 @@ async function downloadCardImageBytes(card: {
   image_small: string;
   image_large: string;
 }): Promise<{ bytes: Uint8Array; contentType: string }> {
+  // Scrydex first: same ~245px art as the API's small, JPEG instead of PNG
+  // (~34KB vs ~180KB). The API URLs stay as fallbacks.
   const urls = [
+    tcgCardImageSmallUrl(card.id),
     card.image_small,
     card.image_large,
-    tcgCardImageSmallUrl(card.id),
   ].filter((url, index, all) => Boolean(url) && all.indexOf(url) === index);
 
   for (const url of urls) {
@@ -2641,6 +2644,76 @@ Deno.serve(async (req) => {
         ok: true,
         card_names: [...names].sort((a, b) => a.localeCompare(b)),
         set_names: [...sets].sort((a, b) => a.localeCompare(b)),
+      });
+    }
+
+    if (action === "set_catalog_list") {
+      // The whole catalogue is only a few hundred rows, so it ships in one
+      // response and the admin UI filters it client-side.
+      const { data, error } = await supabase
+        .from("set_catalog")
+        .select(
+          "id, name, series, ptcgo_code, printed_total, total, release_date, symbol_url, logo_url, synced_at"
+        )
+        .order("release_date", { ascending: false, nullsFirst: false });
+      if (error) throw error;
+
+      // Overrides win over the synced ptcgo_code, which is blank for many
+      // promo and older sets.
+      const { data: overrides, error: overrideError } = await supabase
+        .from("set_library")
+        .select("set_name, abbreviation");
+      if (overrideError) throw overrideError;
+
+      const overrideByName = new Map<string, string>();
+      for (const row of overrides ?? []) {
+        const name = typeof row.set_name === "string" ? row.set_name.trim() : "";
+        const abbreviation =
+          typeof row.abbreviation === "string" ? row.abbreviation.trim() : "";
+        if (name && abbreviation) {
+          overrideByName.set(name.toLowerCase(), abbreviation);
+        }
+      }
+
+      const items = (data ?? []).map((row) => {
+        const override = overrideByName.get(String(row.name ?? "").toLowerCase());
+        return {
+          ...row,
+          abbreviation: override || row.ptcgo_code || "",
+          abbreviation_overridden: Boolean(override),
+        };
+      });
+
+      return jsonResponse(req, {
+        ok: true,
+        items,
+        synced_at: items[0]?.synced_at ?? null,
+      });
+    }
+
+    if (action === "set_catalog_sync") {
+      const sets = await fetchAllPokemonTcgSets();
+      if (sets.length === 0) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "pokemon tcg api returned no sets" },
+          502
+        );
+      }
+
+      const syncedAt = new Date().toISOString();
+      const { error } = await supabase
+        .from("set_catalog")
+        .upsert(
+          sets.map((set) => ({ ...set, synced_at: syncedAt })),
+          { onConflict: "id" }
+        );
+      if (error) throw error;
+
+      return jsonResponse(req, {
+        ok: true,
+        synced: sets.length,
+        synced_at: syncedAt,
       });
     }
 

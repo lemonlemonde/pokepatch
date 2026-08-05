@@ -21,6 +21,7 @@ import {
 import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
+  tcgCardThumbUrl,
   DAMAGE_TAGS,
   normalizeDamageTags,
   formatPostedRelative,
@@ -334,10 +335,7 @@ function ThumbnailUpload({
 }
 
 function cardImageUrl(card) {
-  return (
-    card?.image_small ||
-    (card?.id ? `https://images.scrydex.com/pokemon/${card.id}/small` : "")
-  );
+  return tcgCardThumbUrl(card);
 }
 
 function cardFromItem(item) {
