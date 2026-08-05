@@ -1,4 +1,10 @@
-/** Shared restoration rates — homepage marketing + admin quote defaults. */
+/**
+ * Single source of truth for PokePatch pricing.
+ *
+ * Per-card list rates, bulk discounts, and high-value surcharges all live here.
+ * Homepage marketing cards, admin quote defaults, HV auto-fill, and receipt math
+ * read from these constants — update prices here only.
+ */
 
 export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
@@ -8,14 +14,14 @@ export const SERVICE_KEYS = {
   CUSTOM: "custom",
 };
 
+const SERVICE_UNIT = "/ card";
+
 /** Services that can appear on a quote line (excludes marketing-only cards). */
 export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.SURFACE,
     title: "Surface Cleaning",
     listPrice: 15,
-    priceDisplay: "$15",
-    unit: "/ card",
     features: [
       "Surface cleaning",
       "Scratch minimization",
@@ -27,8 +33,6 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.PRESSING,
     title: "Flattening",
     listPrice: 30,
-    priceDisplay: "$30",
-    unit: "/ card",
     features: ["Minor bends", "Light warping", "Subtle edge lift"],
     accent: "lavender",
   },
@@ -36,8 +40,7 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.ADVANCED,
     title: "Heavy Damage",
     listPrice: 50,
-    priceDisplay: "$50+",
-    unit: "/ card",
+    priceSuffix: "+",
     features: ["Creases", "Heavy dents", "Severe warping"],
     accent: "peach",
   },
@@ -45,8 +48,6 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.SLAB,
     title: "Slab Cracking",
     listPrice: 10,
-    priceDisplay: "$10",
-    unit: "/ card",
     features: ["Open graded slabs", "Pairs with any restoration"],
     accent: "sky",
   },
@@ -54,12 +55,27 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.CUSTOM,
     title: "Custom",
     listPrice: null,
-    priceDisplay: null,
-    unit: null,
     features: [],
     accent: "mint",
   },
 ];
+
+/** Format a list rate for display (homepage cards, admin labels). */
+export function formatListPrice(listPrice, priceSuffix = "") {
+  if (listPrice == null) return null;
+  return `$${listPrice}${priceSuffix ?? ""}`;
+}
+
+export function servicePriceDisplay(service) {
+  if (!service || service.listPrice == null) return null;
+  return formatListPrice(service.listPrice, service.priceSuffix ?? "");
+}
+
+/** Admin/customer-facing service picker label, e.g. "Surface Cleaning ($15)". */
+export function serviceSelectLabel(service) {
+  const price = servicePriceDisplay(service);
+  return price ? `${service.title} (${price})` : service.title;
+}
 
 /**
  * Order-level bulk discount, applied to the whole order (not per service).
@@ -96,18 +112,40 @@ const BULK_PRICING_MARKETING = {
   bulkLabel: "Order Discounts",
 };
 
+/**
+ * High-value surcharge tiers from Raw NM market value.
+ * Highest matching tier wins; values below the first tier are 0%.
+ */
+export const HV_SURCHARGE_TIERS = [
+  { minValue: 200, maxExclusive: 500, percent: 4 },
+  { minValue: 500, maxExclusive: null, percent: 8 },
+];
+
+function formatHvTierLabel(tier) {
+  if (tier.maxExclusive != null) {
+    return `$${tier.minValue}–$${tier.maxExclusive - 1}`;
+  }
+  return `$${tier.minValue}+`;
+}
+
+function formatHvTierValue(tier) {
+  return `+${tier.percent}%`;
+}
+
+/** Short admin/customer hint for default HV market-value tiers. */
+export const HV_TIER_RANGES_LABEL = HV_SURCHARGE_TIERS.map(
+  (tier) => `${formatHvTierLabel(tier)} → ${tier.percent}%`
+).join(", ");
+
 const HIGH_VALUE_MARKETING = {
   title: "High-Value Handling",
   features: ["Applied per card"],
-  bulk: [
-    { label: "$200–$499", value: "+4%" },
-    { label: "$500+", value: "+8%" },
-  ],
+  bulk: HV_SURCHARGE_TIERS.map((tier) => ({
+    label: formatHvTierLabel(tier),
+    value: formatHvTierValue(tier),
+  })),
   bulkLabel: "Surcharge Tiers",
 };
-
-/** Short admin/customer hint for default HV market-value tiers. */
-export const HV_TIER_RANGES_LABEL = "$200–$499 → 4%, $500+ → 8%";
 
 function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
@@ -118,8 +156,8 @@ export function marketingServices() {
   return QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
     (service) => ({
       title: service.title,
-      price: service.priceDisplay,
-      unit: service.unit,
+      price: servicePriceDisplay(service),
+      unit: SERVICE_UNIT,
       features: service.features,
       accent: service.accent,
     })
@@ -151,15 +189,20 @@ export function highValueSurchargeFromValue(cardValue, percent) {
   return Math.round(value * (pct / 100) * 100) / 100;
 }
 
-/**
- * HV tiers from Raw NM market value:
- * under $200 → 0%, $200–$499 → 4%, $500+ → 8%.
- */
+/** HV surcharge % from Raw NM market value; 0 when below the first tier. */
 export function hvPercentFromMarketValue(marketValue) {
   const value = Number(marketValue);
-  if (!Number.isFinite(value) || value < 200) return 0;
-  if (value < 500) return 4;
-  return 8;
+  if (!Number.isFinite(value)) return 0;
+  let percent = 0;
+  for (const tier of HV_SURCHARGE_TIERS) {
+    if (
+      value >= tier.minValue &&
+      (tier.maxExclusive == null || value < tier.maxExclusive)
+    ) {
+      percent = tier.percent;
+    }
+  }
+  return percent;
 }
 
 /** Dollar HV from market value using tier percent; null when 0% or invalid. */

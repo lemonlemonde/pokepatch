@@ -86,6 +86,7 @@ import {
   packQuoteAdjustments,
   parseMoneyInput,
   quoteCardHvAmount,
+  serviceSelectLabel,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 
@@ -3019,7 +3020,7 @@ function OrderEditor({
               <option value="">Select a service…</option>
               {QUOTE_SERVICES.map((service) => (
                 <option key={service.key} value={service.key}>
-                  {service.title}
+                  {serviceSelectLabel(service)}
                 </option>
               ))}
             </select>
