@@ -27,6 +27,7 @@ export const RESTORATION_GUIDE_NODES = {
     steps: [
       "Scratches: buffing with micro abrasives. Do not buff too hard.",
       "Moisturizing (hydropump): makes the card softer and more workable. It also raises the card and expands the cardstock to help remove dents.",
+      "Creases and edge lifts: only work when the card is moisturized and soft — not on a dry card. The heat pen must be used while the card is still humid.",
       "Flattening (roller, press): pushes down the card.",
       "Heat press: keeps the card malleable while holding it in place.",
       "Cool press: lets the card dry while flattened so that once dry it cannot warp again.",
@@ -74,6 +75,7 @@ export const RESTORATION_GUIDE_NODES = {
     title: "Heat pen",
     steps: [
       "Set the heat pen to the blue setting.",
+      "For creases and edge lifts, use the heat pen while the card is still humid from hydropump — not on a dry card.",
       "Use quick swirl motions along the crease, damaged area, or lifted edge — do not keep the tip in one place, which can burn the card.",
       "Hand weight only; do not press hard.",
       "Do not hold the button for longer than 5 seconds at a time.",
@@ -136,10 +138,11 @@ export const RESTORATION_GUIDE_NODES = {
     title: "Crease removal",
     steps: [
       "[[technique_hydropump|Hydropump]] for 2 hours.",
+      "Only work the crease while the card is moisturized and soft from hydropump — do not work creases on a dry card.",
       "Do not press out creases too hard — especially while the card is very wet from hydropump, which can fold the holo layer.",
       "Use the [[technique_spherical_press|spherical press tool]] on the crease.",
       "Use the [[technique_roller|roller]] to flatten out the dent.",
-      "Use the [[technique_heat_pen|heat pen]] along the crease.",
+      "Use the [[technique_heat_pen|heat pen]] along the crease while the card is still humid.",
       "[[technique_heat_press|Heat press]] for 30 minutes at 165°.",
       "Repeat the previous steps until the crease is smooth. Not all creases can be fully removed — scars will remain. Run your fingers along the crease and feel if it is smooth; if smooth, it is fine.",
     ],
@@ -152,10 +155,11 @@ export const RESTORATION_GUIDE_NODES = {
     title: "Bubble crease removal",
     steps: [
       "Same workflow as regular creases, but [[technique_hydropump|hydropump]] for 4 hours (regular creases are 2 hours).",
+      "Only work the crease while the card is moisturized and soft from hydropump — do not work creases on a dry card.",
       "Do not press out creases too hard — especially while the card is very wet from hydropump, which can fold the holo layer.",
       "Use the [[technique_spherical_press|spherical press tool]] on the crease.",
       "Use the [[technique_roller|roller]] to flatten out the dent.",
-      "Use the [[technique_heat_pen|heat pen]] along the crease.",
+      "Use the [[technique_heat_pen|heat pen]] along the crease while the card is still humid.",
       "[[technique_heat_press|Heat press]] — 2 cycles of 30 minutes at 165°.",
       "Repeat the previous steps until the crease is smooth. Not all creases can be fully removed — scars will remain. Run your fingers along the crease and feel if it is smooth; if smooth, it is fine.",
     ],
@@ -204,8 +208,9 @@ export const RESTORATION_GUIDE_NODES = {
     steps: [
       "Same approach as creases, but less extreme — typically one round is enough.",
       "[[technique_hydropump|Hydropump]] the card.",
+      "Only work the lifted edge while the card is moisturized and soft — do not work edge lifts on a dry card.",
       "Use the [[technique_roller|roller]] on the lifted edge.",
-      "Use the [[technique_heat_pen|heat pen]] along the edge.",
+      "Use the [[technique_heat_pen|heat pen]] along the edge while the card is still humid.",
     ],
     next: "cool_press",
   },
