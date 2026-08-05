@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/Button";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
+import QuoteLoginDialog from "@/components/QuoteLoginDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -223,6 +224,14 @@ export default function QuoteForm() {
   const [fieldErrors, setFieldErrors] = useState(null);
   const [cardFileErrors, setCardFileErrors] = useState({});
   const [formStarted, setFormStarted] = useState(false);
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
+  // Set when the visitor chose "continue as guest" on an email that already has
+  // an account. Blocks submission until they change the email or log in.
+  const [guestBlockedEmail, setGuestBlockedEmail] = useState("");
+  const [loginNotice, setLoginNotice] = useState("");
+  // Emails already checked against email_has_account this session, so a second
+  // submit attempt doesn't re-hit the RPC.
+  const checkedEmailsRef = useRef(new Map());
 
   function onFormInteraction() {
     if (!formStarted) setFormStarted(true);
@@ -286,15 +295,19 @@ export default function QuoteForm() {
         }
         setLockedName(nameLocked);
         if (Array.isArray(data.contacts) && data.contacts.length > 0) {
-          const values = emptyContactValues();
+          const knownTypes = emptyContactValues();
+          const saved = {};
           const locked = {};
           for (const c of data.contacts) {
-            if (c && c.contact_type in values) {
-              values[c.contact_type] = c.value ?? "";
+            if (c && c.contact_type in knownTypes) {
+              saved[c.contact_type] = c.value ?? "";
               locked[c.contact_type] = true;
             }
           }
-          setContactValues(values);
+          // Merge rather than replace: someone who logs in mid-form keeps the
+          // contact methods they just typed for any type the account doesn't
+          // already have. Where both have a value, the account wins.
+          setContactValues((prev) => ({ ...prev, ...saved }));
           setLockedTypes(locked);
         }
       });
@@ -456,6 +469,62 @@ export default function QuoteForm() {
     ? preferredContactId
     : "email";
 
+  // True once the visitor has been told this email belongs to an account and
+  // chose to continue as a guest anyway. They have to change it or log in.
+  const emailBlocked =
+    guestBlockedEmail !== "" &&
+    email.trim().toLowerCase() === guestBlockedEmail;
+
+  // Returns true when the submission should stop and the login prompt opens.
+  async function shouldPromptLogin(normalizedEmail) {
+    if (user || !isCustomerAuthEnabled() || !supabase) return false;
+
+    const cached = checkedEmailsRef.current.get(normalizedEmail);
+    if (cached !== undefined) return cached;
+
+    try {
+      const { data, error } = await supabase.rpc("email_has_account", {
+        p_email: normalizedEmail,
+      });
+      if (error) throw error;
+      const hasAccount = data === true;
+      checkedEmailsRef.current.set(normalizedEmail, hasAccount);
+      return hasAccount;
+    } catch (err) {
+      // Throttled or offline: fail open so a lookup problem can never stop
+      // someone from sending in their cards.
+      console.error("Failed to check for an existing account:", err);
+      return false;
+    }
+  }
+
+  function handleLoginPromptSuccess() {
+    setLoginPromptOpen(false);
+    setGuestBlockedEmail("");
+    setStatus("idle");
+    // The account details land via the profile effect above once `user` flips.
+    setLoginNotice(
+      "You're logged in. We filled in your account details — give them a look, then submit."
+    );
+  }
+
+  function focusEmailField() {
+    requestAnimationFrame(() => {
+      const field = document.getElementById("customer_email");
+      if (!field) return;
+      field.scrollIntoView({ behavior: "smooth", block: "center" });
+      field.focus({ preventScroll: true });
+    });
+  }
+
+  function handleLoginPromptGuest() {
+    setLoginPromptOpen(false);
+    setStatus("idle");
+    setLoginNotice("");
+    setGuestBlockedEmail(email.trim().toLowerCase());
+    focusEmailField();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (honeypot) return;
@@ -489,8 +558,25 @@ export default function QuoteForm() {
     }
 
     setFieldErrors(null);
-    setStatus("uploading");
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (emailBlocked) {
+      focusEmailField();
+      return;
+    }
+
+    setStatus("checking");
     setErrorMessage("");
+    setLoginNotice("");
+
+    if (await shouldPromptLogin(normalizedEmail)) {
+      capture("quote_form_existing_account_prompt");
+      setLoginPromptOpen(true);
+      return;
+    }
+
+    setStatus("uploading");
 
     capture("quote_form_submit_attempted", {
       card_count: completeCards.length,
@@ -613,6 +699,8 @@ export default function QuoteForm() {
       });
 
       setStatus("success");
+      setGuestBlockedEmail("");
+      setLoginNotice("");
       setFormStarted(false);
       formStartedRef.current = false;
       setFirstName("");
@@ -641,7 +729,8 @@ export default function QuoteForm() {
     }
   }
 
-  const isBusy = status === "uploading" || status === "submitting";
+  const isBusy =
+    status === "checking" || status === "uploading" || status === "submitting";
 
   const showValidationError = hasFieldErrors(fieldErrors);
 
@@ -766,11 +855,29 @@ export default function QuoteForm() {
               setEmail(e.target.value);
             }}
             placeholder="you@example.com"
-            className={fieldClassName(fieldErrors?.email, !!user)}
-            aria-invalid={fieldErrors?.email || undefined}
+            className={fieldClassName(fieldErrors?.email || emailBlocked, !!user)}
+            aria-invalid={fieldErrors?.email || emailBlocked || undefined}
             disabled={!!user}
             readOnly={!!user}
           />
+          {emailBlocked && (
+            <p className="mt-1 text-sm text-error" role="alert">
+              This email already belongs to an account. Log in to use it, or
+              enter a different email to order as a guest.{" "}
+              <button
+                type="button"
+                onClick={() => setLoginPromptOpen(true)}
+                className="font-semibold underline"
+              >
+                Log in
+              </button>
+            </p>
+          )}
+          {loginNotice && (
+            <p className="mt-1 text-sm font-semibold text-ink/80">
+              {loginNotice}
+            </p>
+          )}
           {user && (
             <p className="mt-1 text-xs text-ink/60">
               Using your account email.{" "}
@@ -1133,10 +1240,18 @@ export default function QuoteForm() {
           </p>
         )}
 
-        <Button type="submit" fullWidth disabled={isBusy || !isSupabaseConfigured}>
+        <Button
+          type="submit"
+          fullWidth
+          disabled={isBusy || emailBlocked || !isSupabaseConfigured}
+        >
           {isBusy ? (
             <span className="inline-block animate-soft-bounce">
-              {status === "uploading" ? "Uploading photos..." : "Submitting..."}
+              {status === "checking"
+                ? "Checking your email..."
+                : status === "uploading"
+                  ? "Uploading photos..."
+                  : "Submitting..."}
             </span>
           ) : (
             "Submit quote request"
@@ -1144,6 +1259,13 @@ export default function QuoteForm() {
         </Button>
       </div>
     </form>
+    {loginPromptOpen && (
+      <QuoteLoginDialog
+        email={email.trim().toLowerCase()}
+        onLoggedIn={handleLoginPromptSuccess}
+        onGuest={handleLoginPromptGuest}
+      />
+    )}
     {unsavedChangesDialog}
     </>
   );
