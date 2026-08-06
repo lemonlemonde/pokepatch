@@ -163,6 +163,14 @@ export default function GalleryCardSearch({
     runSearch(nameQuery, setQuery, 1, false);
   }
 
+  function handleSearchKeyDown(event) {
+    if (event.key !== "Enter") return;
+    // Stop the keypress reaching an enclosing form, which would submit it.
+    event.preventDefault();
+    if (disabled || loading) return;
+    submitSearch();
+  }
+
   useEffect(() => () => abortRef.current?.abort(), []);
 
   const hasMore = results.length < totalCount;
@@ -211,12 +219,16 @@ export default function GalleryCardSearch({
         </div>
       )}
 
-      <form
+      {/*
+        Deliberately not a <form>: this renders inside the Studio formatter's
+        own form, and a nested form is invalid HTML (React flags it as a
+        hydration error). It also means the Search button must not be
+        type="submit" — that would submit the *outer* form and kick off a
+        Generate instead of a search. Enter-to-search is wired on the inputs.
+      */}
+      <div
+        role="search"
         className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 sm:gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submitSearch();
-        }}
       >
         <label className="block space-y-1">
           <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
@@ -227,6 +239,7 @@ export default function GalleryCardSearch({
             value={cardName}
             disabled={disabled || loading}
             onChange={(event) => setCardName(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className={fieldClassName()}
             placeholder="e.g. Pikachu ex, Sylveon-GX"
             autoComplete="off"
@@ -241,6 +254,7 @@ export default function GalleryCardSearch({
             value={setName}
             disabled={disabled || loading}
             onChange={(event) => setSetName(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
             className={fieldClassName()}
             placeholder="e.g. Ascended Heroes, Guardians Rising"
             autoComplete="off"
@@ -254,14 +268,15 @@ export default function GalleryCardSearch({
             Search
           </span>
           <button
-            type="submit"
+            type="button"
+            onClick={submitSearch}
             disabled={disabled || loading}
             className="w-full rounded-xl border-2 border-transparent bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
           >
             {loading ? "Searching…" : "Search"}
           </button>
         </div>
-      </form>
+      </div>
 
       {error && !loading && (
         <p className="mt-3 text-xs font-semibold text-berry">{error}</p>
