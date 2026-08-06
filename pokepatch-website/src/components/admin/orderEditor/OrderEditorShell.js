@@ -68,6 +68,7 @@ function OrderEditorContent({
 
   const cards = draft.cards ?? [];
   const scrollCardId = searchParams.get("card");
+  const errorMessage = error || externalError || "";
 
   useEffect(() => {
     setManualExpandId(undefined);
@@ -141,12 +142,10 @@ function OrderEditorContent({
     }
   }
 
-  const errorMessage = error || externalError || "";
-
   return (
     <div className="mx-auto max-w-5xl">
-      {/* Sticky action bar: identity on the left, money + actions on the right. */}
-      <div className="sticky top-2 z-40 mb-4 rounded-2xl border border-ink/10 bg-plum/95 px-4 py-3 shadow-cozy-sm backdrop-blur sm:px-5">
+      {/* Sticky action bar, pinned just below the floating site navbar. */}
+      <div className="sticky top-24 z-40 mb-4 rounded-2xl border border-ink/10 bg-plum/95 px-4 py-3 shadow-cozy-sm backdrop-blur sm:px-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <button
             type="button"
@@ -223,13 +222,7 @@ function OrderEditorContent({
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
-        {/* Sidebar first in DOM so status/customer sit on top on mobile. */}
-        <aside className="space-y-4 lg:order-2 lg:sticky lg:top-20">
-          <CustomerPanel />
-          <OrderPanel />
-        </aside>
-
-        <main className="min-w-0 space-y-4 lg:order-1">
+        <main className="min-w-0 space-y-4">
           <section className="space-y-2">
             <div className="flex items-center justify-between gap-3 px-1">
               <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink/45">
@@ -263,7 +256,7 @@ function OrderEditorContent({
                   <div
                     key={card.id}
                     id={`card-${card.id}`}
-                    className="scroll-mt-24"
+                    className="scroll-mt-44"
                   >
                     <CardDetailSection
                       cardId={String(card.id)}
@@ -282,6 +275,11 @@ function OrderEditorContent({
 
           <QuoteSection />
         </main>
+
+        <aside className="space-y-4">
+          <CustomerPanel />
+          <OrderPanel />
+        </aside>
       </div>
 
       <OrderSaveChangesDialog

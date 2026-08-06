@@ -105,7 +105,7 @@ export default function QuoteSection() {
                 className="flex flex-wrap items-center gap-2"
               >
                 <select
-                  className={`${editorFieldClass()} w-28 shrink-0 px-2`}
+                  className={`${editorFieldClass({ fullWidth: false })} w-28 shrink-0 px-2`}
                   value={row.kind || "discount"}
                   disabled={saving}
                   onChange={(event) =>
@@ -122,7 +122,7 @@ export default function QuoteSection() {
                   ) : null}
                 </select>
                 <input
-                  className={`${editorFieldClass()} w-24 shrink-0`}
+                  className={`${editorFieldClass({ fullWidth: false })} w-24 shrink-0`}
                   inputMode="decimal"
                   value={row.amount_dollars ?? ""}
                   disabled={saving}
@@ -135,7 +135,7 @@ export default function QuoteSection() {
                   placeholder="$"
                 />
                 <input
-                  className={`${editorFieldClass()} min-w-[9rem] flex-1`}
+                  className={`${editorFieldClass({ fullWidth: false })} min-w-[9rem] flex-1`}
                   value={row.description ?? ""}
                   disabled={saving}
                   onChange={(event) =>

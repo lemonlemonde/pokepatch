@@ -96,7 +96,7 @@ export function CustomerPanel() {
                 className="flex items-center gap-1.5"
               >
                 <select
-                  className={`${editorFieldClass()} w-[6.25rem] shrink-0 px-2`}
+                  className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
                   value={contact.contact_type}
                   disabled={saving}
                   onChange={(event) =>

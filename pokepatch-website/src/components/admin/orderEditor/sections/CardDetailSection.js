@@ -347,7 +347,7 @@ export default function CardDetailSection({
         </div>
         <div className="flex flex-wrap gap-2.5">
           <select
-            className={`${editorFieldClass()} min-w-[11rem] flex-1`}
+            className={`${editorFieldClass({ fullWidth: false })} min-w-[11rem] flex-1`}
             value={item.service_key || ""}
             disabled={saving}
             onChange={(event) => {
@@ -363,7 +363,7 @@ export default function CardDetailSection({
             ))}
           </select>
           <input
-            className={`${editorFieldClass()} w-24 shrink-0`}
+            className={`${editorFieldClass({ fullWidth: false })} w-24 shrink-0`}
             inputMode="decimal"
             value={hasService ? item.quote_base_amount : ""}
             disabled={!hasService || saving}
@@ -571,7 +571,7 @@ export default function CardDetailSection({
             <EditorLabel>High-value fee</EditorLabel>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <input
-                className={`${editorFieldClass()} w-40`}
+                className={`${editorFieldClass({ fullWidth: false })} w-40`}
                 inputMode="decimal"
                 value={card.market_value_raw_nm ?? ""}
                 disabled={saving}

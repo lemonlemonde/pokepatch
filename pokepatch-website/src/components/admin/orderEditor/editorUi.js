@@ -25,8 +25,12 @@ export function Chevron({ open = false, className = "h-4 w-4" }) {
   );
 }
 
-export function editorFieldClass() {
-  return "w-full rounded-lg border border-ink/15 bg-night/40 px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink/30 focus:border-blush/60 focus:ring-2 focus:ring-blush/15 disabled:opacity-50";
+const EDITOR_FIELD_BASE =
+  "rounded-lg border border-ink/15 bg-night/40 px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink/30 focus:border-blush/60 focus:ring-2 focus:ring-blush/15 disabled:opacity-50";
+
+/** @param {{ fullWidth?: boolean }} [options] */
+export function editorFieldClass({ fullWidth = true } = {}) {
+  return fullWidth ? `w-full ${EDITOR_FIELD_BASE}` : EDITOR_FIELD_BASE;
 }
 
 export function adminNoteFieldClass() {
