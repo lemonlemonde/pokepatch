@@ -16,6 +16,8 @@ import StudioFolderBoard, {
   SideBank,
 } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
+import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 import {
   downloadSlotImages,
   resolveStudioImageSource,
@@ -132,6 +134,10 @@ function StudioCardMetaControls({
   const cardInfoSwitchId = useId();
   const captionSwitchId = useId();
   const [uploadDragging, setUploadDragging] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pickedCard, setPickedCard] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [pickError, setPickError] = useState("");
 
   useEffect(() => {
     const url = value.frontPreviewUrl;
@@ -184,6 +190,30 @@ function StudioCardMetaControls({
 
   function clearFront() {
     patch({ frontFile: null, frontPreviewUrl: null });
+  }
+
+  /**
+   * Pull the official render down as a File and fill the chip in one go — the
+   * image, the card name and the set all come from the same catalog entry, so
+   * making them three separate steps would only invite them to disagree.
+   */
+  async function applySearchedCard(card) {
+    setPickedCard(card);
+    setPickError("");
+    setPicking(true);
+    try {
+      const file = await fetchTcgCardImageFile(card);
+      patch({
+        frontFile: file,
+        frontPreviewUrl: URL.createObjectURL(file),
+        card: (card.name ?? "").trim() || value.card,
+        set: (card.set_name ?? "").trim() || value.set,
+      });
+    } catch {
+      setPickError("Couldn't download that card's image. Try another, or upload one.");
+    } finally {
+      setPicking(false);
+    }
   }
 
   return (
@@ -304,6 +334,46 @@ function StudioCardMetaControls({
                 />
               </label>
             </div>
+          </div>
+        ) : null}
+
+        {value.showCardInfo ? (
+          <div className="border-t border-ink/10 pt-3">
+            <button
+              type="button"
+              onClick={() => setSearchOpen((open) => !open)}
+              aria-expanded={searchOpen}
+              className="rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+            >
+              {searchOpen ? "Hide card search" : "Search TCG catalog"}
+            </button>
+
+            {searchOpen ? (
+              <div className="mt-3 space-y-2">
+                <GalleryCardSearch
+                  selectedCard={pickedCard}
+                  onSelect={applySearchedCard}
+                  onClear={() => {
+                    setPickedCard(null);
+                    setPickError("");
+                    clearFront();
+                  }}
+                  initialCardName={value.card}
+                  initialSetName={value.set}
+                  disabled={picking}
+                />
+                {picking ? (
+                  <p className="font-secondary text-xs text-ink/50">
+                    Downloading card image…
+                  </p>
+                ) : null}
+                {pickError ? (
+                  <p className="font-secondary text-xs font-semibold text-berry">
+                    {pickError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
