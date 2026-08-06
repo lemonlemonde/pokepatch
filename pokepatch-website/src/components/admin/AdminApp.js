@@ -927,10 +927,46 @@ function truncateText(value, max = 140) {
 }
 
 const DEFAULT_SEARCH_STATUSES = ACTIVE_ORDER_STATUSES.map((status) => status.id);
+const ALL_SEARCH_STATUSES = ORDER_STATUSES.map((status) => status.id);
 
-function OrderCardSearch({ onOpenOrder }) {
+function orderMatchesLocalQuery(order, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  if (String(order.display_id ?? "").includes(q)) return true;
+  if (order.customer_name?.toLowerCase().includes(q)) return true;
+  if (order.customer_email?.toLowerCase().includes(q)) return true;
+  return false;
+}
+
+function filterOrdersForAllList(orders, { query, statuses, searchOrderIds }) {
+  if (!statuses?.length) return [];
+
+  let list = orders ?? [];
+
+  if (statuses.length < ORDER_STATUSES.length) {
+    list = list.filter((order) =>
+      statuses.includes(normalizeOrderStatus(order.status))
+    );
+  }
+
+  const q = query.trim();
+  if (q.length >= 2) {
+    const idSet = new Set(searchOrderIds ?? []);
+    list = list.filter(
+      (order) => orderMatchesLocalQuery(order, q) || idSet.has(order.id)
+    );
+  }
+
+  return list;
+}
+
+function OrderCardSearch({
+  onOpenOrder,
+  defaultStatuses = DEFAULT_SEARCH_STATUSES,
+  onFilterChange,
+}) {
   const [query, setQuery] = useState("");
-  const [statuses, setStatuses] = useState(DEFAULT_SEARCH_STATUSES);
+  const [statuses, setStatuses] = useState(defaultStatuses);
   const [results, setResults] = useState([]);
   const [truncated, setTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -977,6 +1013,20 @@ function OrderCardSearch({ onOpenOrder }) {
 
     return () => window.clearTimeout(timer);
   }, [query, statuses]);
+
+  useEffect(() => {
+    if (!onFilterChange) return;
+    const q = query.trim();
+    onFilterChange({
+      query,
+      statuses,
+      searchOrderIds:
+        q.length >= 2
+          ? [...new Set(results.map((hit) => hit.order_id))]
+          : null,
+      searching: q.length >= 2 && searching,
+    });
+  }, [query, statuses, results, searching, onFilterChange]);
 
   useEffect(() => {
     function onPointerDown(event) {
@@ -1187,7 +1237,7 @@ function OrderCardSearch({ onOpenOrder }) {
   );
 }
 
-function OrdersAllList({ orders, onOpenOrder }) {
+function OrdersAllList({ orders, onOpenOrder, emptyMessage = "No orders yet." }) {
   const sorted = useMemo(() => {
     return [...(orders ?? [])].sort((a, b) => {
       const aId = Number(a.display_id) || 0;
@@ -1199,7 +1249,7 @@ function OrdersAllList({ orders, onOpenOrder }) {
   if (sorted.length === 0) {
     return (
       <p className="rounded border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
-        No orders yet.
+        {emptyMessage}
       </p>
     );
   }
@@ -1271,6 +1321,62 @@ function OrdersAllList({ orders, onOpenOrder }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
+  const [listFilter, setListFilter] = useState({
+    query: "",
+    statuses: ALL_SEARCH_STATUSES,
+    searchOrderIds: null,
+    searching: false,
+  });
+
+  const filteredOrders = useMemo(
+    () => filterOrdersForAllList(orders, listFilter),
+    [orders, listFilter]
+  );
+
+  const isFiltering =
+    listFilter.statuses.length < ORDER_STATUSES.length ||
+    listFilter.query.trim().length >= 2;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-ink/50">
+          {isFiltering
+            ? `${filteredOrders.length} of ${orders.length} orders`
+            : `${orders.length} order${orders.length === 1 ? "" : "s"}`}
+        </p>
+        <button
+          type="button"
+          onClick={onBackToBoard}
+          className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+        >
+          Back to board
+        </button>
+      </div>
+      <OrderCardSearch
+        defaultStatuses={ALL_SEARCH_STATUSES}
+        onFilterChange={setListFilter}
+        onOpenOrder={(orderId, options) =>
+          onOpenOrder(orderId, { from: "all", ...options })
+        }
+      />
+      {listFilter.searching ? (
+        <LoadingIndicator compact label="Searching…" className="px-1" />
+      ) : null}
+      <OrdersAllList
+        orders={filteredOrders}
+        emptyMessage={
+          isFiltering
+            ? "No orders match the current filters."
+            : "No orders yet."
+        }
+        onOpenOrder={(orderId) => onOpenOrder(orderId, { from: "all" })}
+      />
     </div>
   );
 }
@@ -2535,29 +2641,11 @@ export default function AdminApp() {
           ) : loadingOrders && orders.length === 0 ? (
             <LoadingIndicator label="Loading orders…" />
           ) : tab === "orders-all" ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-xs text-ink/50">
-                  {orders.length} order{orders.length === 1 ? "" : "s"}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => router.push("/admin/orders/")}
-                  className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
-                >
-                  Back to board
-                </button>
-              </div>
-              <OrderCardSearch
-                onOpenOrder={(orderId, options) =>
-                  openOrder(orderId, { from: "all", ...options })
-                }
-              />
-              <OrdersAllList
-                orders={orders}
-                onOpenOrder={(orderId) => openOrder(orderId, { from: "all" })}
-              />
-            </div>
+            <OrdersAllSection
+              orders={orders}
+              onOpenOrder={openOrder}
+              onBackToBoard={() => router.push("/admin/orders/")}
+            />
           ) : (
             <>
               <div className="mb-4">
