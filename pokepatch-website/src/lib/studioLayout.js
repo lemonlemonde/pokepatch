@@ -13,14 +13,7 @@ export const REEL_HEIGHT = 1920;
  * matching transform, so text, the logo, card borders and shadows all rasterize
  * natively at the higher resolution instead of being upscaled after the fact.
  */
-/**
- * 4× rather than higher because WebP encoding cost stops being linear past
- * roughly 30 megapixels: a square export takes ~1.2s at 3×, ~3s at 5× and
- * ~12s at 6×, and a Reel — 3× the pixels of a square — takes ~22s at 6×.
- * `canvas.toBlob` runs on the main thread, so that time is a frozen UI.
- * 4× keeps both formats under the cliff.
- */
-export const STUDIO_EXPORT_SCALE = 4;
+export const STUDIO_EXPORT_SCALE = 6;
 
 /** @typedef {'square' | 'reel'} StudioOutputFormat */
 

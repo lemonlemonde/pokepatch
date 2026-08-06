@@ -22,7 +22,11 @@ function createOutputCanvas(format) {
   canvas.height = height * STUDIO_EXPORT_SCALE;
   stampLogicalSize(canvas, width, height);
 
-  const ctx = canvas.getContext("2d");
+  // `alpha: false` skips per-pixel compositing against a transparent backdrop,
+  // which is measurable at this canvas size. Safe because `fillBackground`
+  // paints the whole frame before anything else is drawn, and the export
+  // format has no alpha channel to preserve anyway.
+  const ctx = canvas.getContext("2d", { alpha: false });
   ctx.setTransform(STUDIO_EXPORT_SCALE, 0, 0, STUDIO_EXPORT_SCALE, 0, 0);
   enableHighQuality(ctx);
   return { canvas, ctx };
@@ -234,11 +238,19 @@ export async function stitchBeforeAfterPosts(
   return Object.fromEntries(entries);
 }
 
-/** Exported post format. WebP at this quality is visually lossless but a
- * fraction of PNG's size, which matters at the supersampled export scale. */
-export const OUTPUT_MIME = "image/webp";
+/**
+ * Exported post format. JPEG rather than WebP purely for encode speed: WebP's
+ * cost stops being linear past ~30 megapixels (a 6× Reel takes ~22s and blocks
+ * the main thread, since `toBlob` is synchronous work), while JPEG stays linear
+ * and does the same frame in ~1s. Files run ~75% larger, which is the trade.
+ *
+ * Quality is high enough that chroma subsampling is the only visible
+ * difference, and these frames are white cards and white text on black — the
+ * luma-dominated case where it costs least.
+ */
+export const OUTPUT_MIME = "image/jpeg";
 export const OUTPUT_QUALITY = 0.98;
-export const OUTPUT_EXT = "webp";
+export const OUTPUT_EXT = "jpg";
 
 export function canvasToBlob(
   canvas,
