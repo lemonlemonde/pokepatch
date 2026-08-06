@@ -2374,6 +2374,47 @@ function EditorLabel({ children }) {
   );
 }
 
+/** Mint styling for admin-authored notes shown to customers as "from PokePatch". */
+function adminNoteFieldClass() {
+  return "w-full rounded-xl border border-mint/40 bg-night/25 px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink/40 focus:border-mint focus:bg-night/35 focus:ring-2 focus:ring-mint/30";
+}
+
+function AdminNoteField({
+  label,
+  hint,
+  value,
+  onChange,
+  onFocus,
+  placeholder,
+  minHeightClass = "min-h-[72px]",
+}) {
+  return (
+    <div className="rounded-xl border border-mint/30 bg-mint/[0.08] p-3 sm:p-3.5">
+      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mint">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-mint"
+            aria-hidden="true"
+          />
+          {label}
+        </span>
+        {hint ? (
+          <span className="text-xs font-normal normal-case tracking-normal text-ink/45">
+            {hint}
+          </span>
+        ) : null}
+      </div>
+      <textarea
+        className={`${adminNoteFieldClass()} ${minHeightClass}`}
+        value={value}
+        onChange={onChange}
+        onFocus={onFocus}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
 function OrderEditor({
   displayId,
   orderId,
@@ -3205,16 +3246,18 @@ function OrderEditor({
               ))}
             </select>
           </label>
-          <label className="block sm:col-span-2">
-            <EditorLabel>Notes</EditorLabel>
-            <textarea
-              className={`${editorFieldClass()} min-h-[88px]`}
+          <div className="sm:col-span-2">
+            <AdminNoteField
+              label="Notes from PokePatch"
+              hint="Visible to the customer on their order"
               value={draft.general_notes}
               onChange={(event) =>
                 updateDraft({ general_notes: event.target.value })
               }
+              placeholder="Optional note about the whole order…"
+              minHeightClass="min-h-[88px]"
             />
-          </label>
+          </div>
         </div>
       </EditorSection>
 
@@ -3512,6 +3555,10 @@ function OrderEditor({
                   </label>
                   <label className="block sm:col-span-2">
                     <EditorLabel>Description</EditorLabel>
+                    <p className="mb-1.5 text-xs text-ink/45">
+                      From the customer — card details they submitted with the
+                      order.
+                    </p>
                     <textarea
                       className={`${editorFieldClass()} min-h-[72px]`}
                       value={card.description}
@@ -3523,10 +3570,10 @@ function OrderEditor({
                       onFocus={() => expandCard(cardId)}
                     />
                   </label>
-                  <label className="block sm:col-span-2">
-                    <EditorLabel>Note</EditorLabel>
-                    <textarea
-                      className={`${editorFieldClass()} min-h-[72px]`}
+                  <div className="sm:col-span-2">
+                    <AdminNoteField
+                      label="Note from PokePatch"
+                      hint="Visible to the customer on this card"
                       value={card.admin_note}
                       onChange={(event) =>
                         updateCard(cardIndex, {
@@ -3536,7 +3583,7 @@ function OrderEditor({
                       onFocus={() => expandCard(cardId)}
                       placeholder="Optional note for the customer about this card…"
                     />
-                  </label>
+                  </div>
                 </div>
                 <div className="border-t border-ink/10 pt-4">
                   <AdminOrderCardPhotoGroups
