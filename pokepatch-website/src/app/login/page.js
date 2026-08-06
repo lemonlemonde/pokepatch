@@ -24,9 +24,10 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/my-orders";
   const customerAuthEnabled = isCustomerAuthEnabled();
-  const { signIn, signUp, user } = useAuth();
+  const { signIn, signUp, resetPassword, user } = useAuth();
 
-  const [mode, setMode] = useState("login"); // "login" or "signup"
+  // "login" | "signup" | "forgot"
+  const [mode, setMode] = useState("login");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -71,10 +72,12 @@ function LoginForm() {
       errors.email = true;
     }
 
-    if (!password) {
-      errors.password = true;
-    } else if (mode === "signup" && password.length < 6) {
-      errors.password = true;
+    if (mode !== "forgot") {
+      if (!password) {
+        errors.password = true;
+      } else if (mode === "signup" && password.length < 6) {
+        errors.password = true;
+      }
     }
 
     if (mode === "signup" && password !== confirmPassword) {
@@ -103,6 +106,16 @@ function LoginForm() {
     setLoading(true);
 
     try {
+      if (mode === "forgot") {
+        await resetPassword(email);
+        // Deliberately the same message whether or not the address is
+        // registered, so this can't be used to find out who has an account.
+        setNotice(
+          "If that email has an account, we've sent a link to reset the password. Check your inbox (and your spam folder)."
+        );
+        return;
+      }
+
       if (mode === "login") {
         await signIn(email, password);
         router.push(redirectTo);
@@ -139,8 +152,20 @@ function LoginForm() {
   return (
     <>
       <div className="animate-fade-up">
-        <SectionHeading subtitle={mode === "login" ? "Welcome back!" : "Create your account"}>
-          {mode === "login" ? "Log in" : "Sign up"}
+        <SectionHeading
+          subtitle={
+            mode === "login"
+              ? "Welcome back!"
+              : mode === "signup"
+                ? "Create your account"
+                : "We'll email you a link to set a new one"
+          }
+        >
+          {mode === "login"
+            ? "Log in"
+            : mode === "signup"
+              ? "Sign up"
+              : "Reset your password"}
         </SectionHeading>
       </div>
 
@@ -236,6 +261,7 @@ function LoginForm() {
             )}
           </div>
 
+          {mode !== "forgot" && (
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-bold text-ink">
               Password <span className="text-berry">*</span>
@@ -258,7 +284,25 @@ function LoginForm() {
                 Password must be at least 6 characters
               </p>
             )}
+            {mode === "login" && (
+              <p className="mt-2 text-right text-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("forgot");
+                    setError("");
+                    setNotice("");
+                    setFieldErrors({});
+                    setPassword("");
+                  }}
+                  className="font-semibold text-blush hover:underline"
+                >
+                  Forgot password?
+                </button>
+              </p>
+            )}
           </div>
+          )}
 
           {mode === "signup" && (
             <div>
@@ -290,18 +334,39 @@ function LoginForm() {
           <Button type="submit" fullWidth disabled={loading || !isSupabaseConfigured}>
             {loading ? (
               <span className="inline-block animate-soft-bounce">
-                {mode === "login" ? "Logging in..." : "Creating account..."}
+                {mode === "login"
+                  ? "Logging in..."
+                  : mode === "signup"
+                    ? "Creating account..."
+                    : "Sending reset link..."}
               </span>
             ) : mode === "login" ? (
               "Log in"
-            ) : (
+            ) : mode === "signup" ? (
               "Create account"
+            ) : (
+              "Send reset link"
             )}
           </Button>
         </form>
 
         <div className="border-t border-ink/10 pt-4 text-center">
-          {mode === "login" ? (
+          {mode === "forgot" ? (
+            <p className="text-sm text-ink/70">
+              Remembered it?{" "}
+              <button
+                onClick={() => {
+                  setMode("login");
+                  setError("");
+                  setNotice("");
+                  setFieldErrors({});
+                }}
+                className="font-semibold text-blush hover:underline"
+              >
+                Back to log in
+              </button>
+            </p>
+          ) : mode === "login" ? (
             <p className="text-sm text-ink/70">
               Don&apos;t have an account?{" "}
               <button

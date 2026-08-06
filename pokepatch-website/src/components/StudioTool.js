@@ -18,7 +18,7 @@ import StudioFolderBoard, {
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import {
   downloadSlotImages,
-  resolveStudioImageFile,
+  resolveStudioImageSource,
 } from "@/lib/studioSlotImage";
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
@@ -29,6 +29,7 @@ import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import {
+  OUTPUT_EXT,
   canvasToBlob,
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
@@ -37,6 +38,10 @@ import {
   DEFAULT_PACKAGE_CAPTION,
   downloadStudioPackageZip,
 } from "@/lib/studioPackageZip";
+import {
+  STUDIO_EXPORT_SCALE,
+  getOutputCanvasSize,
+} from "@/lib/studioLayout";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -348,16 +353,22 @@ const PHOTO_GROUP_MODES = [
   },
 ];
 
+/** Exported pixel size for a format — the 1×2 layout supersampled for export. */
+function exportSizeHint(format) {
+  const { width, height } = getOutputCanvasSize(format);
+  return `${width * STUDIO_EXPORT_SCALE}×${height * STUDIO_EXPORT_SCALE}`;
+}
+
 const PHOTO_OUTPUT_FORMATS = [
   {
     id: "square",
     label: "1:1 square",
-    sizeHint: "1080×1080",
+    sizeHint: exportSizeHint("square"),
   },
   {
     id: "reel",
     label: "9:16 Reels",
-    sizeHint: "1080×1920",
+    sizeHint: exportSizeHint("reel"),
   },
 ];
 
@@ -595,7 +606,10 @@ function OutputGrid({
  * rebuilt after a refresh — object URLs die with the page, blobs clone into
  * IndexedDB.
  */
-async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
+async function canvasOutputsFromPairs(
+  pairs,
+  sizeHint = exportSizeHint("square"),
+) {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
       const blob = await canvasToBlob(canvas);
@@ -605,7 +619,7 @@ async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
         sizeHint,
         blob,
         url: URL.createObjectURL(blob),
-        filename: `pokepatch-${key}.png`,
+        filename: `pokepatch-${key}.${OUTPUT_EXT}`,
       };
     }),
   );
@@ -661,7 +675,7 @@ async function generatePhotoOutputs(
 ) {
   const sizeHint =
     PHOTO_OUTPUT_FORMATS.find((entry) => entry.id === format)?.sizeHint ??
-    "1080×1080";
+    exportSizeHint("square");
 
   if (groupBy === "front-back-pair") {
     const canvases = await stitchBeforeAfterPosts(
@@ -683,11 +697,12 @@ async function generatePhotoOutputs(
   return canvasOutputsFromPairs(pairs, sizeHint);
 }
 
-async function resolveStudioItemsToFiles(items, previewUrls) {
+/** Formatter inputs — a File per untouched slot, a canvas per edited one. */
+async function resolveStudioItemsToSources(items, previewUrls) {
   return Promise.all(
     items.map((item) =>
       item && previewUrls[item.id]
-        ? resolveStudioImageFile(item, previewUrls[item.id])
+        ? resolveStudioImageSource(item, previewUrls[item.id])
         : null,
     ),
   );
@@ -934,7 +949,7 @@ function BeforeAfterPairPhotoFormatter({
       beforeItems.find((item) => item.id === pair.before) ?? null,
       afterItems.find((item) => item.id === pair.after) ?? null,
     ]);
-    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+    const files = await resolveStudioItemsToSources(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "before-after-pair");
     if (validationError) {
@@ -1352,7 +1367,7 @@ function FrontBackPairPhotoFormatter({
       slots.afterFront ? findItem("after", slots.afterFront) : null,
       slots.afterBack ? findItem("after", slots.afterBack) : null,
     ];
-    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+    const files = await resolveStudioItemsToSources(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "front-back-pair");
     if (validationError) {

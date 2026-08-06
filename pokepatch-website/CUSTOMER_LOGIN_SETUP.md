@@ -63,7 +63,7 @@ Supabase’s built-in mailer is rate-limited (~2 emails/hour) and only delivers 
 3. In Porkbun → your domain → **DNS**, add the records Resend shows (typically DKIM TXT, SPF TXT on the `send` subdomain, and MX for that subdomain). Optionally add DMARC at `_dmarc` if you do not already have one.
 4. Watch for doubled hostnames in Porkbun (e.g. `resend._domainkey.yourdomain.com.yourdomain.com`). Use the host Resend lists without appending the domain twice.
 5. Click **Verify** in Resend until the domain is verified.
-6. Choose a From address on that domain, e.g. `noreply@yourdomain.com` or `auth@yourdomain.com`.
+6. Choose a From address on that domain. Use a **replyable** one such as `hello@yourdomain.com` — anything containing `noreply` tells filters (and customers) that replies go nowhere, which costs deliverability. Porkbun's free **Email Forwarding** points that address at a real inbox without running a mailbox.
 
 #### B. Supabase SMTP
 
@@ -88,6 +88,10 @@ Alternatively: Resend → **Integrations** → Connect to Supabase (writes the s
    - Add redirect allowlist entries for confirmation links, e.g. `https://yourdomain.com/**` and `http://localhost:3000/**` for local dev.
 
 Signup and resend already pass `emailRedirectTo` to `/my-orders` on the current origin.
+
+6. Under **Authentication → Emails**, replace the **Confirm signup** and **Reset password** templates with the contents of `supabase/templates/confirmation.html` and `supabase/templates/recovery.html`.
+
+   These link to `pokepatch.cards/verify-email` and `pokepatch.cards/reset-password` with a `token_hash`, which those pages redeem via `supabase.auth.verifyOtp`. The default templates link to the Supabase API host instead — a link domain that doesn't match the sender, which is a strong spam signal. Keep the repo files and the dashboard copies in sync; `config.toml` points local dev at the same files.
 
 If you want immediate login after signup (no email verification):
 1. Go to Authentication → Settings

@@ -8,8 +8,6 @@ export type ChangelogPayload = {
     label?: string;
     status?: "added" | "removed" | "modified" | string;
     changes?: string[];
-    /** Optional email-only thumb URL (not persisted on messages). */
-    thumbUrl?: string;
   }>;
   orderChanges?: string[];
   quoteSummary?: string | null;
@@ -150,10 +148,7 @@ export function formatChangelogPlainText(changelog?: ChangelogPayload | null): s
   return lines.join("\n");
 }
 
-function formatChangelogHtml(
-  changelog?: ChangelogPayload | null,
-  thumbByCardId?: Record<string, string> | null
-): string {
+function formatChangelogHtml(changelog?: ChangelogPayload | null): string {
   if (!hasChangelogContent(changelog)) return "";
   const blocks: string[] = [];
   const quoteInOrder = (changelog?.orderChanges ?? []).some((line) =>
@@ -209,20 +204,11 @@ function formatChangelogHtml(
         : status === "removed"
           ? '<p style="margin:0;font-size:12px;color:#8A7A89;">Removed from order</p>'
           : "";
-    const cardId = group.cardId != null ? String(group.cardId) : "";
-    const thumbUrl =
-      (cardId && thumbByCardId?.[cardId]) ||
-      (typeof group.thumbUrl === "string" ? group.thumbUrl : "") ||
-      "";
-    const thumbCell = thumbUrl
-      ? `<img src="${escapeHtml(thumbUrl)}" alt="" width="32" height="43" style="display:inline-block;width:32px;height:43px;object-fit:cover;border:0;border-radius:4px;vertical-align:middle;margin-left:6px;" />`
-      : "";
     blocks.push(
       `<div style="margin:0 0 0.6rem;border:1px solid ${border};border-radius:10px;background:${bg};overflow:hidden;">` +
         `<div style="padding:8px 12px;border-bottom:1px solid rgba(243,233,242,0.08);">` +
         `${badge}` +
         `<span style="margin-left:8px;font-size:14px;font-weight:600;color:#F3E9F2;vertical-align:middle;">${escapeHtml(String(group.label ?? "Card"))}</span>` +
-        thumbCell +
         `</div>` +
         `<div style="padding:10px 12px;">${
           changeLines
@@ -267,7 +253,6 @@ function buildHtmlEmail(options: {
   body: string;
   orderDisplayId?: number | string | null;
   changelog?: ChangelogPayload | null;
-  thumbByCardId?: Record<string, string> | null;
 }): string {
   const safeSubject = escapeHtml(options.subject.trim());
   const regarding = formatOrderLine(options.orderDisplayId);
@@ -275,10 +260,7 @@ function buildHtmlEmail(options: {
   const safeBody = note
     ? `<p style="margin:0 0 1.25rem;font-size:15px;line-height:1.65;color:#F3E9F2;">${escapeHtml(note).replace(/\r\n|\r|\n/g, "<br />")}</p>`
     : "";
-  const changelogHtml = formatChangelogHtml(
-    options.changelog,
-    options.thumbByCardId
-  );
+  const changelogHtml = formatChangelogHtml(options.changelog);
   const regardingHtml = regarding
     ? `<p style="margin:0 0 1.25rem;font-size:15px;font-weight:700;">
          <a href="${escapeHtml(MY_ORDERS_URL)}" style="color:#E0518A;text-decoration:underline;">${escapeHtml(regarding)}</a>
@@ -343,7 +325,6 @@ export async function sendResendEmail(options: {
   body: string;
   orderDisplayId?: number | string | null;
   changelog?: ChangelogPayload | null;
-  thumbByCardId?: Record<string, string> | null;
 }): Promise<ResendSendResult> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
   const from = Deno.env.get("RESEND_FROM_EMAIL")?.trim();
@@ -374,7 +355,6 @@ export async function sendResendEmail(options: {
     body,
     orderDisplayId: options.orderDisplayId,
     changelog: options.changelog,
-    thumbByCardId: options.thumbByCardId,
   });
 
   try {

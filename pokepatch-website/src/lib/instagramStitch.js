@@ -1,13 +1,39 @@
 import {
+  STUDIO_EXPORT_SCALE,
   drawComparisonFrame,
   drawPairedSidesFrame,
   enableHighQuality,
   ensureLabelFont,
   ensureLogo,
   getOutputCanvasSize,
+  stampLogicalSize,
 } from "@/lib/studioLayout";
 
+/**
+ * Output canvas supersampled by `STUDIO_EXPORT_SCALE`. All the layout code
+ * keeps working in 1080-space: the transform below maps its coordinates onto
+ * the larger backing store, and `stampLogicalSize` lets it read the logical
+ * size instead of mistaking the enlarged canvas for a Reel.
+ */
+function createOutputCanvas(format) {
+  const { width, height } = getOutputCanvasSize(format);
+  const canvas = document.createElement("canvas");
+  canvas.width = width * STUDIO_EXPORT_SCALE;
+  canvas.height = height * STUDIO_EXPORT_SCALE;
+  stampLogicalSize(canvas, width, height);
+
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(STUDIO_EXPORT_SCALE, 0, 0, STUDIO_EXPORT_SCALE, 0, 0);
+  enableHighQuality(ctx);
+  return { canvas, ctx };
+}
+
+/**
+ * Accepts a File/Blob or an already-rendered canvas. Slots that were cropped or
+ * annotated arrive as canvases so they skip an encode/decode round trip.
+ */
 export function loadImage(file) {
+  if (typeof file?.getContext === "function") return Promise.resolve(file);
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -66,13 +92,7 @@ async function stitchComparison(
     loadImage(rightFile),
   ]);
 
-  const { width, height } = getOutputCanvasSize(format);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  enableHighQuality(ctx);
+  const { canvas, ctx } = createOutputCanvas(format);
   drawComparisonFrame(
     ctx,
     leftImg,
@@ -177,13 +197,7 @@ async function stitchPairedSides(
     loadImage(rightFile),
   ]);
 
-  const { width, height } = getOutputCanvasSize(format);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const ctx = canvas.getContext("2d");
-  enableHighQuality(ctx);
+  const { canvas, ctx } = createOutputCanvas(format);
   drawPairedSidesFrame(ctx, leftImg, rightImg, label, logoImg, overlay);
 
   return canvas;
@@ -220,14 +234,25 @@ export async function stitchBeforeAfterPosts(
   return Object.fromEntries(entries);
 }
 
-export function canvasToBlob(canvas) {
+/** Exported post format. WebP at this quality is visually lossless but a
+ * fraction of PNG's size, which matters at the supersampled export scale. */
+export const OUTPUT_MIME = "image/webp";
+export const OUTPUT_QUALITY = 0.98;
+export const OUTPUT_EXT = "webp";
+
+export function canvasToBlob(
+  canvas,
+  mimeType = OUTPUT_MIME,
+  quality = OUTPUT_QUALITY,
+) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
         if (blob) resolve(blob);
         else reject(new Error("Failed to export image"));
       },
-      "image/png",
+      mimeType,
+      quality,
     );
   });
 }
