@@ -54,6 +54,8 @@ import {
   isPendingOrderStatus,
   filterClosedColumnOrders,
   isPriorityElevated,
+  isQueuePriorityOrderStatus,
+  sortOrdersForStatusColumn,
   pendingKindShortLabel,
   pendingKindBadgeClass,
 } from "@/lib/orderStatus";
@@ -66,7 +68,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Search cards by name or set (scope with status chips). Drag within a column to reorder, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+      "Search cards by name or set (scope with status chips). Drag within To do to set priority, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -1377,7 +1379,11 @@ function KanbanBoard({
     setDropTarget(null);
     setTrashArmed(false);
     if (!orderId || index == null) return;
-    await onPlaceOrder(orderId, statusId, index);
+    const fromStatus = normalizeOrderStatus(dragOrder?.status);
+    const toStatus = normalizeOrderStatus(statusId);
+    if (fromStatus === toStatus && !isQueuePriorityOrderStatus(toStatus)) return;
+    const queueIndex = isQueuePriorityOrderStatus(toStatus) ? index : null;
+    await onPlaceOrder(orderId, statusId, queueIndex);
   }
 
   function handleTrashDragOver(event) {
@@ -1432,8 +1438,11 @@ function KanbanBoard({
     const hiddenCount = closed
       ? Math.max(0, rawOrders.length - columnOrders.length)
       : 0;
+    const allowsPriorityReorder = isQueuePriorityOrderStatus(status.id);
     const dropIndex =
-      dropTarget?.statusId === status.id ? dropTarget.index : null;
+      dropTarget?.statusId === status.id && allowsPriorityReorder
+        ? dropTarget.index
+        : null;
     const showList = !dock || expanded;
     const dockDropHighlight =
       dock &&
@@ -1444,10 +1453,11 @@ function KanbanBoard({
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       if (!dragOrderId) return;
-      const index =
-        !showList || columnOrders.length === 0
+      const index = allowsPriorityReorder
+        ? !showList || columnOrders.length === 0
           ? 0
-          : resolveListDropIndex(event.clientY, listEl);
+          : resolveListDropIndex(event.clientY, listEl)
+        : columnOrders.length;
       setDropTargetStable({ statusId: status.id, index });
     }
 
@@ -1457,12 +1467,13 @@ function KanbanBoard({
         dropTargetRef.current?.statusId === status.id
           ? dropTargetRef.current.index
           : null;
-      const index =
-        fromRef != null
+      const index = allowsPriorityReorder
+        ? fromRef != null
           ? fromRef
           : !showList || columnOrders.length === 0
             ? 0
-            : resolveListDropIndex(event.clientY, listEl);
+            : resolveListDropIndex(event.clientY, listEl)
+        : columnOrders.length;
       void commitDrop(status.id, index);
     }
 
@@ -2028,20 +2039,16 @@ export default function AdminApp() {
     const fromStatus = normalizeOrderStatus(moving.status);
     const sameColumn = fromStatus === nextStatus;
 
-    // Adjust insert index when dragging downward in the same column
-    let insertAt = Number(queueIndex);
+    if (sameColumn && !isQueuePriorityOrderStatus(nextStatus)) return;
+
+    let insertAt =
+      queueIndex == null ? Number.MAX_SAFE_INTEGER : Number(queueIndex);
     if (!Number.isFinite(insertAt)) insertAt = Number.MAX_SAFE_INTEGER;
     if (sameColumn) {
-      const col = previous
-        .filter((o) => normalizeOrderStatus(o.status) === fromStatus)
-        .sort((a, b) => {
-          const ap = a.queue_priority;
-          const bp = b.queue_priority;
-          if (ap == null && bp != null) return 1;
-          if (ap != null && bp == null) return -1;
-          if (ap != null && bp != null && ap !== bp) return Number(ap) - Number(bp);
-          return String(a.id).localeCompare(String(b.id));
-        });
+      const col = sortOrdersForStatusColumn(
+        previous.filter((o) => normalizeOrderStatus(o.status) === fromStatus),
+        fromStatus
+      );
       const fromIndex = col.findIndex((o) => o.id === orderId);
       if (fromIndex >= 0 && fromIndex < insertAt) insertAt -= 1;
       if (fromIndex === insertAt) return;
@@ -2120,10 +2127,9 @@ export default function AdminApp() {
     previous,
     moving,
   }) {
+    const usesQueuePriority = isQueuePriorityOrderStatus(nextStatus);
+
     setOrders((current) => {
-      const without = current.filter((order) => order.id !== orderId);
-      const byStatus = groupOrdersByStatus(without);
-      const target = [...(byStatus[nextStatus] ?? [])];
       const wasClosed = isClosedOrderStatus(moving.status);
       const nextClosed = isClosedOrderStatus(nextStatus);
       const placed = {
@@ -2141,7 +2147,18 @@ export default function AdminApp() {
             ? moving.completed_at
             : new Date().toISOString()
           : null,
+        queue_priority: usesQueuePriority ? moving.queue_priority : null,
       };
+
+      if (!usesQueuePriority) {
+        return current.map((order) =>
+          order.id === orderId ? placed : order
+        );
+      }
+
+      const without = current.filter((order) => order.id !== orderId);
+      const byStatus = groupOrdersByStatus(without);
+      const target = [...(byStatus[nextStatus] ?? [])];
       const at = Math.max(0, Math.min(insertAt, target.length));
       target.splice(at, 0, placed);
       const nextPriorities = new Map(
@@ -2171,7 +2188,11 @@ export default function AdminApp() {
         ];
         await adminReorderStatusOrders(nextStatus, orderedIds);
       } else {
-        await adminSetStatus(orderId, nextStatus, insertAt);
+        await adminSetStatus(
+          orderId,
+          nextStatus,
+          usesQueuePriority ? insertAt : null
+        );
       }
 
       if (selectedOrderId === orderId) {
