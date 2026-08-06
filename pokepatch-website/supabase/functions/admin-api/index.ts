@@ -1827,6 +1827,13 @@ Deno.serve(async (req) => {
       if (!ORDER_STATUS_IDS.has(reorderStatus)) {
         return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
       }
+      if (reorderStatus !== "new") {
+        return jsonResponse(
+          req,
+          { ok: false, error: "queue reorder is only allowed for To do orders" },
+          400
+        );
+      }
 
       const { error } = await supabase.rpc("reorder_status_orders", {
         p_status: reorderStatus,

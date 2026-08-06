@@ -314,18 +314,33 @@ function timeMs(value, fallback) {
   return Number.isNaN(secondary) ? 0 : secondary;
 }
 
+/** Only To do orders participate in the customer/admin priority queue. */
+export const QUEUE_PRIORITY_ORDER_STATUS = "new";
+
+export function isQueuePriorityOrderStatus(statusId) {
+  return normalizeOrderStatus(statusId) === QUEUE_PRIORITY_ORDER_STATUS;
+}
+
 /**
- * Column sort: relative queue_priority within the status (lower = higher).
- * Ties broken by created_at, then id.
+ * Column sort: To do uses queue_priority (lower = higher). Other columns use
+ * status_changed_at then created_at — priority does not apply once work starts.
  */
-export function sortOrdersForStatusColumn(orders, _statusId) {
+export function sortOrdersForStatusColumn(orders, statusId) {
+  const status = normalizeOrderStatus(statusId);
   return [...(orders ?? [])].sort((a, b) => {
-    const ap = a.queue_priority;
-    const bp = b.queue_priority;
-    if (ap == null && bp != null) return 1;
-    if (ap != null && bp == null) return -1;
-    if (ap != null && bp != null && ap !== bp) {
-      return Number(ap) - Number(bp);
+    if (isQueuePriorityOrderStatus(status)) {
+      const ap = a.queue_priority;
+      const bp = b.queue_priority;
+      if (ap == null && bp != null) return 1;
+      if (ap != null && bp == null) return -1;
+      if (ap != null && bp != null && ap !== bp) {
+        return Number(ap) - Number(bp);
+      }
+    } else {
+      const byChanged =
+        timeMs(a.status_changed_at, a.created_at) -
+        timeMs(b.status_changed_at, b.created_at);
+      if (byChanged !== 0) return byChanged;
     }
     const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
     if (byCreated !== 0) return byCreated;
@@ -356,6 +371,7 @@ export function groupOrdersByStatus(orders) {
  * than it would under chronological order by display_id (lower number = older).
  */
 export function isPriorityElevated(order, columnOrders) {
+  if (!isQueuePriorityOrderStatus(order?.status)) return false;
   const list = columnOrders ?? [];
   if (!order?.id || list.length < 2) return false;
   const actual = list.findIndex((entry) => entry.id === order.id);
