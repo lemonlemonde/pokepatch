@@ -1466,6 +1466,14 @@ function KanbanBoard({
       void commitDrop(status.id, index);
     }
 
+    function handleColumnDragLeave(event) {
+      if (event.currentTarget.contains(event.relatedTarget)) return;
+      if (dropTargetRef.current?.statusId === status.id) {
+        dropTargetRef.current = null;
+        setDropTarget(null);
+      }
+    }
+
     return (
       <section
         key={status.id}
@@ -1483,6 +1491,7 @@ function KanbanBoard({
           if (!dragOrderId) return;
           setDropTargetStable({ statusId: status.id, index: 0 });
         }}
+        onDragLeave={handleColumnDragLeave}
         onDrop={(event) => {
           if (showList && columnOrders.length > 0) return;
           event.preventDefault();
@@ -1555,6 +1564,7 @@ function KanbanBoard({
             onDragOver={(event) =>
               updateColumnDropTarget(event, event.currentTarget)
             }
+            onDragLeave={handleColumnDragLeave}
             onDrop={(event) => dropOnColumn(event, event.currentTarget)}
           >
             {columnOrders.map((order, index) => (
@@ -1616,7 +1626,9 @@ function KanbanBoard({
         )}
         {dock && !expanded && (
           <p className="mt-1 text-xs text-ink/45">
-            {dragOrderId ? dockDropHint : `Collapsed — ${dockDropHint.toLowerCase()}`}
+            {dockDropHighlight
+              ? dockDropHint
+              : `Collapsed — ${dockDropHint.toLowerCase()}`}
           </p>
         )}
       </section>
@@ -1671,10 +1683,8 @@ function KanbanBoard({
           onDragLeave={handleTrashDragLeave}
           onDrop={handleTrashDrop}
           className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
-            dragOrderId
-              ? trashArmed
-                ? "border-berry bg-berry/20 text-berry shadow-cozy"
-                : "border-berry/50 bg-berry/10 text-berry/90"
+            trashArmed
+              ? "border-berry bg-berry/20 text-berry shadow-cozy"
               : "border-ink/15 bg-night/30 text-ink/45"
           }`}
         >
@@ -1687,12 +1697,10 @@ function KanbanBoard({
             <p className="text-sm font-semibold">
               {trashArmed
                 ? `Release to delete #${dragOrder?.display_id ?? ""}`
-                : dragOrderId
-                  ? "Drop here to delete"
-                  : "Recycling bin"}
+                : "Recycling bin"}
             </p>
             <p className="mt-0.5 text-xs opacity-80">
-              {dragOrderId
+              {trashArmed
                 ? "You’ll confirm before anything is deleted"
                 : "Right-click or drag here — always confirms first"}
             </p>
