@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/Button";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
@@ -17,10 +18,14 @@ function fieldClassName(invalid = false) {
     : "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { updatePassword } = useAuth();
+
+  const tokenHash = searchParams.get("token_hash") || "";
+  const verifyStartedRef = useRef(false);
 
   // idle → checking the recovery link | ready | saving | done | invalid
   const [status, setStatus] = useState("idle");
@@ -35,12 +40,31 @@ export default function ResetPasswordPage() {
     }
   }, [customerAuthEnabled, router]);
 
-  // The recovery link drops a session on this page. supabase-js parses it out
-  // of the URL on load, so all we do is wait for the session to show up.
+  // Two ways in:
+  //   1. token_hash in the query string — the recovery email links here on our
+  //      own domain, and we redeem the token via the API (see /verify-email for
+  //      why the link doesn't point at the Supabase host).
+  //   2. a session already parsed out of the URL fragment by supabase-js, for
+  //      any older-style recovery link still in someone's inbox.
   useEffect(() => {
     if (!customerAuthEnabled || !supabase) return undefined;
 
     let active = true;
+
+    if (tokenHash) {
+      if (!verifyStartedRef.current) {
+        verifyStartedRef.current = true;
+        supabase.auth
+          .verifyOtp({ token_hash: tokenHash, type: "recovery" })
+          .then(({ error: verifyError }) => {
+            if (!active) return;
+            setStatus(verifyError ? "invalid" : "ready");
+          });
+      }
+      return () => {
+        active = false;
+      };
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!active) return;
@@ -58,7 +82,7 @@ export default function ResetPasswordPage() {
       active = false;
       subscription.unsubscribe();
     };
-  }, [customerAuthEnabled]);
+  }, [customerAuthEnabled, tokenHash]);
 
   if (!customerAuthEnabled) return null;
 
@@ -206,5 +230,19 @@ export default function ResetPasswordPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <LoadingSpinner />
+        </div>
+      }
+    >
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

@@ -332,58 +332,6 @@ async function signPathsThumbsOnly(
   return result;
 }
 
-/** Prefer customer image, else first image; sign thumbs for email embedding. */
-async function resolveCardThumbById(
-  supabase: ReturnType<typeof getServiceClient>,
-  cardIds: string[]
-): Promise<Record<string, string>> {
-  const unique = [...new Set(cardIds.map(String).filter(Boolean))];
-  const result: Record<string, string> = {};
-  if (unique.length === 0) return result;
-
-  const { data: images, error } = await supabase
-    .from("card_images")
-    .select("card_id, image_type, storage_path")
-    .in("card_id", unique)
-    .order("id", { ascending: true });
-  if (error) throw error;
-
-  const pathByCard = new Map<string, string>();
-  for (const image of images ?? []) {
-    const cardId = String(image.card_id);
-    if (image.image_type === "customer") {
-      pathByCard.set(cardId, image.storage_path as string);
-    }
-  }
-  for (const image of images ?? []) {
-    const cardId = String(image.card_id);
-    if (!pathByCard.has(cardId) && image.storage_path) {
-      pathByCard.set(cardId, image.storage_path as string);
-    }
-  }
-
-  const signedMap = await signPathsPreferThumb(
-    supabase,
-    [...pathByCard.values()]
-  );
-  for (const [cardId, path] of pathByCard) {
-    const url = signedMap.get(path);
-    if (url) result[cardId] = url;
-  }
-  return result;
-}
-
-function parseThumbByCardId(raw: unknown): Record<string, string> {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-    const id = String(key).trim();
-    const url = typeof value === "string" ? value.trim() : "";
-    if (id && url && /^https?:\/\//i.test(url)) out[id] = url;
-  }
-  return out;
-}
-
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
@@ -2501,24 +2449,6 @@ Deno.serve(async (req) => {
         email_error: string | null;
       }[] = [];
 
-      const clientThumbs = parseThumbByCardId(body.thumb_by_card_id);
-      const changelogCardIds = hasChangelog
-        ? (
-            (changelog as { cardGroups?: Array<{ cardId?: string }> })
-              .cardGroups ?? []
-          )
-            .map((group) =>
-              group?.cardId != null ? String(group.cardId) : ""
-            )
-            .filter(Boolean)
-        : [];
-      const missingThumbIds = changelogCardIds.filter((id) => !clientThumbs[id]);
-      const dbThumbs =
-        missingThumbIds.length > 0
-          ? await resolveCardThumbById(supabase, missingThumbIds)
-          : {};
-      const thumbByCardId = { ...dbThumbs, ...clientThumbs };
-
       for (const orderId of orderIds) {
         const orderRow = orderById.get(orderId)!;
         const email = normalizeEmail(orderRow.customer_email);
@@ -2574,7 +2504,6 @@ Deno.serve(async (req) => {
           body: messageBody,
           orderDisplayId,
           changelog: hasChangelog ? (changelog as never) : null,
-          thumbByCardId: hasChangelog ? thumbByCardId : null,
         });
 
         const emailStatus = sendResult.ok ? "sent" : "failed";

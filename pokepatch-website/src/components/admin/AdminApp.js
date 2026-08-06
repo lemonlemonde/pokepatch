@@ -4309,9 +4309,6 @@ export default function AdminApp() {
       subject: subject.trim(),
       body,
       changelog,
-      thumb_by_card_id: buildCardThumbById(
-        selectedOrderId === orderId ? draft?.cards : []
-      ),
     });
   }
 
@@ -4444,7 +4441,6 @@ export default function AdminApp() {
     setSaving(true);
     setEditorError("");
     setSavePromptOpen(false);
-    const emailThumbs = buildCardThumbById(draft.cards);
     try {
       const payload = draftPayload(draft);
       let refreshed = await adminSaveOrder(selectedOrderId, payload);
@@ -4495,7 +4491,6 @@ export default function AdminApp() {
             subject: subject.trim(),
             body,
             changelog,
-            thumb_by_card_id: emailThumbs,
           });
           if ((result.failed ?? 0) > 0) {
             const firstError = Array.isArray(result.results)
