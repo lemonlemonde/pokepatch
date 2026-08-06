@@ -1,0 +1,159 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { buildOrderChangelog } from "@/lib/orderChangelog";
+import {
+  draftPayload,
+  orderToDraft,
+  validateDraftForSave,
+} from "@/lib/adminOrderDraft";
+import { saveAdminOrderDraft } from "@/lib/adminOrderSave";
+
+const OrderEditorContext = createContext(null);
+
+/**
+ * One shared draft for the whole order editor. The provider is keyed by
+ * orderId in the shell, so switching orders remounts and re-seeds the draft;
+ * saves re-seed explicitly from the refreshed server order.
+ */
+export function OrderEditorProvider({
+  order,
+  orderId,
+  onOrderUpdated,
+  onDirtyChange,
+  children,
+}) {
+  const [draft, setDraft] = useState(() => orderToDraft(order));
+  const [savedDraft, setSavedDraft] = useState(() => orderToDraft(order));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [savePromptOpen, setSavePromptOpen] = useState(false);
+
+  const dirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(savedDraft),
+    [draft, savedDraft]
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const updateDraft = useCallback((patchOrFn) => {
+    setDraft((current) => {
+      if (typeof patchOrFn === "function") {
+        return patchOrFn(current);
+      }
+      return { ...current, ...patchOrFn };
+    });
+  }, []);
+
+  /**
+   * Apply a server-confirmed change (e.g. a photo delete that already hit the
+   * API) to both the draft and the saved baseline, preserving unsaved edits
+   * without marking the order dirty.
+   */
+  const applyServerPatch = useCallback((updater) => {
+    setDraft((current) => updater(current));
+    setSavedDraft((current) => updater(current));
+  }, []);
+
+  const discardChanges = useCallback(() => {
+    setDraft(JSON.parse(JSON.stringify(savedDraft)));
+    setError("");
+  }, [savedDraft]);
+
+  const beforePayload = useMemo(() => draftPayload(savedDraft), [savedDraft]);
+  const afterPayload = useMemo(() => draftPayload(draft), [draft]);
+
+  const performSave = useCallback(
+    async ({ notify = false, subject = "", body = "", changelog = null } = {}) => {
+      const validationError = validateDraftForSave(draft);
+      if (validationError) {
+        setError(validationError);
+        setSavePromptOpen(false);
+        return { ok: false, notifyError: null };
+      }
+
+      setSaving(true);
+      setError("");
+      setSavePromptOpen(false);
+      try {
+        const { order: refreshed, notifyError } = await saveAdminOrderDraft(
+          orderId,
+          draft,
+          { notify, subject, body, changelog }
+        );
+        onOrderUpdated(refreshed);
+        const next = orderToDraft(refreshed);
+        setDraft(next);
+        setSavedDraft(next);
+        return { ok: true, notifyError };
+      } catch (err) {
+        setError(err.message || "Save failed.");
+        return { ok: false, notifyError: null };
+      } finally {
+        setSaving(false);
+      }
+    },
+    [draft, orderId, onOrderUpdated]
+  );
+
+  const requestSave = useCallback(() => {
+    const validationError = validateDraftForSave(draft);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setError("");
+    const { hasChangelog } = buildOrderChangelog({
+      beforePayload,
+      afterPayload,
+    });
+    if (!hasChangelog) {
+      void performSave({ notify: false });
+      return;
+    }
+    setSavePromptOpen(true);
+  }, [afterPayload, beforePayload, draft, performSave]);
+
+  const value = {
+    draft,
+    updateDraft,
+    applyServerPatch,
+    dirty,
+    saving,
+    error,
+    setError,
+    discardChanges,
+    requestSave,
+    performSave,
+    savePromptOpen,
+    setSavePromptOpen,
+    beforePayload,
+    afterPayload,
+    orderId,
+    order,
+    onOrderUpdated,
+  };
+
+  return (
+    <OrderEditorContext.Provider value={value}>
+      {children}
+    </OrderEditorContext.Provider>
+  );
+}
+
+export function useOrderEditor() {
+  const context = useContext(OrderEditorContext);
+  if (!context) {
+    throw new Error("useOrderEditor must be used within OrderEditorProvider");
+  }
+  return context;
+}

@@ -4,37 +4,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SectionHeading from "@/components/SectionHeading";
-import { AdminOrderCardPhotoGroups } from "@/components/CardPhotoPreviews";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import {
   adminDeleteOrders,
-  adminDeletePhoto,
   adminGetOrder,
   adminListOrders,
   adminLoginWithSession,
   adminLogout,
   adminReorderStatusOrders,
-  adminSaveOrder,
   adminSearchOrders,
   adminSendMessages,
   adminSetPendingKind,
   adminSetStatus,
-  adminUploadPhoto,
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
-import { compressImageForUpload, makeThumbForUpload, thumbPath } from "@/lib/imageCompression";
+import { thumbPath } from "@/lib/imageCompression";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
-import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
-import { buildOrderChangelog, buildCardThumbById } from "@/lib/orderChangelog";
+import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
+import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import RestorationGuide from "@/components/admin/RestorationGuide";
-import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   useUnsavedChangesGuard,
 } from "@/lib/useUnsavedChangesGuard";
@@ -45,12 +40,10 @@ import {
   CANCELED_ORDER_STATUS,
   CARD_STATUSES,
   PENDING_KINDS,
-  EDITOR_STATUS_OPTIONS,
   groupOrdersByStatus,
   normalizeOrderStatus,
   normalizeCardStatus,
   normalizePendingKind,
-  DEFAULT_CARD_STATUS,
   DEFAULT_PENDING_KIND,
   orderStatusHeadingClass,
   orderStatusLabel,
@@ -61,224 +54,10 @@ import {
   isPendingOrderStatus,
   filterClosedColumnOrders,
   isPriorityElevated,
-  editorStatusValue,
-  parseEditorStatusValue,
   pendingKindShortLabel,
   pendingKindBadgeClass,
-  CARD_CHECKLIST_GROUPS,
-  normalizeCardChecklist,
 } from "@/lib/orderStatus";
-import {
-  QUOTE_SERVICES,
-  SERVICE_KEYS,
-  ADJUSTMENT_KIND_OPTIONS,
-  bulkDiscountPercentForCardCount,
-  BULK_TIER_RANGES_LABEL,
-  cardsWithQuoteHv,
-  defaultBaseAmount,
-  defaultServiceLabel,
-  emptyQuoteAdjustment,
-  formatMoney,
-  hvPercentFromMarketValue,
-  hvSurchargeFromMarketValue,
-  HV_TIER_RANGES_LABEL,
-  orderQuoteTotalFromStored,
-  packQuoteAdjustments,
-  parseMoneyInput,
-  quoteCardHvAmount,
-  serviceSelectLabel,
-  unpackQuoteAdjustments,
-} from "@/lib/servicePricing";
-
-const MAX_ADMIN_PHOTOS_PER_CARD = 20;
-
-function newClientId() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function emptyAdminCard() {
-  return {
-    id: newClientId(),
-    card_name: "",
-    set_name: "",
-    description: "",
-    admin_note: "",
-    market_value_raw_nm: "",
-    status: DEFAULT_CARD_STATUS,
-    checklist: normalizeCardChecklist(null),
-    images: [],
-    pending_files: [],
-  };
-}
-
-function validateDriveUrl(driveUrl) {
-  const trimmed = (driveUrl ?? "").trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return "Google Drive link must be an http(s) URL.";
-    }
-  } catch {
-    return "Google Drive link must be a valid URL.";
-  }
-  return null;
-}
-
-function draftHasPendingPhotos(draft) {
-  return (draft?.cards ?? []).some(
-    (card) => (card.pending_files ?? []).length > 0
-  );
-}
-
-function copyFileList(fileList) {
-  if (!fileList) return [];
-  const copied = [];
-  for (let i = 0; i < fileList.length; i += 1) {
-    copied.push(fileList[i]);
-  }
-  return copied;
-}
-
-function findMatchingOrderCardId(item, cards) {
-  const name = (item?.card_name || "").trim().toLowerCase();
-  const set = (item?.set_name || "").trim().toLowerCase();
-  if (!name) return null;
-  const match = (cards ?? []).find(
-    (card) =>
-      (card.card_name || "").trim().toLowerCase() === name &&
-      (card.set_name || "").trim().toLowerCase() === set
-  );
-  return match?.id != null ? String(match.id) : null;
-}
-
-function emptyQuoteItem(card = null) {
-  return {
-    id: newClientId(),
-    card_pick: card?.id != null ? String(card.id) : "",
-    card_name: card?.card_name ?? "",
-    set_name: card?.set_name ?? "",
-    service_key: "",
-    service_label: "",
-    quote_base_amount: "",
-  };
-}
-
-function quoteItemHasService(item) {
-  return Boolean(item?.service_key);
-}
-
-/** True when a quote line is complete enough to collapse / count as priced. */
-function quoteItemIsReady(item) {
-  if (!quoteItemHasService(item)) return false;
-  if (item.service_key === SERVICE_KEYS.CUSTOM) {
-    return Boolean((item.service_label ?? "").trim());
-  }
-  return true;
-}
-
-/** True when a quote line has a service name and a filled dollar value. */
-function quoteItemHasNameAndValue(item) {
-  if (!quoteItemIsReady(item)) return false;
-  return moneyFieldToPayload(item.quote_base_amount) != null;
-}
-
-/**
- * True when the card has at least one named+valued service and no in-progress
- * (partially filled) service lines — used for default-collapsed + auto-collapse.
- */
-function adminCardHasReadyService(indices, quoteItems) {
-  if (!indices?.length) return false;
-  let hasReady = false;
-  for (const index of indices) {
-    const item = quoteItems[index];
-    if (!item) continue;
-    const started =
-      quoteItemHasService(item) || Boolean((item.service_label ?? "").trim());
-    if (!started) continue;
-    if (!quoteItemHasNameAndValue(item)) return false;
-    hasReady = true;
-  }
-  return hasReady;
-}
-
-function quoteItemCardRef(item, cards = [], index = 0) {
-  const linked =
-    item?.card_pick && item.card_pick !== "custom"
-      ? (cards ?? []).find(
-          (card) => String(card.id) === String(item.card_pick)
-        )
-      : null;
-  const name = (linked?.card_name ?? item?.card_name ?? "").trim();
-  const set = (linked?.set_name ?? item?.set_name ?? "").trim();
-  if (name) return set ? `${name} (${set})` : name;
-  return `quote line ${index + 1}`;
-}
-
-function quoteItemBelongsToCard(item, card, cards = null) {
-  if (!card) return false;
-  const cardId = String(card.id);
-  if (item?.card_pick && item.card_pick !== "custom") {
-    return String(item.card_pick) === cardId;
-  }
-  return findMatchingOrderCardId(item, cards ?? [card]) === cardId;
-}
-
-/** Ensure every order card has at least one (possibly empty) quote line. */
-function ensureQuoteItemsForCards(cards, quoteItems) {
-  const items = [...(quoteItems ?? [])];
-  for (const card of cards ?? []) {
-    const hasLine = items.some((item) =>
-      quoteItemBelongsToCard(item, card, cards)
-    );
-    if (!hasLine) {
-      items.push(emptyQuoteItem(card));
-    }
-  }
-  return items;
-}
-
-function moneyFieldToPayload(value) {
-  const parsed = parseMoneyInput(value);
-  return parsed;
-}
-
-/** One card HV entry from market value (tier %); null when under threshold / empty. */
-function cardHvEntryFromMarket(marketValue) {
-  const amount = hvSurchargeFromMarketValue(marketValue);
-  if (amount == null) return null;
-  return {
-    percent: String(hvPercentFromMarketValue(marketValue)),
-    amount_dollars: String(amount),
-  };
-}
-
-/** Build card HV map from market values only (tier %). */
-function quoteCardHvFromMarkets(cards) {
-  const out = {};
-  for (const card of cards ?? []) {
-    if (card?.id == null) continue;
-    const entry = cardHvEntryFromMarket(
-      moneyFieldToPayload(card.market_value_raw_nm)
-    );
-    if (entry) out[String(card.id)] = entry;
-  }
-  return out;
-}
-
-function applyCardHvFromMarket(quoteCardHv, cardId, marketValue) {
-  const next = { ...(quoteCardHv ?? {}) };
-  const hv = cardHvEntryFromMarket(marketValue);
-  if (hv) {
-    next[cardId] = hv;
-  } else {
-    delete next[cardId];
-  }
-  return next;
-}
+import { formatMoney, orderQuoteTotalFromStored } from "@/lib/servicePricing";
 
 const ADMIN_TABS = [
   {
@@ -331,19 +110,12 @@ const ORDERS_EDIT_META = {
 function tabFromPathname(pathname) {
   const path = pathname?.replace(/\/$/, "") ?? "";
   if (path.endsWith("/admin/orders/all")) return "orders-all";
-  // Queue page removed — kanban owns ordering.
   if (path.startsWith("/admin/queue")) return "orders";
   const match = ADMIN_TABS.find((entry) =>
-    path.startsWith(entry.path.replace(/\/$/, "")),
+    path.startsWith(entry.path.replace(/\/$/, ""))
   );
   return match?.id ?? "orders";
 }
-
-const CONTACT_TYPES = [
-  { value: "phone", label: "Phone" },
-  { value: "discord", label: "Discord" },
-  { value: "instagram", label: "Instagram" },
-];
 
 function formatDate(value) {
   if (!value) return "";
@@ -366,202 +138,6 @@ function deliveryShortLabel(value) {
   if (value === "local_dropoff") return "Local";
   if (value === "shipping") return "Ship";
   return deliveryLabel(value);
-}
-
-function orderToDraft(order) {
-  const orderCards = order.cards ?? [];
-  const quoteItems = (order.quote_items ?? []).map((item) => {
-    const card_name = item.card_name ?? "";
-    const set_name = item.set_name ?? "";
-    const matchedId = findMatchingOrderCardId(
-      { card_name, set_name },
-      orderCards
-    );
-    return {
-      id: item.id ?? newClientId(),
-      card_pick: matchedId ?? "",
-      card_name,
-      set_name,
-      service_key: item.service_key ?? SERVICE_KEYS.CUSTOM,
-      service_label: item.service_label ?? "",
-      quote_base_amount:
-        item.quote_base_amount != null ? String(item.quote_base_amount) : "",
-    };
-  });
-  const ensuredQuoteItems = ensureQuoteItemsForCards(orderCards, quoteItems);
-  const quote_adjustments = unpackQuoteAdjustments(order.quote_bulk_counts, {
-    overrideLabel: order.quote_override_label ?? "",
-    overrideAmount: order.quote_override_amount,
-  });
-  const cards = orderCards.map((card) => ({
-    id: card.id,
-    card_name: card.card_name ?? "",
-    set_name: card.set_name ?? "",
-    description: card.description ?? "",
-    admin_note: card.admin_note ?? "",
-    market_value_raw_nm:
-      card.market_value_raw_nm != null
-        ? String(card.market_value_raw_nm)
-        : "",
-    status: normalizeCardStatus(card.status),
-    checklist: normalizeCardChecklist(card.checklist),
-    images: card.images ?? [],
-    pending_files: [],
-  }));
-  const quote_card_hv = quoteCardHvFromMarkets(cards);
-
-  const firstName = (order.first_name ?? "").trim();
-  const lastName = (order.last_name ?? "").trim();
-  const customerName = (order.customer_name ?? "").trim();
-  // Pre-split orders only have customer_name — show it as first name.
-  const displayFirstName =
-    firstName || (!lastName && customerName ? customerName : "");
-
-  return {
-    first_name: displayFirstName,
-    last_name: lastName,
-    customer_name: customerName,
-    customer_email: order.customer_email ?? "",
-    has_account: Boolean(order.has_account),
-    delivery_method: order.delivery_method ?? "local_dropoff",
-    general_notes: order.general_notes ?? "",
-    heard_about_source: order.heard_about_source ?? "",
-    photos_drive_url: order.photos_drive_url ?? "",
-    status: normalizeOrderStatus(order.status),
-    pending_kind: isPendingOrderStatus(order.status)
-      ? normalizePendingKind(order.pending_kind)
-      : null,
-    contacts: (order.contacts ?? []).map((contact) => ({
-      id: contact.id,
-      contact_type: contact.contact_type,
-      value: contact.value ?? "",
-    })),
-    cards,
-    quote_items: ensuredQuoteItems,
-    quote_adjustments,
-    quote_card_hv,
-  };
-}
-
-function draftPayload(draft) {
-  const status = normalizeOrderStatus(draft.status);
-  return {
-    order: {
-      delivery_method: draft.delivery_method,
-      general_notes: draft.general_notes.trim(),
-      photos_drive_url: draft.photos_drive_url.trim(),
-      status,
-      ...(status === "pending"
-        ? { pending_kind: normalizePendingKind(draft.pending_kind) }
-        : { pending_kind: null }),
-      quote_bulk_counts: packQuoteAdjustments(
-        draft.quote_adjustments,
-        draft.quote_card_hv
-      ),
-      // Adjustments replace the old single override fields.
-      quote_override_label: "",
-      quote_override_amount: null,
-    },
-    contacts: draft.contacts
-      .filter((contact) => contact.value.trim() !== "")
-      .map((contact) => ({
-        ...(contact.id != null ? { id: contact.id } : {}),
-        contact_type: contact.contact_type,
-        value: contact.value.trim(),
-      })),
-    cards: draft.cards.map((card) => ({
-      id: card.id,
-      card_name: card.card_name.trim(),
-      set_name: card.set_name.trim(),
-      description: card.description.trim(),
-      admin_note: card.admin_note.trim(),
-      market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
-      status: normalizeCardStatus(card.status),
-      checklist: normalizeCardChecklist(card.checklist),
-    })),
-    quote_items: (draft.quote_items ?? [])
-      .filter((item) => quoteItemHasService(item))
-      .map((item, index) => {
-        const linked =
-          item.card_pick && item.card_pick !== "custom"
-            ? draft.cards.find(
-                (card) => String(card.id) === String(item.card_pick)
-              )
-            : null;
-        const card_name = (linked?.card_name ?? item.card_name).trim();
-        const set_name = (linked?.set_name ?? item.set_name).trim();
-        return {
-          id: item.id,
-          sort_order: index,
-          card_name,
-          set_name,
-          service_key: item.service_key,
-          service_label: item.service_label.trim(),
-          quote_base_amount: moneyFieldToPayload(item.quote_base_amount),
-          // HV is derived from card market value; never store per-service.
-          high_value_surcharge: null,
-        };
-      }),
-  };
-}
-
-function validateDraftForSave(draft) {
-  const driveError = validateDriveUrl(draft.photos_drive_url);
-  if (driveError) {
-    return driveError;
-  }
-  for (const contact of draft.contacts) {
-    if (!contact.value.trim()) {
-      return "Fill in every contact or remove empty rows before saving.";
-    }
-  }
-  for (let index = 0; index < draft.cards.length; index += 1) {
-    const card = draft.cards[index];
-    if (!card.card_name.trim()) {
-      return `Card ${index + 1} needs a name.`;
-    }
-    if (
-      (card.market_value_raw_nm ?? "").trim() !== "" &&
-      moneyFieldToPayload(card.market_value_raw_nm) == null
-    ) {
-      return `Card ${index + 1} has an invalid market value.`;
-    }
-  }
-  for (let index = 0; index < (draft.quote_items ?? []).length; index += 1) {
-    const item = draft.quote_items[index];
-    if (!quoteItemHasService(item)) continue;
-    const linked =
-      item.card_pick && item.card_pick !== "custom"
-        ? draft.cards.find(
-            (card) => String(card.id) === String(item.card_pick)
-          )
-        : null;
-    const cardName = (linked?.card_name ?? item.card_name ?? "").trim();
-    const cardRef = quoteItemCardRef(item, draft.cards, index);
-    if (!cardName) {
-      return `Quote for ${cardRef} needs a card name.`;
-    }
-    if (!item.service_label.trim()) {
-      return `Quote for ${cardRef} needs a service name.`;
-    }
-    if (moneyFieldToPayload(item.quote_base_amount) == null) {
-      return `Quote for ${cardRef} needs a valid base amount.`;
-    }
-  }
-  for (let index = 0; index < (draft.quote_adjustments ?? []).length; index += 1) {
-    const row = draft.quote_adjustments[index];
-    const hasDescription = Boolean((row.description ?? "").trim());
-    const dollars = moneyFieldToPayload(row.amount_dollars);
-    const hasAmount = dollars != null && dollars !== 0;
-    if (!hasDescription && !hasAmount) continue;
-    if (!hasAmount) {
-      return `Adjustment ${index + 1} needs a $ amount.`;
-    }
-    if (dollars < 0) {
-      return `Adjustment ${index + 1}: use Discount type instead of a negative $.`;
-    }
-  }
-  return null;
 }
 
 function LoadingIndicator({ label = "Loading…", compact = false, className = "" }) {
@@ -2150,1690 +1726,6 @@ function KanbanBoard({
   );
 }
 
-function editorFieldClass() {
-  return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
-}
-
-function EditorSection({ title, titleExtra, action, children, className = "", id }) {
-  return (
-    <section
-      id={id}
-      className={`rounded-2xl border bg-cream/80 p-5 shadow-cozy-sm sm:p-6 ${
-        className || "border-ink/10"
-      }`}
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h3 className="text-base font-semibold text-ink">{title}</h3>
-          {titleExtra ?? null}
-        </div>
-        {action ?? null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** Collapsible order-card shell with a numbered header for clearer card boundaries. */
-function CollapsibleOrderCard({
-  id,
-  dataCardId,
-  title,
-  titleExtra,
-  action,
-  thumbUrl = null,
-  thumbStoragePath = null,
-  collapsedSummary = null,
-  expanded,
-  onToggle,
-  className = "",
-  children,
-}) {
-  return (
-    <section
-      id={id}
-      data-admin-card-id={dataCardId}
-      className={`overflow-hidden rounded-2xl border-2 border-l-[6px] bg-cream shadow-cozy-sm ${
-        className || "border-ink/15 border-l-ink/30"
-      }`}
-    >
-      <div
-        className={`flex flex-wrap items-start gap-2 border-b px-3 py-3 sm:gap-3 sm:px-4 ${
-          expanded ? "border-sky/25 bg-sky/15" : "border-ink/10 bg-sky/10"
-        }`}
-      >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
-        >
-          {!expanded && thumbUrl ? (
-            <div className="relative mt-0.5 aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md border border-ink/15 bg-night/50">
-              <KanbanThumbImg
-                url={thumbUrl}
-                storagePath={thumbStoragePath}
-                className="h-full w-full object-cover"
-              />
-            </div>
-          ) : null}
-          <div className="min-w-0 flex-1">
-            <h3 className="min-w-0 text-base leading-snug">{title}</h3>
-            {!expanded && collapsedSummary ? (
-              <div className="mt-1">{collapsedSummary}</div>
-            ) : null}
-          </div>
-          <ChevronDownIcon
-            className={`mt-1.5 h-4 w-4 shrink-0 text-ink/40 transition-transform ${
-              expanded ? "rotate-180" : ""
-            }`}
-          />
-        </button>
-        {titleExtra || action ? (
-          <div className="flex w-full flex-wrap items-center justify-end gap-3 sm:w-auto">
-            {titleExtra ?? null}
-            {action ?? null}
-          </div>
-        ) : null}
-      </div>
-      {expanded ? (
-        <div className="space-y-4 p-4 sm:p-5">{children}</div>
-      ) : null}
-    </section>
-  );
-}
-
-/** Native checkbox, brand-colored via accent-color — simple, reliable, easy to hit. */
-function ChecklistCheckbox({ checked, onChange, label }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-xs text-ink/70 select-none hover:bg-ink/5 hover:text-ink">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint/50"
-      />
-      {label}
-    </label>
-  );
-}
-
-/**
- * One checklist group as a small "done/total" chip (sits under its matching
- * status chip). Click opens a popover with the actual toggles — keeps the
- * card header compact while the checkboxes stay a comfortable size to hit.
- */
-function ChecklistGroupChip({ group, checklist, onChange }) {
-  const normalized = normalizeCardChecklist(checklist);
-  const done = group.items.filter((item) => normalized[item.id]).length;
-  const total = group.items.length;
-  const complete = total > 0 && done === total;
-
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const buttonRef = useRef(null);
-  const popoverRef = useRef(null);
-
-  function openPopover() {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (rect) {
-      setPos({ top: rect.bottom + 6, left: rect.left + rect.width / 2 });
-    }
-    setOpen(true);
-  }
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onDocMouseDown(event) {
-      if (
-        buttonRef.current?.contains(event.target) ||
-        popoverRef.current?.contains(event.target)
-      ) {
-        return;
-      }
-      setOpen(false);
-    }
-    function onKeyDown(event) {
-      if (event.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocMouseDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onDocMouseDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        onClick={() => (open ? setOpen(false) : openPopover())}
-        aria-expanded={open}
-        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums transition ${
-          complete
-            ? "bg-mint/20 text-mint"
-            : "bg-ink/5 text-ink/50 hover:bg-ink/10 hover:text-ink/70"
-        }`}
-      >
-        {done}/{total} {group.label}
-      </button>
-      {open && pos && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              ref={popoverRef}
-              className="fixed z-[200] w-40 -translate-x-1/2 rounded-xl border-2 border-ink/15 bg-cream p-2.5 shadow-cozy"
-              style={{ top: pos.top, left: pos.left }}
-            >
-              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink/40">
-                {group.label}
-              </span>
-              <div className="space-y-0.5">
-                {group.items.map((item) => (
-                  <ChecklistCheckbox
-                    key={item.id}
-                    checked={normalized[item.id]}
-                    label={item.label}
-                    onChange={(value) =>
-                      onChange({ ...normalized, [item.id]: value })
-                    }
-                  />
-                ))}
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
-    </>
-  );
-}
-
-function EditorSubsection({ title, description, action, children }) {
-  return (
-    <div className="rounded-xl border border-ink/10 bg-night/[0.03] px-3.5 py-3.5 sm:px-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h4 className="text-sm font-semibold text-ink">{title}</h4>
-          {description ? (
-            <p className="mt-0.5 text-xs text-ink/50">{description}</p>
-          ) : null}
-        </div>
-        {action ?? null}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function EditorLabel({ children }) {
-  return (
-    <span className="mb-1.5 block text-sm font-medium text-ink/65">
-      {children}
-    </span>
-  );
-}
-
-/** Mint styling for admin-authored notes shown to customers as "from PokePatch". */
-function adminNoteFieldClass() {
-  return "w-full rounded-xl border border-mint/40 bg-night/25 px-3.5 py-2.5 text-sm text-ink outline-none transition placeholder:text-ink/40 focus:border-mint focus:bg-night/35 focus:ring-2 focus:ring-mint/30";
-}
-
-function AdminNoteField({
-  label,
-  hint,
-  value,
-  onChange,
-  onFocus,
-  placeholder,
-  minHeightClass = "min-h-[72px]",
-}) {
-  return (
-    <div className="rounded-xl border border-mint/30 bg-mint/[0.08] p-3 sm:p-3.5">
-      <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-mint">
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-mint"
-            aria-hidden="true"
-          />
-          {label}
-        </span>
-        {hint ? (
-          <span className="text-xs font-normal normal-case tracking-normal text-ink/45">
-            {hint}
-          </span>
-        ) : null}
-      </div>
-      <textarea
-        className={`${adminNoteFieldClass()} ${minHeightClass}`}
-        value={value}
-        onChange={onChange}
-        onFocus={onFocus}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
-
-function OrderEditor({
-  displayId,
-  orderId,
-  draft,
-  dirty,
-  saving,
-  error,
-  onBack,
-  backLabel = "Back",
-  onChange,
-  onCancel,
-  onSave,
-  onSendMessage,
-  onError,
-  focusCardId = null,
-}) {
-  const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
-  const [expandedCardId, setExpandedCardId] = useState(null);
-  const [collapsedCardIds, setCollapsedCardIds] = useState(() => new Set());
-  const [removingPhotoId, setRemovingPhotoId] = useState(null);
-  const [highlightedCardId, setHighlightedCardId] = useState(null);
-  const scrollToCardIdRef = useRef(null);
-  const scrolledFocusKeyRef = useRef("");
-
-  function updateDraft(patch) {
-    // Functional update so quote-sync / rapid edits can't clobber a just-added card.
-    onChange((current) => ({ ...(current ?? draft), ...patch }));
-  }
-
-  function expandCard(cardId) {
-    if (cardId == null) return;
-    const id = String(cardId);
-    setExpandedCardId(id);
-    setCollapsedCardIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }
-
-  function collapseCard(cardId) {
-    if (cardId == null) return;
-    const id = String(cardId);
-    setExpandedCardId((prev) => (String(prev) === id ? null : prev));
-    setCollapsedCardIds((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }
-
-  const cardIdsKey = (draft.cards ?? []).map((card) => card.id).join("|");
-
-  useEffect(() => {
-    if (!focusCardId) {
-      setHighlightedCardId(null);
-      return;
-    }
-    const id = String(focusCardId);
-    setHighlightedCardId(id);
-    setExpandedCardId(id);
-    setCollapsedCardIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }, [focusCardId, orderId]);
-
-  useEffect(() => {
-    if (!highlightedCardId) return;
-    const focusKey = `${orderId}:${highlightedCardId}:${cardIdsKey}`;
-    if (scrolledFocusKeyRef.current === focusKey) return;
-    if (
-      !(draft.cards ?? []).some(
-        (card) => String(card.id) === String(highlightedCardId)
-      )
-    ) {
-      return;
-    }
-    scrolledFocusKeyRef.current = focusKey;
-    // Wait a frame so the card section is laid out before scrolling.
-    const frame = window.requestAnimationFrame(() => {
-      document
-        .getElementById(`admin-order-card-${highlightedCardId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [highlightedCardId, cardIdsKey, draft.cards, orderId]);
-
-  useEffect(() => {
-    if (!highlightedCardId) return undefined;
-    function clearHighlight() {
-      setHighlightedCardId(null);
-    }
-    // Skip the opening click that navigated into the editor.
-    const timer = window.setTimeout(() => {
-      document.addEventListener("pointerdown", clearHighlight, true);
-    }, 0);
-    return () => {
-      window.clearTimeout(timer);
-      document.removeEventListener("pointerdown", clearHighlight, true);
-    };
-  }, [highlightedCardId]);
-
-  useEffect(() => {
-    onChange((current) => {
-      if (!current) return current;
-      const nextItems = ensureQuoteItemsForCards(
-        current.cards,
-        current.quote_items
-      );
-      const missing = (current.cards ?? []).some(
-        (card) =>
-          !(current.quote_items ?? []).some((item) =>
-            quoteItemBelongsToCard(item, card, current.cards)
-          )
-      );
-      if (!missing) return current;
-      return { ...current, quote_items: nextItems };
-    });
-    // Only re-run when the set of order cards changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardIdsKey]);
-
-  useEffect(() => {
-    if (!expandedQuoteLineId) return;
-    function onPointerDown(event) {
-      const root = document.querySelector(
-        `[data-quote-line-id="${CSS.escape(String(expandedQuoteLineId))}"]`
-      );
-      if (root && root.contains(event.target)) return;
-
-      const item = (draft.quote_items ?? []).find(
-        (entry) => String(entry.id) === String(expandedQuoteLineId)
-      );
-      if (item && quoteItemIsReady(item)) {
-        setExpandedQuoteLineId(null);
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [expandedQuoteLineId, draft.quote_items]);
-
-  useEffect(() => {
-    if (!expandedCardId) return;
-    function onPointerDown(event) {
-      const root = document.querySelector(
-        `[data-admin-card-id="${CSS.escape(String(expandedCardId))}"]`
-      );
-      if (root && root.contains(event.target)) return;
-
-      const card = (draft.cards ?? []).find(
-        (entry) => String(entry.id) === String(expandedCardId)
-      );
-      if (!card) {
-        setExpandedCardId(null);
-        return;
-      }
-      const indices = (draft.quote_items ?? [])
-        .map((item, index) =>
-          quoteItemBelongsToCard(item, card, draft.cards) ? index : -1
-        )
-        .filter((index) => index >= 0);
-      // Only auto-collapse when the card has a named+valued service.
-      if (adminCardHasReadyService(indices, draft.quote_items ?? [])) {
-        collapseCard(card.id);
-      }
-    }
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [expandedCardId, draft.cards, draft.quote_items]);
-
-  function updateContact(index, patch) {
-    const contacts = draft.contacts.map((contact, i) =>
-      i === index ? { ...contact, ...patch } : contact
-    );
-    updateDraft({ contacts });
-  }
-
-  function addContact() {
-    updateDraft({
-      contacts: [...draft.contacts, { contact_type: "phone", value: "" }],
-    });
-  }
-
-  function removeContact(index) {
-    updateDraft({
-      contacts: draft.contacts.filter((_, i) => i !== index),
-    });
-  }
-
-  function addCard() {
-    const card = emptyAdminCard();
-    setHighlightedCardId(String(card.id));
-    setExpandedCardId(String(card.id));
-    onChange((current) => {
-      const base = current ?? draft;
-      return {
-        ...base,
-        cards: [...(base.cards ?? []), card],
-      };
-    });
-  }
-
-  function removeCard(cardIndex) {
-    const removed = draft.cards[cardIndex];
-    if (!removed) return;
-    const cardId = String(removed.id);
-    const cards = draft.cards.filter((_, i) => i !== cardIndex);
-    const quote_items = (draft.quote_items ?? []).filter(
-      (item) => !quoteItemBelongsToCard(item, removed, draft.cards)
-    );
-    const quote_card_hv = { ...(draft.quote_card_hv ?? {}) };
-    delete quote_card_hv[cardId];
-    updateDraft({ cards, quote_items, quote_card_hv });
-  }
-
-  function addCardPendingFiles(cardIndex, fileList) {
-    const card = draft.cards[cardIndex];
-    if (!card) return;
-    const incoming = copyFileList(fileList).filter((file) =>
-      file.type?.startsWith("image/")
-    );
-    if (incoming.length === 0) return;
-
-    const nextPending = [
-      ...(card.pending_files ?? []),
-      ...incoming.map((file) => ({ id: newClientId(), file })),
-    ].slice(0, MAX_ADMIN_PHOTOS_PER_CARD);
-
-    updateCard(cardIndex, {
-      pending_files: nextPending,
-    });
-  }
-
-  function removeCardPendingFile(cardIndex, fileId) {
-    const card = draft.cards[cardIndex];
-    if (!card) return;
-    updateCard(cardIndex, {
-      pending_files: (card.pending_files ?? []).filter(
-        (entry) => entry.id !== fileId
-      ),
-    });
-  }
-
-  async function removeAdminPhoto(cardIndex, imageId) {
-    if (!orderId || removingPhotoId != null) return;
-    setRemovingPhotoId(imageId);
-    onError?.("");
-    try {
-      await adminDeletePhoto(orderId, imageId);
-      onChange((current) => {
-        const base = current ?? draft;
-        return {
-          ...base,
-          cards: (base.cards ?? []).map((card, index) =>
-            index === cardIndex
-              ? {
-                  ...card,
-                  images: (card.images ?? []).filter(
-                    (image) => String(image.id) !== String(imageId)
-                  ),
-                }
-              : card
-          ),
-        };
-      });
-    } catch (err) {
-      onError?.(err.message || "Could not remove photo.");
-    } finally {
-      setRemovingPhotoId(null);
-    }
-  }
-
-  function updateCard(index, patch) {
-    const cards = draft.cards.map((card, i) =>
-      i === index ? { ...card, ...patch } : card
-    );
-    const updated = cards[index];
-    const statusOnly =
-      Object.keys(patch).length === 1 && "status" in patch;
-    if (updated?.id != null && !statusOnly) expandCard(updated.id);
-    const touchesName = "card_name" in patch || "set_name" in patch;
-    const touchesMarket = "market_value_raw_nm" in patch;
-    let quote_items = draft.quote_items ?? [];
-    let quote_card_hv = draft.quote_card_hv ?? {};
-
-    if (touchesName && updated?.id != null) {
-      const cardId = String(updated.id);
-      quote_items = quote_items.map((item) =>
-        item.card_pick && String(item.card_pick) === cardId
-          ? {
-              ...item,
-              card_name: updated.card_name ?? "",
-              set_name: updated.set_name ?? "",
-            }
-          : item
-      );
-    }
-
-    if (touchesMarket && updated?.id != null) {
-      const cardId = String(updated.id);
-      const marketValue = moneyFieldToPayload(patch.market_value_raw_nm);
-      quote_card_hv = applyCardHvFromMarket(
-        quote_card_hv,
-        cardId,
-        marketValue
-      );
-    }
-
-    if (touchesName || touchesMarket) {
-      updateDraft({ cards, quote_items, quote_card_hv });
-      return;
-    }
-    updateDraft({ cards });
-  }
-
-  function setCardHvMarket(cardIndex, value) {
-    const card = draft.cards[cardIndex];
-    if (!card?.id) return;
-    const cardId = String(card.id);
-    expandCard(cardId);
-    const marketValue = moneyFieldToPayload(value);
-    const cards = draft.cards.map((entry, i) =>
-      i === cardIndex ? { ...entry, market_value_raw_nm: value } : entry
-    );
-    updateDraft({
-      cards,
-      quote_card_hv: applyCardHvFromMarket(
-        draft.quote_card_hv,
-        cardId,
-        marketValue
-      ),
-    });
-  }
-
-  function updateQuoteItem(index, patch) {
-    const quote_items = (draft.quote_items ?? []).map((item, i) =>
-      i === index ? { ...item, ...patch } : item
-    );
-    const item = quote_items[index];
-    const card =
-      item &&
-      (draft.cards ?? []).find((entry) =>
-        quoteItemBelongsToCard(item, entry, draft.cards)
-      );
-    if (card?.id != null) expandCard(card.id);
-    updateDraft({ quote_items });
-  }
-
-  function addQuoteItem(card = null) {
-    const next = emptyQuoteItem(card);
-    const quote_items = [...(draft.quote_items ?? []), next];
-    setExpandedQuoteLineId(next.id);
-    if (card?.id != null) expandCard(card.id);
-    updateDraft({ quote_items });
-  }
-
-  function removeQuoteItem(index) {
-    const removed = draft.quote_items?.[index];
-    let quote_items = (draft.quote_items ?? []).filter((_, i) => i !== index);
-    const card =
-      removed &&
-      (draft.cards ?? []).find((entry) =>
-        quoteItemBelongsToCard(removed, entry, draft.cards)
-      );
-    if (card) {
-      const stillHasLine = quote_items.some((item) =>
-        quoteItemBelongsToCard(item, card, draft.cards)
-      );
-      if (!stillHasLine) {
-        quote_items = [...quote_items, emptyQuoteItem(card)];
-      }
-    }
-    updateDraft({ quote_items });
-  }
-
-  function applyServiceToQuoteItem(index, serviceKey) {
-    const currentItem = draft.quote_items?.[index];
-    const card =
-      currentItem &&
-      (draft.cards ?? []).find((entry) =>
-        quoteItemBelongsToCard(currentItem, entry, draft.cards)
-      );
-    if (card?.id != null) expandCard(card.id);
-
-    if (!serviceKey) {
-      const quote_items = (draft.quote_items ?? []).map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              service_key: "",
-              service_label: "",
-              quote_base_amount: "",
-            }
-          : item
-      );
-      updateDraft({ quote_items });
-      return;
-    }
-    const base = defaultBaseAmount(serviceKey);
-    const label = defaultServiceLabel(serviceKey);
-    const quote_items = (draft.quote_items ?? []).map((item, i) =>
-      i === index
-        ? {
-            ...item,
-            service_key: serviceKey,
-            service_label:
-              serviceKey === SERVICE_KEYS.CUSTOM ? "" : label,
-            quote_base_amount: base != null ? String(base) : "",
-          }
-        : item
-    );
-    updateDraft({ quote_items });
-  }
-
-  function addQuoteAdjustment() {
-    updateDraft({
-      quote_adjustments: [
-        ...(draft.quote_adjustments ?? []),
-        emptyQuoteAdjustment("discount"),
-      ],
-    });
-  }
-
-  function updateQuoteAdjustment(index, patch) {
-    const quote_adjustments = (draft.quote_adjustments ?? []).map(
-      (row, i) => (i === index ? { ...row, ...patch } : row)
-    );
-    updateDraft({ quote_adjustments });
-  }
-
-  function setAdjustmentDollars(index, value) {
-    updateQuoteAdjustment(index, {
-      amount_dollars: value,
-      amount_percent: "",
-    });
-  }
-
-  function removeQuoteAdjustment(index) {
-    updateDraft({
-      quote_adjustments: (draft.quote_adjustments ?? []).filter(
-        (_, i) => i !== index
-      ),
-    });
-  }
-
-  const quoteItems = draft.quote_items ?? [];
-  const receiptItems = quoteItems.filter(quoteItemIsReady).map((item) => ({
-    id: item.id,
-    card_name: item.card_name,
-    set_name: item.set_name,
-    service_label: item.service_label,
-    quote_base_amount: moneyFieldToPayload(item.quote_base_amount) ?? 0,
-  }));
-  const receiptCards = cardsWithQuoteHv(
-    (draft.cards ?? []).map((card) => ({
-      id: card.id,
-      card_name: card.card_name,
-      set_name: card.set_name,
-      market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
-    })),
-    draft.quote_card_hv ?? {}
-  );
-  const receiptAdjustments = draft.quote_adjustments ?? [];
-  // Informational only — bulk discounts are still added as an adjustment row.
-  const bulkDiscountPercent = bulkDiscountPercentForCardCount(
-    (draft.cards ?? []).length
-  );
-  const quoteLinesByCard = useMemo(() => {
-    const cards = draft.cards ?? [];
-    const indicesByCardId = new Map(
-      cards.map((card) => [String(card.id), []])
-    );
-    const orphans = [];
-    quoteItems.forEach((item, index) => {
-      const pickId =
-        item.card_pick && item.card_pick !== "custom"
-          ? String(item.card_pick)
-          : findMatchingOrderCardId(item, cards);
-      const indices = pickId ? indicesByCardId.get(pickId) : null;
-      if (indices) {
-        indices.push(index);
-        return;
-      }
-      orphans.push(index);
-    });
-    return { indicesByCardId, orphans };
-  }, [draft.cards, quoteItems]);
-
-  const driveUrl = draft.photos_drive_url.trim();
-
-  function renderQuoteHvLine(card) {
-    if (!card?.id) return null;
-    const cardId = String(card.id);
-    const hv = draft.quote_card_hv?.[cardId];
-    const cardIndex = (draft.cards ?? []).findIndex(
-      (entry) => String(entry.id) === cardId
-    );
-    const amount = moneyFieldToPayload(hv?.amount_dollars) ?? 0;
-
-    return (
-      <div className="space-y-2 rounded-lg border border-peach/40 bg-peach/15 px-3 py-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
-              High-value fee
-            </span>
-            <span className="text-[10px] font-medium text-ink/40">
-              {HV_TIER_RANGES_LABEL}
-            </span>
-          </div>
-          {amount > 0 ? (
-            <p className="text-right text-sm font-bold tabular-nums text-ink">
-              {formatMoney(amount)}
-            </p>
-          ) : null}
-        </div>
-        <label className="block min-w-0">
-          <span className="mb-1 block text-xs font-medium text-ink/55">
-            Market ($)
-          </span>
-          <input
-            className={editorFieldClass()}
-            inputMode="decimal"
-            value={card.market_value_raw_nm ?? ""}
-            onChange={(event) => {
-              if (cardIndex < 0) return;
-              setCardHvMarket(cardIndex, event.target.value);
-            }}
-            placeholder="e.g. 250"
-          />
-        </label>
-      </div>
-    );
-  }
-
-  function renderQuoteServiceLine(item, index) {
-    const hasService = quoteItemHasService(item);
-    const serviceReady = quoteItemIsReady(item);
-    const lineId = String(item.id ?? `quote-${index}`);
-    const isExpanded =
-      !serviceReady || String(expandedQuoteLineId) === lineId;
-    const base = moneyFieldToPayload(item.quote_base_amount) ?? 0;
-    const lineTotal = base;
-    const serviceName =
-      item.service_label?.trim() ||
-      defaultServiceLabel(item.service_key) ||
-      (item.service_key === SERVICE_KEYS.CUSTOM ? "Custom" : "Service");
-    const fieldClass = `${editorFieldClass()}${
-      hasService ? "" : " cursor-not-allowed opacity-45"
-    }`;
-
-    if (serviceReady && !isExpanded) {
-      return (
-        <div
-          key={lineId}
-          data-quote-line-id={lineId}
-          className="flex items-center gap-2"
-        >
-          <button
-            type="button"
-            onClick={() => setExpandedQuoteLineId(lineId)}
-            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-sky/30 bg-sky/15 px-3 py-2 text-left transition hover:border-sky/50"
-          >
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-              {serviceName}
-            </span>
-            <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-              {formatMoney(lineTotal)}
-            </span>
-            <ChevronDownIcon className="h-4 w-4 shrink-0 text-ink/40" />
-          </button>
-          <button
-            type="button"
-            onClick={() => removeQuoteItem(index)}
-            className="shrink-0 text-xs font-semibold text-ink/40 transition hover:text-berry"
-          >
-            Remove
-          </button>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        key={lineId}
-        data-quote-line-id={lineId}
-        className={`space-y-2 rounded-lg border border-sky/35 bg-sky/15 px-3 py-2.5 ${
-          hasService ? "" : "opacity-90"
-        }`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setExpandedQuoteLineId(serviceReady ? null : lineId)
-            }
-            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-            disabled={!serviceReady}
-          >
-            <span className="truncate text-xs font-semibold uppercase tracking-[0.06em] text-ink/55">
-              {hasService
-                ? serviceName
-                : "Select a service"}
-            </span>
-            {serviceReady ? (
-              <ChevronDownIcon className="ml-auto h-4 w-4 shrink-0 rotate-180 text-ink/40" />
-            ) : null}
-          </button>
-          <div className="flex items-center gap-3">
-            {serviceReady ? (
-              <p className="text-right text-sm tabular-nums font-bold text-ink">
-                {formatMoney(lineTotal)}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => removeQuoteItem(index)}
-              className="text-xs font-semibold text-ink/40 transition hover:text-berry"
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-
-        <div className="grid gap-2">
-          <label className="block min-w-0">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Service
-            </span>
-            <select
-              className={editorFieldClass()}
-              value={item.service_key || ""}
-              onChange={(event) => {
-                applyServiceToQuoteItem(index, event.target.value);
-                setExpandedQuoteLineId(lineId);
-              }}
-              onFocus={() => setExpandedQuoteLineId(lineId)}
-            >
-              <option value="">Select a service…</option>
-              {QUOTE_SERVICES.map((service) => (
-                <option key={service.key} value={service.key}>
-                  {serviceSelectLabel(service)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {item.service_key === SERVICE_KEYS.CUSTOM ? (
-            <label className="block min-w-0">
-              <span className="mb-1 block text-xs font-medium text-ink/55">
-                Service name
-              </span>
-              <input
-                className={editorFieldClass()}
-                value={item.service_label}
-                onChange={(event) =>
-                  updateQuoteItem(index, {
-                    service_label: event.target.value,
-                  })
-                }
-                onFocus={() => setExpandedQuoteLineId(lineId)}
-                placeholder="Custom service name"
-              />
-            </label>
-          ) : null}
-        </div>
-
-        <div
-          className={`flex flex-col gap-2 sm:flex-row sm:items-end ${
-            hasService ? "" : "pointer-events-none"
-          }`}
-        >
-          <label className="block min-w-0 sm:w-32">
-            <span className="mb-1 block text-xs font-medium text-ink/55">
-              Base ($)
-            </span>
-            <input
-              className={fieldClass}
-              inputMode="decimal"
-              value={hasService ? item.quote_base_amount : ""}
-              onChange={(event) =>
-                updateQuoteItem(index, {
-                  quote_base_amount: event.target.value,
-                })
-              }
-              onFocus={() => setExpandedQuoteLineId(lineId)}
-              disabled={!hasService}
-              placeholder={hasService ? "" : "—"}
-            />
-          </label>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`mx-auto max-w-3xl space-y-5 ${
-        saving ? "pointer-events-none opacity-60" : ""
-      }`}
-    >
-      <div className="space-y-3">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm font-medium text-ink/55 transition hover:text-ink"
-          >
-            ← {backLabel}
-          </button>
-        ) : null}
-
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 space-y-2">
-            <h2 className="text-2xl font-bold tabular-nums tracking-tight text-ink sm:text-3xl">
-              Order #{displayId}
-            </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusBadgeClass(
-                  draft.status,
-                  draft.pending_kind
-                )}`}
-              >
-                {orderDisplayLabel(draft.status, draft.pending_kind)}
-              </span>
-              <AccountStatusBadge hasAccount={draft.has_account} pill />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onSendMessage}
-              disabled={saving || !draft.customer_email?.trim()}
-              className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink transition hover:border-mint disabled:opacity-40"
-            >
-              Send message
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={saving || !dirty}
-              className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
-            >
-              Discard
-            </button>
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={saving || !dirty}
-              className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy-sm transition hover:brightness-110 disabled:opacity-40"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <p className="rounded-xl border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
-          {error}
-        </p>
-      )}
-
-      <EditorSection title="Customer">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <EditorLabel>First name</EditorLabel>
-            <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
-              {draft.first_name || "—"}
-            </p>
-          </div>
-          <div>
-            <EditorLabel>Last name</EditorLabel>
-            <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
-              {draft.last_name || "—"}
-            </p>
-          </div>
-          {draft.customer_email ? (
-            <div>
-              <EditorLabel>Email</EditorLabel>
-              <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
-                {draft.customer_email}
-              </p>
-            </div>
-          ) : null}
-          {draft.heard_about_source ? (
-            <div>
-              <EditorLabel>How did you hear about us?</EditorLabel>
-              <p className="truncate rounded-xl border border-transparent px-3.5 py-2.5 text-sm text-ink/70">
-                {draft.heard_about_source}
-              </p>
-            </div>
-          ) : null}
-          <label className="block">
-            <EditorLabel>Delivery</EditorLabel>
-            <select
-              className={editorFieldClass()}
-              value={draft.delivery_method}
-              onChange={(event) =>
-                updateDraft({ delivery_method: event.target.value })
-              }
-            >
-              <option value="local_dropoff">Local drop-off</option>
-              <option value="shipping">Shipping</option>
-            </select>
-          </label>
-          <label className="block">
-            <EditorLabel>Status</EditorLabel>
-            <select
-              className={editorFieldClass()}
-              value={editorStatusValue(draft.status, draft.pending_kind)}
-              onChange={(event) => {
-                const parsed = parseEditorStatusValue(event.target.value);
-                updateDraft({
-                  status: parsed.status,
-                  pending_kind: parsed.pendingKind,
-                });
-              }}
-            >
-              {EDITOR_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="sm:col-span-2">
-            <AdminNoteField
-              label="Notes from PokePatch"
-              hint="Visible to the customer on their order"
-              value={draft.general_notes}
-              onChange={(event) =>
-                updateDraft({ general_notes: event.target.value })
-              }
-              placeholder="Optional note about the whole order…"
-              minHeightClass="min-h-[88px]"
-            />
-          </div>
-        </div>
-      </EditorSection>
-
-      <EditorSection
-        title="Contacts"
-        action={
-          <button
-            type="button"
-            onClick={addContact}
-            className="text-sm font-semibold text-berry transition hover:underline"
-          >
-            Add contact
-          </button>
-        }
-      >
-        {draft.contacts.length === 0 ? (
-          <p className="text-sm text-ink/45">No contacts yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {draft.contacts.map((contact, index) => (
-              <div
-                key={contact.id ?? `new-${index}`}
-                className="flex flex-col gap-2 sm:flex-row sm:items-center"
-              >
-                <select
-                  className={`${editorFieldClass()} sm:w-40 sm:shrink-0`}
-                  value={contact.contact_type}
-                  onChange={(event) =>
-                    updateContact(index, {
-                      contact_type: event.target.value,
-                    })
-                  }
-                >
-                  {CONTACT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={editorFieldClass()}
-                  value={contact.value}
-                  onChange={(event) =>
-                    updateContact(index, { value: event.target.value })
-                  }
-                  placeholder="Contact value"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeContact(index)}
-                  aria-label="Remove contact"
-                  className="shrink-0 rounded-xl px-3 py-2 text-sm font-semibold text-ink/40 transition hover:bg-berry/10 hover:text-berry sm:px-2"
-                >
-                  Remove
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </EditorSection>
-
-      <EditorSection
-        title="Google Drive"
-        action={
-          driveUrl ? (
-            <a
-              href={driveUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm font-semibold text-berry transition hover:underline"
-            >
-              Open folder
-            </a>
-          ) : null
-        }
-      >
-        <label className="block">
-          <EditorLabel>Folder link</EditorLabel>
-          <input
-            className={editorFieldClass()}
-            type="url"
-            inputMode="url"
-            placeholder="https://drive.google.com/drive/folders/…"
-            value={draft.photos_drive_url}
-            onChange={(event) =>
-              updateDraft({ photos_drive_url: event.target.value })
-            }
-          />
-        </label>
-      </EditorSection>
-
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3 px-1">
-          <h3 className="text-base font-semibold text-ink">Cards</h3>
-          <button
-            type="button"
-            onClick={addCard}
-            className="text-sm font-semibold text-berry transition hover:underline"
-          >
-            Add card
-          </button>
-        </div>
-        {draft.cards.length === 0 ? (
-          <p className="px-1 text-sm text-ink/45">
-            No cards yet. Add a card to quote services for this order.
-          </p>
-        ) : (
-          draft.cards.map((card, cardIndex) => {
-            const customerImages = (card.images ?? []).filter(
-              (image) => image.image_type === "customer"
-            );
-            const adminImages = (card.images ?? []).filter(
-              (image) => image.image_type !== "customer"
-            );
-            const pendingFiles = card.pending_files ?? [];
-            const photoInputId = `admin-card-photos-${card.id}`;
-            const cardId = String(card.id);
-            const indices =
-              quoteLinesByCard.indicesByCardId.get(cardId) ?? [];
-            const lineAmounts = indices
-              .filter((index) => quoteItemIsReady(quoteItems[index]))
-              .map((index) => {
-                const item = quoteItems[index];
-                return moneyFieldToPayload(item.quote_base_amount) ?? 0;
-              });
-            const servicesSubtotal = lineAmounts.reduce(
-              (sum, amount) => sum + amount,
-              0
-            );
-            const cardHv = quoteCardHvAmount({
-              hv_amount: draft.quote_card_hv?.[cardId]?.amount_dollars,
-            });
-            const subtotal = servicesSubtotal + cardHv;
-            const hasReadyService = adminCardHasReadyService(
-              indices,
-              quoteItems
-            );
-            const manuallyCollapsed = collapsedCardIds.has(cardId);
-            const manuallyExpanded = String(expandedCardId) === cardId;
-            // Default: open until a named+valued service exists; always allow
-            // manual expand/collapse (including empty cards).
-            const isExpanded = manuallyExpanded
-              ? true
-              : manuallyCollapsed
-                ? false
-                : !hasReadyService;
-            const readyServiceNames = indices
-              .filter((index) => quoteItemHasNameAndValue(quoteItems[index]))
-              .map((index) => {
-                const item = quoteItems[index];
-                return (
-                  item.service_label?.trim() ||
-                  defaultServiceLabel(item.service_key) ||
-                  "Service"
-                );
-              });
-            const cardName = (card.card_name ?? "").trim();
-            const cardSet = (card.set_name ?? "").trim();
-            const firstImage = (card.images ?? []).find(
-              (image) => image.signed_thumb_url || image.signed_url
-            );
-            const thumbUrl =
-              firstImage?.signed_thumb_url || firstImage?.signed_url || null;
-            const thumbStoragePath = firstImage?.storage_path ?? null;
-            const cardTitle = (
-              <>
-                <span className="font-semibold tabular-nums text-ink/70">
-                  {cardIndex + 1}:{" "}
-                </span>
-                <span className="font-bold text-ink">
-                  {cardName || "Untitled"}
-                </span>
-                {cardSet ? (
-                  <span className="font-medium text-ink/55">
-                    {" "}
-                    ({cardSet})
-                  </span>
-                ) : null}
-              </>
-            );
-
-            return (
-              <CollapsibleOrderCard
-                key={card.id}
-                id={`admin-order-card-${card.id}`}
-                dataCardId={cardId}
-                title={cardTitle}
-                thumbUrl={thumbUrl}
-                thumbStoragePath={thumbStoragePath}
-                titleExtra={
-                  <div className="grid grid-cols-[repeat(4,auto)_auto] items-center justify-items-center gap-x-2 gap-y-1">
-                    {CARD_STATUSES.map((status) => {
-                      const selected = normalizeCardStatus(card.status) === status.id;
-                      return (
-                        <button
-                          key={status.id}
-                          type="button"
-                          onClick={() => updateCard(cardIndex, { status: status.id })}
-                          aria-pressed={selected}
-                          aria-label={`Card ${cardIndex + 1} status: ${status.label}`}
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                            selected
-                              ? cardStatusBadgeClass(status.id)
-                              : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
-                          }`}
-                        >
-                          {status.label}
-                        </button>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => removeCard(cardIndex)}
-                      disabled={saving}
-                      className="text-sm font-semibold text-ink/40 transition hover:text-berry disabled:opacity-50"
-                    >
-                      Remove card
-                    </button>
-                    <div />
-                    {CARD_CHECKLIST_GROUPS.map((group) => (
-                      <ChecklistGroupChip
-                        key={group.id}
-                        group={group}
-                        checklist={card.checklist}
-                        onChange={(checklist) =>
-                          updateCard(cardIndex, { checklist })
-                        }
-                      />
-                    ))}
-                  </div>
-                }
-                expanded={isExpanded}
-                onToggle={() => {
-                  if (isExpanded) collapseCard(cardId);
-                  else expandCard(cardId);
-                }}
-                collapsedSummary={
-                  <div className="space-y-0.5 text-xs">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/55">
-                      <span className="truncate">
-                        {readyServiceNames.length > 0
-                          ? readyServiceNames.join(" · ")
-                          : "No services"}
-                      </span>
-                      {lineAmounts.length > 0 ? (
-                        <span className="shrink-0 font-semibold tabular-nums text-ink">
-                          {formatMoney(servicesSubtotal)}
-                        </span>
-                      ) : null}
-                    </div>
-                    {cardHv > 0 ? (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink/50">
-                        <span>High-value fee</span>
-                        <span className="shrink-0 font-semibold tabular-nums text-ink/80">
-                          {formatMoney(cardHv)}
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                }
-                className={
-                  String(card.id) === String(highlightedCardId)
-                    ? hasReadyService
-                      ? "border-mint/50 border-l-mint ring-2 ring-blush/45"
-                      : "border-error/45 border-l-error ring-2 ring-blush/45"
-                    : hasReadyService
-                      ? "border-mint/40 border-l-mint"
-                      : "border-error/35 border-l-error/80"
-                }
-              >
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block">
-                    <EditorLabel>Card name</EditorLabel>
-                    <input
-                      className={editorFieldClass()}
-                      value={card.card_name}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          card_name: event.target.value,
-                        })
-                      }
-                      onFocus={() => expandCard(cardId)}
-                    />
-                  </label>
-                  <label className="block">
-                    <EditorLabel>Set</EditorLabel>
-                    <input
-                      className={editorFieldClass()}
-                      value={card.set_name}
-                      onChange={(event) =>
-                        updateCard(cardIndex, { set_name: event.target.value })
-                      }
-                      onFocus={() => expandCard(cardId)}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <EditorLabel>Description</EditorLabel>
-                    <p className="mb-1.5 text-xs text-ink/45">
-                      From the customer — card details they submitted with the
-                      order.
-                    </p>
-                    <textarea
-                      className={`${editorFieldClass()} min-h-[72px]`}
-                      value={card.description}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          description: event.target.value,
-                        })
-                      }
-                      onFocus={() => expandCard(cardId)}
-                    />
-                  </label>
-                  <div className="sm:col-span-2">
-                    <AdminNoteField
-                      label="Note from PokePatch"
-                      hint="Visible to the customer on this card"
-                      value={card.admin_note}
-                      onChange={(event) =>
-                        updateCard(cardIndex, {
-                          admin_note: event.target.value,
-                        })
-                      }
-                      onFocus={() => expandCard(cardId)}
-                      placeholder="Optional note for the customer about this card…"
-                    />
-                  </div>
-                </div>
-                <div className="border-t border-ink/10 pt-4">
-                  <AdminOrderCardPhotoGroups
-                    customerItems={savedPhotoItems(customerImages)}
-                    updateItems={savedPhotoItems(adminImages)}
-                    pendingFiles={pendingFiles}
-                    onRemoveUpdate={
-                      removingPhotoId != null || saving
-                        ? undefined
-                        : (imageId) => removeAdminPhoto(cardIndex, imageId)
-                    }
-                    onRemovePending={
-                      saving
-                        ? undefined
-                        : (fileId) => removeCardPendingFile(cardIndex, fileId)
-                    }
-                  />
-                  <div className="mt-3">
-                    <input
-                      id={photoInputId}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      disabled={saving}
-                      onChange={(event) => {
-                        expandCard(cardId);
-                        addCardPendingFiles(cardIndex, event.target.files);
-                        event.target.value = "";
-                      }}
-                      className="sr-only"
-                    />
-                    <label
-                      htmlFor={photoInputId}
-                      className={`inline-flex cursor-pointer items-center rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                        saving
-                          ? "cursor-not-allowed bg-ink/10 text-ink/40"
-                          : "bg-berry/15 text-berry hover:bg-berry/25"
-                      }`}
-                    >
-                      Add photos
-                    </label>
-                    <p className="mt-1.5 text-xs text-ink/50">
-                      New photos upload when you save. Customer photos can’t be
-                      removed.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2 border-t border-ink/10 pt-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-sky/90">
-                      Services
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => addQuoteItem(card)}
-                      disabled={saving}
-                      className="text-sm font-semibold text-berry transition hover:underline disabled:opacity-50"
-                    >
-                      Add service
-                    </button>
-                  </div>
-                  {indices.length > 0 ? (
-                    <div className="space-y-2">
-                      {indices.map((index) =>
-                        renderQuoteServiceLine(quoteItems[index], index)
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-ink/45">
-                      No services yet — add one here.
-                    </p>
-                  )}
-                  <div className="space-y-2 border-t border-ink/10 pt-2">
-                    {renderQuoteHvLine(card)}
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-ink/15 pt-2.5 text-xs">
-                    <span className="font-medium text-ink/55">
-                      Card subtotal
-                    </span>
-                    <p className="text-right tabular-nums text-ink">
-                      {lineAmounts.length > 0 || cardHv > 0 ? (
-                        <>
-                          {lineAmounts.map((amount, i) => (
-                            <span key={`${cardId}-amt-${i}`}>
-                              {i > 0 ? (
-                                <span className="text-ink/40"> + </span>
-                              ) : null}
-                              <span>{formatMoney(amount)}</span>
-                            </span>
-                          ))}
-                          {cardHv > 0 ? (
-                            <span>
-                              {lineAmounts.length > 0 ? (
-                                <span className="text-ink/40"> + </span>
-                              ) : null}
-                              <span title="High-value fee">
-                                {formatMoney(cardHv)}
-                              </span>
-                              <span className="text-ink/40"> HV fee</span>
-                            </span>
-                          ) : null}
-                          <span className="text-ink/40"> = </span>
-                          <span className="font-semibold">
-                            {formatMoney(subtotal)}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="font-semibold text-ink/45">
-                          {formatMoney(0)}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              </CollapsibleOrderCard>
-            );
-          })
-        )}
-
-        {quoteLinesByCard.orphans.length > 0 ? (
-          <div className="rounded-xl border border-dashed border-ink/20 px-3 py-3">
-            <p className="mb-2 text-sm font-semibold text-ink/70">
-              Unmatched quote lines
-            </p>
-            <div className="space-y-2">
-              {quoteLinesByCard.orphans.map((index) =>
-                renderQuoteServiceLine(quoteItems[index], index)
-              )}
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      <EditorSection title="Quote">
-        <div className="space-y-4">
-          <EditorSubsection
-            title="Adjustments"
-            description="Add discounts, delivery, or shipping as straight dollar amounts."
-            action={
-              <button
-                type="button"
-                onClick={addQuoteAdjustment}
-                className="text-sm font-semibold text-berry transition hover:underline"
-              >
-                Add row
-              </button>
-            }
-          >
-            {bulkDiscountPercent > 0 ? (
-              <p className="mb-2 rounded-xl border border-mint/40 bg-mint/20 px-3 py-2 text-xs font-semibold text-ink/70">
-                {(draft.cards ?? []).length} cards — eligible for a{" "}
-                {bulkDiscountPercent}% bulk discount ({BULK_TIER_RANGES_LABEL}).
-                Add it as a discount row with {bulkDiscountPercent} in the %
-                field.
-              </p>
-            ) : null}
-            {(draft.quote_adjustments ?? []).length === 0 ? (
-              <p className="text-sm text-ink/45">
-                No adjustments yet. Add a row for a discount, delivery, or
-                shipping.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {(draft.quote_adjustments ?? []).map((row, index) => (
-                  <div
-                    key={row.id ?? `adj-${index}`}
-                    className="rounded-xl border border-ink/10 bg-cream px-3 py-3"
-                  >
-                    <div className="grid gap-3 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto]">
-                      <label className="block min-w-0">
-                        <EditorLabel>Type</EditorLabel>
-                        <select
-                          className={editorFieldClass()}
-                          value={row.kind || "discount"}
-                          onChange={(event) =>
-                            updateQuoteAdjustment(index, {
-                              kind: event.target.value,
-                            })
-                          }
-                        >
-                          {ADJUSTMENT_KIND_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                          {row.kind === "surcharge" ? (
-                            <option value="surcharge">Surcharge</option>
-                          ) : null}
-                        </select>
-                      </label>
-                      <label className="block min-w-0 sm:col-span-1">
-                        <EditorLabel>Amount ($)</EditorLabel>
-                        <input
-                          className={editorFieldClass()}
-                          inputMode="decimal"
-                          value={row.amount_dollars ?? ""}
-                          onChange={(event) =>
-                            setAdjustmentDollars(index, event.target.value)
-                          }
-                          placeholder="0.00"
-                        />
-                      </label>
-                      <div className="flex items-end justify-end">
-                        <button
-                          type="button"
-                          onClick={() => removeQuoteAdjustment(index)}
-                          className="pb-2 text-sm font-semibold text-ink/45 transition hover:text-berry"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <label className="block">
-                        <EditorLabel>Description</EditorLabel>
-                        <input
-                          className={editorFieldClass()}
-                          value={row.description ?? ""}
-                          onChange={(event) =>
-                            updateQuoteAdjustment(index, {
-                              description: event.target.value,
-                            })
-                          }
-                          placeholder="Optional note…"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </EditorSubsection>
-
-          <EditorSubsection
-            title="Receipt"
-            description="Preview of what the customer will see on their order."
-          >
-            <QuoteReceipt
-              items={receiptItems}
-              cards={receiptCards}
-              adjustments={receiptAdjustments}
-            />
-          </EditorSubsection>
-        </div>
-      </EditorSection>
-    </div>
-  );
-}
-
 export default function AdminApp() {
   const router = useRouter();
   const pathname = usePathname();
@@ -3841,7 +1733,6 @@ export default function AdminApp() {
   const { user, loading: authLoading, signOut } = useAuth();
   const pathTab = tabFromPathname(pathname);
   const searchEditId = searchParams.get("edit");
-  const searchFocusCardId = searchParams.get("card");
   // Static export can no-op same-path query clears via router.push. Dismiss the
   // editor in React state first so "Back to board" never lands on a blank page.
   const [editorDismissed, setEditorDismissed] = useState(false);
@@ -3857,28 +1748,17 @@ export default function AdminApp() {
   const [loadingOrderId, setLoadingOrderId] = useState(null);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedDisplayId, setSelectedDisplayId] = useState(null);
-  const [draft, setDraft] = useState(null);
-  const [savedSnapshot, setSavedSnapshot] = useState("");
+  const [orderDetail, setOrderDetail] = useState(null);
+  const [editorDirty, setEditorDirty] = useState(false);
   const [editorError, setEditorError] = useState("");
-  const [saving, setSaving] = useState(false);
   const [listError, setListError] = useState("");
   const [deleteTargets, setDeleteTargets] = useState(null);
   const [deletingOrder, setDeletingOrder] = useState(false);
-  const [savePromptOpen, setSavePromptOpen] = useState(false);
   const [movePrompt, setMovePrompt] = useState(null);
   const [moveSaving, setMoveSaving] = useState(false);
-  const [noteOnlyOpen, setNoteOnlyOpen] = useState(false);
   const [noteOnlySending, setNoteOnlySending] = useState(false);
 
-  const dirty = useMemo(() => {
-    if (!draft) return false;
-    return (
-      JSON.stringify(draftPayload(draft)) !== savedSnapshot ||
-      draftHasPendingPhotos(draft)
-    );
-  }, [draft, savedSnapshot]);
-
-  const unsavedOrderEdit = dirty && tab === "orders-edit";
+  const unsavedOrderEdit = editorDirty && tab === "orders-edit";
   const { requestLeave, dialog: unsavedChangesDialog } =
     useUnsavedChangesGuard(unsavedOrderEdit);
 
@@ -3894,13 +1774,28 @@ export default function AdminApp() {
   const clearEditor = useCallback(() => {
     setSelectedOrderId(null);
     setSelectedDisplayId(null);
-    setDraft(null);
-    setSavedSnapshot("");
+    setOrderDetail(null);
+    setEditorDirty(false);
     setEditorError("");
     setLoadingOrderId(null);
-    setSavePromptOpen(false);
-    setNoteOnlyOpen(false);
     setMovePrompt(null);
+  }, []);
+
+  const syncOrderAfterSave = useCallback((refreshed) => {
+    setOrderDetail(refreshed);
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== refreshed.id) return order;
+        const summary = orderToKanbanSummary(refreshed);
+        if (
+          summary.queue_priority == null &&
+          order.queue_priority != null
+        ) {
+          summary.queue_priority = order.queue_priority;
+        }
+        return { ...order, ...summary };
+      })
+    );
   }, []);
 
   const refreshOrders = useCallback(async () => {
@@ -4009,19 +1904,17 @@ export default function AdminApp() {
       setEditorError("");
       setLoadingOrderId(routeOrderId);
       setSelectedOrderId(routeOrderId);
-      setDraft(null);
+      setOrderDetail(null);
       try {
         const order = await adminGetOrder(routeOrderId);
         if (cancelled) return;
-        const nextDraft = orderToDraft(order);
         setSelectedDisplayId(order.display_id);
-        setDraft(nextDraft);
-        setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
+        setOrderDetail(order);
       } catch (err) {
         if (cancelled) return;
         setSelectedOrderId(null);
         setSelectedDisplayId(null);
-        setDraft(null);
+        setOrderDetail(null);
         setEditorError(err.message || "Could not load order.");
       } finally {
         if (!cancelled) setLoadingOrderId(null);
@@ -4094,8 +1987,7 @@ export default function AdminApp() {
     previous,
   }) {
     const pendingKind = normalizePendingKind(nextPendingKind);
-    const previousDraft = draft;
-    const previousSnapshot = savedSnapshot;
+    const previousOrderDetail = orderDetail;
 
     setOrders((current) =>
       current.map((order) =>
@@ -4103,12 +1995,9 @@ export default function AdminApp() {
       )
     );
     if (selectedOrderId === orderId) {
-      setDraft((current) => {
-        if (!current) return current;
-        const next = { ...current, pending_kind: pendingKind };
-        setSavedSnapshot(JSON.stringify(draftPayload(next)));
-        return next;
-      });
+      setOrderDetail((current) =>
+        current ? { ...current, pending_kind: pendingKind } : current
+      );
     }
 
     try {
@@ -4116,8 +2005,7 @@ export default function AdminApp() {
     } catch (err) {
       setOrders(previous);
       if (selectedOrderId === orderId) {
-        setDraft(previousDraft);
-        setSavedSnapshot(previousSnapshot);
+        setOrderDetail(previousOrderDetail);
       }
       throw err;
     }
@@ -4279,9 +2167,9 @@ export default function AdminApp() {
       }
 
       if (selectedOrderId === orderId) {
-        setDraft((current) => {
+        setOrderDetail((current) => {
           if (!current) return current;
-          const next = {
+          return {
             ...current,
             status: nextStatus,
             pending_kind:
@@ -4291,8 +2179,6 @@ export default function AdminApp() {
                   : DEFAULT_PENDING_KIND
                 : null,
           };
-          setSavedSnapshot(JSON.stringify(draftPayload(next)));
-          return next;
         });
       }
     } catch (err) {
@@ -4310,7 +2196,7 @@ export default function AdminApp() {
       body,
       changelog,
       thumb_by_card_id: buildCardThumbById(
-        selectedOrderId === orderId ? draft?.cards : []
+        selectedOrderId === orderId ? orderDetail?.cards ?? [] : []
       ),
     });
   }
@@ -4362,8 +2248,7 @@ export default function AdminApp() {
   }
 
   async function leaveEditor({ skipConfirm = false } = {}) {
-    if (!skipConfirm && dirty && !(await requestLeave())) return;
-    setSavePromptOpen(false);
+    if (!skipConfirm && editorDirty && !(await requestLeave())) return;
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
     // address bar in sync while React state already shows the board.
@@ -4380,145 +2265,6 @@ export default function AdminApp() {
       setEditorDismissed(true);
     }
     router.push(path);
-  }
-
-  async function handleCancel() {
-    if (!selectedOrderId || !dirty) return;
-    setEditorError("");
-    setLoadingOrderId(selectedOrderId);
-    try {
-      const order = await adminGetOrder(selectedOrderId);
-      const nextDraft = orderToDraft(order);
-      setSelectedDisplayId(order.display_id);
-      setDraft(nextDraft);
-      setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
-    } catch (err) {
-      setEditorError(err.message || "Could not reload order.");
-    } finally {
-      setLoadingOrderId(null);
-    }
-  }
-
-  function requestSave() {
-    if (!selectedOrderId || !draft) return;
-    const validationError = validateDraftForSave(draft);
-    if (validationError) {
-      setEditorError(validationError);
-      return;
-    }
-    setEditorError("");
-    const before = savedSnapshot ? JSON.parse(savedSnapshot) : null;
-    const after = draftPayload(draft);
-    const { hasChangelog } = buildOrderChangelog({
-      beforePayload: before,
-      afterPayload: after,
-    });
-    if (!hasChangelog) {
-      void handleSave({ notify: false });
-      return;
-    }
-    setSavePromptOpen(true);
-  }
-
-  async function handleSave({
-    notify = false,
-    subject = "",
-    body = "",
-    changelog = null,
-  } = {}) {
-    if (!selectedOrderId || !draft) return;
-    const validationError = validateDraftForSave(draft);
-    if (validationError) {
-      setEditorError(validationError);
-      setSavePromptOpen(false);
-      return;
-    }
-
-    const pendingUploads = (draft.cards ?? [])
-      .map((card) => ({
-        cardId: card.id,
-        files: card.pending_files ?? [],
-      }))
-      .filter((entry) => entry.files.length > 0);
-
-    setSaving(true);
-    setEditorError("");
-    setSavePromptOpen(false);
-    const emailThumbs = buildCardThumbById(draft.cards);
-    try {
-      const payload = draftPayload(draft);
-      let refreshed = await adminSaveOrder(selectedOrderId, payload);
-
-      for (const { cardId, files } of pendingUploads) {
-        for (const entry of files) {
-          const { file: uploadFile, error: compressError } =
-            await compressImageForUpload(entry.file);
-          if (compressError || !uploadFile) {
-            throw new Error(compressError || "Couldn't process this image.");
-          }
-          const { file: thumb } = await makeThumbForUpload(uploadFile);
-          await adminUploadPhoto(
-            selectedOrderId,
-            cardId,
-            "admin",
-            uploadFile,
-            { thumb }
-          );
-        }
-      }
-
-      if (pendingUploads.length > 0) {
-        refreshed = await adminGetOrder(selectedOrderId);
-      }
-
-      const nextDraft = orderToDraft(refreshed);
-      setDraft(nextDraft);
-      setSavedSnapshot(JSON.stringify(draftPayload(nextDraft)));
-      setOrders((current) =>
-        current.map((order) => {
-          if (order.id !== selectedOrderId) return order;
-          const summary = orderToKanbanSummary(refreshed);
-          if (
-            summary.queue_priority == null &&
-            order.queue_priority != null
-          ) {
-            summary.queue_priority = order.queue_priority;
-          }
-          return { ...order, ...summary };
-        })
-      );
-
-      if (notify && subject.trim() && (body.trim() || changelog)) {
-        try {
-          const result = await adminSendMessages({
-            order_ids: [selectedOrderId],
-            subject: subject.trim(),
-            body,
-            changelog,
-            thumb_by_card_id: emailThumbs,
-          });
-          if ((result.failed ?? 0) > 0) {
-            const firstError = Array.isArray(result.results)
-              ? result.results.find((row) => row.email_status === "failed")
-                  ?.email_error
-              : null;
-            setEditorError(
-              firstError ||
-                "Order saved, but the customer notification failed to send."
-            );
-          }
-        } catch (notifyErr) {
-          setEditorError(
-            notifyErr.message ||
-              "Order saved, but the customer notification failed to send."
-          );
-        }
-      }
-    } catch (err) {
-      setEditorError(err.message || "Save failed.");
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function handleMoveConfirm({
@@ -4695,11 +2441,11 @@ export default function AdminApp() {
                 </p>
               )}
 
-              {routeOrderId && !draft && !editorError && (
+              {routeOrderId && !orderDetail && !editorError && (
                 <LoadingIndicator label="Loading order…" />
               )}
 
-              {routeOrderId && editorError && !draft && (
+              {routeOrderId && editorError && !orderDetail && (
                 <div className="space-y-3">
                   <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
                     {editorError}
@@ -4714,57 +2460,23 @@ export default function AdminApp() {
                 </div>
               )}
 
-              {routeOrderId && draft && (
-                <>
-                  <OrderEditor
-                    displayId={selectedDisplayId}
+              {routeOrderId && orderDetail && (
+                  <OrderEditorShell
+                    order={orderDetail}
                     orderId={selectedOrderId}
-                    draft={draft}
-                    dirty={dirty}
-                    saving={saving}
-                    error={editorError}
-                    focusCardId={searchFocusCardId}
+                    displayId={selectedDisplayId}
                     onBack={leaveEditor}
                     backLabel={
                       searchParams.get("from") === "all"
                         ? "Back to all orders"
                         : "Back to board"
                     }
-                    onChange={(next) =>
-                      setDraft((current) =>
-                        typeof next === "function" ? next(current) : next
-                      )
-                    }
-                    onCancel={handleCancel}
-                    onSave={requestSave}
-                    onSendMessage={() => setNoteOnlyOpen(true)}
+                    onOrderUpdated={syncOrderAfterSave}
+                    onDirtyChange={setEditorDirty}
                     onError={setEditorError}
-                  />
-                  <OrderSaveChangesDialog
-                    open={savePromptOpen}
-                    variant="save"
-                    displayId={selectedDisplayId}
-                    customerEmail={draft.customer_email}
-                    thumbByCardId={buildCardThumbById(draft.cards)}
-                    beforePayload={
-                      savedSnapshot ? JSON.parse(savedSnapshot) : null
-                    }
-                    afterPayload={draftPayload(draft)}
-                    saving={saving}
-                    onCancel={() => {
-                      if (!saving) setSavePromptOpen(false);
-                    }}
-                    onConfirm={handleSave}
-                  />
-                  <OrderNoteOnlyDialog
-                    open={noteOnlyOpen}
-                    displayId={selectedDisplayId}
-                    customerEmail={draft.customer_email}
-                    sending={noteOnlySending}
-                    onCancel={() => {
-                      if (!noteOnlySending) setNoteOnlyOpen(false);
-                    }}
-                    onSend={async ({ subject, body }) => {
+                    externalError={editorError}
+                    noteOnlySending={noteOnlySending}
+                    onSendMessage={async ({ subject, body }) => {
                       setNoteOnlySending(true);
                       setEditorError("");
                       try {
@@ -4779,20 +2491,16 @@ export default function AdminApp() {
                                 (row) => row.email_status === "failed"
                               )?.email_error
                             : null;
-                          setEditorError(
-                            firstError || "Message failed to send."
-                          );
-                        } else {
-                          setNoteOnlyOpen(false);
+                          throw new Error(firstError || "Message failed to send.");
                         }
                       } catch (err) {
                         setEditorError(err.message || "Message failed to send.");
+                        throw err;
                       } finally {
                         setNoteOnlySending(false);
                       }
                     }}
                   />
-                </>
               )}
             </div>
           ) : loadingOrders && orders.length === 0 ? (
