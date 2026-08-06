@@ -333,23 +333,38 @@ async function signPathsThumbsOnly(
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
+  const listSelectFull =
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
+  const listSelectNoQuote =
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, is_priority";
+  const listSelectLegacy =
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority";
+
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
-    .select(
-      "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
-    )
+    .select(listSelectFull)
     .order("created_at", { ascending: false });
-  // Quote / pending_kind columns may be missing until migrations are applied.
   if (ordersError) {
     const retry = await supabase
       .from("orders")
-      .select(
-        "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority"
-      )
+      .select(listSelectNoQuote)
       .order("created_at", { ascending: false });
-    if (retry.error) throw ordersError;
-    orders = retry.data;
-    ordersError = null;
+    if (!retry.error) {
+      orders = retry.data;
+      ordersError = null;
+    } else {
+      const legacy = await supabase
+        .from("orders")
+        .select(listSelectLegacy)
+        .order("created_at", { ascending: false });
+      if (!legacy.error) {
+        orders = (legacy.data ?? []).map((order) => ({
+          ...order,
+          is_priority: false,
+        }));
+        ordersError = null;
+      }
+    }
   }
   if (ordersError) throw ordersError;
   if (!orders?.length) return [];
@@ -359,13 +374,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const newOrders = [...orders]
     .filter((o) => o.status === "new")
     .sort((a, b) => {
-      const ap = a.queue_priority;
-      const bp = b.queue_priority;
-      if (ap == null && bp == null) {
-        /* fall through */
-      } else if (ap == null) return 1;
-      else if (bp == null) return -1;
-      else if (ap !== bp) return Number(ap) - Number(bp);
+      const aPriority = Boolean(a.is_priority);
+      const bPriority = Boolean(b.is_priority);
+      if (aPriority !== bPriority) return aPriority ? -1 : 1;
       const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
       const bt = b.created_at ? new Date(b.created_at as string).getTime() : 0;
       if (at !== bt) return at - bt;
@@ -513,9 +524,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority";
 
 const ORDER_STATUS_IDS = new Set([
   "pending",
@@ -797,17 +808,33 @@ async function fetchOrderGraph(
   }
 
   let { data: orders, error: ordersError } = await ordersQuery;
-  // Quote columns may be missing until the order_quotes migration is applied.
   if (ordersError) {
     let fallback = supabase
       .from("orders")
       .select(ORDER_SELECT_BASE)
       .order("created_at", { ascending: false });
     if (orderId) fallback = fallback.eq("id", orderId);
-    const retry = await fallback;
-    if (retry.error) throw ordersError;
-    orders = retry.data;
-    ordersError = null;
+    let retry = await fallback;
+    if (retry.error) {
+      const legacySelect =
+        "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
+      let legacy = supabase
+        .from("orders")
+        .select(legacySelect)
+        .order("created_at", { ascending: false });
+      if (orderId) legacy = legacy.eq("id", orderId);
+      retry = await legacy;
+      if (!retry.error) {
+        orders = (retry.data ?? []).map((order) => ({
+          ...order,
+          is_priority: false,
+        }));
+        ordersError = null;
+      }
+    } else {
+      orders = retry.data;
+      ordersError = null;
+    }
   }
   if (ordersError) throw ordersError;
   if (!orders?.length) return orderId ? null : [];
@@ -1588,6 +1615,13 @@ Deno.serve(async (req) => {
       if (hasIndex && !Number.isFinite(queueIndex)) {
         return jsonResponse(req, { ok: false, error: "queue_index must be a number" }, 400);
       }
+      if (hasIndex) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "manual queue reorder is no longer supported" },
+          400
+        );
+      }
 
       const pendingKindRaw =
         body.pending_kind === undefined || body.pending_kind === null
@@ -1600,31 +1634,15 @@ Deno.serve(async (req) => {
         return jsonResponse(req, { ok: false, error: "invalid pending_kind" }, 400);
       }
 
-      if (hasIndex) {
-        const { error } = await supabase.rpc("move_order_in_status", {
-          p_order_id: orderId,
-          p_status: status,
-          p_queue_index: queueIndex,
-        });
-        if (error) throw error;
-        if (status === "pending" && pendingKindRaw) {
-          const { error: kindError } = await supabase.rpc("update_order", {
-            p_order_id: orderId,
-            p_order: { pending_kind: pendingKindRaw },
-          });
-          if (kindError) throw kindError;
-        }
-      } else {
-        const orderPatch: Record<string, string> = { status };
-        if (status === "pending") {
-          orderPatch.pending_kind = pendingKindRaw ?? "quote";
-        }
-        const { error } = await supabase.rpc("update_order", {
-          p_order_id: orderId,
-          p_order: orderPatch,
-        });
-        if (error) throw error;
+      const orderPatch: Record<string, string> = { status };
+      if (status === "pending") {
+        orderPatch.pending_kind = pendingKindRaw ?? "quote";
       }
+      const { error } = await supabase.rpc("update_order", {
+        p_order_id: orderId,
+        p_order: orderPatch,
+      });
+      if (error) throw error;
 
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
@@ -1812,35 +1830,11 @@ Deno.serve(async (req) => {
     }
 
     if (action === "column_reorder") {
-      const status = String(body.status ?? "");
-      const orderedIds = Array.isArray(body.ordered_ids)
-        ? body.ordered_ids.map((id: unknown) => String(id ?? "")).filter(Boolean)
-        : null;
-      if (!status || !orderedIds) {
-        return jsonResponse(
-          req,
-          { ok: false, error: "status and ordered_ids required" },
-          400
-        );
-      }
-      let reorderStatus = normalizeOrderStatusForApi(status);
-      if (!ORDER_STATUS_IDS.has(reorderStatus)) {
-        return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
-      }
-      if (reorderStatus !== "new") {
-        return jsonResponse(
-          req,
-          { ok: false, error: "queue reorder is only allowed for To do orders" },
-          400
-        );
-      }
-
-      const { error } = await supabase.rpc("reorder_status_orders", {
-        p_status: reorderStatus,
-        p_ordered_ids: orderedIds,
-      });
-      if (error) throw error;
-      return jsonResponse(req, { ok: true });
+      return jsonResponse(
+        req,
+        { ok: false, error: "manual queue reorder is no longer supported" },
+        400
+      );
     }
 
     if (action === "gallery_list") {

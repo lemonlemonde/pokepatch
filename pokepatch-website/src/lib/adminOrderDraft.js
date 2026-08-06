@@ -232,6 +232,7 @@ export function orderToDraft(order) {
     heard_about_source: order.heard_about_source ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
+    is_priority: Boolean(order.is_priority),
     pending_kind: isPendingOrderStatus(order.status)
       ? normalizePendingKind(order.pending_kind)
       : null,
@@ -254,6 +255,7 @@ export function draftPayload(draft) {
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
       photos_drive_url: draft.photos_drive_url.trim(),
+      is_priority: Boolean(draft.is_priority),
       status,
       ...(status === "pending"
         ? { pending_kind: normalizePendingKind(draft.pending_kind) }

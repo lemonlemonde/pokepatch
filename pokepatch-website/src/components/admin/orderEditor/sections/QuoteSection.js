@@ -153,12 +153,17 @@ export default function QuoteSection() {
           </div>
         ) : null}
 
-        {hasReceipt ? (
+        {hasReceipt || draft.is_priority ? (
           <QuoteReceipt
             items={preview.items}
             cards={preview.cards}
             adjustments={adjustments}
+            isPriority={Boolean(draft.is_priority)}
+            cardCount={(draft.cards ?? []).length}
             title="Receipt"
+            className={
+              draft.is_priority ? "border-berry/25 bg-berry/[0.07]" : ""
+            }
           />
         ) : (
           <p className="text-sm text-ink/40">
