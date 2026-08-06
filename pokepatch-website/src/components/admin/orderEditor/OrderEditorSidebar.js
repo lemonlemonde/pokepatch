@@ -6,6 +6,7 @@ import {
   parseEditorStatusValue,
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
+import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
 import {
   AdminNoteField,
   EditorLabel,
@@ -174,6 +175,46 @@ export function OrderPanel() {
             <option value="local_dropoff">Local drop-off</option>
             <option value="shipping">Shipping</option>
           </select>
+        </label>
+
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
+            draft.is_priority
+              ? "border-berry/30 bg-berry/[0.08]"
+              : "border-ink/10 bg-night/20"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={Boolean(draft.is_priority)}
+            disabled={saving}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              updateDraft((current) => ({
+                ...current,
+                is_priority: checked,
+                quote_adjustments: syncPriorityQuoteAdjustments(
+                  checked,
+                  (current.cards ?? []).length,
+                  current.quote_adjustments ?? []
+                ),
+              }));
+            }}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-berry"
+          />
+          <span className="min-w-0 text-sm leading-relaxed text-ink/75">
+            <span className="flex flex-wrap items-center gap-2 font-semibold text-ink">
+              <span>Priority service</span>
+              {draft.is_priority ? (
+                <span className="rounded-full border border-berry/25 bg-berry/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blush">
+                  Active
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-0.5 block text-xs text-ink/50">
+              Faster queue handling. The priority fee is added automatically.
+            </span>
+          </span>
         </label>
 
         <div>

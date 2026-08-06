@@ -77,6 +77,88 @@ export function serviceSelectLabel(service) {
   return price ? `${service.title} (${price})` : service.title;
 }
 
+/** Paid priority service — whole order, not per card. */
+export const PRIORITY_BASE_FEE = 25;
+export const PRIORITY_EXTRA_CARD_FEE = 10;
+
+/** Dollar fee for priority on an order with `cardCount` cards. */
+export function priorityServiceFee(cardCount) {
+  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
+  return (
+    Math.round(
+      (PRIORITY_BASE_FEE +
+        Math.max(0, count - 1) * PRIORITY_EXTRA_CARD_FEE) *
+        100
+    ) / 100
+  );
+}
+
+export function priorityServiceDescription(cardCount) {
+  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
+  if (count <= 1) {
+    return `Priority service ($${PRIORITY_BASE_FEE} first card)`;
+  }
+  const extras = count - 1;
+  return `Priority service ($${PRIORITY_BASE_FEE} first card + ${extras} × $${PRIORITY_EXTRA_CARD_FEE})`;
+}
+
+/** Customer-facing priority pricing copy (quote form, etc.). */
+export function priorityServicePricingHint(cardCount) {
+  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
+  const rate = `$${PRIORITY_BASE_FEE} for the first card, plus $${PRIORITY_EXTRA_CARD_FEE} for each additional card`;
+  if (count <= 1) {
+    return `${rate}.`;
+  }
+  return `${rate}. ${count} cards: ${formatMoney(priorityServiceFee(count))} total.`;
+}
+
+export const PRIORITY_ADJUSTMENT_LABEL = "Priority service";
+
+export function isPriorityAdjustmentRow(row) {
+  const normalized = normalizeQuoteAdjustment(row);
+  if (!normalized) return false;
+  return (
+    normalized.description.trim().toLowerCase() ===
+    PRIORITY_ADJUSTMENT_LABEL.toLowerCase()
+  );
+}
+
+export function hasPriorityAdjustment(adjustments) {
+  return (adjustments ?? []).some(isPriorityAdjustmentRow);
+}
+
+/** Editor/storage row for the order-level priority surcharge. */
+export function priorityQuoteAdjustment(cardCount) {
+  const fee = priorityServiceFee(cardCount);
+  return {
+    ...emptyQuoteAdjustment("surcharge"),
+    description: PRIORITY_ADJUSTMENT_LABEL,
+    amount_dollars: String(fee),
+    amount_percent: "",
+  };
+}
+
+/** Keep priority surcharge row in sync with the order flag and card count. */
+export function syncPriorityQuoteAdjustments(
+  isPriority,
+  cardCount,
+  adjustments = []
+) {
+  const without = (adjustments ?? []).filter((row) => !isPriorityAdjustmentRow(row));
+  if (!isPriority) return without;
+  return [...without, priorityQuoteAdjustment(cardCount)];
+}
+
+const PRIORITY_PRICING_MARKETING = {
+  title: "Priority service",
+  features: ["Faster queue handling for your order"],
+  bulk: [
+    { label: "First card", value: `$${PRIORITY_BASE_FEE}` },
+    { label: "Each additional card", value: `+$${PRIORITY_EXTRA_CARD_FEE}` },
+  ],
+  bulkLabel: "Pricing",
+};
+
 /**
  * Order-level bulk discount, applied to the whole order (not per service).
  * Highest matching tier wins.
@@ -164,9 +246,9 @@ export function marketingServices() {
   );
 }
 
-/** Order-level modifiers — rendered together in one split card. */
+/** Order-level modifiers — rendered together in one full-width card. */
 export function marketingModifiers() {
-  return [BULK_PRICING_MARKETING, HIGH_VALUE_MARKETING];
+  return [PRIORITY_PRICING_MARKETING, BULK_PRICING_MARKETING, HIGH_VALUE_MARKETING];
 }
 
 export function defaultBaseAmount(serviceKey) {
@@ -602,11 +684,24 @@ export function computeQuoteTotal({
   items,
   cards = null,
   adjustments = null,
+  isPriority = false,
+  cardCount = null,
 } = {}) {
   const subtotal = quoteItemsSubtotal(items);
   const cardHv = quoteCardsHvTotal(cards);
   const adjustmentTotal = quoteAdjustmentsTotal(adjustments, items);
-  return Math.round((subtotal + cardHv + adjustmentTotal) * 100) / 100;
+  const count =
+    cardCount ??
+    (Array.isArray(cards) && cards.length > 0 ? cards.length : null);
+  const priorityFee =
+    isPriority &&
+    count != null &&
+    !hasPriorityAdjustment(adjustments)
+      ? priorityServiceFee(count)
+      : 0;
+  return (
+    Math.round((subtotal + cardHv + adjustmentTotal + priorityFee) * 100) / 100
+  );
 }
 
 /**
@@ -625,17 +720,29 @@ export function orderQuoteTotalFromStored(order) {
     Object.keys(cardHvMap).map((id) => ({ id })),
     cardHvMap
   );
-  return computeQuoteTotal({ items, cards, adjustments });
+  const cardCount =
+    order.card_count ??
+    order.cards?.length ??
+    null;
+  return computeQuoteTotal({
+    items,
+    cards,
+    adjustments,
+    isPriority: Boolean(order.is_priority),
+    cardCount,
+  });
 }
 
 export function hasQuoteData({
   items,
   cards = null,
   adjustments = null,
+  isPriority = false,
 } = {}) {
   if ((items ?? []).length > 0) return true;
   if (quoteCardsHvTotal(cards) > 0) return true;
   if (quoteAdjustmentLines(adjustments, items).length > 0) return true;
+  if (isPriority) return true;
   return false;
 }
 

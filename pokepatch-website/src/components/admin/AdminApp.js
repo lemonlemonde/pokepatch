@@ -13,7 +13,6 @@ import {
   adminListOrders,
   adminLoginWithSession,
   adminLogout,
-  adminReorderStatusOrders,
   adminSearchOrders,
   adminSendMessages,
   adminSetPendingKind,
@@ -53,8 +52,6 @@ import {
   isClosedOrderStatus,
   isPendingOrderStatus,
   filterClosedColumnOrders,
-  isPriorityElevated,
-  isQueuePriorityOrderStatus,
   sortOrdersForStatusColumn,
   pendingKindShortLabel,
   pendingKindBadgeClass,
@@ -68,7 +65,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Search cards by name or set (scope with status chips). Drag within To do to set priority, or between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+      "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -239,7 +236,7 @@ function orderToKanbanSummary(order) {
     status_changed_at: order.status_changed_at ?? null,
     card_count: order.card_count ?? order.cards?.length ?? 0,
     cards_completed: order.cards_completed ?? null,
-    queue_priority: order.queue_priority ?? null,
+    is_priority: Boolean(order.is_priority),
     queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
     preview_paths: Array.isArray(order.preview_paths)
@@ -494,12 +491,28 @@ function PendingKindChip({
   );
 }
 
+/** Paid priority service — distinct from manual queue reorder (removed). */
+function PriorityServiceBadge({ compact = false }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-berry/35 bg-berry/15 font-bold uppercase tracking-[0.08em] text-blush ${
+        compact
+          ? "h-[18px] min-w-[18px] px-1 text-[9px] leading-none"
+          : "px-2.5 py-1 text-[11px] leading-none"
+      }`}
+      title="Priority service"
+      aria-label="Priority service"
+    >
+      {compact ? "P" : "Priority"}
+    </span>
+  );
+}
+
 function KanbanCard({
   order,
   onOpen,
   onContextMenu,
   dragging,
-  priorityElevated = false,
   showPendingChip = false,
   onSetPendingKind,
   suppressInspect = false,
@@ -619,22 +632,22 @@ function KanbanCard({
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={scheduleClose}
-      className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border-2 border-ink/10 bg-cream px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
-        dragging ? "opacity-50" : ""
-      }`}
+      className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border-2 px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
+        order.is_priority
+          ? "border-berry/30 bg-berry/[0.08]"
+          : "border-ink/10 bg-cream"
+      } ${dragging ? "opacity-50" : ""}`}
     >
+      {order.is_priority ? (
+        <span
+          className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-berry/70"
+          aria-hidden="true"
+        />
+      ) : null}
       <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
         #{order.display_id}
       </span>
-      {priorityElevated ? (
-        <span
-          className="shrink-0 rounded-full bg-berry/90 px-1.5 py-0.5 text-[10px] font-bold text-white"
-          title="Placed ahead of chronological order (#)"
-          aria-label="Priority elevated"
-        >
-          ↑
-        </span>
-      ) : null}
+      {order.is_priority ? <PriorityServiceBadge compact /> : null}
       {showPendingChip ? (
         <PendingKindChip
           order={order}
@@ -702,9 +715,9 @@ function KanbanCard({
         <div className="flex items-start justify-between gap-3">
           <p className="min-w-0 text-sm font-bold tabular-nums text-ink">
             #{order.display_id}
-            {priorityElevated ? (
-              <span className="ml-2 text-xs font-bold text-berry">
-                ↑ ahead of #
+            {order.is_priority ? (
+              <span className="ml-2 inline-flex align-middle">
+                <PriorityServiceBadge compact />
               </span>
             ) : null}
           </p>
@@ -1381,17 +1394,6 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
   );
 }
 
-/** Insert index from pointer Y vs each card's vertical midpoint in the column list. */
-function resolveListDropIndex(clientY, listEl) {
-  const rows = listEl?.querySelectorAll?.("[data-kanban-row]");
-  if (!rows?.length) return 0;
-  for (let i = 0; i < rows.length; i++) {
-    const rect = rows[i].getBoundingClientRect();
-    if (clientY < rect.top + rect.height / 2) return i;
-  }
-  return rows.length;
-}
-
 function KanbanBoard({
   orders,
   onOpenOrder,
@@ -1478,18 +1480,17 @@ function KanbanBoard({
     setTrashArmed(false);
   }
 
-  async function commitDrop(statusId, index) {
+  async function commitDrop(statusId) {
     const orderId = dragOrderId;
     setDragOrderId(null);
     dropTargetRef.current = null;
     setDropTarget(null);
     setTrashArmed(false);
-    if (!orderId || index == null) return;
+    if (!orderId) return;
     const fromStatus = normalizeOrderStatus(dragOrder?.status);
     const toStatus = normalizeOrderStatus(statusId);
-    if (fromStatus === toStatus && !isQueuePriorityOrderStatus(toStatus)) return;
-    const queueIndex = isQueuePriorityOrderStatus(toStatus) ? index : null;
-    await onPlaceOrder(orderId, statusId, queueIndex);
+    if (fromStatus === toStatus) return;
+    await onPlaceOrder(orderId, statusId);
   }
 
   function handleTrashDragOver(event) {
@@ -1544,43 +1545,22 @@ function KanbanBoard({
     const hiddenCount = closed
       ? Math.max(0, rawOrders.length - columnOrders.length)
       : 0;
-    const allowsPriorityReorder = isQueuePriorityOrderStatus(status.id);
-    const dropIndex =
-      dropTarget?.statusId === status.id && allowsPriorityReorder
-        ? dropTarget.index
-        : null;
     const showList = !dock || expanded;
     const dockDropHighlight =
       dock &&
       dragOrderId &&
       dropTarget?.statusId === status.id;
 
-    function updateColumnDropTarget(event, listEl) {
+    function updateColumnDropTarget(event) {
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       if (!dragOrderId) return;
-      const index = allowsPriorityReorder
-        ? !showList || columnOrders.length === 0
-          ? 0
-          : resolveListDropIndex(event.clientY, listEl)
-        : columnOrders.length;
-      setDropTargetStable({ statusId: status.id, index });
+      setDropTargetStable({ statusId: status.id, index: 0 });
     }
 
-    function dropOnColumn(event, listEl) {
+    function dropOnColumn(event) {
       event.preventDefault();
-      const fromRef =
-        dropTargetRef.current?.statusId === status.id
-          ? dropTargetRef.current.index
-          : null;
-      const index = allowsPriorityReorder
-        ? fromRef != null
-          ? fromRef
-          : !showList || columnOrders.length === 0
-            ? 0
-            : resolveListDropIndex(event.clientY, listEl)
-        : columnOrders.length;
-      void commitDrop(status.id, index);
+      void commitDrop(status.id);
     }
 
     function handleColumnDragLeave(event) {
@@ -1678,11 +1658,9 @@ function KanbanBoard({
                 : // Mobile: ~4 cards tall, then scroll (keeps stacked columns short).
                   "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
             }`}
-            onDragOver={(event) =>
-              updateColumnDropTarget(event, event.currentTarget)
-            }
+            onDragOver={(event) => updateColumnDropTarget(event)}
             onDragLeave={handleColumnDragLeave}
-            onDrop={(event) => dropOnColumn(event, event.currentTarget)}
+            onDrop={(event) => dropOnColumn(event)}
           >
             {columnOrders.map((order, index) => (
               <div
@@ -1693,36 +1671,17 @@ function KanbanBoard({
                 onDragStart={(event) => handleDragStart(event, order.id)}
                 onDragEnd={handleDragEnd}
               >
-                {dropIndex === index &&
-                  dragOrderId &&
-                  dragOrderId !== order.id && (
-                    <div
-                      className={`pointer-events-none absolute right-0 left-0 z-10 h-1 rounded-full bg-berry ${
-                        index === 0 ? "top-0" : "-top-1.5"
-                      }`}
-                      aria-hidden="true"
-                    />
-                  )}
                 <KanbanCard
                   order={order}
                   onOpen={onOpenOrder}
                   onContextMenu={handleCardContextMenu}
                   dragging={dragOrderId === order.id}
-                  priorityElevated={isPriorityElevated(order, columnOrders)}
                   showPendingChip={status.id === "pending"}
                   onSetPendingKind={onSetPendingKind}
                   suppressInspect={suppressInspect}
                 />
               </div>
             ))}
-            {dropIndex === columnOrders.length &&
-              dragOrderId &&
-              columnOrders.length > 0 && (
-                <div
-                  className="pointer-events-none h-1 rounded-full bg-berry"
-                  aria-hidden="true"
-                />
-              )}
             {columnOrders.length === 0 && (
               <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
                 {closed
@@ -1912,13 +1871,11 @@ export default function AdminApp() {
       current.map((order) => {
         if (order.id !== refreshed.id) return order;
         const summary = orderToKanbanSummary(refreshed);
-        if (
-          summary.queue_priority == null &&
-          order.queue_priority != null
-        ) {
-          summary.queue_priority = order.queue_priority;
-        }
-        return { ...order, ...summary };
+        return {
+          ...order,
+          ...summary,
+          is_priority: Boolean(refreshed.is_priority ?? summary.is_priority),
+        };
       })
     );
   }, []);
@@ -2136,48 +2093,21 @@ export default function AdminApp() {
     }
   }
 
-  async function handlePlaceOrder(orderId, status, queueIndex) {
+  async function handlePlaceOrder(orderId, status) {
     const previous = orders;
     const nextStatus = normalizeOrderStatus(status);
     const moving = previous.find((order) => order.id === orderId);
     if (!moving) return;
 
     const fromStatus = normalizeOrderStatus(moving.status);
-    const sameColumn = fromStatus === nextStatus;
+    if (fromStatus === nextStatus) return;
 
-    if (sameColumn && !isQueuePriorityOrderStatus(nextStatus)) return;
-
-    let insertAt =
-      queueIndex == null ? Number.MAX_SAFE_INTEGER : Number(queueIndex);
-    if (!Number.isFinite(insertAt)) insertAt = Number.MAX_SAFE_INTEGER;
-    if (sameColumn) {
-      const col = sortOrdersForStatusColumn(
-        previous.filter((o) => normalizeOrderStatus(o.status) === fromStatus),
-        fromStatus
-      );
-      const fromIndex = col.findIndex((o) => o.id === orderId);
-      if (fromIndex >= 0 && fromIndex < insertAt) insertAt -= 1;
-      if (fromIndex === insertAt) return;
-      await commitPlaceOrder({
-        orderId,
-        nextStatus,
-        insertAt,
-        sameColumn: true,
-        previous,
-        moving,
-      });
-      return;
-    }
-
-    // Cross-column: ask Save/Move only vs notify before committing.
     const previewUrls = Array.isArray(moving.preview_urls)
       ? moving.preview_urls.filter(Boolean)
       : [];
     setMovePrompt({
       orderId,
       nextStatus,
-      insertAt,
-      sameColumn: false,
       previous,
       moving,
       displayId: moving.display_id,
@@ -2225,81 +2155,38 @@ export default function AdminApp() {
     });
   }
 
-  async function commitPlaceOrder({
-    orderId,
-    nextStatus,
-    insertAt,
-    sameColumn,
-    previous,
-    moving,
-  }) {
-    const usesQueuePriority = isQueuePriorityOrderStatus(nextStatus);
+  async function commitPlaceOrder({ orderId, nextStatus, previous, moving }) {
+    const pendingKind =
+      nextStatus === "pending"
+        ? isPendingOrderStatus(moving.status)
+          ? normalizePendingKind(moving.pending_kind)
+          : DEFAULT_PENDING_KIND
+        : null;
 
     setOrders((current) => {
       const wasClosed = isClosedOrderStatus(moving.status);
       const nextClosed = isClosedOrderStatus(nextStatus);
-      const placed = {
-        ...moving,
-        status: nextStatus,
-        pending_kind:
-          nextStatus === "pending"
-            ? isPendingOrderStatus(moving.status)
-              ? normalizePendingKind(moving.pending_kind)
-              : DEFAULT_PENDING_KIND
-            : null,
-        status_changed_at: new Date().toISOString(),
-        completed_at: nextClosed
-          ? wasClosed
-            ? moving.completed_at
-            : new Date().toISOString()
-          : null,
-        queue_priority: usesQueuePriority ? moving.queue_priority : null,
-      };
-
-      if (!usesQueuePriority) {
-        return current.map((order) =>
-          order.id === orderId ? placed : order
-        );
-      }
-
-      const without = current.filter((order) => order.id !== orderId);
-      const byStatus = groupOrdersByStatus(without);
-      const target = [...(byStatus[nextStatus] ?? [])];
-      const at = Math.max(0, Math.min(insertAt, target.length));
-      target.splice(at, 0, placed);
-      const nextPriorities = new Map(
-        target.map((order, index) => [order.id, index])
+      return current.map((order) =>
+        order.id === orderId
+          ? {
+              ...moving,
+              status: nextStatus,
+              pending_kind: pendingKind,
+              status_changed_at: new Date().toISOString(),
+              completed_at: nextClosed
+                ? wasClosed
+                  ? moving.completed_at
+                  : new Date().toISOString()
+                : null,
+            }
+          : order
       );
-      return current.map((order) => {
-        if (order.id === orderId) {
-          return { ...placed, queue_priority: nextPriorities.get(orderId) };
-        }
-        if (normalizeOrderStatus(order.status) === nextStatus) {
-          const rank = nextPriorities.get(order.id);
-          return rank == null ? order : { ...order, queue_priority: rank };
-        }
-        return order;
-      });
     });
 
     try {
-      if (sameColumn) {
-        const without = previous.filter((o) => o.id !== orderId);
-        const target = groupOrdersByStatus(without)[nextStatus] ?? [];
-        const at = Math.max(0, Math.min(insertAt, target.length));
-        const orderedIds = [
-          ...target.slice(0, at).map((o) => o.id),
-          orderId,
-          ...target.slice(at).map((o) => o.id),
-        ];
-        await adminReorderStatusOrders(nextStatus, orderedIds);
-      } else {
-        await adminSetStatus(
-          orderId,
-          nextStatus,
-          usesQueuePriority ? insertAt : null
-        );
-      }
+      await adminSetStatus(orderId, nextStatus, null, {
+        pendingKind: nextStatus === "pending" ? pendingKind : undefined,
+      });
 
       if (selectedOrderId === orderId) {
         setOrderDetail((current) => {
@@ -2307,18 +2194,13 @@ export default function AdminApp() {
           return {
             ...current,
             status: nextStatus,
-            pending_kind:
-              nextStatus === "pending"
-                ? isPendingOrderStatus(moving.status)
-                  ? normalizePendingKind(moving.pending_kind)
-                  : DEFAULT_PENDING_KIND
-                : null,
+            pending_kind: pendingKind,
           };
         });
       }
     } catch (err) {
       setOrders(previous);
-      setListError(err.message || "Could not update order place.");
+      setListError(err.message || "Could not update order status.");
       throw err;
     }
   }
@@ -2439,7 +2321,7 @@ export default function AdminApp() {
         err.message ||
           (prompt.kind === "pending_kind"
             ? "Could not update pending type."
-            : "Could not update order place.")
+            : "Could not update order status.")
       );
     } finally {
       setMoveSaving(false);

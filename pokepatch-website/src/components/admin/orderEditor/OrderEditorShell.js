@@ -88,6 +88,8 @@ function OrderEditorContent({
     items: preview.items,
     cards: preview.cards,
     adjustments: preview.adjustments,
+    isPriority: Boolean(draft.is_priority),
+    cardCount: (draft.cards ?? []).length,
   });
 
   useEffect(() => {

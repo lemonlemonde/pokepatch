@@ -5,6 +5,9 @@ import {
   computeQuoteTotal,
   formatMoney,
   groupQuoteItemsByCard,
+  hasPriorityAdjustment,
+  priorityServiceDescription,
+  priorityServiceFee,
   quoteAdjustmentLines,
   quoteItemLineTotal,
 } from "@/lib/servicePricing";
@@ -37,6 +40,8 @@ export default function QuoteReceipt({
   items = [],
   cards = null,
   adjustments = null,
+  isPriority = false,
+  cardCount = null,
   title = "Quote total",
   className = "",
   collapsible = false,
@@ -46,17 +51,30 @@ export default function QuoteReceipt({
   const lines = items ?? [];
   const cardGroups = groupQuoteItemsByCard(lines, cards);
   const adjustmentLines = quoteAdjustmentLines(adjustments, lines);
+  const resolvedCardCount =
+    cardCount ??
+    (Array.isArray(cards) && cards.length > 0 ? cards.length : null);
+  const showComputedPriorityLine =
+    isPriority &&
+    resolvedCardCount != null &&
+    !hasPriorityAdjustment(adjustments);
+  const priorityFee = showComputedPriorityLine
+    ? priorityServiceFee(resolvedCardCount)
+    : 0;
   const total = computeQuoteTotal({
     items: lines,
     cards,
     adjustments,
+    isPriority,
+    cardCount: resolvedCardCount,
   });
   const showBody = !collapsible || open;
 
   if (
     lines.length === 0 &&
     cardGroups.length === 0 &&
-    adjustmentLines.length === 0
+    adjustmentLines.length === 0 &&
+    priorityFee <= 0
   ) {
     return null;
   }
@@ -167,6 +185,16 @@ export default function QuoteReceipt({
             </span>
           </div>
         ))}
+
+        {priorityFee > 0 ? (
+          <div className="flex items-start justify-between gap-3 text-ink/80">
+            <span className="min-w-0">
+              <span className="text-ink/45">+ </span>
+              {priorityServiceDescription(resolvedCardCount)}
+            </span>
+            <span className="shrink-0 tabular-nums">{formatMoney(priorityFee)}</span>
+          </div>
+        ) : null}
 
         <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
           <span className="font-semibold text-ink">= Total</span>

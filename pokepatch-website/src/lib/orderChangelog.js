@@ -154,6 +154,7 @@ function quoteFingerprint(payload) {
   return JSON.stringify({
     items,
     bulk: order.quote_bulk_counts ?? null,
+    is_priority: Boolean(order.is_priority),
   });
 }
 
@@ -174,7 +175,14 @@ function quoteTotalFromPayload(payload) {
     [...cardIds].map((id) => ({ id })),
     cardHvMap
   );
-  return computeQuoteTotal({ items, cards, adjustments });
+  const cardCount = (payload.cards ?? []).length || null;
+  return computeQuoteTotal({
+    items,
+    cards,
+    adjustments,
+    isPriority: Boolean(order.is_priority),
+    cardCount,
+  });
 }
 
 function cardTitleForId(cardId, beforeCards, afterCards) {
@@ -318,6 +326,18 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     } else {
       orderChanges.push(`Note: ${beforeGeneralNotes} → ${afterGeneralNotes}`);
     }
+  }
+
+  const beforePriority = Boolean(beforePayload?.order?.is_priority);
+  const afterPriority = Boolean(afterPayload?.order?.is_priority);
+  if (
+    beforePayload?.order != null &&
+    afterPayload?.order != null &&
+    beforePriority !== afterPriority
+  ) {
+    orderChanges.push(
+      afterPriority ? "Added: Priority service" : "Removed: Priority service"
+    );
   }
 
   // Per-card status changes (surviving cards only).
