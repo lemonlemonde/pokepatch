@@ -4,6 +4,8 @@ import {
   normalizeCardStatus,
   normalizeOrderStatus,
   normalizePendingKind,
+  orderStatusIfAllCardsCompleted,
+  orderStatusManuallyChanged,
   DEFAULT_CARD_STATUS,
   DEFAULT_PENDING_KIND,
 } from "@/lib/orderStatus";
@@ -328,6 +330,24 @@ export function draftPayload(draft) {
           high_value_surcharge: null,
         };
       }),
+  };
+}
+
+/** Changelog / notify preview: includes order auto-advance when all cards are completed. */
+export function draftPayloadForSavePreview(draft, savedDraft = null) {
+  const payload = draftPayload(draft);
+  if (savedDraft && orderStatusManuallyChanged(savedDraft, draft)) {
+    return payload;
+  }
+  const autoStatus = orderStatusIfAllCardsCompleted(draft.status, draft.cards);
+  if (!autoStatus) return payload;
+  return {
+    ...payload,
+    order: {
+      ...payload.order,
+      status: autoStatus,
+      pending_kind: null,
+    },
   };
 }
 

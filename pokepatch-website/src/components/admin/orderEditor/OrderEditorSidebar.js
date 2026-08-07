@@ -3,7 +3,7 @@
 import {
   EDITOR_STATUS_OPTIONS,
   editorStatusValue,
-  parseEditorStatusValue,
+  orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
@@ -140,27 +140,37 @@ export function OrderPanel() {
   return (
     <Panel title="Order">
       <div className="space-y-4">
-        <label className="block">
+        <div>
           <EditorLabel>Status</EditorLabel>
-          <select
-            className={editorFieldClass()}
-            value={editorStatusValue(draft.status, draft.pending_kind)}
-            disabled={saving}
-            onChange={(event) => {
-              const parsed = parseEditorStatusValue(event.target.value);
-              updateDraft({
-                status: parsed.status,
-                pending_kind: parsed.pendingKind,
-              });
-            }}
-          >
-            {EDITOR_STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          <div className="flex flex-wrap gap-1.5">
+            {EDITOR_STATUS_OPTIONS.map((option) => {
+              const selected =
+                editorStatusValue(draft.status, draft.pending_kind) ===
+                option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    updateDraft({
+                      status: option.status,
+                      pending_kind: option.pendingKind,
+                    })
+                  }
+                  aria-pressed={selected}
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                    selected
+                      ? orderStatusBadgeClass(option.status, option.pendingKind)
+                      : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         <label className="block">
           <EditorLabel>Delivery</EditorLabel>

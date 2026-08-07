@@ -7,8 +7,10 @@ import {
   summarizeChangelog,
 } from "@/lib/orderChangelog";
 import {
-  orderStatusBadgeClass,
+  normalizeOrderStatus,
+  normalizePendingKind,
   orderDisplayLabel,
+  orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 
 function fieldClassName() {
@@ -102,6 +104,25 @@ export default function OrderSaveChangesDialog({
     () => buildOrderChangelog({ beforePayload, afterPayload }),
     [beforePayload, afterPayload]
   );
+
+  const saveOrderSummary = useMemo(() => {
+    if (variant !== "save") return null;
+    const fromStatus = normalizeOrderStatus(beforePayload?.order?.status);
+    const toStatus = normalizeOrderStatus(afterPayload?.order?.status);
+    if (fromStatus === toStatus) return null;
+    return {
+      fromStatus,
+      toStatus,
+      fromPendingKind:
+        fromStatus === "pending"
+          ? normalizePendingKind(beforePayload?.order?.pending_kind)
+          : null,
+      toPendingKind:
+        toStatus === "pending"
+          ? normalizePendingKind(afterPayload?.order?.pending_kind)
+          : null,
+    };
+  }, [afterPayload, beforePayload, variant]);
 
   const canNotify = Boolean(customerEmail?.trim());
   const [mode, setMode] = useState("notify"); // 'only' | 'notify'
@@ -229,6 +250,14 @@ export default function OrderSaveChangesDialog({
               <OrderMoveSummary summary={orderSummary} />
               <p className="mt-2 text-xs text-ink/50">
                 Customer gets an email and this appears in Messages.
+              </p>
+            </>
+          ) : saveOrderSummary ? (
+            <>
+              <OrderMoveSummary summary={saveOrderSummary} />
+              <p className="mt-2 text-xs text-ink/50">
+                Saving will also update the order status. Customer gets an email
+                and this appears in Messages.
               </p>
             </>
           ) : (

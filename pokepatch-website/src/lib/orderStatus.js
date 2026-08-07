@@ -88,6 +88,30 @@ export function normalizeCardStatus(statusId) {
   return DEFAULT_CARD_STATUS;
 }
 
+/** Matches update_order: every card completed → order moves to ready. */
+export function orderStatusIfAllCardsCompleted(orderStatus, cards) {
+  const list = cards ?? [];
+  if (list.length === 0) return null;
+  if (
+    !list.every((card) => normalizeCardStatus(card.status) === "completed")
+  ) {
+    return null;
+  }
+  const status = normalizeOrderStatus(orderStatus);
+  if (status === "ready" || status === "completed" || status === "canceled") {
+    return null;
+  }
+  return "ready";
+}
+
+export function orderStatusManuallyChanged(beforeDraft, afterDraft) {
+  if (!beforeDraft || !afterDraft) return false;
+  return (
+    normalizeOrderStatus(beforeDraft.status) !==
+    normalizeOrderStatus(afterDraft.status)
+  );
+}
+
 export function customerCardStatusLabel(statusId) {
   const status = normalizeCardStatus(statusId);
   return (

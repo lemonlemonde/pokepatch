@@ -12,6 +12,7 @@ import { buildOrderChangelog } from "@/lib/orderChangelog";
 import {
   applyAutoPendingDropoff,
   draftPayload,
+  draftPayloadForSavePreview,
   orderToDraft,
   validateDraftForSave,
 } from "@/lib/adminOrderDraft";
@@ -77,7 +78,10 @@ export function OrderEditorProvider({
   }, [savedDraft]);
 
   const beforePayload = useMemo(() => draftPayload(savedDraft), [savedDraft]);
-  const afterPayload = useMemo(() => draftPayload(draft), [draft]);
+  const afterPayload = useMemo(
+    () => draftPayloadForSavePreview(draft, savedDraft),
+    [draft, savedDraft]
+  );
 
   const performSave = useCallback(
     async ({ notify = false, subject = "", body = "", changelog = null } = {}) => {
