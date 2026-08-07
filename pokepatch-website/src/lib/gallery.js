@@ -18,24 +18,6 @@ export const CARD_THUMB_ASPECT_CLASS = "aspect-[734/1024]";
 /** Show the full card image without cropping inside the frame. */
 export const CARD_THUMB_IMAGE_CLASS = "object-contain";
 
-/**
- * Thumbnail art for a TCG card, preferring Scrydex over the Pokémon TCG API.
- *
- * Both serve ~245px art, but Scrydex sends JPEG (~34KB) where the TCG API
- * sends PNG (~180KB) — a 5x saving that matters in a grid of results. The
- * API's own `small` stays as the fallback for cards Scrydex doesn't carry.
- */
-export function tcgCardThumbUrl(card) {
-  const id = card?.id?.trim?.() ?? "";
-  if (id) return `https://images.scrydex.com/pokemon/${id}/small`;
-  return card?.image_small || "";
-}
-
-/** Fallback thumbnail to swap in when {@link tcgCardThumbUrl} 404s. */
-export function tcgCardThumbFallbackUrl(card) {
-  return card?.image_small || "";
-}
-
 export function normalizeDamageTags(raw) {
   if (!Array.isArray(raw)) return [];
   const seen = new Set();

@@ -248,6 +248,18 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Auth emails link to pokepatch.cards rather than the Supabase API host, so
+# every URL in the message matches the sending domain. The pages at
+# /verify-email and /reset-password redeem the token. These files are the
+# source of truth for what's pasted into the dashboard templates in production.
+[auth.email.template.confirmation]
+subject = "Confirm your PokePatch email"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your PokePatch password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true

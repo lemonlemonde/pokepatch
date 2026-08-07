@@ -1,4 +1,4 @@
-import { canvasToBlob } from "@/lib/instagramStitch";
+import { OUTPUT_QUALITY, canvasToBlob } from "@/lib/instagramStitch";
 import { downloadBlob } from "@/lib/downloadFile";
 import { drawShapesOnCanvas } from "@/lib/shapeAnnotations";
 
@@ -149,29 +149,12 @@ export function imageBaseName(originalName) {
   return (originalName || "image").replace(/\.[^.]+$/, "");
 }
 
-function blobToFile(blob, originalName, suffix, fallbackType) {
-  const baseName = imageBaseName(originalName);
-  const ext = imageExtForBlob(blob);
-  return new File([blob], `${baseName}-${suffix}.${ext}`, {
-    type: blob.type || fallbackType || "image/jpeg",
-  });
-}
-
 async function blobFromCanvas(canvas, mimeType) {
   const type = mimeType?.startsWith("image/") ? mimeType : "image/jpeg";
   if (type === "image/png") {
-    return canvasToBlob(canvas);
+    return canvasToBlob(canvas, "image/png");
   }
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (blob) resolve(blob);
-        else reject(new Error("Failed to export image"));
-      },
-      type,
-      0.95,
-    );
-  });
+  return canvasToBlob(canvas, type, OUTPUT_QUALITY);
 }
 
 function loadImageElement(imageUrl) {
@@ -222,14 +205,19 @@ export async function renderStudioSlotBlob(item, imageUrl) {
   return blobFromCanvas(canvas, item.file?.type || "image/jpeg");
 }
 
-export async function resolveStudioImageFile(item, imageUrl) {
+/**
+ * What the formatter should draw for this slot. An untouched slot hands back
+ * its original File; a cropped or annotated one hands back the rendered canvas
+ * *directly* rather than a re-encoded File — the formatter accepts either, and
+ * routing through a JPEG in between cost a generation of quality that only
+ * edited slots paid.
+ */
+export async function resolveStudioImageSource(item, imageUrl) {
   if (!item?.file) return null;
-  const untouched =
-    isDefaultCrop(item.crop) && !item.annotations?.length;
+  const untouched = isDefaultCrop(item.crop) && !item.annotations?.length;
   if (untouched) return item.file;
 
-  const blob = await renderStudioSlotBlob(item, imageUrl);
-  return blobToFile(blob, item.file.name, "edited", item.file.type);
+  return renderStudioSlotCanvas(item, imageUrl);
 }
 
 export function slugify(value) {

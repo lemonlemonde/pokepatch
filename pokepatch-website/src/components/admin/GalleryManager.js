@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { useCardOptions } from "@/lib/cardOptions";
+import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
   adminClearGalleryPairSide,
   adminApplyGalleryTcgThumbnail,
@@ -21,7 +22,6 @@ import {
 import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
-  tcgCardThumbUrl,
   DAMAGE_TAGS,
   normalizeDamageTags,
   formatPostedRelative,
@@ -334,10 +334,6 @@ function ThumbnailUpload({
   );
 }
 
-function cardImageUrl(card) {
-  return tcgCardThumbUrl(card);
-}
-
 function cardFromItem(item) {
   if (!item?.tcg_card_id) return null;
   return {
@@ -345,7 +341,7 @@ function cardFromItem(item) {
     name: item.title || item.tcg_lookup_title || "",
     set_name: item.set_name || item.tcg_lookup_set_name || "",
     number: item.card_number ?? "",
-    image_small: cardImageUrl({ id: item.tcg_card_id }),
+    image_small: tcgCardImageUrl({ id: item.tcg_card_id }),
   };
 }
 
@@ -882,7 +878,7 @@ export default function GalleryManager() {
               previewUrl={
                 selected?.urls?.thumbnail ||
                 (selectedCard?.id === selected?.tcg_card_id
-                  ? cardImageUrl(selectedCard)
+                  ? tcgCardImageUrl(selectedCard)
                   : null)
               }
               previewCacheKey={

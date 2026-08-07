@@ -314,21 +314,35 @@ function timeMs(value, fallback) {
   return Number.isNaN(secondary) ? 0 : secondary;
 }
 
+/** Only To do orders participate in the customer/admin workshop queue. */
+export const QUEUE_ORDER_STATUS = "new";
+
+export function isQueueOrderStatus(statusId) {
+  return normalizeOrderStatus(statusId) === QUEUE_ORDER_STATUS;
+}
+
 /**
- * Column sort: relative queue_priority within the status (lower = higher).
- * Ties broken by created_at, then id.
+ * Column sort: paid priority first in every column. To do uses created_at;
+ * other columns use status_changed_at.
  */
-export function sortOrdersForStatusColumn(orders, _statusId) {
+export function sortOrdersForStatusColumn(orders, statusId) {
+  const status = normalizeOrderStatus(statusId);
   return [...(orders ?? [])].sort((a, b) => {
-    const ap = a.queue_priority;
-    const bp = b.queue_priority;
-    if (ap == null && bp != null) return 1;
-    if (ap != null && bp == null) return -1;
-    if (ap != null && bp != null && ap !== bp) {
-      return Number(ap) - Number(bp);
+    const aPriority = Boolean(a.is_priority);
+    const bPriority = Boolean(b.is_priority);
+    if (aPriority !== bPriority) return aPriority ? -1 : 1;
+
+    if (isQueueOrderStatus(status)) {
+      const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
+      if (byCreated !== 0) return byCreated;
+    } else {
+      const byChanged =
+        timeMs(a.status_changed_at, a.created_at) -
+        timeMs(b.status_changed_at, b.created_at);
+      if (byChanged !== 0) return byChanged;
+      const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
+      if (byCreated !== 0) return byCreated;
     }
-    const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
-    if (byCreated !== 0) return byCreated;
     return String(a.id ?? "").localeCompare(String(b.id ?? ""));
   });
 }
@@ -349,25 +363,6 @@ export function groupOrdersByStatus(orders) {
     );
   }
   return grouped;
-}
-
-/**
- * True when an order sits higher in `columnOrders` (already priority-sorted)
- * than it would under chronological order by display_id (lower number = older).
- */
-export function isPriorityElevated(order, columnOrders) {
-  const list = columnOrders ?? [];
-  if (!order?.id || list.length < 2) return false;
-  const actual = list.findIndex((entry) => entry.id === order.id);
-  if (actual < 0) return false;
-  const chronological = [...list].sort((a, b) => {
-    const aId = Number(a.display_id) || 0;
-    const bId = Number(b.display_id) || 0;
-    if (aId !== bId) return aId - bId;
-    return String(a.id ?? "").localeCompare(String(b.id ?? ""));
-  });
-  const expected = chronological.findIndex((entry) => entry.id === order.id);
-  return expected >= 0 && actual < expected;
 }
 
 /**

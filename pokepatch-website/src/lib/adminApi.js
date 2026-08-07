@@ -250,18 +250,6 @@ export async function adminSearchOrders(query, { statuses } = {}) {
   };
 }
 
-export async function adminReorderStatusOrders(status, orderedIds) {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: {
-      action: "column_reorder",
-      status,
-      ordered_ids: orderedIds,
-    },
-  });
-  return payload;
-}
-
 export async function adminGetOrder(orderId) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
@@ -291,13 +279,10 @@ export async function adminSaveOrder(
 export async function adminSetStatus(
   orderId,
   status,
-  queueIndex = null,
+  _queueIndex = null,
   { pendingKind = undefined } = {}
 ) {
   const body = { action: "set_status", order_id: orderId, status };
-  if (queueIndex != null && Number.isFinite(Number(queueIndex))) {
-    body.queue_index = Number(queueIndex);
-  }
   if (pendingKind !== undefined) {
     body.pending_kind = pendingKind;
   }
@@ -308,7 +293,7 @@ export async function adminSetStatus(
   return payload.order;
 }
 
-/** Chip toggle: update pending_kind only (keeps queue place). */
+/** Chip toggle: update pending_kind only. */
 export async function adminSetPendingKind(orderId, pendingKind) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
@@ -583,7 +568,6 @@ export async function adminSendMessages({
   subject,
   body,
   changelog = null,
-  thumb_by_card_id = null,
 } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),
@@ -593,7 +577,6 @@ export async function adminSendMessages({
       subject,
       body,
       changelog: changelog || undefined,
-      thumb_by_card_id: thumb_by_card_id || undefined,
     },
   });
   return payload;
