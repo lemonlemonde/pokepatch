@@ -9,6 +9,10 @@
 --   3. Preferred contact method -> saved only when the account has none.
 -- Anonymous submissions that merely match an account's email never write back;
 -- only an authenticated session may modify its own profile.
+--
+-- The function body is the live definition from 20260806074622 (paid priority
+-- service) with the write-back grafted on, so replacing it here keeps priority
+-- handling intact.
 
 ALTER TABLE public.customer_profiles
   ADD COLUMN IF NOT EXISTS preferred_contact_type text,
@@ -51,6 +55,9 @@ declare
   v_contact_row public.contacts%rowtype;
   v_card_row public.cards%rowtype;
   v_image_row public.card_images%rowtype;
+  v_is_priority boolean;
+  v_priority_fee numeric(10, 2);
+  v_quote_bulk jsonb;
 begin
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
     raise exception 'payload is required';
@@ -292,13 +299,36 @@ begin
     end loop;
   end loop;
 
+  v_is_priority := coalesce((p_payload ->> 'is_priority')::boolean, false);
+
+  v_quote_bulk := null;
+  if v_is_priority then
+    v_priority_fee := (
+      25 + greatest(0, v_card_count - 1) * 10
+    )::numeric(10, 2);
+    v_quote_bulk := jsonb_build_object(
+      'version', 2,
+      'adjustments', jsonb_build_array(
+        jsonb_build_object(
+          'id', gen_random_uuid()::text,
+          'kind', 'surcharge',
+          'description', 'Priority service',
+          'amount_dollars', v_priority_fee,
+          'amount_percent', null
+        )
+      )
+    );
+  end if;
+
   insert into public.orders (
     id, user_id, first_name, last_name, customer_name, customer_email, delivery_method, general_notes,
-    heard_about_source, preferred_contact_type, preferred_contact_value, status, pending_kind
+    heard_about_source, preferred_contact_type, preferred_contact_value, status, pending_kind, is_priority,
+    quote_bulk_counts
   )
   values (
     v_order_id, v_user_id, v_first_name, v_last_name, v_customer_name, v_customer_email, v_delivery_method, null,
-    v_heard_about_source, v_preferred_type, v_preferred_value, 'pending', 'quote'
+    v_heard_about_source, v_preferred_type, v_preferred_value, 'pending', 'quote', v_is_priority,
+    v_quote_bulk
   )
   returning * into v_order;
 
