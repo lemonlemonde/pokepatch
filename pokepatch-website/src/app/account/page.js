@@ -8,10 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
-
-function fieldClassName() {
-  return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush disabled:cursor-not-allowed disabled:opacity-60";
-}
+import { fieldClassName } from "@/lib/formStyles";
 
 function emptyContactValues() {
   return CONTACT_TYPES.reduce((acc, type) => ({ ...acc, [type.value]: "" }), {});
@@ -151,14 +148,17 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16">
       <div className="animate-fade-up">
-        <SectionHeading subtitle="Save your details so you don't have to re-enter them">
-          Account
+        <SectionHeading
+          note="Account"
+          subtitle="Saved so you don't have to re-enter them on every quote."
+        >
+          Your details
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up relative space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up relative space-y-6 p-6 [animation-delay:150ms]">
         {!loading && (
           <button
             type="button"

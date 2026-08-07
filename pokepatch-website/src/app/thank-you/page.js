@@ -12,12 +12,7 @@ import {
   isExistingAccountSignup,
   sendExistingAccountNotice,
 } from "@/lib/accountNotice";
-
-function fieldClassName(invalid = false) {
-  return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
-    : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
+import { fieldClassName } from "@/lib/formStyles";
 
 export default function ThankYouPage() {
   return (
@@ -137,14 +132,17 @@ function ThankYouContent() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-16">
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16">
       <div className="animate-fade-up">
-        <SectionHeading subtitle="Thank you for your submission to PokePatch: Card Restoration!">
-          You&apos;re all set!
+        <SectionHeading
+          note="Quote received"
+          subtitle="Thank you — we got your submission and will follow up soon."
+        >
+          You&apos;re all set
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up space-y-5 rounded-2xl bg-cream/60 p-8 text-center [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up space-y-5 p-8 text-center [animation-delay:150ms]">
         {orderNumber && (
           <p className="text-lg font-bold text-ink">
             Order #{orderNumber}

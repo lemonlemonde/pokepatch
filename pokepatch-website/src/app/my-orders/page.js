@@ -200,14 +200,17 @@ const visibleOrders = useMemo(
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-16">
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6 sm:py-16">
       <div className="animate-fade-up">
-        <SectionHeading subtitle="Track your restoration orders">
-          My Orders
+        <SectionHeading
+          note="Orders"
+          subtitle="Track your restoration orders."
+        >
+          My orders
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up space-y-6 p-6 [animation-delay:150ms]">
         {loading && <LoadingSpinner label="Loading your orders…" />}
 
         {error && (

@@ -1,7 +1,8 @@
-import Image from "next/image";
 import Button from "@/components/Button";
-import SectionHeading from "@/components/SectionHeading";
-import logo from "./pokepatch_icon.png";
+import Hero from "@/components/marketing/Hero";
+import MarketingPageShell from "@/components/marketing/MarketingPageShell";
+import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
+import ScrollReveal from "@/components/marketing/ScrollReveal";
 import ServiceCard from "@/components/ServiceCard";
 import ServiceModifiersCard from "@/components/ServiceModifiersCard";
 import FaqItem from "@/components/FaqItem";
@@ -12,19 +13,19 @@ import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
 const steps = [
   {
     title: "Request a quote",
-    text: "Fill out the quote form with photos of your cards and the damage you'd like fixed.",
+    text: "Send photos of your cards and tell us what you'd like fixed. No commitment yet.",
   },
   {
     title: "Get your quote",
-    text: "We review your photos and reply with a quote — usually within 2 hours.",
+    text: "We look over the photos and reply — usually within 2 hours — with options and pricing.",
   },
   {
     title: "Send your cards",
-    text: "Drop off locally in North San Jose or mail your cards in from anywhere in the US.",
+    text: "Drop them off in North San Jose, or mail them in from anywhere in the US.",
   },
   {
     title: "Cards come home",
-    text: "We restore your cards with before-and-after photos, then return them the way they came.",
+    text: "We restore them, share before-and-after photos, and return them the way they came.",
   },
 ];
 
@@ -33,36 +34,36 @@ const modifiers = marketingModifiers();
 
 const faqs = [
   {
-    question: "📨\u00A0 How do I send in my cards?",
+    question: "How do I send in my cards?",
     answer:
       "Fill out the quote form with details about your card, and what you'd like fixed for each one. You can opt for local drop-off (North San Jose) or shipping. We'll get in contact with you with a quote and discuss options on how to best restore your cards!",
   },
   {
-    question: "🃏\u00A0 What kinds of cards do you restore?",
+    question: "What kinds of cards do you restore?",
     answer:
       "Trading cards of all kinds — Pokémon, One Piece, Sports, Magic, Yugioh, and more. If you're unsure, send a photo through the contact form and we'll let you know!",
   },
   {
-    question: "⏳\u00A0 How soon can I get a quote?",
+    question: "How soon can I get a quote?",
     answer: "Turnaround time is less than 2 hours.",
   },
   {
-    question: "🛠️\u00A0 How long does restoration take?",
+    question: "How long does restoration take?",
     answer:
       "Anywhere from a few hours to 2 weeks, depending on the number of cards, restoration type, and any pickup or shipping logistics.",
   },
   {
-    question: "🎨\u00A0 Can whitening on cards be fixed?",
+    question: "Can whitening on cards be fixed?",
     answer:
       "No — whitening cannot be fixed, and the card will be marked as altered if graded.",
   },
   {
-    question: "📦\u00A0 Is shipping covered?",
+    question: "Is shipping covered?",
     answer:
       "Any shipping costs are not covered. Cards will be carefully re-packaged and sent back in the same packaging they were sent in.",
   },
   {
-    question: "📸\u00A0 Do you offer before-and-after photos?",
+    question: "Do you offer before-and-after photos?",
     answer:
       "Yes! We document every restoration and share before-and-after photos. Check out our Gallery page for examples.",
   },
@@ -70,110 +71,111 @@ const faqs = [
 
 export default function Home() {
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
-      <section className="mb-16 animate-fade-up text-center">
-        <div className="mb-3 flex justify-center">
-          <Image
-            src={logo}
-            alt="PokePatch logo"
-            priority
-            className="h-24 w-auto animate-pop-in md:h-28"
-          />
-        </div>
-        <h1
-          aria-label="PokePatch!"
-          className="font-display text-5xl font-bold tracking-tight text-ink md:text-6xl"
-        >
-          <span aria-hidden="true">
-            {"PokePatch \u00A0\u00A0!".split("").map((letter, i) => (
-              <span
-                key={i}
-                className="inline-block animate-pixel-bob"
-                style={{ animationDelay: `${i * 0.12}s` }}
+    <MarketingPageShell>
+      <Hero />
+
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <section className="marketing-section">
+          <QueueCount variant="marketing" />
+        </section>
+
+        <section className="marketing-section">
+          <MarketingSectionHeading note="Gallery">
+            Lately on the bench
+          </MarketingSectionHeading>
+          <ScrollReveal>
+            <FeaturedRestorations variant="marketing" />
+          </ScrollReveal>
+        </section>
+
+        <section className="marketing-section">
+          <MarketingSectionHeading note="Getting started">
+            How it works
+          </MarketingSectionHeading>
+          <ol className="grid gap-12 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-14 lg:grid-cols-4 lg:gap-10">
+            {steps.map((step, index) => (
+              <ScrollReveal
+                key={step.title}
+                as="li"
+                variant="dramatic"
+                className="border-l border-ink/15 pl-5 sm:pl-6"
               >
-                {letter}
-              </span>
+                <span
+                  className="block font-mono text-4xl font-light leading-none tracking-tight text-ink/[0.14] sm:text-5xl"
+                  aria-hidden="true"
+                >
+                  0{index + 1}
+                </span>
+                <h3 className="mt-5 text-base font-medium text-ink sm:mt-6">
+                  {step.title}
+                </h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-ink/60">
+                  {step.text}
+                </p>
+              </ScrollReveal>
             ))}
-          </span>
-        </h1>
-        <p className="mt-2 font-secondary text-lg text-berry md:text-xl">
-          Card Restorations
-        </p>
-        <p className="mt-2 text-sm text-ink/70 md:text-base">
-          Bay Area Drop-Off • Nationwide Mail-In
-        </p>
-        <Button href="/contact" className="mt-6">
-          Get Free Quote
-        </Button>
-      </section>
+          </ol>
+        </section>
 
-      <QueueCount />
+        <section className="marketing-section">
+          <MarketingSectionHeading note="Pricing">
+            What we fix
+          </MarketingSectionHeading>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {services.map((service) => (
+              <ScrollReveal key={service.title}>
+                <ServiceCard {...service} variant="marketing" />
+              </ScrollReveal>
+            ))}
+            <ScrollReveal className="sm:col-span-2" variant="dramatic">
+              <ServiceModifiersCard
+                panels={modifiers}
+                accent="mint"
+                variant="marketing"
+              />
+            </ScrollReveal>
+          </div>
+        </section>
 
-      <section className="mb-16 animate-fade-up [animation-delay:150ms]">
-        <SectionHeading subtitle="Recent before-and-afters from our workshop">
-          Recent Restorations
-        </SectionHeading>
-        <FeaturedRestorations />
-      </section>
+        <section className="marketing-section">
+          <MarketingSectionHeading note="FAQ">
+            Good to know
+          </MarketingSectionHeading>
+          <div>
+            {faqs.map((faq) => (
+              <ScrollReveal key={faq.question}>
+                <FaqItem {...faq} variant="marketing" />
+              </ScrollReveal>
+            ))}
+            <hr className="border-t border-ink/10" />
+          </div>
+        </section>
 
-      <section className="mb-16 animate-fade-up [animation-delay:300ms]">
-        <SectionHeading subtitle="From damaged to displayed in four steps">
-          How It Works
-        </SectionHeading>
-        <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {steps.map((step, index) => (
-            <li
-              key={step.title}
-              className="pixel-border rounded-2xl border-blush/10 bg-cream/60 p-5"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-berry font-display text-sm font-bold text-night">
-                {index + 1}
-              </span>
-              <h3 className="mt-3 font-display text-base font-bold text-ink">
-                {step.title}
-              </h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-ink/70">
-                {step.text}
+        <section className="marketing-section">
+          <ScrollReveal variant="dramatic">
+            <div className="rounded-lg border border-ink/10 px-5 py-12 text-center sm:px-10 sm:py-16 md:px-16 md:py-20">
+              <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40 sm:text-[11px] sm:tracking-[0.3em]">
+                Start a quote
               </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="mb-16 animate-fade-up [animation-delay:300ms]">
-        <SectionHeading subtitle="Choose the care your card needs">
-          Restorations
-        </SectionHeading>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {services.map((service) => (
-            <ServiceCard key={service.title} {...service} />
-          ))}
-          <ServiceModifiersCard panels={modifiers} accent="mint" />
-        </div>
-      </section>
-
-      <section className="mb-16 animate-fade-up [animation-delay:300ms]">
-        <SectionHeading subtitle="What to expect from PokePatch services">
-          FAQ
-        </SectionHeading>
-        <div className="space-y-3">
-          {faqs.map((faq) => (
-            <FaqItem key={faq.question} {...faq} />
-          ))}
-        </div>
-      </section>
-
-      <section className="animate-fade-up text-center [animation-delay:300ms]">
-        <h2 className="font-display text-2xl font-bold text-ink md:text-3xl">
-          Ready to revive your cards?
-        </h2>
-        <p className="mt-2 text-sm text-ink/70 md:text-base">
-          Send us a few photos and get a quote within 2 hours.
-        </p>
-        <Button href="/contact" className="mt-5">
-          Get Free Quote
-        </Button>
-      </section>
-    </div>
+              <h2 className="mx-auto mt-5 max-w-2xl text-[1.85rem] font-medium leading-tight tracking-[-0.03em] text-ink sm:mt-6 sm:text-4xl md:text-5xl lg:text-6xl">
+                Ready to revive your cards?
+              </h2>
+              <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-ink/60 md:text-base">
+                Send a few photos — we&apos;ll get back to you within 2 hours.
+              </p>
+              <div className="mt-8 sm:mt-10">
+                <Button
+                  href="/contact"
+                  variant="marketing"
+                  className="w-full min-h-12 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
+                >
+                  Get Free Quote
+                </Button>
+              </div>
+            </div>
+          </ScrollReveal>
+        </section>
+      </div>
+    </MarketingPageShell>
   );
 }

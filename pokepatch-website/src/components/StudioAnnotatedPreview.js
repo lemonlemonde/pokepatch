@@ -392,7 +392,7 @@ export default function StudioAnnotatedPreview({
           shapes={shapes}
           selectedId={null}
           interactive={false}
-          imageClassName="block max-w-full rounded-xl border border-ink/15 shadow-cozy-sm"
+          imageClassName="block max-w-full rounded-xl border border-ink/15 "
         />
       </button>
 

@@ -7,7 +7,7 @@ import { forgetSignedUrl } from "@/lib/signedUrlCache";
 
 function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
   const image = (
-    <div className="flex aspect-[3/4] w-full items-center justify-center bg-cream/80 p-1">
+    <div className="flex aspect-[3/4] w-full items-center justify-center bg-ink/[0.04] p-1">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -24,7 +24,7 @@ function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
   );
 
   return (
-    <li className="group relative w-24 shrink-0 overflow-hidden rounded-xl border-2 border-ink/10 bg-cream/80">
+    <li className="group relative w-24 shrink-0 overflow-hidden rounded-xl border border-ink/10 bg-ink/[0.04]">
       {href ? (
         <a
           href={href}

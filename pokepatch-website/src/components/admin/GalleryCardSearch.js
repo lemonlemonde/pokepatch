@@ -10,7 +10,7 @@ const MIN_SET_LENGTH = 2;
 const MIN_NAME_ONLY_LENGTH = 3;
 
 function fieldClassName() {
-  return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
+  return "w-full rounded-xl border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
 }
 
 function normalizeSearchInput(value) {
@@ -47,10 +47,10 @@ function CardResultButton({ card, selected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(card)}
-      className={`flex flex-col overflow-hidden rounded-lg border text-left transition hover:border-blush ${
+      className={`flex flex-col overflow-hidden rounded-lg border text-left transition hover:border-ink/30 ${
         isSelected
           ? "border-blush bg-blush/10 ring-2 ring-blush/40"
-          : "border-ink/10 bg-cream/80"
+          : "border-ink/10 bg-ink/[0.04]"
       }`}
     >
       <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
@@ -176,7 +176,7 @@ export default function GalleryCardSearch({
   const hasMore = results.length < totalCount;
 
   return (
-    <div className="rounded-xl border-2 border-ink/10 bg-night/10 p-4">
+    <div className="rounded-xl border border-ink/10 bg-night/10 p-4">
       <p className="text-sm font-semibold text-ink">Find card</p>
 
       {selectedCard?.id && (
@@ -271,7 +271,7 @@ export default function GalleryCardSearch({
             type="button"
             onClick={submitSearch}
             disabled={disabled || loading}
-            className="w-full rounded-xl border-2 border-transparent bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
+            className="w-full rounded-xl border border-transparent bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
           >
             {loading ? "Searching…" : "Search"}
           </button>
@@ -308,7 +308,7 @@ export default function GalleryCardSearch({
               onClick={() =>
                 runSearch(lastQuery.cardName, lastQuery.setName, page + 1, true)
               }
-              className="mt-3 rounded-lg border border-ink/20 bg-cream px-4 py-2 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+              className="mt-3 rounded-lg border border-ink/20 bg-cream px-4 py-2 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
             >
               {loadingMore ? "Loading…" : "Load more"}
             </button>

@@ -78,7 +78,7 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
   if (!src) {
     return (
       <div className="space-y-2">
-        <div className="aspect-[3/4] w-full rounded-xl bg-night/10 pixel-border" />
+        <div className="aspect-[3/4] w-full rounded-lg bg-night/10 ring-1 ring-ink/10" />
         <p className="text-center text-xs font-bold uppercase tracking-wide text-ink/60">
           {label}
         </p>
@@ -94,7 +94,7 @@ function PairSideCard({ src, type, label, onOpen, priority = false }) {
       <button
         type="button"
         onClick={() => onOpen({ type: isVideo ? "video" : "image", src, label })}
-        className="group relative block aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-xl bg-night/10 pixel-border"
+        className="group relative block aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-lg bg-night/10 ring-1 ring-ink/10"
         aria-label={`Enlarge ${label}`}
       >
         {isVideo ? (
@@ -229,7 +229,7 @@ function GalleryItemCard({ item, index, onOpen }) {
 
   return (
     <div
-      className="pixel-border animate-fade-up flex h-full flex-col overflow-hidden rounded-2xl border-blush/10 bg-cream/60"
+      className="marketing-panel animate-fade-up flex h-full flex-col overflow-hidden"
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
       <div className="flex flex-1 flex-col space-y-4 p-5">
@@ -249,7 +249,7 @@ function GalleryItemCard({ item, index, onOpen }) {
               />
             )}
             <div className="min-w-0 text-left">
-              <h3 className="line-clamp-2 font-display text-lg font-bold text-ink">
+              <h3 className="line-clamp-2 text-lg font-medium tracking-tight text-ink">
                 {item.title}
               </h3>
               {(item.setName || item.cardNumber) ? (

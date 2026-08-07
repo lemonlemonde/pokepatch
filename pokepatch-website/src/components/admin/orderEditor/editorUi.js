@@ -26,7 +26,7 @@ export function Chevron({ open = false, className = "h-4 w-4" }) {
 }
 
 const EDITOR_FIELD_BASE =
-  "rounded-lg border border-ink/15 bg-night/40 px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink/30 focus:border-blush/60 focus:ring-2 focus:ring-blush/15 disabled:opacity-50";
+  "rounded-lg border border-ink/15 bg-night/40 px-3 py-2 text-sm text-ink outline-none transition placeholder:text-ink/30 focus:border-ink/40 focus:ring-2 focus:ring-ink/10 disabled:opacity-50";
 
 /** @param {{ fullWidth?: boolean }} [options] */
 export function editorFieldClass({ fullWidth = true } = {}) {
@@ -40,7 +40,7 @@ export function adminNoteFieldClass() {
 export function EditorLabel({ children, className = "" }) {
   return (
     <span
-      className={`mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/50 ${className}`}
+      className={`mb-1.5 block font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 ${className}`}
     >
       {children}
     </span>
@@ -93,10 +93,10 @@ export function RemoveButton({ label = "Remove", className = "", ...props }) {
 /** Standard panel: small-caps title row + body. */
 export function Panel({ title, action, children, className = "" }) {
   return (
-    <section className={`rounded-2xl border border-ink/10 bg-cream/50 ${className}`}>
+    <section className={`marketing-panel rounded-2xl ${className}`}>
       {title ? (
         <div className="flex items-center justify-between gap-3 px-4 pt-4 sm:px-5">
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink/45">
+          <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
             {title}
           </h3>
           {action ?? null}

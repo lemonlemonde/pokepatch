@@ -392,7 +392,7 @@ export default function CardDetailSection({
     <section
       className={`overflow-hidden rounded-2xl border transition ${
         expanded
-          ? "border-blush/30 bg-cream/60"
+          ? "border-blush/30 bg-ink/[0.03]"
           : "border-ink/10 bg-cream/40 hover:border-ink/25"
       }`}
     >

@@ -235,7 +235,7 @@ export default function OrderSaveChangesDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="save-order-changes-title"
-        className="flex max-h-[min(90vh,48rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy"
+        className="flex max-h-[min(90vh,48rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-ink/15 bg-cream "
         onClick={(event) => event.stopPropagation()}
       >
         <div className="shrink-0 border-b border-ink/10 px-5 py-4">
@@ -324,7 +324,7 @@ export default function OrderSaveChangesDialog({
                       and add to Messages.
                     </>
                   ) : (
-                    "No email on this order."
+                   "No email on this order."
                   )}
                 </span>
               </span>
@@ -380,7 +380,7 @@ export default function OrderSaveChangesDialog({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+            className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30 disabled:opacity-40"
           >
             Cancel
           </button>
@@ -388,7 +388,7 @@ export default function OrderSaveChangesDialog({
             type="button"
             onClick={handleConfirm}
             disabled={saving}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {primaryBusy}
           </button>

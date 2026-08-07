@@ -353,7 +353,7 @@ function FullscreenButton({ isFullscreen, onToggle }) {
       onClick={onToggle}
       aria-pressed={isFullscreen}
       aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
-      className="rounded-lg border border-ink/15 bg-cream/90 px-2.5 py-1.5 text-xs font-semibold text-ink/70 shadow-cozy-sm backdrop-blur-sm transition hover:border-blush hover:text-ink"
+      className="rounded-lg border border-ink/15 bg-cream/90 px-2.5 py-1.5 text-xs font-semibold text-ink/70 backdrop-blur-sm transition hover:border-ink/30 hover:text-ink"
     >
       {isFullscreen ? "Exit full screen" : "Full screen"}
     </button>
@@ -366,7 +366,7 @@ function CanvasToolbar({ isFullscreen, onToggleFullscreen, onResetView }) {
       <button
         type="button"
         onClick={onResetView}
-        className="rounded-lg border border-ink/15 bg-cream/90 px-2.5 py-1.5 text-xs font-semibold text-ink/70 shadow-cozy-sm backdrop-blur-sm transition hover:border-blush hover:text-ink"
+        className="rounded-lg border border-ink/15 bg-cream/90 px-2.5 py-1.5 text-xs font-semibold text-ink/70 backdrop-blur-sm transition hover:border-ink/30 hover:text-ink"
       >
         Reset view
       </button>
@@ -459,7 +459,7 @@ function NodePopover({ nodeId, x, y, section, onClose, onNavigateToNode }) {
       data-guide-popover
       role="dialog"
       aria-label="Node details"
-      className="absolute z-50 flex w-[300px] max-h-80 flex-col overflow-hidden rounded-xl border border-ink/15 bg-cream shadow-cozy"
+      className="absolute z-50 flex w-[300px] max-h-80 flex-col overflow-hidden rounded-xl border border-ink/15 bg-cream "
       style={{ left: x, top: y }}
       onPointerDown={(event) => event.stopPropagation()}
       onWheel={(event) => event.stopPropagation()}
@@ -739,7 +739,7 @@ function GuideTreeCanvas({ layout }) {
             height: canvasHeight,
             transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})`,
             transformOrigin: "0 0",
-            transition: isDragging
+           transition: isDragging
               ? "none"
               : isFlying
                 ? `transform ${FLY_DURATION_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`
@@ -814,7 +814,7 @@ function GuideTreeCanvas({ layout }) {
       </div>
 
       {!isFullscreen ? (
-        <p className="pointer-events-none absolute bottom-3 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-ink/10 bg-cream/80 px-3 py-1 text-[10px] text-ink/45 backdrop-blur-sm">
+        <p className="pointer-events-none absolute bottom-3 left-1/2 z-[60] -translate-x-1/2 rounded-full border border-ink/10 bg-ink/[0.04] px-3 py-1 text-[10px] text-ink/45 backdrop-blur-sm">
           Click a step · Scroll to zoom · Space + drag to pan
         </p>
       ) : null}
