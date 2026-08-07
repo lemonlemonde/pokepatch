@@ -1416,7 +1416,6 @@ function KanbanBoard({
     () => ({
       completed: sumOrderAmounts(columns.completed),
       pipeline: sumOrderAmounts([
-        ...(columns.pending ?? []),
         ...(columns.new ?? []),
         ...(columns.in_progress ?? []),
         ...(columns.ready ?? []),
@@ -1546,10 +1545,8 @@ function KanbanBoard({
       ? Math.max(0, rawOrders.length - columnOrders.length)
       : 0;
     const showList = !dock || expanded;
-    const dockDropHighlight =
-      dock &&
-      dragOrderId &&
-      dropTarget?.statusId === status.id;
+    const columnDropHighlight =
+      dragOrderId && dropTarget?.statusId === status.id;
 
     function updateColumnDropTarget(event) {
       event.preventDefault();
@@ -1564,7 +1561,9 @@ function KanbanBoard({
     }
 
     function handleColumnDragLeave(event) {
-      if (event.currentTarget.contains(event.relatedTarget)) return;
+      const related = event.relatedTarget;
+      // Browsers often leave relatedTarget null during drag — ignore those.
+      if (related && event.currentTarget.contains(related)) return;
       if (dropTargetRef.current?.statusId === status.id) {
         dropTargetRef.current = null;
         setDropTarget(null);
@@ -1574,15 +1573,12 @@ function KanbanBoard({
     return (
       <section
         key={status.id}
-        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-night/40 p-3 ${
-          dock
-            ? dockDropHighlight
-              ? "border-berry/60 bg-berry/10"
-              : "border-ink/10"
-            : "h-full border-ink/10"
-        }`}
+        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-night/40 p-3 transition ${
+          columnDropHighlight
+            ? "border-berry/60 bg-berry/10"
+            : "border-ink/10"
+        } ${dock ? "" : "h-full"}`}
         onDragOver={(event) => {
-          if (showList && columnOrders.length > 0) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = "move";
           if (!dragOrderId) return;
@@ -1592,7 +1588,7 @@ function KanbanBoard({
         onDrop={(event) => {
           if (showList && columnOrders.length > 0) return;
           event.preventDefault();
-          void commitDrop(status.id, 0);
+          void commitDrop(status.id);
         }}
       >
         {dock ? (
@@ -1702,7 +1698,7 @@ function KanbanBoard({
         )}
         {dock && !expanded && (
           <p className="mt-1 text-xs text-ink/45">
-            {dockDropHighlight
+            {columnDropHighlight
               ? dockDropHint
               : `Collapsed — ${dockDropHint.toLowerCase()}`}
           </p>

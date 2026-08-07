@@ -10,7 +10,9 @@ import {
 } from "react";
 import { buildOrderChangelog } from "@/lib/orderChangelog";
 import {
+  applyAutoPendingDropoff,
   draftPayload,
+  draftPayloadForSavePreview,
   orderToDraft,
   validateDraftForSave,
 } from "@/lib/adminOrderDraft";
@@ -47,10 +49,16 @@ export function OrderEditorProvider({
 
   const updateDraft = useCallback((patchOrFn) => {
     setDraft((current) => {
-      if (typeof patchOrFn === "function") {
-        return patchOrFn(current);
-      }
-      return { ...current, ...patchOrFn };
+      const next =
+        typeof patchOrFn === "function"
+          ? patchOrFn(current)
+          : { ...current, ...patchOrFn };
+      const pendingKindOnly =
+        typeof patchOrFn !== "function" &&
+        Object.keys(patchOrFn).length === 1 &&
+        Object.prototype.hasOwnProperty.call(patchOrFn, "pending_kind");
+      if (pendingKindOnly) return next;
+      return applyAutoPendingDropoff(next);
     });
   }, []);
 
@@ -70,7 +78,10 @@ export function OrderEditorProvider({
   }, [savedDraft]);
 
   const beforePayload = useMemo(() => draftPayload(savedDraft), [savedDraft]);
-  const afterPayload = useMemo(() => draftPayload(draft), [draft]);
+  const afterPayload = useMemo(
+    () => draftPayloadForSavePreview(draft, savedDraft),
+    [draft, savedDraft]
+  );
 
   const performSave = useCallback(
     async ({ notify = false, subject = "", body = "", changelog = null } = {}) => {
