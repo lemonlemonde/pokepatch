@@ -16,9 +16,11 @@ import StudioFolderBoard, {
   SideBank,
 } from "@/components/StudioFolderBoard";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
+import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
+import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 import {
   downloadSlotImages,
-  resolveStudioImageFile,
+  resolveStudioImageSource,
 } from "@/lib/studioSlotImage";
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
@@ -29,6 +31,7 @@ import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import {
+  OUTPUT_EXT,
   canvasToBlob,
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
@@ -37,6 +40,10 @@ import {
   DEFAULT_PACKAGE_CAPTION,
   downloadStudioPackageZip,
 } from "@/lib/studioPackageZip";
+import {
+  STUDIO_EXPORT_SCALE,
+  getOutputCanvasSize,
+} from "@/lib/studioLayout";
 
 const INPUT_CLASS =
   "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
@@ -127,6 +134,10 @@ function StudioCardMetaControls({
   const cardInfoSwitchId = useId();
   const captionSwitchId = useId();
   const [uploadDragging, setUploadDragging] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [pickedCard, setPickedCard] = useState(null);
+  const [picking, setPicking] = useState(false);
+  const [pickError, setPickError] = useState("");
 
   useEffect(() => {
     const url = value.frontPreviewUrl;
@@ -179,6 +190,30 @@ function StudioCardMetaControls({
 
   function clearFront() {
     patch({ frontFile: null, frontPreviewUrl: null });
+  }
+
+  /**
+   * Pull the official render down as a File and fill the chip in one go — the
+   * image, the card name and the set all come from the same catalog entry, so
+   * making them three separate steps would only invite them to disagree.
+   */
+  async function applySearchedCard(card) {
+    setPickedCard(card);
+    setPickError("");
+    setPicking(true);
+    try {
+      const file = await fetchTcgCardImageFile(card);
+      patch({
+        frontFile: file,
+        frontPreviewUrl: URL.createObjectURL(file),
+        card: (card.name ?? "").trim() || value.card,
+        set: (card.set_name ?? "").trim() || value.set,
+      });
+    } catch {
+      setPickError("Couldn't download that card's image. Try another, or upload one.");
+    } finally {
+      setPicking(false);
+    }
   }
 
   return (
@@ -301,6 +336,46 @@ function StudioCardMetaControls({
             </div>
           </div>
         ) : null}
+
+        {value.showCardInfo ? (
+          <div className="border-t border-ink/10 pt-3">
+            <button
+              type="button"
+              onClick={() => setSearchOpen((open) => !open)}
+              aria-expanded={searchOpen}
+              className="rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+            >
+              {searchOpen ? "Hide card search" : "Search TCG catalog"}
+            </button>
+
+            {searchOpen ? (
+              <div className="mt-3 space-y-2">
+                <GalleryCardSearch
+                  selectedCard={pickedCard}
+                  onSelect={applySearchedCard}
+                  onClear={() => {
+                    setPickedCard(null);
+                    setPickError("");
+                    clearFront();
+                  }}
+                  initialCardName={value.card}
+                  initialSetName={value.set}
+                  disabled={picking}
+                />
+                {picking ? (
+                  <p className="font-secondary text-xs text-ink/50">
+                    Downloading card image…
+                  </p>
+                ) : null}
+                {pickError ? (
+                  <p className="font-secondary text-xs font-semibold text-berry">
+                    {pickError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-3 rounded-xl border border-ink/10 bg-night/20 p-3">
@@ -348,16 +423,22 @@ const PHOTO_GROUP_MODES = [
   },
 ];
 
+/** Exported pixel size for a format — the 1×2 layout supersampled for export. */
+function exportSizeHint(format) {
+  const { width, height } = getOutputCanvasSize(format);
+  return `${width * STUDIO_EXPORT_SCALE}×${height * STUDIO_EXPORT_SCALE}`;
+}
+
 const PHOTO_OUTPUT_FORMATS = [
   {
     id: "square",
     label: "1:1 square",
-    sizeHint: "1080×1080",
+    sizeHint: exportSizeHint("square"),
   },
   {
     id: "reel",
     label: "9:16 Reels",
-    sizeHint: "1080×1920",
+    sizeHint: exportSizeHint("reel"),
   },
 ];
 
@@ -595,7 +676,10 @@ function OutputGrid({
  * rebuilt after a refresh — object URLs die with the page, blobs clone into
  * IndexedDB.
  */
-async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
+async function canvasOutputsFromPairs(
+  pairs,
+  sizeHint = exportSizeHint("square"),
+) {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
       const blob = await canvasToBlob(canvas);
@@ -605,7 +689,7 @@ async function canvasOutputsFromPairs(pairs, sizeHint = "1080×1080") {
         sizeHint,
         blob,
         url: URL.createObjectURL(blob),
-        filename: `pokepatch-${key}.png`,
+        filename: `pokepatch-${key}.${OUTPUT_EXT}`,
       };
     }),
   );
@@ -661,7 +745,7 @@ async function generatePhotoOutputs(
 ) {
   const sizeHint =
     PHOTO_OUTPUT_FORMATS.find((entry) => entry.id === format)?.sizeHint ??
-    "1080×1080";
+    exportSizeHint("square");
 
   if (groupBy === "front-back-pair") {
     const canvases = await stitchBeforeAfterPosts(
@@ -683,11 +767,12 @@ async function generatePhotoOutputs(
   return canvasOutputsFromPairs(pairs, sizeHint);
 }
 
-async function resolveStudioItemsToFiles(items, previewUrls) {
+/** Formatter inputs — a File per untouched slot, a canvas per edited one. */
+async function resolveStudioItemsToSources(items, previewUrls) {
   return Promise.all(
     items.map((item) =>
       item && previewUrls[item.id]
-        ? resolveStudioImageFile(item, previewUrls[item.id])
+        ? resolveStudioImageSource(item, previewUrls[item.id])
         : null,
     ),
   );
@@ -934,7 +1019,7 @@ function BeforeAfterPairPhotoFormatter({
       beforeItems.find((item) => item.id === pair.before) ?? null,
       afterItems.find((item) => item.id === pair.after) ?? null,
     ]);
-    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+    const files = await resolveStudioItemsToSources(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "before-after-pair");
     if (validationError) {
@@ -1352,7 +1437,7 @@ function FrontBackPairPhotoFormatter({
       slots.afterFront ? findItem("after", slots.afterFront) : null,
       slots.afterBack ? findItem("after", slots.afterBack) : null,
     ];
-    const files = await resolveStudioItemsToFiles(selectedItems, previewUrls);
+    const files = await resolveStudioItemsToSources(selectedItems, previewUrls);
 
     const validationError = validatePhotoPairFiles(files, "front-back-pair");
     if (validationError) {

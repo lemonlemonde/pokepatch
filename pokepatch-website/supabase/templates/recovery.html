@@ -1,0 +1,31 @@
+<!--
+  Password reset email. Same domain-matching rule as confirmation.html: the
+  link stays on pokepatch.cards and /reset-password redeems {{ .TokenHash }}.
+
+  Paste into: Supabase Dashboard → Authentication → Emails → Reset password.
+  Keep this file and the dashboard copy in sync.
+-->
+<h2 style="margin:0 0 16px;font-family:Verdana,Geneva,sans-serif;color:#2C2431;">Reset your password</h2>
+
+<p style="margin:0 0 16px;font-family:Verdana,Geneva,sans-serif;font-size:14px;line-height:1.6;color:#2C2431;">
+  Someone asked to reset the password for your PokePatch account. Pick a new one
+  here:
+</p>
+
+<p style="margin:0 0 24px;">
+  <a
+    href="https://pokepatch.cards/reset-password?token_hash={{ .TokenHash }}&type=recovery"
+    style="display:inline-block;padding:12px 20px;border-radius:12px;background:#E0518A;color:#FFF7F2;font-family:Verdana,Geneva,sans-serif;font-size:14px;font-weight:bold;text-decoration:none;"
+  >Set a new password</a>
+</p>
+
+<p style="margin:0 0 8px;font-family:Verdana,Geneva,sans-serif;font-size:12px;line-height:1.6;color:#8A7A89;">
+  Or paste this into your browser:<br />
+  https://pokepatch.cards/reset-password?token_hash={{ .TokenHash }}&type=recovery
+</p>
+
+<p style="margin:0;font-family:Verdana,Geneva,sans-serif;font-size:12px;line-height:1.6;color:#8A7A89;">
+  This link can only be used once and expires in an hour. If you didn't ask for
+  a reset, your password hasn't changed — reply to this email and we'll take a
+  look.
+</p>

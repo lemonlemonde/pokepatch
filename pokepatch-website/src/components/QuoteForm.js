@@ -14,6 +14,7 @@ import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompressi
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
+import { priorityServicePricingHint } from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
@@ -217,6 +218,7 @@ export default function QuoteForm() {
   const [preferredContactId, setPreferredContactId] = useState("email");
   const [heardAbout, setHeardAbout] = useState("");
   const [heardAboutOther, setHeardAboutOther] = useState("");
+  const [isPriority, setIsPriority] = useState(false);
   const [cards, setCards] = useState([initialCard()]);
   const [honeypot, setHoneypot] = useState("");
   const [status, setStatus] = useState("idle");
@@ -652,6 +654,7 @@ export default function QuoteForm() {
         heard_about_source: heardAboutSource,
         preferred_contact_type: preferredType,
         preferred_contact_value: preferredValue,
+        is_priority: isPriority,
         contacts: filledContactTypes.map((type) => ({
           contact_type: type.value,
           value: contactValues[type.value].trim(),
@@ -700,6 +703,7 @@ export default function QuoteForm() {
         card_count: completeCards.length,
         delivery_method: deliveryMethod,
         contact_method_count: filledContactTypes.length,
+        is_priority: isPriority,
       });
 
       setStatus("success");
@@ -711,6 +715,7 @@ export default function QuoteForm() {
       setLastName("");
       setEmail("");
       setDeliveryMethod("");
+      setIsPriority(false);
       setContactValues(emptyContactValues());
       setLockedTypes({});
       setPreferredContactId("email");
@@ -1222,6 +1227,45 @@ export default function QuoteForm() {
           />
         )}
       </div>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-bold text-ink">Priority service</h2>
+          <p className="mt-1 text-sm text-ink/60">
+            Optional faster handling for your whole order.
+          </p>
+        </div>
+        <label
+          className={`${optionClassName()} ${
+            isPriority
+              ? "border-berry/35 bg-berry/[0.08] ring-1 ring-berry/20"
+              : ""
+          }`.trim()}
+        >
+          <input
+            type="checkbox"
+            checked={isPriority}
+            onChange={(e) => {
+              onFormInteraction();
+              setIsPriority(e.target.checked);
+            }}
+            className="mt-1 h-4 w-4 shrink-0 accent-berry"
+          />
+          <span className="text-sm leading-relaxed text-ink/80">
+            <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
+              <span>Prioritize my order</span>
+              {isPriority ? (
+                <span className="rounded-full border border-berry/25 bg-berry/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blush">
+                  Active
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 block text-ink/65">
+              {priorityServicePricingHint(completeCards.length)}
+            </span>
+          </span>
+        </label>
+      </section>
 
       <input
         type="text"

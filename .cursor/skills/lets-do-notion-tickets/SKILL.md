@@ -80,9 +80,14 @@ From **🐭 needs review**, the user will iterate to clean up the work. Do not s
 
 Update these Notion properties via MCP when the matching event happens (start of branch work; completion of ticket work).
 
-When a ticket reaches **Status = In progress** and **Cursor-owned = 🐭 needs review** (work complete, ready for review), **append** a markdown hyperlink to that ticket’s corresponding PR at the **end of the page description/body**. Rules:
+When a ticket reaches **Status = In progress** and **Cursor-owned = 🐭 needs review** (work complete, ready for review), **append** that ticket’s corresponding PR URL as a **link preview (bookmark)** at the **end of the page description/body**. Rules:
 
-- **Only append** the PR link (e.g. a final line like `PR: https://github.com/.../pull/N`). Do not edit, rewrite, reorder, or delete any existing description content.
+- **Only append** two lines: the branch name (or worktree path, if the work lives in a worktree) as inline code, then the bare PR URL on its own line (e.g. `https://github.com/.../pull/N`) so Notion renders it as a link preview. No `PR:` label, no markdown hyperlink text, no other prose. Skip the branch/worktree line if neither applies. Do not edit, rewrite, reorder, or delete any existing description content.
+
+  ```
+  `miru/<scope>/<feature>/<leaf>`
+  https://github.com/.../pull/N
+  ```
 - If a PR link for the same URL is already present, do not duplicate it.
 - Prefer `API-update-page-markdown` with `insert_content` at `position: end`, or an equivalent append-only edit. Never use `replace_content` for this step.
 - This description append is part of the ticket lifecycle for this skill (same batch as marking 🐭 needs review). It does **not** require separate user permission beyond skill execution — but it must remain append-only. Do not change other page properties or body text in the same call.
@@ -92,9 +97,9 @@ When a ticket reaches **Status = In progress** and **Cursor-owned = 🐭 needs r
 While this skill is active (user invoked it and/or asked to execute tickets), MCP updates that **only** change the Notion **Status** and/or **Cursor-owned** properties are **pre-authorized**. They do **not** need user permission, confirmation, Auto-review approval, or `requestSmartModeApproval`.
 
 - Apply lifecycle patches immediately at start-of-work and completion (needs review).
-- On 🐭 needs review: also **append-only** the PR hyperlink to the ticket description (see above).
+- On 🐭 needs review: also **append-only** the PR link preview to the ticket description (see above).
 - Do not ask the user before Status / Cursor-owned patches or the append-only PR link; do not skip them as “external shared-state writes.”
-- Invoking this skill / saying go on tickets **is** authorization for these Status / Cursor-owned updates and the append-only PR link.
+- Invoking this skill / saying go on tickets **is** authorization for these Status / Cursor-owned updates and the append-only PR link preview.
 - Other Notion writes (rewriting body text, comments, create/delete pages, Priority, Track, Due date, Assignee, relations, etc.) are **not** covered — ask or wait for an explicit request as usual.
 
 ## Execution rules (strict)
@@ -144,5 +149,5 @@ Keep it scannable (bullets). Do not mark tickets Done in Notion from this summar
 - List candidates: `API-post-search` with `filter: { property: "object", value: "page" }`, then keep only Status = **Up next** (drop Not started).
 - **Always** read each page description/body (`API-retrieve-page-markdown` / block children) for every candidate before proposing or ranking deps. Titles alone are forbidden as the sole input. Empty bodies still require a fetch.
 - When starting/finishing work, patch **Status** and **Cursor-owned** per the lifecycle table (exact option names include the mouse emoji). These two properties are pre-authorized — see above; do not gate them on user approval.
-- When marking **🐭 needs review**, append only the PR URL to the ticket description (no other body edits).
+- When marking **🐭 needs review**, append only the branch/worktree line plus the bare PR URL (link preview, no `PR:` label) to the ticket description (no other body edits).
 - If Notion MCP is unavailable, say so and stop; do not fabricate the backlog.

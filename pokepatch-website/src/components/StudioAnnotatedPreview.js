@@ -24,6 +24,12 @@ import {
 } from "@/lib/shapeAnnotations";
 
 export async function compositeImageWithShapes(imageUrl, shapes) {
+  // Nothing to draw — hand back the generated image untouched rather than
+  // paying a full decode + re-encode on every package download.
+  if (shapes.length === 0) {
+    return fetch(imageUrl).then((res) => res.blob());
+  }
+
   const img = await new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
@@ -35,10 +41,10 @@ export async function compositeImageWithShapes(imageUrl, shapes) {
   canvas.width = img.naturalWidth || INSTAGRAM_WIDTH;
   canvas.height = img.naturalHeight || INSTAGRAM_HEIGHT;
   const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  if (shapes.length > 0) {
-    drawShapesOnCanvas(ctx, shapes, canvas.width, canvas.height);
-  }
+  drawShapesOnCanvas(ctx, shapes, canvas.width, canvas.height);
   return canvasToBlob(canvas);
 }
 

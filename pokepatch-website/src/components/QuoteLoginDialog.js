@@ -12,9 +12,10 @@ import { useAuth } from "@/contexts/AuthContext";
 // The caller mounts this only while the prompt is open, so each open starts
 // with a clean password field.
 export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
-  const { signIn } = useAuth();
+  const { signIn, resetPassword } = useAuth();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
 
     setBusy(true);
     setError("");
+    setNotice("");
 
     try {
       await signIn(email, password);
@@ -44,6 +46,27 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
       setError(err?.message || "Couldn't log in. Please try again.");
       setBusy(false);
     }
+  }
+
+  // Sends the recovery email without leaving the form. The dialog stays open so
+  // the visitor can come back and log in once they've reset, or bail out to
+  // guest — navigating to /login would drop the staged card photos.
+  async function handleForgotPassword() {
+    if (busy) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      await resetPassword(email);
+      setNotice(
+        "Sent — check your inbox (and your spam folder) for a link to reset your password. Your order is still here when you get back."
+      );
+    } catch (err) {
+      setError(err?.message || "Couldn't send the reset link. Please try again.");
+    }
+    setBusy(false);
   }
 
   const dialog = (
@@ -64,8 +87,9 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
             You already have an account
           </h2>
           <p id="quote-login-body" className="mt-1.5 text-sm text-ink/70">
-            <span className="font-semibold text-ink">{email}</span> is already
-            registered. Log in and we&apos;ll attach this order to your account —
+            <span className="font-semibold text-ink">{email}</span>{" "}
+            is already registered. Log in and we&apos;ll attach this order to
+            your account —
             your cards and photos stay right where they are.
           </p>
         </div>
@@ -88,15 +112,32 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
               onChange={(e) => {
                 setPassword(e.target.value);
                 setError("");
+                setNotice("");
               }}
               disabled={busy}
               className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush disabled:cursor-not-allowed disabled:opacity-60"
             />
+            <p className="mt-2 text-right text-sm">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={busy}
+                className="font-semibold text-blush hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Forgot password?
+              </button>
+            </p>
           </div>
 
           {error && (
             <p role="alert" className="text-sm font-semibold text-error">
               {error}
+            </p>
+          )}
+
+          {notice && (
+            <p role="status" className="text-sm font-semibold text-ink/80">
+              {notice}
             </p>
           )}
         </div>

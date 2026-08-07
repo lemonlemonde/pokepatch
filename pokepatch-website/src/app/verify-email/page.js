@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/Button";
@@ -14,13 +14,25 @@ import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
+// Auth email types this page can redeem a token_hash for.
+const CONFIRMABLE_TYPES = new Set(["signup", "email_change", "magiclink", "invite"]);
+
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") || "";
   const customerAuthEnabled = isCustomerAuthEnabled();
 
-  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  // Set when the customer arrives from a confirmation email. The link points at
+  // this page rather than the Supabase API host so that every URL in the email
+  // is on our own domain — mismatched link domains are a strong spam signal.
+  const tokenHash = searchParams.get("token_hash") || "";
+  const typeParam = searchParams.get("type") || "";
+  const tokenType = CONFIRMABLE_TYPES.has(typeParam) ? typeParam : "signup";
+  const verifyStartedRef = useRef(false);
+
+  // idle | sending | sent | error | verifying | invalid
+  const [status, setStatus] = useState(() => (tokenHash ? "verifying" : "idle"));
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
 
@@ -29,6 +41,26 @@ function VerifyEmailContent() {
       router.replace("/");
     }
   }, [customerAuthEnabled, router]);
+
+  // Redeem the token from the email. Supabase still does the verifying; the
+  // only change is that it happens over an API call from our page instead of a
+  // browser navigation to the Supabase host.
+  useEffect(() => {
+    if (!customerAuthEnabled || !supabase || !tokenHash) return;
+    if (verifyStartedRef.current) return;
+    verifyStartedRef.current = true;
+
+    supabase.auth
+      .verifyOtp({ token_hash: tokenHash, type: tokenType })
+      .then(({ error: verifyError }) => {
+        if (verifyError) {
+          setStatus("invalid");
+          setError(verifyError.message || "");
+          return;
+        }
+        router.replace("/my-orders");
+      });
+  }, [customerAuthEnabled, tokenHash, tokenType, router]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -63,6 +95,20 @@ function VerifyEmailContent() {
     }
   };
 
+  // Arrived from the email link: nothing to do but redeem the token.
+  if (status === "verifying") {
+    return (
+      <div className="animate-fade-up">
+        <SectionHeading subtitle="One moment.">
+          Confirming your email
+        </SectionHeading>
+        <div className="pixel-border mt-6 flex justify-center rounded-2xl bg-cream/60 p-10">
+          <LoadingSpinner />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="animate-fade-up">
@@ -72,20 +118,34 @@ function VerifyEmailContent() {
       </div>
 
       <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 text-center [animation-delay:150ms]">
-        <p className="text-ink/80">
-          We sent a confirmation link to{" "}
-          {email ? (
-            <span className="font-semibold text-ink">{email}</span>
-          ) : (
-            "your email address"
-          )}
-          . Click the link in that email to activate your account, then come back
-          to log in.
-        </p>
+        {status === "invalid" ? (
+          <>
+            <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+              That confirmation link is invalid or has expired.
+            </p>
+            <p className="text-ink/80">
+              Links are single use and time limited. Send yourself a fresh one
+              below.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-ink/80">
+              We sent a confirmation link to{" "}
+              {email ? (
+                <span className="font-semibold text-ink">{email}</span>
+              ) : (
+                "your email address"
+              )}
+              . Click the link in that email to activate your account, then come
+              back to log in.
+            </p>
 
-        <p className="text-sm text-ink/60">
-          Can&apos;t find it? Check your spam or promotions folder.
-        </p>
+            <p className="text-sm text-ink/60">
+              Can&apos;t find it? Check your spam or promotions folder.
+            </p>
+          </>
+        )}
 
         {status === "sent" && (
           <p className="rounded-2xl border-2 border-mint bg-mint/40 px-4 py-3 text-sm font-semibold text-ink">

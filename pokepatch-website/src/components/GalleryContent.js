@@ -229,22 +229,29 @@ function GalleryItemCard({ item, index, onOpen }) {
 
   return (
     <div
-      className="pixel-border animate-fade-up overflow-hidden rounded-2xl border-blush/10 bg-cream/60"
+      className="pixel-border animate-fade-up flex h-full flex-col overflow-hidden rounded-2xl border-blush/10 bg-cream/60"
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
-      <div className="space-y-4 p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className="flex flex-1 flex-col space-y-4 p-5">
+        <div className="flex min-h-[5.5rem] flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="flex min-w-0 items-start gap-3">
-            {item.thumbnail && (
+            {item.thumbnail ? (
               <CardThumbnail
                 src={item.thumbnail}
                 title={item.title}
                 onOpen={openMedia}
                 priority={index <= 1}
               />
+            ) : (
+              <div
+                className={`w-9 shrink-0 rounded-md border border-transparent bg-transparent ${CARD_THUMB_ASPECT_CLASS}`}
+                aria-hidden="true"
+              />
             )}
             <div className="min-w-0 text-left">
-              <h3 className="font-display text-lg font-bold text-ink">{item.title}</h3>
+              <h3 className="line-clamp-2 font-display text-lg font-bold text-ink">
+                {item.title}
+              </h3>
               {(item.setName || item.cardNumber) ? (
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
                   {item.setName ? <span>{item.setName}</span> : null}
@@ -296,78 +303,80 @@ function GalleryItemCard({ item, index, onOpen }) {
           />
         )}
 
-        {hasExtra && (
-          <details className="group border-t border-ink/10 pt-4">
-            <summary className="cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
-              <span className="flex items-center gap-3">
-                <span className="w-20 shrink-0 text-sm font-semibold text-ink">
-                  <span className="group-open:hidden">Show more</span>
-                  <span className="hidden group-open:inline">Show less</span>
+        <div className="mt-auto shrink-0">
+          {hasExtra && (
+            <details className="group border-t border-ink/10 pt-4">
+              <summary className="cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-3">
+                  <span className="w-20 shrink-0 text-sm font-semibold text-ink">
+                    <span className="group-open:hidden">Show more</span>
+                    <span className="hidden group-open:inline">Show less</span>
+                  </span>
+                  <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
+                    {extra.map((pair, previewIndex) => {
+                      const src = previewSrc(pair);
+                      if (!src) return null;
+                      const isVideo = pairMediaKind(pair) === "video";
+                      return (
+                        <span
+                          key={pair.id ?? `${item.title}-preview-${previewIndex}`}
+                          className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
+                        >
+                          {isVideo ? (
+                            <>
+                              {galleryPosterPublicUrl(src) ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={galleryPosterPublicUrl(src)}
+                                  alt=""
+                                  loading="lazy"
+                                  decoding="async"
+                                  className="absolute inset-0 h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span className="absolute inset-0 bg-night/30" />
+                              )}
+                              <span className="absolute inset-0 flex items-center justify-center bg-night/25">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  fill="currentColor"
+                                  className="h-3 w-3 text-ink"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </span>
+                            </>
+                          ) : (
+                            <GalleryImage
+                              src={src}
+                              width={128}
+                              alt=""
+                              sizes="32px"
+                              className="object-cover"
+                            />
+                          )}
+                        </span>
+                      );
+                    })}
+                  </span>
+                  <span className="flex w-20 shrink-0 justify-end text-blush group-open:invisible">
+                    +
+                  </span>
                 </span>
-                <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
-                  {extra.map((pair, previewIndex) => {
-                    const src = previewSrc(pair);
-                    if (!src) return null;
-                    const isVideo = pairMediaKind(pair) === "video";
-                    return (
-                      <span
-                        key={pair.id ?? `${item.title}-preview-${previewIndex}`}
-                        className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
-                      >
-                        {isVideo ? (
-                          <>
-                            {galleryPosterPublicUrl(src) ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={galleryPosterPublicUrl(src)}
-                                alt=""
-                                loading="lazy"
-                                decoding="async"
-                                className="absolute inset-0 h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="absolute inset-0 bg-night/30" />
-                            )}
-                            <span className="absolute inset-0 flex items-center justify-center bg-night/25">
-                              <svg
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                className="h-3 w-3 text-ink"
-                                aria-hidden="true"
-                              >
-                                <path d="M8 5v14l11-7z" />
-                              </svg>
-                            </span>
-                          </>
-                        ) : (
-                          <GalleryImage
-                            src={src}
-                            width={128}
-                            alt=""
-                            sizes="32px"
-                            className="object-cover"
-                          />
-                        )}
-                      </span>
-                    );
-                  })}
-                </span>
-                <span className="flex w-20 shrink-0 justify-end text-blush group-open:invisible">
-                  +
-                </span>
-              </span>
-            </summary>
-            <div className="space-y-3 pt-4">
-              {extra.map((pair, pairIndex) => (
-                <BeforeAfterPair
-                  key={pair.id ?? `${item.title}-extra-${pairIndex}`}
-                  pair={pair}
-                  onOpen={openMedia}
-                />
-              ))}
-            </div>
-          </details>
-        )}
+              </summary>
+              <div className="space-y-3 pt-4">
+                {extra.map((pair, pairIndex) => (
+                  <BeforeAfterPair
+                    key={pair.id ?? `${item.title}-extra-${pairIndex}`}
+                    pair={pair}
+                    onOpen={openMedia}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -637,18 +646,14 @@ export default function GalleryContent({ items }) {
               {filteredItems.length === 1 ? "restoration" : "restorations"}
             </p>
 
-            <div className="columns-1 gap-6 lg:columns-2">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {pageItems.map((item, index) => (
-                <div
+                <GalleryItemCard
                   key={item.id ?? item.title}
-                  className="mb-6 break-inside-avoid"
-                >
-                  <GalleryItemCard
-                    item={item}
-                    index={index}
-                    onOpen={openMedia}
-                  />
-                </div>
+                  item={item}
+                  index={index}
+                  onOpen={openMedia}
+                />
               ))}
             </div>
 
