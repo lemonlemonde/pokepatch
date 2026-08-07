@@ -36,6 +36,7 @@ import {
   stitchBeforeAfterPairRows,
   stitchBeforeAfterPosts,
 } from "@/lib/instagramStitch";
+import CardSearch from "@/components/CardSearch";
 import {
   DEFAULT_PACKAGE_CAPTION,
   downloadStudioPackageZip,
@@ -309,6 +310,11 @@ function StudioCardMetaControls({
             </div>
 
             <div className="grid gap-3">
+              <CardSearch
+                onSelect={(found) =>
+                  patch({ card: found.name, set: found.set_name })
+                }
+              />
               <label className="block space-y-1.5">
                 <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
                   Card

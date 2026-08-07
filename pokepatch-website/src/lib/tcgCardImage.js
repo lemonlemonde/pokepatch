@@ -11,10 +11,21 @@ export const TCG_IMAGE_SMALL = "small";
 /** Full-sized render (~900KB) — anything that gets drawn into an export. */
 export const TCG_IMAGE_LARGE = "large";
 
+/**
+ * Scrydex first: it serves the same ~245px art as the Pokémon TCG API as
+ * JPEG (~34KB) rather than PNG (~180KB). The API's own `small` is the
+ * fallback, for cards Scrydex doesn't carry — see tcgCardImageFallbackUrl.
+ */
 export function tcgCardImageUrl(card, size = TCG_IMAGE_SMALL) {
-  if (card?.image_small && size === TCG_IMAGE_SMALL) return card.image_small;
-  if (!card?.id) return "";
-  return `https://images.scrydex.com/pokemon/${card.id}/${size}`;
+  if (card?.id) return `https://images.scrydex.com/pokemon/${card.id}/${size}`;
+  if (size === TCG_IMAGE_SMALL) return card?.image_small ?? "";
+  return card?.image_large ?? card?.image_small ?? "";
+}
+
+/** Fallback to swap in when {@link tcgCardImageUrl} 404s. */
+export function tcgCardImageFallbackUrl(card, size = TCG_IMAGE_SMALL) {
+  if (size === TCG_IMAGE_SMALL) return card?.image_small ?? "";
+  return card?.image_large ?? card?.image_small ?? "";
 }
 
 function extensionForType(mimeType) {
