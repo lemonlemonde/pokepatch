@@ -154,6 +154,7 @@ function quoteFingerprint(payload) {
   return JSON.stringify({
     items,
     bulk: order.quote_bulk_counts ?? null,
+    is_priority: Boolean(order.is_priority),
   });
 }
 
@@ -174,7 +175,14 @@ function quoteTotalFromPayload(payload) {
     [...cardIds].map((id) => ({ id })),
     cardHvMap
   );
-  return computeQuoteTotal({ items, cards, adjustments });
+  const cardCount = (payload.cards ?? []).length || null;
+  return computeQuoteTotal({
+    items,
+    cards,
+    adjustments,
+    isPriority: Boolean(order.is_priority),
+    cardCount,
+  });
 }
 
 function cardTitleForId(cardId, beforeCards, afterCards) {
@@ -302,6 +310,33 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
         beforeOrderStatus,
         beforePendingKind
       )} → ${customerOrderStatusLabel(afterOrderStatus, afterPendingKind)}`
+    );
+  }
+
+  // Order-level note visible to the customer (general_notes).
+  const beforeGeneralNotes = String(
+    beforePayload?.order?.general_notes ?? ""
+  ).trim();
+  const afterGeneralNotes = String(afterPayload?.order?.general_notes ?? "").trim();
+  if (beforeGeneralNotes !== afterGeneralNotes) {
+    if (!beforeGeneralNotes && afterGeneralNotes) {
+      orderChanges.push(`Note: ${afterGeneralNotes}`);
+    } else if (beforeGeneralNotes && !afterGeneralNotes) {
+      orderChanges.push("Removed note");
+    } else {
+      orderChanges.push(`Note: ${beforeGeneralNotes} → ${afterGeneralNotes}`);
+    }
+  }
+
+  const beforePriority = Boolean(beforePayload?.order?.is_priority);
+  const afterPriority = Boolean(afterPayload?.order?.is_priority);
+  if (
+    beforePayload?.order != null &&
+    afterPayload?.order != null &&
+    beforePriority !== afterPriority
+  ) {
+    orderChanges.push(
+      afterPriority ? "Added: Priority service" : "Removed: Priority service"
     );
   }
 
@@ -576,12 +611,17 @@ export function summarizeChangelog(changelog = {}) {
     phrases.push("Your order quote has been updated");
   }
 
-  const noteTouched = cardGroups.some((g) =>
-    (g.changes ?? []).some(
+  const noteTouched =
+    orderChanges.some(
       (line) =>
         String(line).startsWith("Note:") || String(line) === "Removed note"
-    )
-  );
+    ) ||
+    cardGroups.some((g) =>
+      (g.changes ?? []).some(
+        (line) =>
+          String(line).startsWith("Note:") || String(line) === "Removed note"
+      )
+    );
   if (noteTouched && !quoteTouched) {
     phrases.push("A note has been added to your order");
   }

@@ -11,6 +11,7 @@ import {
 } from "@/lib/orderStatus";
 import {
   cardsWithQuoteHv,
+  hasPriorityAdjustment,
   hasQuoteData,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
@@ -106,6 +107,41 @@ function UpdateChip({ className = "" }) {
     >
       New
     </span>
+  );
+}
+
+function CustomerPriorityBadge({ className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-berry/35 bg-berry/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-blush ${className}`.trim()}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-berry shadow-[0_0_10px_rgba(224,81,138,0.8)]"
+        aria-hidden="true"
+      />
+      Priority
+    </span>
+  );
+}
+
+function CustomerPriorityBanner({ queuePosition = null }) {
+  const queueLine =
+    queuePosition != null
+      ? `You're #${queuePosition} in the workshop queue.`
+      : "Your order is marked for priority handling.";
+  return (
+    <div className="rounded-xl border border-berry/25 bg-berry/[0.08] px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <CustomerPriorityBadge />
+        <span className="font-display text-sm font-bold text-ink">
+          Priority service is active
+        </span>
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-ink/70">
+        We&apos;ll keep this order moving ahead in the queue and watch it closely.
+        {queueLine ? ` ${queueLine}` : ""}
+      </p>
+    </div>
   );
 }
 
@@ -556,6 +592,24 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
+  const listQuoteAdjustments = unpackQuoteAdjustments(
+    order.quote_bulk_counts,
+    {
+      overrideLabel: order.quote_override_label ?? "",
+      overrideAmount: order.quote_override_amount,
+    }
+  );
+  const isPriority = Boolean(
+    order.is_priority ||
+      orderDetails?.is_priority ||
+      hasPriorityAdjustment(listQuoteAdjustments)
+  );
+  const statusChipLabel =
+    order.queue_position != null
+      ? isPriority
+        ? `Priority · #${order.queue_position} in queue`
+        : `#${order.queue_position} in queue`
+      : customerOrderStatusLabel(order.status, order.pending_kind);
   // Unread chip = emailed messages with read_at null only (not silent edits).
   const hasUnreadMessages = messagesReady
     ? messages.some((row) => !row.read_at)
@@ -671,29 +725,41 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
   return (
     <div
-      className={`overflow-hidden rounded-2xl border-2 bg-cream/70 shadow-cozy-sm transition-colors duration-200 ${
-        isExpanded ? "border-blush/40" : "border-ink/10"
+      className={`relative overflow-hidden rounded-2xl border-2 shadow-cozy-sm transition-colors duration-200 ${
+        isPriority
+          ? isExpanded
+            ? "border-berry/40 bg-gradient-to-br from-berry/[0.12] via-cream/80 to-cream/70"
+            : "border-berry/30 bg-gradient-to-br from-berry/[0.09] via-cream/75 to-cream/70"
+          : isExpanded
+            ? "border-blush/40 bg-cream/70"
+            : "border-ink/10 bg-cream/70"
       }`}
     >
+      {isPriority ? (
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-blush via-berry to-berry/40"
+          aria-hidden="true"
+        />
+      ) : null}
       {/* Header */}
       <button
         onClick={onClick}
-        className="flex w-full items-center gap-4 p-4 text-left transition-colors duration-150 hover:bg-ink/[0.04]"
+        className={`flex w-full items-center gap-4 p-4 text-left transition-colors duration-150 ${
+          isPriority ? "hover:bg-berry/[0.06]" : "hover:bg-ink/[0.04]"
+        }`}
       >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-bold tabular-nums leading-none text-ink">
               Order #{order.display_id}
             </h3>
+            {isPriority ? <CustomerPriorityBadge /> : null}
             <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${orderStatusBadgeClass(
-                order.status,
-                order.pending_kind
-              )}`}
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                orderStatusBadgeClass(order.status, order.pending_kind)
+              }`}
             >
-              {order.queue_position != null
-                ? `#${order.queue_position} in queue`
-                : customerOrderStatusLabel(order.status, order.pending_kind)}
+              {statusChipLabel}
             </span>
             {lastUpdatedLabel ? (
               <span
@@ -726,6 +792,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
             <span className="rounded-full bg-night/30 px-2 py-0.5">
               {cardCountText}
             </span>
+            {isPriority ? (
+              <span className="rounded-full border border-berry/20 bg-berry/10 px-2 py-0.5 font-semibold text-blush">
+                Priority service
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -737,7 +808,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               const path = previewPaths[0];
               const url = previewUrls[path];
               return (
-                <div className="relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50">
+                <div
+                  className={`relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50 ${
+                    isPriority ? "ring-1 ring-berry/50" : ""
+                  }`}
+                >
                   {url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -923,6 +998,10 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
           {orderDetails && (
             <div className="space-y-5">
+              {isPriority ? (
+                <CustomerPriorityBanner queuePosition={order.queue_position} />
+              ) : null}
+
               {/* Summary tiles */}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
@@ -995,6 +1074,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 items: orderDetails.quote_items,
                 cards: quoteCards,
                 adjustments: quoteAdjustments,
+                isPriority: Boolean(orderDetails.is_priority),
               }) ? (
                 <QuoteReceipt
                   title={
@@ -1006,7 +1086,13 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   items={orderDetails.quote_items}
                   cards={quoteCards}
                   adjustments={quoteAdjustments}
-                  className="border-peach/30 bg-peach/10"
+                  isPriority={Boolean(orderDetails.is_priority)}
+                  cardCount={orderDetails.cards?.length ?? 0}
+                  className={
+                    isPriority
+                      ? "border-berry/25 bg-berry/[0.07]"
+                      : "border-peach/30 bg-peach/10"
+                  }
                   collapsible
                   defaultOpen={false}
                 />

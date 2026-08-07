@@ -3,6 +3,7 @@ export default function ServiceCard({
   price,
   unit,
   priceStacked = false,
+  priceNote = null,
   features = [],
   bulk = [],
   bulkLabel = "Bulk Pricing",
@@ -10,6 +11,7 @@ export default function ServiceCard({
 }) {
   const accents = {
     blush: "bg-blush/30 border-blush/10",
+    berry: "bg-berry/20 border-berry/15",
     mint: "bg-mint/30 border-mint/10",
     lavender: "bg-lavender/30 border-lavender/10",
     peach: "bg-peach/30 border-peach/10",
@@ -38,6 +40,11 @@ export default function ServiceCard({
                 {unit}
               </span>
             )}
+            {priceNote ? (
+              <span className="text-[10px] font-semibold leading-tight text-ink/50">
+                {priceNote}
+              </span>
+            ) : null}
           </div>
         )}
       </div>
