@@ -10,6 +10,7 @@ import {
 } from "react";
 import { buildOrderChangelog } from "@/lib/orderChangelog";
 import {
+  applyAutoPendingDropoff,
   draftPayload,
   orderToDraft,
   validateDraftForSave,
@@ -47,10 +48,16 @@ export function OrderEditorProvider({
 
   const updateDraft = useCallback((patchOrFn) => {
     setDraft((current) => {
-      if (typeof patchOrFn === "function") {
-        return patchOrFn(current);
-      }
-      return { ...current, ...patchOrFn };
+      const next =
+        typeof patchOrFn === "function"
+          ? patchOrFn(current)
+          : { ...current, ...patchOrFn };
+      const pendingKindOnly =
+        typeof patchOrFn !== "function" &&
+        Object.keys(patchOrFn).length === 1 &&
+        Object.prototype.hasOwnProperty.call(patchOrFn, "pending_kind");
+      if (pendingKindOnly) return next;
+      return applyAutoPendingDropoff(next);
     });
   }, []);
 
