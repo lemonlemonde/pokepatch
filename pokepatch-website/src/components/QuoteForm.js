@@ -50,6 +50,19 @@ function fieldClassName(invalid = false, locked = false) {
     : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
 }
 
+// Sits under each field the account controls, so the reason a field is disabled
+// is next to that field rather than at the end of the group.
+function AccountFieldNote({ children }) {
+  return (
+    <p className="mt-1 text-xs text-ink/60">
+      {children}{" "}
+      <Link href="/account" className="font-semibold text-blush hover:underline">
+        Manage account
+      </Link>
+    </p>
+  );
+}
+
 function optionClassName(invalid = false) {
   return invalid
     ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-error bg-cream/80 px-4 py-3"
@@ -804,6 +817,9 @@ export default function QuoteForm() {
                 : undefined
             }
           />
+          {lockedName.firstName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
+          )}
         </div>
 
         <div>
@@ -831,16 +847,8 @@ export default function QuoteForm() {
                 : undefined
             }
           />
-          {(lockedName.firstName || lockedName.lastName) && (
-            <p className="mt-1 text-xs text-ink/60">
-              Your name comes from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
+          {lockedName.lastName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
           )}
         </div>
 
@@ -977,20 +985,14 @@ export default function QuoteForm() {
                       : undefined
                   }
                 />
+                {locked && (
+                  <AccountFieldNote>
+                    Saved contact methods come from your account.
+                  </AccountFieldNote>
+                )}
               </div>
             );
           })}
-          {Object.keys(lockedTypes).length > 0 && (
-            <p className="text-xs text-ink/60">
-              Saved contact methods come from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
-          )}
         </div>
 
         <div className="space-y-3">
