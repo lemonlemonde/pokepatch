@@ -87,8 +87,9 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
             You already have an account
           </h2>
           <p id="quote-login-body" className="mt-1.5 text-sm text-ink/70">
-            <span className="font-semibold text-ink">{email}</span> is already
-            registered. Log in and we&apos;ll attach this order to your account —
+            <span className="font-semibold text-ink">{email}</span>{" "}
+            is already registered. Log in and we&apos;ll attach this order to
+            your account —
             your cards and photos stay right where they are.
           </p>
         </div>
