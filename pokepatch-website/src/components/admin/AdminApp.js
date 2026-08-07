@@ -1416,7 +1416,6 @@ function KanbanBoard({
     () => ({
       completed: sumOrderAmounts(columns.completed),
       pipeline: sumOrderAmounts([
-        ...(columns.pending ?? []),
         ...(columns.new ?? []),
         ...(columns.in_progress ?? []),
         ...(columns.ready ?? []),
