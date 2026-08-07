@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import SectionHeading from "@/components/SectionHeading";
 import GalleryContent from "@/components/GalleryContent";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   FALLBACK_GALLERY_ITEMS,
   fetchPublishedGalleryItems,
@@ -11,7 +10,6 @@ import {
 
 export default function GalleryPage() {
   const [items, setItems] = useState(FALLBACK_GALLERY_ITEMS);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -24,10 +22,7 @@ export default function GalleryPage() {
       // Fall back to static assets so the page still works before migration.
       if (remote && remote.length > 0) {
         setItems(remote);
-      } else {
-        setItems(FALLBACK_GALLERY_ITEMS);
       }
-      setLoading(false);
     }
 
     load();
@@ -39,16 +34,12 @@ export default function GalleryPage() {
   return (
     <div className="mx-auto max-w-6xl px-6 py-12">
       <div className="animate-fade-up">
-        <SectionHeading subtitle="Real restorations from our workshop.">
+        <SectionHeading as="h1" subtitle="Real restorations from our workshop.">
           Gallery
         </SectionHeading>
       </div>
 
-      {loading ? (
-        <LoadingSpinner label="Loading gallery…" />
-      ) : (
-        <GalleryContent items={items} />
-      )}
+      <GalleryContent items={items} />
     </div>
   );
 }
