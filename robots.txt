@@ -1,0 +1,12 @@
+User-Agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /login/
+Disallow: /account/
+Disallow: /my-orders/
+Disallow: /messages/
+Disallow: /thank-you/
+Disallow: /verify-email/
+Disallow: /reset-password/
+
+Sitemap: https://pokepatch.cards/sitemap.xml
