@@ -314,11 +314,11 @@ Schema reference (informational, may lag live): [`pokepatch-website/supabase/sch
 
 ### Schema changes (CLI-managed)
 
-Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
+Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. That truncation is why `20260721000000_baseline_from_live.sql` exists — it is a `supabase db dump` of the live schema, timestamped ahead of every other migration, so the directory can build a database from scratch. It is recorded as already-applied on the hosted project, so `db push` never runs it there. Don't edit it; new changes go in new migrations as usual. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
 
 Writing a migration file is local only. Applying it (`db push` / remote DDL) is a live action — see [Local vs live (deploy safety)](#local-vs-live-deploy-safety).
 
-To try a migration before pushing it, run it against a local stack: `supabase start` applies every file under `supabase/migrations/`, and `npm run devenv` points the app at it — see [Switching between the hosted project and a local Supabase stack](#switching-between-the-hosted-project-and-a-local-supabase-stack).
+To try a migration before pushing it, run it against a local stack: `supabase start` applies the baseline plus every file under `supabase/migrations/`, and `npm run devenv` points the app at it — see [Switching between the hosted project and a local Supabase stack](#switching-between-the-hosted-project-and-a-local-supabase-stack).
 
 #### Happy path (preferred)
 
