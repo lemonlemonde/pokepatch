@@ -24,6 +24,7 @@ AS $$
         )
     );
 $$;
+
 CREATE OR REPLACE FUNCTION public.maybe_auto_pending_dropoff(p_order_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -41,6 +42,7 @@ BEGIN
     AND public.order_all_cards_have_quotes(p_order_id);
 END;
 $$;
+
 CREATE OR REPLACE FUNCTION public.update_order(p_order_id uuid, p_order jsonb DEFAULT NULL::jsonb, p_contacts jsonb DEFAULT NULL::jsonb, p_cards jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -610,3 +612,4 @@ begin
   );
 end;
 $function$;
+
