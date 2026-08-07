@@ -12,6 +12,7 @@ export default function ContactPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-12 md:py-16">
       <SectionHeading
+        as="h1"
         note="Quote"
         subtitle="Send photos of your cards and tell us what you'd like fixed. We usually reply within 2 hours."
       >

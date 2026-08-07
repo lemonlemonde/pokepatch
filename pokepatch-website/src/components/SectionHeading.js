@@ -2,6 +2,7 @@
  * Shared page title for public routes — dark editorial style.
  * Prefer `note` for a short mono label; `subtitle` for a supporting sentence.
  * Use `variant="section"` for denser admin-style headings.
+ * Pass `as="h1"` on primary page titles for SEO.
  */
 export default function SectionHeading({
   children,
@@ -9,6 +10,7 @@ export default function SectionHeading({
   note,
   align = "left",
   variant = "page",
+  as: Tag = "h2",
 }) {
   const isSection = variant === "section";
   const alignClass = isSection
@@ -24,7 +26,7 @@ export default function SectionHeading({
           {note}
         </p>
       ) : null}
-      <h2
+      <Tag
         className={
           isSection
             ? "text-3xl font-bold text-ink md:text-4xl"
@@ -32,7 +34,7 @@ export default function SectionHeading({
         }
       >
         {children}
-      </h2>
+      </Tag>
       {subtitle ? (
         <p
           className={

@@ -7,6 +7,7 @@ import ServiceCard from "@/components/ServiceCard";
 import ServiceModifiersCard from "@/components/ServiceModifiersCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
+import HomeStructuredData from "@/components/HomeStructuredData";
 import QueueCount from "@/components/QueueCount";
 import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
 
@@ -72,6 +73,7 @@ const faqs = [
 export default function Home() {
   return (
     <MarketingPageShell>
+      <HomeStructuredData faqs={faqs} />
       <Hero />
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">

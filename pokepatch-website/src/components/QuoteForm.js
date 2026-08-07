@@ -42,6 +42,19 @@ function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+// Sits under each field the account controls, so the reason a field is disabled
+// is next to that field rather than at the end of the group.
+function AccountFieldNote({ children }) {
+  return (
+    <p className="mt-1 text-xs text-ink/60">
+      {children}{" "}
+      <Link href="/account" className="font-semibold text-blush hover:underline">
+        Manage account
+      </Link>
+    </p>
+  );
+}
+
 function emptyCard() {
   return {
     id: crypto.randomUUID(),
@@ -265,7 +278,7 @@ export default function QuoteForm() {
     profileLoadedRef.current = true;
     supabase
       .from("customer_profiles")
-      .select("first_name, last_name, contacts")
+      .select("first_name, last_name, contacts, preferred_contact_type")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -298,6 +311,10 @@ export default function QuoteForm() {
           setContactValues((prev) => ({ ...prev, ...saved }));
           setLockedTypes(locked);
         }
+        // Preferred contact method saved on the account (written back by
+        // create_order when a previous order first supplied it).
+        const savedPreferred = (data.preferred_contact_type ?? "").trim();
+        if (savedPreferred) setPreferredContactId(savedPreferred);
       });
   }, [user]);
 
@@ -792,6 +809,9 @@ export default function QuoteForm() {
                 : undefined
             }
           />
+          {lockedName.firstName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
+          )}
         </div>
 
         <div>
@@ -819,16 +839,8 @@ export default function QuoteForm() {
                 : undefined
             }
           />
-          {(lockedName.firstName || lockedName.lastName) && (
-            <p className="mt-1 text-xs text-ink/60">
-              Your name comes from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
+          {lockedName.lastName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
           )}
         </div>
 
@@ -948,36 +960,31 @@ export default function QuoteForm() {
                 >
                   {type.label}
                 </label>
-                {locked ? (
-                  <div className="rounded-xl border-2 border-ink/10 bg-cream/60 px-4 py-2">
-                    <p className="text-sm text-ink/80">{value}</p>
-                  </div>
-                ) : (
-                  <input
-                    id={`contact_${type.value}`}
-                    type="text"
-                    value={value}
-                    onChange={(e) => updateContactValue(type.value, e.target.value)}
-                    placeholder={
-                      type.value === "phone" ? "(555) 555-5555" : "@yourusername"
-                    }
-                    className={fieldClassName()}
-                  />
+                <input
+                  id={`contact_${type.value}`}
+                  type="text"
+                  value={value}
+                  onChange={(e) => updateContactValue(type.value, e.target.value)}
+                  placeholder={
+                    type.value === "phone" ? "(555) 555-5555" : "@yourusername"
+                  }
+                  className={fieldClassName(false, locked)}
+                  disabled={locked}
+                  readOnly={locked}
+                  title={
+                    locked
+                      ? "Saved on your account. Edit it in account settings."
+                      : undefined
+                  }
+                />
+                {locked && (
+                  <AccountFieldNote>
+                    Saved contact methods come from your account.
+                  </AccountFieldNote>
                 )}
               </div>
             );
           })}
-          {Object.keys(lockedTypes).length > 0 && (
-            <p className="text-xs text-ink/60">
-              Saved contact methods come from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
-          )}
         </div>
 
         <div className="space-y-3">

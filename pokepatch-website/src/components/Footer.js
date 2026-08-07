@@ -1,4 +1,11 @@
+import Link from "next/link";
 import SocialLinks from "@/components/SocialLinks";
+
+const FOOTER_LINKS = [
+  { href: "/", label: "Home" },
+  { href: "/gallery", label: "Gallery" },
+  { href: "/contact", label: "Get Free Quote" },
+];
 
 export default function Footer() {
   return (
@@ -7,6 +14,20 @@ export default function Footer() {
         <p className="text-sm font-medium tracking-tight text-ink">
           PokePatch · Card Restorations
         </p>
+        <nav aria-label="Footer">
+          <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+            {FOOTER_LINKS.map(({ href, label }) => (
+              <li key={href}>
+                <Link
+                  href={href}
+                  className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink/45 transition hover:text-ink"
+                >
+                  {label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
         <SocialLinks />
         <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-ink/35">
           &copy; {new Date().getFullYear()} PokePatch
