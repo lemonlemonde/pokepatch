@@ -16,7 +16,6 @@ const BASE_LINKS = [
   { href: "/contact", label: "Get Free Quote" },
 ];
 
-// The site is exported with trailing slashes, so normalize before comparing.
 function normalizePath(path) {
   const stripped = (path ?? "/").replace(/\/+$/, "");
   return stripped === "" ? "/" : stripped;
@@ -28,7 +27,7 @@ function MenuIcon({ open }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth="1.75"
       strokeLinecap="round"
       className="h-5 w-5"
       aria-hidden="true"
@@ -58,7 +57,6 @@ export default function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close the mobile menu after navigating.
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
@@ -121,28 +119,26 @@ export default function Navbar() {
   }
 
   function linkClassName(href) {
-    return `block rounded-full px-3 py-1.5 text-sm font-semibold transition sm:px-3 sm:py-1 ${
-      isActive(href)
-        ? "bg-ink/15 text-ink"
-        : "text-blush/90 hover:bg-ink/10 hover:text-ink"
+    return `block px-3 py-3 font-mono text-[11px] uppercase tracking-[0.18em] transition sm:px-3 sm:py-1.5 ${
+      isActive(href) ? "text-ink" : "text-ink/45 hover:text-ink"
     }`;
   }
 
   const solid = scrolled || menuOpen;
 
   return (
-    <header className="sticky top-0 z-50 flex justify-center px-4 pt-4">
+    <header className="sticky top-0 z-50 flex justify-center px-3 pt-3 sm:px-4 sm:pt-4">
       <nav
-        className={`w-full max-w-4xl rounded-[1.75rem] border px-4 py-2.5 transition-[background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out sm:px-6 ${
+        className={`w-full max-w-6xl rounded-xl border px-3 py-2 transition-[background-color,border-color,backdrop-filter] duration-300 ease-out sm:px-6 sm:py-2.5 ${
           solid
-            ? "border-ink/15 bg-night/70 shadow-cozy-sm backdrop-blur-md"
+            ? "border-ink/10 bg-[#0a0714]/80 backdrop-blur-md"
             : "border-transparent bg-transparent"
         }`}
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <Link
             href="/"
-            className="flex shrink-0 items-center gap-1.5 font-display text-base font-bold text-ink sm:gap-2 sm:text-lg"
+            className="flex min-w-0 shrink items-center gap-2 text-sm font-medium tracking-tight text-ink sm:text-base"
           >
             <Image
               src={logo}
@@ -150,7 +146,7 @@ export default function Navbar() {
               priority
               className="h-8 w-auto shrink-0 sm:h-9"
             />
-            PokePatch
+            <span className="truncate">PokePatch</span>
           </Link>
 
           <ul className="hidden items-center gap-1 sm:flex sm:gap-2">
@@ -177,7 +173,7 @@ export default function Navbar() {
             onClick={() => setMenuOpen((open) => !open)}
             aria-expanded={menuOpen}
             aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className="grid h-9 w-9 place-items-center rounded-full text-blush/90 transition hover:bg-ink/10 hover:text-ink sm:hidden"
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-ink/60 transition hover:bg-ink/5 hover:text-ink sm:hidden"
           >
             <MenuIcon open={menuOpen} />
           </button>

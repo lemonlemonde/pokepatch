@@ -45,6 +45,14 @@ export default {
         sans: ["var(--font-nunito)", "system-ui", "sans-serif"],
         display: ["var(--font-pixelify)", "var(--font-nunito)", "sans-serif"],
         secondary: ["var(--font-gugi)", "var(--font-nunito)", "sans-serif"],
+        grotesk: ["var(--font-instrument-sans)", "system-ui", "sans-serif"],
+        mono: [
+          "var(--font-geist-mono)",
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "monospace",
+        ],
       },
       boxShadow: {
         cozy: "0 4px 0 0 rgba(0, 0, 0, 0.35)",

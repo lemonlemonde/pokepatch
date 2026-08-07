@@ -69,7 +69,7 @@ export default function OrderNoteOnlyDialog({
       <div
         role="dialog"
         aria-modal="true"
-        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy"
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-ink/15 bg-cream "
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-ink/10 px-5 py-4">
@@ -114,7 +114,7 @@ export default function OrderNoteOnlyDialog({
             type="button"
             onClick={onCancel}
             disabled={sending}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+            className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30 disabled:opacity-40"
           >
             Cancel
           </button>
@@ -122,7 +122,7 @@ export default function OrderNoteOnlyDialog({
             type="button"
             onClick={handleSend}
             disabled={sending}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {sending ? "Sending…" : "Send message"}
           </button>

@@ -725,14 +725,14 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border-2 shadow-cozy-sm transition-colors duration-200 ${
+      className={`relative overflow-hidden rounded-xl border transition-colors duration-200 ${
         isPriority
           ? isExpanded
-            ? "border-berry/40 bg-gradient-to-br from-berry/[0.12] via-cream/80 to-cream/70"
-            : "border-berry/30 bg-gradient-to-br from-berry/[0.09] via-cream/75 to-cream/70"
+            ? "border-berry/40 bg-berry/[0.08]"
+            : "border-berry/25 bg-berry/[0.05]"
           : isExpanded
-            ? "border-blush/40 bg-cream/70"
-            : "border-ink/10 bg-cream/70"
+            ? "border-ink/20 bg-ink/[0.04]"
+            : "border-ink/10 bg-ink/[0.02]"
       }`}
     >
       {isPriority ? (

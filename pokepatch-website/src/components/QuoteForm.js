@@ -14,6 +14,7 @@ import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompressi
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
+import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import { priorityServicePricingHint } from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
@@ -41,15 +42,6 @@ function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-function fieldClassName(invalid = false, locked = false) {
-  if (locked) {
-    return "w-full scroll-mt-24 cursor-not-allowed rounded-xl border-2 border-ink/10 bg-ink/10 px-4 py-2 text-ink/50 outline-none";
-  }
-  return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
-    : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
-
 // Sits under each field the account controls, so the reason a field is disabled
 // is next to that field rather than at the end of the group.
 function AccountFieldNote({ children }) {
@@ -61,12 +53,6 @@ function AccountFieldNote({ children }) {
       </Link>
     </p>
   );
-}
-
-function optionClassName(invalid = false) {
-  return invalid
-    ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-error bg-cream/80 px-4 py-3"
-    : "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3";
 }
 
 function emptyCard() {
@@ -768,7 +754,7 @@ export default function QuoteForm() {
       ref={formRef}
       onSubmit={handleSubmit}
       noValidate
-      className="pixel-border animate-fade-up space-y-10 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]"
+      className="marketing-panel animate-fade-up space-y-10 p-6 [animation-delay:150ms]"
     >
       {!isSupabaseConfigured && (
         <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">

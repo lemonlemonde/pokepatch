@@ -8,6 +8,7 @@ export default function ServiceCard({
   bulk = [],
   bulkLabel = "Bulk Pricing",
   accent,
+  variant = "cozy",
 }) {
   const accents = {
     blush: "bg-blush/30 border-blush/10",
@@ -18,30 +19,63 @@ export default function ServiceCard({
     sky: "bg-sky/30 border-sky/10",
   };
 
+  const isMarketing = variant === "marketing";
+  const shellClass = isMarketing
+    ? "marketing-panel p-4 sm:p-6"
+    : `pixel-border rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.blush}`;
+
   return (
-    <div
-      className={`pixel-border flex flex-col rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.blush}`}
-    >
+    <div className={`flex flex-col ${shellClass}`}>
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-display text-xl font-bold text-ink">{title}</h3>
+        <h3
+          className={
+            isMarketing
+              ? "text-lg font-medium tracking-tight text-ink"
+              : "font-display text-xl font-bold text-ink"
+          }
+        >
+          {title}
+        </h3>
         {price && (
           <div
-            className={`flex shrink-0 rounded-xl bg-night/50 px-3 py-2 text-right ${
+            className={`flex shrink-0 text-right ${
+              isMarketing
+                ? "rounded-lg bg-ink/5 px-3 py-2 ring-1 ring-ink/10"
+                : "rounded-xl bg-night/50 px-3 py-2"
+            } ${
               priceStacked
                 ? "flex-col items-end gap-0.5"
                 : "items-baseline gap-1"
             }`}
           >
-            <span className="text-2xl font-bold leading-none text-berry">
+            <span
+              className={
+                isMarketing
+                  ? "font-mono text-xl leading-none text-ink"
+                  : "text-2xl font-bold leading-none text-berry"
+              }
+            >
               {price}
             </span>
             {unit && (
-              <span className="text-xs font-semibold text-ink/60">
+              <span
+                className={
+                  isMarketing
+                    ? "font-mono text-[10px] uppercase tracking-[0.12em] text-ink/50"
+                    : "text-xs font-semibold text-ink/60"
+                }
+              >
                 {unit}
               </span>
             )}
             {priceNote ? (
-              <span className="text-[10px] font-semibold leading-tight text-ink/50">
+              <span
+                className={
+                  isMarketing
+                    ? "font-mono text-[9px] uppercase leading-tight tracking-[0.1em] text-ink/40"
+                    : "text-[10px] font-semibold leading-tight text-ink/50"
+                }
+              >
                 {priceNote}
               </span>
             ) : null}
@@ -50,10 +84,14 @@ export default function ServiceCard({
       </div>
 
       {features.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-ink/70">
+        <ul
+          className={`mt-4 space-y-1 text-sm ${
+            isMarketing ? "text-ink/60" : "text-ink/70"
+          }`}
+        >
           {features.map((feature) => (
             <li key={feature} className="flex items-start gap-2">
-              <span className="text-ink/40">•</span>
+              <span className="text-ink/35">{isMarketing ? "—" : "•"}</span>
               {feature}
             </li>
           ))}
@@ -62,7 +100,13 @@ export default function ServiceCard({
 
       {bulk.length > 0 && (
         <div className="mt-4 border-t border-ink/10 pt-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/50">
+          <p
+            className={
+              isMarketing
+                ? "font-mono text-[10px] uppercase tracking-[0.2em] text-ink/45"
+                : "text-xs font-bold uppercase tracking-wide text-ink/50"
+            }
+          >
             {bulkLabel}
           </p>
           <ul className="mt-2 space-y-1 text-sm">
@@ -71,8 +115,18 @@ export default function ServiceCard({
                 key={item.label}
                 className="flex items-center justify-between gap-3"
               >
-                <span className="text-ink/70">{item.label}</span>
-                <span className="font-bold text-berry">{item.value}</span>
+                <span className={isMarketing ? "text-ink/60" : "text-ink/70"}>
+                  {item.label}
+                </span>
+                <span
+                  className={
+                    isMarketing
+                      ? "font-mono tabular-nums text-ink"
+                      : "font-bold text-berry"
+                  }
+                >
+                  {item.value}
+                </span>
               </li>
             ))}
           </ul>

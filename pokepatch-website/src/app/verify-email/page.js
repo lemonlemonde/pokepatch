@@ -99,10 +99,10 @@ function VerifyEmailContent() {
   if (status === "verifying") {
     return (
       <div className="animate-fade-up">
-        <SectionHeading subtitle="One moment.">
+        <SectionHeading note="Email" subtitle="One moment.">
           Confirming your email
         </SectionHeading>
-        <div className="pixel-border mt-6 flex justify-center rounded-2xl bg-cream/60 p-10">
+        <div className="marketing-panel mt-6 flex justify-center p-10">
           <LoadingSpinner />
         </div>
       </div>
@@ -112,12 +112,15 @@ function VerifyEmailContent() {
   return (
     <>
       <div className="animate-fade-up">
-        <SectionHeading subtitle="One quick step before you can log in.">
+        <SectionHeading
+          note="Email"
+          subtitle="One quick step before you can log in."
+        >
           Confirm your email
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 text-center [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up space-y-6 p-6 text-center [animation-delay:150ms]">
         {status === "invalid" ? (
           <>
             <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
@@ -190,7 +193,7 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <div className="mx-auto max-w-md px-6 py-16">
+    <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">

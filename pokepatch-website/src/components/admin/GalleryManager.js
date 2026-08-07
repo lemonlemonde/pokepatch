@@ -36,7 +36,7 @@ import {
 } from "@/lib/imageCompression";
 
 function fieldClassName() {
-  return "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
+  return "w-full rounded-xl border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
 }
 
 function LoadingIndicator({ label = "Loading…", className = "" }) {
@@ -205,7 +205,7 @@ function SideUpload({
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-blush">
+        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-ink/30">
           {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
           <input
             type="file"
@@ -308,7 +308,7 @@ function ThumbnailUpload({
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-blush">
+        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-ink/30">
           {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
           <input
             type="file"
@@ -749,7 +749,7 @@ export default function GalleryManager() {
       : fieldClassName();
 
     return (
-      <section className="rounded-2xl border-2 border-ink/10 bg-cream/70 p-5 shadow-cozy">
+      <section className="marketing-panel p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <h2 className="text-xl font-bold text-ink">
             {selected ? `Edit — ${selected.title}` : "New gallery item"}
@@ -757,7 +757,7 @@ export default function GalleryManager() {
           <button
             type="button"
             onClick={closeEditor}
-            className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink hover:border-blush"
+            className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink hover:border-ink/30"
           >
             Close
           </button>
@@ -896,7 +896,7 @@ export default function GalleryManager() {
                   type="button"
                   disabled={saving}
                   onClick={() => handleAddPair("image")}
-                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
                 >
                   + Image pair
                 </button>
@@ -904,7 +904,7 @@ export default function GalleryManager() {
                   type="button"
                   disabled={saving}
                   onClick={() => handleAddPair("video")}
-                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-blush disabled:opacity-50"
+                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
                 >
                   + Video pair
                 </button>
@@ -1050,7 +1050,7 @@ export default function GalleryManager() {
             type="button"
             disabled={saving}
             onClick={handleSaveMeta}
-            className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-60 ${
+            className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night transition hover:brightness-110 disabled:opacity-60 ${
               saving ? "animate-soft-bounce" : ""
             }`}
           >
@@ -1061,7 +1061,7 @@ export default function GalleryManager() {
               type="button"
               disabled={saving}
               onClick={handleDelete}
-              className="rounded-xl border-2 border-berry/50 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
+              className="rounded-xl border border-berry/40 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
             >
               Delete
             </button>
@@ -1082,14 +1082,14 @@ export default function GalleryManager() {
               !items.some((item) => !item.urls?.thumbnail && item.tcg_card_id)
             }
             onClick={handleGenerateAllMissingThumbnails}
-            className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink hover:border-blush disabled:opacity-50"
+            className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
           >
             Generate missing thumbnails
           </button>
           <button
             type="button"
             onClick={startCreate}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
           >
             New gallery item
           </button>
@@ -1116,7 +1116,7 @@ export default function GalleryManager() {
             {items.map((item) => (
               <li
                 key={item.id}
-                className={`rounded-xl border-2 px-3 py-3 ${
+                className={`rounded-xl border px-3 py-3 ${
                   selectedId === item.id
                     ? "border-berry bg-blush/20"
                     : "border-ink/10 bg-cream"
