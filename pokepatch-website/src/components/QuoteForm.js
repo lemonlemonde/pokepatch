@@ -675,7 +675,7 @@ export default function QuoteForm() {
         cards: cardsPayload,
       };
 
-      const { error: rpcError } = await supabase.rpc("create_order", {
+      const { data: orderResult, error: rpcError } = await supabase.rpc("create_order", {
         p_payload: payload,
       });
 
@@ -719,6 +719,12 @@ export default function QuoteForm() {
         is_priority: isPriority,
       });
 
+      const displayId = orderResult?.display_id;
+      const thankYouPath =
+        displayId != null
+          ? `/thank-you?order=${encodeURIComponent(String(displayId))}`
+          : "/thank-you";
+
       setStatus("success");
       setGuestBlockedEmail("");
       setLoginNotice("");
@@ -736,7 +742,7 @@ export default function QuoteForm() {
       setFieldErrors(null);
       setCardFileErrors({});
       formRef.current?.reset();
-      router.push("/thank-you");
+      router.push(thankYouPath);
     } catch (err) {
       capture("quote_form_error", {
         error_type:

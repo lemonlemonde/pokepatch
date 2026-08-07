@@ -6,6 +6,7 @@ import ServiceCard from "@/components/ServiceCard";
 import ServiceModifiersCard from "@/components/ServiceModifiersCard";
 import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
+import HomeStructuredData from "@/components/HomeStructuredData";
 import QueueCount from "@/components/QueueCount";
 import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
 
@@ -71,6 +72,7 @@ const faqs = [
 export default function Home() {
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
+      <HomeStructuredData faqs={faqs} />
       <section className="mb-16 animate-fade-up text-center">
         <div className="mb-3 flex justify-center">
           <Image
@@ -81,7 +83,7 @@ export default function Home() {
           />
         </div>
         <h1
-          aria-label="PokePatch!"
+          aria-label="PokePatch — Trading Card Restorations"
           className="font-display text-5xl font-bold tracking-tight text-ink md:text-6xl"
         >
           <span aria-hidden="true">
@@ -97,7 +99,7 @@ export default function Home() {
           </span>
         </h1>
         <p className="mt-2 font-secondary text-lg text-berry md:text-xl">
-          Card Restorations
+          Trading Card Restorations
         </p>
         <p className="mt-2 text-sm text-ink/70 md:text-base">
           Bay Area Drop-Off • Nationwide Mail-In
