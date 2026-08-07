@@ -18,6 +18,23 @@ Copy `.env.local.example` to `.env.local` and set:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `NEXT_PUBLIC_POSTHOG_KEY` (optional — analytics disabled if unset)
 
+### Switching between the hosted project and a local Supabase stack
+
+`npm run dev` points at whatever `.env.local` says, which by default is the **hosted** Supabase project — the same database the live site uses. To develop against a local stack instead (required to exercise migrations that haven't been pushed yet), keep both configs side by side and flip a symlink:
+
+```bash
+cd pokepatch-website
+mv .env.local .env.local.prod   # one time — your hosted-project values
+supabase start                  # boots local Postgres + applies every migration
+npm run devenv                  # points .env.local at the local stack, then runs the dev server
+```
+
+`npm run prodenv` is the same thing against the hosted project. Both replace `npm run dev`; run `sh scripts/use-env.sh dev|prod` to switch without starting a server. Check which one is active with `readlink .env.local`.
+
+`.env.local` is a symlink; the real values live in `.env.local.prod`. `.env.local.dev` is regenerated from it on every `devenv`, swapping only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for what the running stack reports — everything else (PostHog, admin emails, feature flags) stays identical, so the two configs can't drift. All three files are gitignored.
+
+Local auth emails (signup confirmation, password recovery) don't leave the machine — they go to the local mail catcher. `supabase start` prints its URL if one is running; `supabase/config.toml` has no `[inbucket]` block, so enable it there if the emails don't show up.
+
 ## Deploy (GitHub Pages)
 
 Repo: `lemonlemonde/pokepatch` → **https://lemonlemonde.github.io/pokepatch/**
@@ -300,6 +317,8 @@ Schema reference (informational, may lag live): [`pokepatch-website/supabase/sch
 Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
 
 Writing a migration file is local only. Applying it (`db push` / remote DDL) is a live action — see [Local vs live (deploy safety)](#local-vs-live-deploy-safety).
+
+To try a migration before pushing it, run it against a local stack: `supabase start` applies every file under `supabase/migrations/`, and `npm run devenv` points the app at it — see [Switching between the hosted project and a local Supabase stack](#switching-between-the-hosted-project-and-a-local-supabase-stack).
 
 #### Happy path (preferred)
 
