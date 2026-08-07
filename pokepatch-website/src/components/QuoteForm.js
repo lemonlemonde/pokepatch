@@ -960,22 +960,23 @@ export default function QuoteForm() {
                 >
                   {type.label}
                 </label>
-                {locked ? (
-                  <div className="rounded-xl border-2 border-ink/10 bg-cream/60 px-4 py-2">
-                    <p className="text-sm text-ink/80">{value}</p>
-                  </div>
-                ) : (
-                  <input
-                    id={`contact_${type.value}`}
-                    type="text"
-                    value={value}
-                    onChange={(e) => updateContactValue(type.value, e.target.value)}
-                    placeholder={
-                      type.value === "phone" ? "(555) 555-5555" : "@yourusername"
-                    }
-                    className={fieldClassName()}
-                  />
-                )}
+                <input
+                  id={`contact_${type.value}`}
+                  type="text"
+                  value={value}
+                  onChange={(e) => updateContactValue(type.value, e.target.value)}
+                  placeholder={
+                    type.value === "phone" ? "(555) 555-5555" : "@yourusername"
+                  }
+                  className={fieldClassName(false, locked)}
+                  disabled={locked}
+                  readOnly={locked}
+                  title={
+                    locked
+                      ? "Saved on your account. Edit it in account settings."
+                      : undefined
+                  }
+                />
               </div>
             );
           })}
