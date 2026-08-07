@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/Button";
 import SectionHeading from "@/components/SectionHeading";
@@ -20,7 +20,17 @@ function fieldClassName(invalid = false) {
 }
 
 export default function ThankYouPage() {
+  return (
+    <Suspense>
+      <ThankYouContent />
+    </Suspense>
+  );
+}
+
+function ThankYouContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const orderNumber = searchParams.get("order");
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, signUp } = useAuth();
   const [showAccountCreation, setShowAccountCreation] = useState(false);
@@ -135,10 +145,15 @@ export default function ThankYouPage() {
       </div>
 
       <div className="pixel-border animate-fade-up space-y-5 rounded-2xl bg-cream/60 p-8 text-center [animation-delay:150ms]">
+        {orderNumber && (
+          <p className="text-lg font-bold text-ink">
+            Order #{orderNumber}
+          </p>
+        )}
         <p className="text-ink/80">
           We&apos;ve received your restoration request and will review your cards
-          shortly. You&apos;ll receive a quote within approximately 2 hours using the
-          contact information you provided.
+          shortly. A confirmation email is on its way — we&apos;ll reach out to you
+          soon with a quote, usually within about 2 hours.
         </p>
         <p className="font-semibold text-ink">
           We look forward to helping bring your cards back to life!
