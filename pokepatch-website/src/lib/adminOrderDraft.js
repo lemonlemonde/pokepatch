@@ -5,6 +5,7 @@ import {
   normalizeOrderStatus,
   normalizePendingKind,
   DEFAULT_CARD_STATUS,
+  DEFAULT_PENDING_KIND,
 } from "@/lib/orderStatus";
 import {
   SERVICE_KEYS,
@@ -119,6 +120,27 @@ export function quoteItemBelongsToCard(item, card, cards = null) {
     return String(item.card_pick) === cardId;
   }
   return findMatchingOrderCardId(item, cards ?? [card]) === cardId;
+}
+
+/** True when every card has at least one ready quote line. */
+export function allCardsHaveQuote(cards, quoteItems) {
+  const list = cards ?? [];
+  if (list.length === 0) return false;
+  return list.every((card) =>
+    (quoteItems ?? []).some(
+      (item) => quoteItemBelongsToCard(item, card, list) && quoteItemIsReady(item)
+    )
+  );
+}
+
+/** Pending quote → pending drop-off once every card is quoted. */
+export function applyAutoPendingDropoff(draft) {
+  if (normalizeOrderStatus(draft.status) !== "pending") return draft;
+  if (normalizePendingKind(draft.pending_kind) !== DEFAULT_PENDING_KIND) {
+    return draft;
+  }
+  if (!allCardsHaveQuote(draft.cards, draft.quote_items)) return draft;
+  return { ...draft, pending_kind: "drop_off" };
 }
 
 /** Ensure every order card has at least one (possibly empty) quote line. */
