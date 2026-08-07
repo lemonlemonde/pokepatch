@@ -1,4 +1,13 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  buildStoredMessageBody,
+  sendResendEmail,
+} from "../_shared/resend.ts";
+
+const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
+const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
+const CONTACT_INSTAGRAM = "@pokepatch.cards";
+const CONTACT_DISCORD = "pokepatch.cards";
 
 const BUCKET = "card-photos";
 // Signed URLs expire. 1 year keeps links working in Discord history / the Sheet.
@@ -147,6 +156,111 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     storagePrefix,
     photoUrls,
   });
+
+  await sendQuoteConfirmationEmail({
+    supabase,
+    orderUuid,
+    displayId,
+    customerEmail: String(record.customer_email ?? "").trim(),
+    userId: (record.user_id as string | null) ?? null,
+    customerName,
+  });
+}
+
+function buildQuoteConfirmationBody(customerName: string): string {
+  const greeting = customerName ? `Hi ${customerName},\n\n` : "";
+  return (
+    `${greeting}Thanks for submitting your restoration quote request to PokePatch! ` +
+    `We've received your form successfully and will review your cards shortly.\n\n` +
+    `We'll reach out to you soon with a quote, usually within about 2 hours.\n\n` +
+    `In the meantime, contact us at:\n` +
+    `- Email: ${CONTACT_EMAIL}\n` +
+    `- Instagram: ${CONTACT_INSTAGRAM}\n` +
+    `- Discord: ${CONTACT_DISCORD}`
+  );
+}
+
+async function sendQuoteConfirmationEmail({
+  supabase,
+  orderUuid,
+  displayId,
+  customerEmail,
+  userId,
+  customerName,
+}: {
+  supabase: SupabaseClient;
+  orderUuid: string;
+  displayId: number | string;
+  customerEmail: string;
+  userId: string | null;
+  customerName: string;
+}): Promise<void> {
+  const email = customerEmail.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    console.log("quote confirmation: skipping — no valid customer_email");
+    return;
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("customer_messages")
+    .select("id")
+    .eq("order_id", orderUuid)
+    .eq("subject", QUOTE_CONFIRMATION_SUBJECT)
+    .in("email_status", ["pending", "sent"])
+    .limit(1);
+  if (existingError) {
+    console.error("quote confirmation: idempotency check failed", existingError);
+    return;
+  }
+  if ((existing?.length ?? 0) > 0) {
+    console.log("quote confirmation: already sent for order", orderUuid);
+    return;
+  }
+
+  const messageBody = buildQuoteConfirmationBody(customerName);
+  const storedBody = buildStoredMessageBody(messageBody, displayId);
+  const batchId = crypto.randomUUID();
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("customer_messages")
+    .insert({
+      order_id: orderUuid,
+      recipient_email: email,
+      user_id: userId,
+      subject: QUOTE_CONFIRMATION_SUBJECT,
+      body: storedBody,
+      email_status: "pending",
+      batch_id: batchId,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    console.error("quote confirmation: failed to log message", insertError);
+    return;
+  }
+
+  const messageId = inserted.id as string;
+  const sendResult = await sendResendEmail({
+    to: email,
+    subject: QUOTE_CONFIRMATION_SUBJECT,
+    body: messageBody,
+    orderDisplayId: displayId,
+  });
+
+  const emailStatus = sendResult.ok ? "sent" : "failed";
+  const emailError = sendResult.ok ? null : sendResult.error;
+
+  const { error: updateError } = await supabase
+    .from("customer_messages")
+    .update({ email_status: emailStatus, email_error: emailError })
+    .eq("id", messageId);
+
+  if (updateError) {
+    console.error("quote confirmation: failed to update message status", updateError);
+  } else if (!sendResult.ok) {
+    console.error("quote confirmation: send failed", sendResult.error);
+  }
 }
 
 function formatContacts(
