@@ -33,6 +33,11 @@ import {
   useUnsavedChangesGuard,
 } from "@/lib/useUnsavedChangesGuard";
 import {
+  ExpandPanel,
+  overlayFadeClassName,
+  useOverlayPresence,
+} from "@/components/ExpandReveal";
+import {
   ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
   COMPLETED_ORDER_STATUS,
@@ -838,29 +843,37 @@ function formatOrderIdList(orders, limit = 8) {
 }
 
 function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
+  const open = Boolean(orders?.length);
+  const { mounted, visible } = useOverlayPresence(open);
+  const [snapshot, setSnapshot] = useState(orders);
+
+  if (orders?.length && orders !== snapshot) {
+    setSnapshot(orders);
+  }
+
   useEffect(() => {
-    if (!orders?.length) return undefined;
+    if (!open) return undefined;
     function onKeyDown(event) {
       if (event.key === "Escape" && !deleting) onCancel();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [orders, deleting, onCancel]);
+  }, [open, deleting, onCancel]);
 
-  if (!orders?.length) return null;
+  if (!mounted || !snapshot?.length) return null;
 
-  const count = orders.length;
+  const count = snapshot.length;
   const isBulk = count > 1;
   const title = isBulk
     ? `Delete ${count} orders?`
-    : `Delete order #${orders[0].display_id}?`;
+    : `Delete order #${snapshot[0].display_id}?`;
   const confirmLabel = isBulk
     ? `Yes, delete ${count} orders`
     : "Yes, delete this order";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={() => {
         if (!deleting) onCancel();
@@ -891,7 +904,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
               photos. This cannot be undone.
             </p>
             <p className="mt-3 rounded-lg border border-ink/10 bg-night/30 px-3 py-2 text-xs font-semibold tabular-nums text-ink/80">
-              {formatOrderIdList(orders)}
+              {formatOrderIdList(snapshot)}
             </p>
           </div>
         </div>
@@ -1570,6 +1583,61 @@ function KanbanBoard({
       }
     }
 
+    // No `overscroll-contain` on the list: the column is height-capped
+    // (72vh) while the page keeps scrolling below it, so the wheel has to
+    // chain out to the page once this list hits its top/bottom — with
+    // containment, hovering any column traps the scroll.
+    const orderList = (
+      <div
+        data-kanban-scroll
+        className={`min-h-0 space-y-2 overflow-y-auto pr-0.5 ${
+          dock
+            ? "max-h-48 flex-none"
+            : "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
+        }`}
+        onDragOver={(event) => updateColumnDropTarget(event)}
+        onDragLeave={handleColumnDragLeave}
+        onDrop={(event) => dropOnColumn(event)}
+      >
+        {columnOrders.map((order) => (
+          <div
+            key={order.id}
+            data-kanban-row
+            className="relative"
+            draggable
+            onDragStart={(event) => handleDragStart(event, order.id)}
+            onDragEnd={handleDragEnd}
+          >
+            <KanbanCard
+              order={order}
+              onOpen={onOpenOrder}
+              onContextMenu={handleCardContextMenu}
+              dragging={dragOrderId === order.id}
+              showPendingChip={status.id === "pending"}
+              onSetPendingKind={onSetPendingKind}
+              suppressInspect={suppressInspect}
+            />
+          </div>
+        ))}
+        {columnOrders.length === 0 && (
+          <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
+            {closed
+              ? `Drop to mark ${status.label.toLowerCase()}`
+              : "Drop orders here"}
+          </p>
+        )}
+        {closed && hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={onViewAllOrders}
+            className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-ink/50 hover:text-ink/70"
+          >
+            +{hiddenCount} older than 7 days — show all
+          </button>
+        )}
+      </div>
+    );
+
     return (
       <section
         key={status.id}
@@ -1641,67 +1709,21 @@ function KanbanBoard({
             )}
           </div>
         )}
-        {/* No `overscroll-contain` on the list: the column is height-capped
-            (72vh) while the page keeps scrolling below it, so the wheel has to
-            chain out to the page once this list hits its top/bottom — with
-            containment, hovering any column traps the scroll. */}
-        {showList && (
-          <div
-            data-kanban-scroll
-            className={`min-h-0 space-y-2 overflow-y-auto pr-0.5 ${
-              dock
-                ? "max-h-48 flex-none"
-                : // Mobile: ~4 cards tall, then scroll (keeps stacked columns short).
-                 "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
-            }`}
-            onDragOver={(event) => updateColumnDropTarget(event)}
-            onDragLeave={handleColumnDragLeave}
-            onDrop={(event) => dropOnColumn(event)}
-          >
-            {columnOrders.map((order, index) => (
-              <div
-                key={order.id}
-                data-kanban-row
-                className="relative"
-                draggable
-                onDragStart={(event) => handleDragStart(event, order.id)}
-                onDragEnd={handleDragEnd}
-              >
-                <KanbanCard
-                  order={order}
-                  onOpen={onOpenOrder}
-                  onContextMenu={handleCardContextMenu}
-                  dragging={dragOrderId === order.id}
-                  showPendingChip={status.id === "pending"}
-                  onSetPendingKind={onSetPendingKind}
-                  suppressInspect={suppressInspect}
-                />
-              </div>
-            ))}
-            {columnOrders.length === 0 && (
-              <p className="flex h-full min-h-[6rem] items-center justify-center rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-xs text-ink/40">
-                {closed
-                  ? `Drop to mark ${status.label.toLowerCase()}`
-                  : "Drop orders here"}
+        {dock ? (
+          <>
+            <ExpandPanel open={Boolean(expanded)}>
+              {orderList}
+            </ExpandPanel>
+            <ExpandPanel open={!expanded}>
+              <p className="mt-1 text-xs text-ink/45">
+                {columnDropHighlight
+                  ? dockDropHint
+                  : `Collapsed — ${dockDropHint.toLowerCase()}`}
               </p>
-            )}
-            {closed && hiddenCount > 0 && (
-              <button
-                type="button"
-                onClick={onViewAllOrders}
-                className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-ink/50 hover:text-ink/70"
-              >
-                +{hiddenCount} older than 7 days — show all
-              </button>
-            )}
-          </div>
-        )}
-        {dock && !expanded && (
-          <p className="mt-1 text-xs text-ink/45">
-            {columnDropHighlight
-              ? dockDropHint
-              : `Collapsed — ${dockDropHint.toLowerCase()}`}
-          </p>
+            </ExpandPanel>
+          </>
+        ) : (
+          orderList
         )}
       </section>
     );

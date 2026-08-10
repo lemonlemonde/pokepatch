@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  overlayFadeClassName,
+  useOverlayEnterExit,
+} from "@/components/ExpandReveal";
 
 // Shown when a visitor submits the quote form with an email that already has an
 // account. Logging in happens right here rather than on /login so the form —
@@ -17,14 +21,15 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const { visible, fadeThen } = useOverlayEnterExit();
 
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === "Escape" && !busy) onGuest();
+      if (event.key === "Escape" && !busy) fadeThen(onGuest);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [busy, onGuest]);
+  }, [busy, onGuest, fadeThen]);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -71,7 +76,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
 
   const dialog = (
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6"
+      className={`fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
     >
       <form
@@ -145,7 +150,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
         <div className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end">
           <button
             type="button"
-            onClick={onGuest}
+            onClick={() => fadeThen(onGuest)}
             disabled={busy}
             className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:cursor-not-allowed disabled:opacity-60"
           >

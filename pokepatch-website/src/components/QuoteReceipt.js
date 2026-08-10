@@ -11,25 +11,7 @@ import {
   quoteAdjustmentLines,
   quoteItemLineTotal,
 } from "@/lib/servicePricing";
-
-function Chevron({ open }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
-        open ? "rotate-180" : ""
-      }`}
-      aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
+import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
 /**
  * Receipt-style quote summary:
@@ -68,7 +50,7 @@ export default function QuoteReceipt({
     isPriority,
     cardCount: resolvedCardCount,
   });
-  const showBody = !collapsible || open;
+  const bodyOpen = !collapsible || open;
 
   if (
     lines.length === 0 &&
@@ -78,6 +60,104 @@ export default function QuoteReceipt({
   ) {
     return null;
   }
+
+  const body = (
+    <div className={`space-y-3 ${collapsible ? "mt-2" : ""}`}>
+      {cardGroups.map((group, groupIndex) => (
+        <div
+          key={group.key || `card-group-${groupIndex}`}
+          className="rounded-lg border border-ink/10 bg-cream/40 px-2.5 py-2"
+        >
+          <div className="flex items-start justify-between gap-3 font-sans">
+            <span className="min-w-0 break-words text-sm font-semibold text-ink">
+              {groupIndex > 0 ? (
+                <span className="font-mono font-normal text-ink/45">+ </span>
+              ) : null}
+              {group.label}
+            </span>
+            <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
+              {formatMoney(group.subtotal)}
+            </span>
+          </div>
+
+          <div className="mt-1.5 space-y-1.5 border-t border-ink/10 pt-1.5 pl-2">
+            {group.items.map((item, itemIndex) => {
+              const amount = quoteItemLineTotal(item);
+              const service =
+                (item.service_label || "").trim() || "Service";
+              return (
+                <div
+                  key={item.id ?? `${group.key}-svc-${itemIndex}`}
+                  className="flex items-start justify-between gap-3"
+                >
+                  <span className="min-w-0 break-words text-ink/80">
+                    {service}
+                  </span>
+                  <span className="shrink-0 tabular-nums font-semibold text-ink">
+                    {formatMoney(amount)}
+                  </span>
+                </div>
+              );
+            })}
+
+            {group.highValueSurcharge > 0 ? (
+              <div className="flex items-start justify-between gap-3">
+                <span className="min-w-0 break-words text-ink/80">
+                  High-value fee
+                </span>
+                <span className="shrink-0 tabular-nums font-semibold text-ink">
+                  {formatMoney(group.highValueSurcharge)}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ))}
+
+      {adjustmentLines.map((line) => (
+        <div
+          key={line.id}
+          className="flex items-start justify-between gap-3 text-ink/80"
+        >
+          <span className="min-w-0">
+            <span className="text-ink/45">
+              {line.amount >= 0 ? "+ " : "− "}
+            </span>
+            {line.description}
+            {line.amountPercent != null && line.amountPercent > 0 ? (
+              <span className="text-ink/45">
+                {" "}
+                ({Number(line.amountPercent).toFixed(
+                  Number(line.amountPercent) % 1 === 0 ? 0 : 2
+                )}
+                %)
+              </span>
+            ) : null}
+          </span>
+          <span className="shrink-0 tabular-nums">
+            {formatMoney(line.amount)}
+          </span>
+        </div>
+      ))}
+
+      {priorityFee > 0 ? (
+        <div className="flex items-start justify-between gap-3 text-ink/80">
+          <span className="min-w-0">
+            <span className="text-ink/45">+ </span>
+            {priorityServiceDescription(resolvedCardCount)}
+          </span>
+          <span className="shrink-0 tabular-nums">{formatMoney(priorityFee)}</span>
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
+        <span className="font-semibold text-ink">= Total</span>
+        <span className="text-base font-bold tabular-nums text-ink">
+          {formatMoney(total)}
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -99,7 +179,7 @@ export default function QuoteReceipt({
             </span>
           ) : null}
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-night/40 text-ink/60">
-            <Chevron open={open} />
+            <ExpandChevron open={open} />
           </span>
         </button>
       ) : (
@@ -107,103 +187,13 @@ export default function QuoteReceipt({
           {title}
         </p>
       )}
-      {showBody ? (
-      <div className={`space-y-3 ${collapsible ? "mt-2" : ""}`}>
-        {cardGroups.map((group, groupIndex) => (
-          <div
-            key={group.key || `card-group-${groupIndex}`}
-            className="rounded-lg border border-ink/10 bg-cream/40 px-2.5 py-2"
-          >
-            <div className="flex items-start justify-between gap-3 font-sans">
-              <span className="min-w-0 break-words text-sm font-semibold text-ink">
-                {groupIndex > 0 ? (
-                  <span className="font-mono font-normal text-ink/45">+ </span>
-                ) : null}
-                {group.label}
-              </span>
-              <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-                {formatMoney(group.subtotal)}
-              </span>
-            </div>
-
-            <div className="mt-1.5 space-y-1.5 border-t border-ink/10 pt-1.5 pl-2">
-              {group.items.map((item, itemIndex) => {
-                const amount = quoteItemLineTotal(item);
-                const service =
-                  (item.service_label || "").trim() || "Service";
-                return (
-                  <div
-                    key={item.id ?? `${group.key}-svc-${itemIndex}`}
-                    className="flex items-start justify-between gap-3"
-                  >
-                    <span className="min-w-0 break-words text-ink/80">
-                      {service}
-                    </span>
-                    <span className="shrink-0 tabular-nums font-semibold text-ink">
-                      {formatMoney(amount)}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {group.highValueSurcharge > 0 ? (
-                <div className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 break-words text-ink/80">
-                    High-value fee
-                  </span>
-                  <span className="shrink-0 tabular-nums font-semibold text-ink">
-                    {formatMoney(group.highValueSurcharge)}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ))}
-
-        {adjustmentLines.map((line) => (
-          <div
-            key={line.id}
-            className="flex items-start justify-between gap-3 text-ink/80"
-          >
-            <span className="min-w-0">
-              <span className="text-ink/45">
-                {line.amount >= 0 ? "+ " : "− "}
-              </span>
-              {line.description}
-              {line.amountPercent != null && line.amountPercent > 0 ? (
-                <span className="text-ink/45">
-                  {" "}
-                  ({Number(line.amountPercent).toFixed(
-                    Number(line.amountPercent) % 1 === 0 ? 0 : 2
-                  )}
-                  %)
-                </span>
-              ) : null}
-            </span>
-            <span className="shrink-0 tabular-nums">
-              {formatMoney(line.amount)}
-            </span>
-          </div>
-        ))}
-
-        {priorityFee > 0 ? (
-          <div className="flex items-start justify-between gap-3 text-ink/80">
-            <span className="min-w-0">
-              <span className="text-ink/45">+ </span>
-              {priorityServiceDescription(resolvedCardCount)}
-            </span>
-            <span className="shrink-0 tabular-nums">{formatMoney(priorityFee)}</span>
-          </div>
-        ) : null}
-
-        <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
-          <span className="font-semibold text-ink">= Total</span>
-          <span className="text-base font-bold tabular-nums text-ink">
-            {formatMoney(total)}
-          </span>
-        </div>
-      </div>
-      ) : null}
+      {collapsible ? (
+        <ExpandPanel open={bodyOpen}>
+          {body}
+        </ExpandPanel>
+      ) : (
+        body
+      )}
     </div>
   );
 }
