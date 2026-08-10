@@ -1,6 +1,8 @@
 -- Return canceled order details for customer notification; cron invokes edge function.
 
-CREATE OR REPLACE FUNCTION public.cancel_stale_pending_quotes()
+DROP FUNCTION IF EXISTS public.cancel_stale_pending_quotes();
+
+CREATE FUNCTION public.cancel_stale_pending_quotes()
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
