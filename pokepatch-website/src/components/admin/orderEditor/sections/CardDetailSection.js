@@ -11,6 +11,10 @@ import {
   defaultServiceLabel,
   formatMoney,
   quoteCardHvAmount,
+  serviceAccent,
+  serviceAccentChipClass,
+  serviceAccentDotClass,
+  serviceAccentPanelClass,
   serviceSelectLabel,
 } from "@/lib/servicePricing";
 import {
@@ -292,6 +296,7 @@ export default function CardDetailSection({
     const lineId = String(item.id ?? `quote-${index}`);
     const isExpanded = !serviceReady || String(expandedQuoteLineId) === lineId;
     const base = moneyFieldToPayload(item.quote_base_amount) ?? 0;
+    const accent = serviceAccent(item.service_key);
     const serviceName =
       item.service_label?.trim() ||
       defaultServiceLabel(item.service_key) ||
@@ -307,10 +312,21 @@ export default function CardDetailSection({
           <button
             type="button"
             onClick={() => setExpandedQuoteLineId(lineId)}
-            className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg border border-ink/10 bg-night/30 px-3 py-2 text-left transition hover:border-ink/25"
+            className={`flex min-w-0 flex-1 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${serviceAccentChipClass(
+              accent,
+              true
+            )}`}
           >
-            <span className="min-w-0 truncate text-sm text-ink">
-              {serviceName}
+            <span className="flex min-w-0 items-center gap-2">
+              <span
+                className={`h-2 w-2 shrink-0 rounded-full ${serviceAccentDotClass(
+                  accent
+                )}`}
+                aria-hidden="true"
+              />
+              <span className="min-w-0 truncate text-sm font-semibold text-ink">
+                {serviceName}
+              </span>
             </span>
             <span className="flex shrink-0 items-center gap-2">
               <span className="text-sm font-semibold tabular-nums text-ink/85">
@@ -332,11 +348,25 @@ export default function CardDetailSection({
       <div
         key={lineId}
         data-quote-line-id={lineId}
-        className="space-y-2.5 rounded-lg border border-blush/25 bg-night/30 p-3"
+        className={`space-y-2.5 rounded-lg border p-3 ${
+          hasService
+            ? serviceAccentPanelClass(accent)
+            : "border-ink/15 bg-night/30"
+        }`}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-[10px] font-bold uppercase tracking-[0.1em] text-ink/45">
-            {hasService ? serviceName : "New service"}
+          <span className="flex min-w-0 items-center gap-2 truncate font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+            {hasService ? (
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${serviceAccentDotClass(
+                  accent
+                )}`}
+                aria-hidden="true"
+              />
+            ) : null}
+            <span className="truncate">
+              {hasService ? serviceName : "New service"}
+            </span>
           </span>
           <RemoveButton
             label="Remove service"

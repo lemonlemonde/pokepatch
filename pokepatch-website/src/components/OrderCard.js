@@ -1072,12 +1072,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 </div>
               )}
 
-              {/* Quote from the team — hide while still pending quote so
-                  customer-selected service prefills don't show list prices. */}
+              {/* Hide receipt on pending quote — prefills must not show prices yet. */}
               {!(
-                isPendingOrderStatus(
-                  orderDetails.status ?? order.status
-                ) &&
+                isPendingOrderStatus(orderDetails.status ?? order.status) &&
                 normalizePendingKind(
                   orderDetails.pending_kind ?? order.pending_kind
                 ) === DEFAULT_PENDING_KIND
@@ -1089,12 +1086,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 isPriority: Boolean(orderDetails.is_priority),
               }) ? (
                 <QuoteReceipt
-                  title={
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      Your quote
-                      
-                    </span>
-                  }
+                  title="Your quote"
                   items={orderDetails.quote_items}
                   cards={quoteCards}
                   adjustments={quoteAdjustments}

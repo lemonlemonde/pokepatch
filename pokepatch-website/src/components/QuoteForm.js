@@ -19,6 +19,8 @@ import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
   priorityServicePricingHint,
+  serviceAccentChipClass,
+  serviceAccentDotClass,
 } from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
@@ -33,6 +35,19 @@ const CUSTOMER_SERVICE_KEY_SET = new Set(
   CUSTOMER_QUOTE_SERVICES.map((service) => service.key)
 );
 
+/** Hover-tooltip coverage copy for the quote form (not marketing features). */
+const CUSTOMER_SERVICE_INFO = {
+  [SERVICE_KEYS.SURFACE]: ["Dirt", "Scratches"],
+  [SERVICE_KEYS.PRESSING]: ["Any card warping", "Minor small edge lifting"],
+  [SERVICE_KEYS.ADVANCED]: [
+    "Dents",
+    "Creases",
+    "Heavy edge lifting",
+    "Water damage",
+  ],
+  [SERVICE_KEYS.SLAB]: ["Open graded slabs"],
+};
+
 function normalizeCardServiceKeys(keys) {
   const seen = new Set();
   const next = [];
@@ -42,6 +57,49 @@ function normalizeCardServiceKeys(keys) {
     next.push(key);
   }
   return next;
+}
+
+function ServiceInfoTip({ serviceKey, title }) {
+  const items = CUSTOMER_SERVICE_INFO[serviceKey] ?? [];
+  if (items.length === 0) return null;
+
+  return (
+    <span className="group/tip relative shrink-0">
+      <button
+        type="button"
+        aria-label={`What's covered under ${title}`}
+        className="grid h-6 w-6 place-items-center rounded-md text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink/70"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 16v-5" />
+          <path d="M12 8h.01" />
+        </svg>
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full right-0 z-20 mb-1.5 w-44 rounded-lg border border-ink/15 bg-cream px-3 py-2.5 text-left text-xs text-ink opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition-opacity duration-150 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100"
+      >
+        <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
+          {title}
+        </span>
+        <ul className="list-disc space-y-0.5 pl-3.5 text-ink/75">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </span>
+    </span>
+  );
 }
 
 const HEARD_ABOUT_OPTIONS = [
@@ -1120,14 +1178,14 @@ export default function QuoteForm() {
           return (
             <div
               key={card.id}
-              className="space-y-4 rounded-2xl border-2 border-ink/10 bg-cream/80 p-4"
+              className="marketing-panel space-y-4 p-4 sm:p-5"
             >
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold text-ink">Card {index + 1}</h3>
                 <button
                   type="button"
                   onClick={() => removeCard(card.id)}
-                  className="rounded-full border-2 border-ink/15 px-3 py-1 text-sm font-semibold text-ink/70 transition-colors duration-150 sm:hover:border-blush sm:hover:text-ink"
+                  className="text-sm font-semibold text-ink/45 transition-colors hover:text-ink"
                 >
                   Remove card
                 </button>
@@ -1177,38 +1235,42 @@ export default function QuoteForm() {
                 <p className="mb-2 text-sm text-ink/70">
                   Select any services you want for this card (optional).
                 </p>
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {CUSTOMER_QUOTE_SERVICES.map((service) => {
-                    const checked = (card.serviceKeys ?? []).includes(
+                    const selected = (card.serviceKeys ?? []).includes(
                       service.key
                     );
-                    const checkboxId = `service_${card.id}_${service.key}`;
                     return (
-                      <label
+                      <div
                         key={service.key}
-                        htmlFor={checkboxId}
-                        className={optionClassName()}
+                        className={`flex items-center gap-1 rounded-lg border pl-3 pr-1.5 py-1.5 transition-colors duration-150 ${serviceAccentChipClass(
+                          service.accent,
+                          selected
+                        )}`}
                       >
-                        <input
-                          id={checkboxId}
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() =>
                             toggleCardService(card.id, service.key)
                           }
-                          className="mt-1 h-4 w-4 accent-blush"
-                        />
-                        <span>
-                          <span className="block text-sm font-semibold text-ink">
+                          className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${serviceAccentDotClass(
+                              service.accent
+                            )} ${selected ? "opacity-100" : "opacity-70"}`}
+                            aria-hidden="true"
+                          />
+                          <span className="truncate text-sm font-semibold">
                             {service.title}
                           </span>
-                          {service.features?.length ? (
-                            <span className="mt-0.5 block text-sm text-ink/65">
-                              {service.features.join(" · ")}
-                            </span>
-                          ) : null}
-                        </span>
-                      </label>
+                        </button>
+                        <ServiceInfoTip
+                          serviceKey={service.key}
+                          title={service.title}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -1254,7 +1316,7 @@ export default function QuoteForm() {
                   className="sr-only"
                 />
                 {cardFileErrors[card.id] && (
-                  <p className="mb-2 rounded-2xl border-2 border-blush bg-blush/40 px-4 py-2 text-sm font-semibold text-ink">
+                  <p className="mb-2 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm font-semibold text-ink">
                     {cardFileErrors[card.id]}
                   </p>
                 )}
@@ -1262,8 +1324,8 @@ export default function QuoteForm() {
                   htmlFor={inputId}
                   className={
                     cardErrors?.files
-                      ? "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border-2 border-error bg-error/15 px-4 py-2 text-sm font-semibold text-ink"
-                      : "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full bg-blush px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 sm:hover:bg-blush/80"
+                      ? "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border border-error bg-error/15 px-4 py-2 text-sm font-semibold text-ink"
+                      : "inline-flex scroll-mt-24 cursor-pointer items-center rounded-full border border-ink/20 bg-transparent px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 sm:hover:border-ink/40 sm:hover:bg-ink/5"
                   }
                 >
                   Browse files
@@ -1289,7 +1351,7 @@ export default function QuoteForm() {
             type="button"
             onClick={addCard}
             disabled={cards.length >= MAX_CARDS}
-            className="inline-flex items-center rounded-full bg-lavender px-4 py-2 text-sm font-semibold text-night transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 sm:hover:bg-lavender/80"
+            className="inline-flex items-center rounded-full border border-ink/20 bg-transparent px-4 py-2 text-sm font-semibold text-ink transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 sm:hover:border-ink/40 sm:hover:bg-ink/5"
           >
             + Add Card
           </button>
