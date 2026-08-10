@@ -8,6 +8,7 @@ import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import QuoteLoginDialog from "@/components/QuoteLoginDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
+import CardSearch from "@/components/CardSearch";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
@@ -1100,6 +1101,24 @@ export default function QuoteForm() {
                 >
                   Remove card
                 </button>
+              </div>
+
+              <div>
+                <p className="mb-1 text-sm font-bold text-ink">
+                  Find your card
+                </p>
+                <p className="mb-2 text-sm text-ink/70">
+                  Search and pick the matching image, or just type the name
+                  below.
+                </p>
+                <CardSearch
+                  onSelect={(found) =>
+                    updateCard(card.id, {
+                      cardName: found.name,
+                      setName: found.set_name,
+                    })
+                  }
+                />
               </div>
 
               <div>

@@ -5,6 +5,11 @@ const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const CATALOG_CACHE_MAX = 80;
 const CATALOG_RETRY_ATTEMPTS = 3;
 const CATALOG_RETRY_DELAY_MS = 250;
+// /sets 5xxs far more often than /cards, and a sync runs off the request
+// path, so it can afford to wait the upstream out.
+const SET_SYNC_RETRY_ATTEMPTS = 8;
+const SET_SYNC_RETRY_DELAY_MS = 600;
+const SET_SYNC_MAX_PAGES = 20;
 
 type CatalogSearchResult = {
   candidates: TcgCardCandidate[];
@@ -50,19 +55,28 @@ export function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/**
+ * Thumbnail art for a card, preferring Scrydex over the Pokémon TCG API.
+ *
+ * Both serve ~245px art, but Scrydex sends JPEG (~34KB) where the TCG API
+ * sends PNG (~180KB). The API's own `small` stays as the fallback for cards
+ * Scrydex doesn't carry.
+ */
 export function tcgCardImageSmallUrl(
   cardId: string,
   images?: { small?: string; large?: string } | null
 ): string {
-  const fromApi = images?.small?.trim();
-  if (fromApi) return fromApi;
-  return `https://images.scrydex.com/pokemon/${cardId.trim()}/small`;
+  const id = cardId.trim();
+  if (id) return `https://images.scrydex.com/pokemon/${id}/small`;
+  return images?.small?.trim() ?? "";
 }
 
 function mapCard(row: TcgApiCard): TcgCardCandidate | null {
   const id = row.id?.trim();
   if (!id) return null;
-  const imageSmall = tcgCardImageSmallUrl(id, row.images);
+  // Carry the API's own URLs untouched; callers pick the cheaper Scrydex art
+  // via tcgCardImageSmallUrl and keep these as the fallback.
+  const imageSmall = row.images?.small?.trim() ?? "";
   return {
     id,
     name: row.name?.trim() ?? id,
@@ -299,4 +313,102 @@ export async function searchPokemonTcgCatalog(
   }
 
   return lastResult;
+}
+
+export type TcgSet = {
+  id: string;
+  name: string;
+  series: string;
+  ptcgo_code: string;
+  printed_total: number | null;
+  total: number | null;
+  release_date: string | null;
+  symbol_url: string;
+  logo_url: string;
+};
+
+type TcgApiSet = {
+  id?: string;
+  name?: string;
+  series?: string;
+  ptcgoCode?: string;
+  printedTotal?: number;
+  total?: number;
+  releaseDate?: string;
+  images?: { symbol?: string; logo?: string };
+};
+
+function mapSet(row: TcgApiSet): TcgSet | null {
+  const id = row.id?.trim();
+  if (!id) return null;
+  return {
+    id,
+    name: row.name?.trim() ?? id,
+    series: row.series?.trim() ?? "",
+    // Not every set has an official code — promos and older sets often omit
+    // it. Blank here means the Set library override has to supply one.
+    ptcgo_code: row.ptcgoCode?.trim() ?? "",
+    printed_total: typeof row.printedTotal === "number" ? row.printedTotal : null,
+    total: typeof row.total === "number" ? row.total : null,
+    // Upstream sends "1999/01/09"; normalize to ISO for a Postgres date.
+    release_date: row.releaseDate?.trim().replace(/\//g, "-") || null,
+    symbol_url: row.images?.symbol?.trim() ?? "",
+    logo_url: row.images?.logo?.trim() ?? "",
+  };
+}
+
+/**
+ * Every set in the Pokémon TCG API, for syncing into the local set_catalog.
+ *
+ * The upstream API returns 5xx for a large share of requests, so this retries
+ * hard and paginates defensively. Call it from a sync job, never on a request
+ * path — reads should come from the synced table.
+ */
+export async function fetchAllPokemonTcgSets(): Promise<TcgSet[]> {
+  const select = "id,name,series,ptcgoCode,printedTotal,total,releaseDate,images";
+  const pageSize = 250;
+  const sets: TcgSet[] = [];
+  const seen = new Set<string>();
+
+  for (let page = 1; page <= SET_SYNC_MAX_PAGES; page++) {
+    let pageRows: TcgApiSet[] | null = null;
+
+    for (let attempt = 0; attempt < SET_SYNC_RETRY_ATTEMPTS; attempt++) {
+      try {
+        const response = await tcgFetch(
+          `/sets?page=${page}&pageSize=${pageSize}&select=${select}`
+        );
+        if (!response.ok) {
+          await sleep(SET_SYNC_RETRY_DELAY_MS * (attempt + 1));
+          continue;
+        }
+        const payload = (await response.json()) as { data?: TcgApiSet[] };
+        pageRows = Array.isArray(payload.data) ? payload.data : [];
+        break;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`TCG set sync page ${page} attempt failed:`, message);
+        await sleep(SET_SYNC_RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+
+    if (pageRows === null) {
+      throw new Error(
+        `pokemon tcg /sets page ${page} failed after ${SET_SYNC_RETRY_ATTEMPTS} attempts`
+      );
+    }
+    if (pageRows.length === 0) break;
+
+    for (const row of pageRows) {
+      const set = mapSet(row);
+      if (set && !seen.has(set.id)) {
+        seen.add(set.id);
+        sets.push(set);
+      }
+    }
+
+    if (pageRows.length < pageSize) break;
+  }
+
+  return sets;
 }

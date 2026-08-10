@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
+import { useCardOptions } from "@/lib/cardOptions";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
   adminClearGalleryPairSide,
@@ -358,6 +359,9 @@ export default function GalleryManager() {
   const [reordering, setReordering] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [applyingCard, setApplyingCard] = useState(false);
+  const cardNameListId = useId();
+  const setNameListId = useId();
+  const { cardNames, setNames } = useCardOptions();
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -786,7 +790,13 @@ export default function GalleryManager() {
               }
               className={lockedFieldClassName}
               placeholder="e.g. Pikachu ex"
+              list={cardNameListId}
             />
+            <datalist id={cardNameListId}>
+              {cardNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Set</span>
@@ -798,7 +808,13 @@ export default function GalleryManager() {
               }
               className={lockedFieldClassName}
               placeholder="e.g. Ascended Heroes"
+              list={setNameListId}
             />
+            <datalist id={setNameListId}>
+              {setNames.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </label>
           <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Card number</span>

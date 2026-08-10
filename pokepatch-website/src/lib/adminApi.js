@@ -581,3 +581,78 @@ export async function adminSendMessages({
   });
   return payload;
 }
+
+/** Card names + set names already stored on orders, for live autocomplete. */
+export async function adminListCardOptions() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "card_options" },
+  });
+  return {
+    cardNames: payload.card_names ?? [],
+    setNames: payload.set_names ?? [],
+  };
+}
+
+/** Reads the locally synced set mirror — never hits the Pokémon TCG API. */
+export async function adminListSetCatalog() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_catalog_list" },
+  });
+  return {
+    items: payload.items ?? [],
+    syncedAt: payload.synced_at ?? null,
+  };
+}
+
+/** Refreshes the mirror from the Pokémon TCG API. Slow — admin-triggered. */
+export async function adminSyncSetCatalog() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_catalog_sync" },
+  });
+  return {
+    synced: payload.synced ?? 0,
+    syncedAt: payload.synced_at ?? null,
+  };
+}
+
+export async function adminListSetLibrary() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_library_list" },
+  });
+  return payload.items ?? [];
+}
+
+export async function adminCreateSetLibraryEntry(setName, abbreviation) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "set_library_create",
+      set_name: setName,
+      abbreviation,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminSaveSetLibraryEntry(id, fields) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "set_library_save",
+      id,
+      ...fields,
+    },
+  });
+  return payload.item;
+}
+
+export async function adminDeleteSetLibraryEntry(id) {
+  await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "set_library_delete", id },
+  });
+}
