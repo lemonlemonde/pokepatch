@@ -360,7 +360,10 @@ async function notifyDiscordLegacy({
   folderId: string;
 }) {
   const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
+  if (!webhook) {
+    console.error("Discord error: DISCORD_WEBHOOK_URL is unset, skipping");
+    return;
+  }
 
   const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
 
@@ -405,7 +408,10 @@ async function notifyDiscordOrder({
   storagePrefix: string;
 }) {
   const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
+  if (!webhook) {
+    console.error("Discord error: DISCORD_WEBHOOK_URL is unset, skipping");
+    return;
+  }
 
   const sheetUrl = Deno.env.get("ORDERS_SHEET_VIEW_URL");
 
@@ -427,15 +433,29 @@ async function notifyDiscordOrder({
   await postDiscord(webhook, lines.join("\n").slice(0, 2000));
 }
 
+// Discord's edge occasionally returns a transient 503 before headers. Retry
+// those (and 429s) briefly; anything else is a real failure, so fail fast.
+// Total sleep stays under the 5s pg_net trigger timeout, and this runs before
+// the confirmation email, so the backoff is kept short on purpose.
 async function postDiscord(webhook: string, content: string) {
-  const res = await fetch(webhook, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+    }
 
-  if (!res.ok) {
-    console.error("Discord error", res.status, await res.text());
+    const res = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    if (res.ok) return;
+
+    const text = await res.text();
+    if (res.status < 500 && res.status !== 429) {
+      console.error("Discord error", res.status, text);
+      return;
+    }
+    console.error("Discord error", res.status, text, `attempt ${attempt + 1}`);
   }
 }
 
