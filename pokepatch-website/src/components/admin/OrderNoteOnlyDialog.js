@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  overlayFadeClassName,
+  useOverlayPresence,
+} from "@/components/ExpandReveal";
 
 function fieldClassName() {
   return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-mint focus:ring-2 focus:ring-mint/20";
@@ -22,6 +26,7 @@ export default function OrderNoteOnlyDialog({
   const [subject, setSubject] = useState(defaultSubject);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const { mounted, visible } = useOverlayPresence(open);
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +44,7 @@ export default function OrderNoteOnlyDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, sending, onCancel]);
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   function handleSend() {
     setError("");
@@ -60,7 +65,7 @@ export default function OrderNoteOnlyDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={() => {
         if (!sending) onCancel();

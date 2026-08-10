@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, forwardRef } from "react";
 import { createPortal } from "react-dom";
+import {
+  overlayFadeClassName,
+  useOverlayEnterExit,
+} from "@/components/ExpandReveal";
 
 const FOCUSABLE_SELECTOR = "button, [href], video[controls], [tabindex]:not([tabindex='-1'])";
 
@@ -79,13 +83,18 @@ export default function MediaLightbox({
   children = null,
 }) {
   const containerRef = useRef(null);
+  const { visible, fadeThen } = useOverlayEnterExit();
+
+  const requestClose = useCallback(() => {
+    fadeThen(onClose);
+  }, [fadeThen, onClose]);
 
   useEffect(() => {
     const container = containerRef.current;
 
     const handleKey = (event) => {
       if (event.key === "Escape") {
-        (onEscape ?? onClose)();
+        fadeThen(onEscape ?? onClose);
       } else if (event.key === "ArrowLeft" && hasPrevious) {
         onPrevious?.();
       } else if (event.key === "ArrowRight" && hasNext) {
@@ -115,7 +124,15 @@ export default function MediaLightbox({
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKey);
     };
-  }, [onClose, onEscape, onPrevious, onNext, hasPrevious, hasNext]);
+  }, [
+    onClose,
+    onEscape,
+    onPrevious,
+    onNext,
+    hasPrevious,
+    hasNext,
+    fadeThen,
+  ]);
 
   // Move focus into the dialog on open and hand it back on close.
   useEffect(() => {
@@ -139,8 +156,8 @@ export default function MediaLightbox({
     <div
       ref={containerRef}
       tabIndex={-1}
-      className="fixed inset-0 z-[100] flex flex-col bg-night/90 outline-none"
-      onClick={onClose}
+      className={`fixed inset-0 z-[100] flex flex-col bg-night/90 outline-none ${overlayFadeClassName(visible)}`}
+      onClick={requestClose}
       role="dialog"
       aria-modal="true"
       aria-label={media.label || media.alt || "Media"}
@@ -152,7 +169,7 @@ export default function MediaLightbox({
       )}
       <button
         type="button"
-        onClick={onClose}
+        onClick={requestClose}
         className="absolute right-4 top-4 z-10 rounded-full bg-ink/10 px-3 py-1 text-sm font-bold text-ink transition hover:bg-ink/20"
         aria-label="Close"
       >

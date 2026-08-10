@@ -23,6 +23,11 @@ import QuoteReceipt from "@/components/QuoteReceipt";
 import MediaLightbox from "@/components/MediaLightbox";
 import { ChangelogDiff } from "@/components/ChangelogDiff";
 import {
+  EXPAND_DURATION_MS,
+  ExpandChevron,
+  ExpandPanel,
+} from "@/components/ExpandReveal";
+import {
   forgetSignedUrl,
   getCachedSignedUrls,
 } from "@/lib/signedUrlCache";
@@ -229,25 +234,6 @@ function latestActivityAt(order) {
   );
 }
 
-function Chevron({ open }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
-        open ? "rotate-180" : ""
-      }`}
-      aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
 function Photo({ url, alt, badge, onOpen, onThumbError }) {
   const [src, setSrc] = useState(url);
   const [failedThumb, setFailedThumb] = useState(false);
@@ -385,12 +371,18 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     messages.length > 0 ||
     (isExpanded && expectMessages && (!messagesReady || messagesLoading));
 
+  if (!isExpanded && expandedCardId != null) {
+    setExpandedCardId(null);
+  }
+
   useEffect(() => {
     if (!isExpanded) {
-      setOrderDetails(null);
-      setError("");
-      setExpandedCardId(null);
-      return;
+      // Keep details through the close animation, then drop them.
+      const timer = window.setTimeout(() => {
+        setOrderDetails(null);
+        setError("");
+      }, EXPAND_DURATION_MS);
+      return () => window.clearTimeout(timer);
     }
     if (!supabase) return undefined;
 
@@ -726,6 +718,75 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     }
   }
 
+  function renderMessageRow(message) {
+    const expanded = expandedMessageId === message.id;
+    const isNew = highlightedMessageIds.has(message.id);
+    const changelog = message.changelog;
+    const hasChangelog =
+      (changelog?.cardGroups?.length ?? 0) > 0 ||
+      (changelog?.orderChanges?.length ?? 0) > 0 ||
+      Boolean(changelog?.quoteSummary);
+    const hasBody = Boolean(messageBodyText(message.body));
+    const hasContent = hasBody || hasChangelog;
+    return (
+      <li key={message.id}>
+        <div
+          className={`rounded-lg border transition ${
+            isNew
+              ? "border-sky/50 bg-sky/20 ring-1 ring-sky/30"
+              : "border-sky/20 bg-cream/50"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => handleToggleMessage(message.id)}
+            className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
+            aria-expanded={expanded}
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                <span>{message.subject}</span>
+                {isNew ? <UpdateChip /> : null}
+              </span>
+              <time
+                dateTime={message.sent_at}
+                className="mt-0.5 block text-[11px] text-ink/55"
+              >
+                {formatMessageTime(message.sent_at)}
+              </time>
+              {hasContent ? (
+                <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky">
+                  {expanded ? "See less" : "See more"}
+                  <span className="inline-flex scale-75">
+                    <ExpandChevron open={expanded} />
+                  </span>
+                </span>
+              ) : null}
+            </span>
+          </button>
+          <ExpandPanel
+            open={expanded && hasContent}
+            innerClassName="space-y-2 border-t border-sky/25 px-3 py-2.5"
+          >
+            {hasBody ? (
+              <p className="whitespace-pre-wrap text-sm text-ink/80">
+                {messageBodyText(message.body)}
+              </p>
+            ) : null}
+            {hasChangelog ? (
+              <ChangelogDiff
+                cardGroups={changelog.cardGroups ?? []}
+                orderChanges={changelog.orderChanges ?? []}
+                quoteSummary={changelog.quoteSummary ?? null}
+                thumbByCardId={messageThumbByCardId}
+              />
+            ) : null}
+          </ExpandPanel>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <div
       className={`relative overflow-hidden rounded-xl border transition-colors duration-200 ${
@@ -845,13 +906,14 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
         </div>
 
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-night/30 text-ink/60">
-          <Chevron open={isExpanded} />
+          <ExpandChevron open={isExpanded} />
         </span>
       </button>
 
-      {/* Expanded */}
-      {isExpanded && (
-        <div className="border-t border-ink/10 p-4">
+      <ExpandPanel
+        open={isExpanded}
+        innerClassName="border-t border-ink/10 p-4"
+      >
           {showMessagesPanel || orderDetails?.general_notes ? (
             <div className="mb-5 space-y-3">
               {showMessagesPanel ? (
@@ -875,87 +937,25 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                           : "Loading…"}
                       </span>
                     </span>
-                    <Chevron open={updatesOpen && messages.length > 0} />
+                    <ExpandChevron open={updatesOpen && messages.length > 0} />
                   </button>
-                  {updatesOpen && messages.length > 0 ? (
-                    <div className="border-t border-sky/25 px-3 py-3">
-                      <ul className="space-y-2">
-                        {(messagesListExpanded
-                          ? messages
-                          : messages.slice(0, 3)
-                        ).map((message) => {
-                        const expanded = expandedMessageId === message.id;
-                        const isNew = highlightedMessageIds.has(message.id);
-                        const changelog = message.changelog;
-                        const hasChangelog =
-                          (changelog?.cardGroups?.length ?? 0) > 0 ||
-                          (changelog?.orderChanges?.length ?? 0) > 0 ||
-                          Boolean(changelog?.quoteSummary);
-                        const hasBody = Boolean(messageBodyText(message.body));
-                        const hasContent = hasBody || hasChangelog;
-                        return (
-                          <li key={message.id}>
-                            <div
-                              className={`rounded-lg border transition ${
-                                isNew
-                                  ? "border-sky/50 bg-sky/20 ring-1 ring-sky/30"
-                                  : "border-sky/20 bg-cream/50"
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleToggleMessage(message.id)}
-                                className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
-                                aria-expanded={expanded}
-                              >
-                                <span className="min-w-0 flex-1">
-                                  <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-                                    <span>{message.subject}</span>
-                                    {isNew ? <UpdateChip /> : null}
-                                  </span>
-                                  <time
-                                    dateTime={message.sent_at}
-                                    className="mt-0.5 block text-[11px] text-ink/55"
-                                  >
-                                    {formatMessageTime(message.sent_at)}
-                                  </time>
-                                  {hasContent ? (
-                                    <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky">
-                                      {expanded ? "See less" : "See more"}
-                                      <span className="inline-flex scale-75">
-                                        <Chevron open={expanded} />
-                                      </span>
-                                    </span>
-                                  ) : null}
-                                </span>
-                              </button>
-                              {expanded && hasContent ? (
-                                <div className="space-y-2 border-t border-sky/25 px-3 py-2.5">
-                                  {hasBody ? (
-                                    <p className="whitespace-pre-wrap text-sm text-ink/80">
-                                      {messageBodyText(message.body)}
-                                    </p>
-                                  ) : null}
-                                  {hasChangelog ? (
-                                    <ChangelogDiff
-                                      cardGroups={changelog.cardGroups ?? []}
-                                      orderChanges={
-                                        changelog.orderChanges ?? []
-                                      }
-                                      quoteSummary={
-                                        changelog.quoteSummary ?? null
-                                      }
-                                      thumbByCardId={messageThumbByCardId}
-                                    />
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                      </ul>
-                      {messages.length > 3 ? (
+                  <ExpandPanel
+                    open={updatesOpen && messages.length > 0}
+                    innerClassName="border-t border-sky/25 px-3 py-3"
+                  >
+                    <ul className="space-y-2">
+                      {messages.slice(0, 3).map(renderMessageRow)}
+                    </ul>
+                    {messages.length > 3 ? (
+                      <>
+                        <ExpandPanel
+                          open={messagesListExpanded}
+                          innerClassName="mt-2"
+                        >
+                          <ul className="space-y-2">
+                            {messages.slice(3).map(renderMessageRow)}
+                          </ul>
+                        </ExpandPanel>
                         <button
                           type="button"
                           onClick={() =>
@@ -967,9 +967,9 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                             ? "Show less"
                             : `Show more (${messages.length - 3} older)`}
                         </button>
-                      ) : null}
-                    </div>
-                  ) : null}
+                      </>
+                    ) : null}
+                  </ExpandPanel>
                 </div>
               ) : null}
 
@@ -1175,12 +1175,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                             </p>
                           </div>
                           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-night/40 text-ink/60">
-                            <Chevron open={isCardOpen} />
+                            <ExpandChevron open={isCardOpen} />
                           </span>
                         </button>
 
-                        {isCardOpen && (
-                          <>
+                        <ExpandPanel open={isCardOpen}>
                             <CardPokePatchNote note={card.admin_note} />
                             <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
                               <div className="min-w-0 flex-1 space-y-2">
@@ -1234,8 +1233,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 </div>
                               </div>
                             </div>
-                          </>
-                        )}
+                        </ExpandPanel>
                       </div>
                     );
                   })}
@@ -1243,8 +1241,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               </div>
             </div>
           )}
-        </div>
-      )}
+      </ExpandPanel>
       {lightboxMedia ? (
         <MediaLightbox
           media={lightboxMedia}

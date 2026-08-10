@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChangelogDiff } from "@/components/ChangelogDiff";
 import {
+  overlayFadeClassName,
+  useOverlayPresence,
+} from "@/components/ExpandReveal";
+import {
   buildOrderChangelog,
   summarizeChangelog,
 } from "@/lib/orderChangelog";
@@ -153,6 +157,8 @@ export default function OrderSaveChangesDialog({
     setError("");
   }, [open, canNotify, built, displayId]);
 
+  const { mounted, visible } = useOverlayPresence(open);
+
   useEffect(() => {
     if (!open) return undefined;
     function onKeyDown(event) {
@@ -162,7 +168,7 @@ export default function OrderSaveChangesDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, saving, onCancel]);
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   const onlyLabel = variant === "move" ? "Move only" : "Save only";
   const notifyLabel = variant === "move" ? "Move & notify" : "Save & notify";
@@ -225,7 +231,7 @@ export default function OrderSaveChangesDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={() => {
         if (!saving) onCancel();

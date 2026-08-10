@@ -16,6 +16,12 @@ import {
 } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
 import MediaLightbox from "@/components/MediaLightbox";
+import {
+  ExpandChevron,
+  ExpandPanel,
+  ExpandStaggerItem,
+  REVEAL_EASE,
+} from "@/components/ExpandReveal";
 
 function pairMediaKind(pair) {
   return pair.type === "video" || pair.mediaKind === "video" ? "video" : "image";
@@ -219,28 +225,6 @@ function CardThumbnail({ src, title, onOpen, priority = false }) {
   );
 }
 
-const REVEAL_EASE =
-  "ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
-
-function ExpandChevron({ open }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`h-4 w-4 shrink-0 transition-transform duration-300 ${REVEAL_EASE} ${
-        open ? "rotate-180" : ""
-      }`}
-      aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
 function PairPreviewThumb({ pair }) {
   const src = previewSrc(pair);
   if (!src) return null;
@@ -326,29 +310,17 @@ function GalleryExtras({ extra, itemTitle, onOpen }) {
         </span>
       </button>
 
-      <div
-        className={`grid transition-[grid-template-rows,opacity] duration-500 ${REVEAL_EASE} ${
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-        }`}
-      >
-        <div className="overflow-hidden" inert={!open}>
-          <div className="space-y-3 pt-4">
-            {extra.map((pair, pairIndex) => (
-              <div
-                key={pair.id ?? `${itemTitle}-extra-${pairIndex}`}
-                className={`transition duration-500 motion-reduce:transform-none ${REVEAL_EASE} ${
-                  open ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
-                }`}
-                style={{
-                  transitionDelay: open ? `${90 + pairIndex * 70}ms` : "0ms",
-                }}
-              >
-                <BeforeAfterPair pair={pair} onOpen={onOpen} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <ExpandPanel open={open} innerClassName="space-y-3 pt-4">
+        {extra.map((pair, pairIndex) => (
+          <ExpandStaggerItem
+            key={pair.id ?? `${itemTitle}-extra-${pairIndex}`}
+            open={open}
+            index={pairIndex}
+          >
+            <BeforeAfterPair pair={pair} onOpen={onOpen} />
+          </ExpandStaggerItem>
+        ))}
+      </ExpandPanel>
     </div>
   );
 }

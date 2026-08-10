@@ -2,10 +2,14 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import {
+  overlayFadeClassName,
+  useOverlayPresence,
+} from "@/components/ExpandReveal";
 
 const DEFAULT_TITLE = "Unsaved changes";
 const DEFAULT_BODY =
- "You have unsaved changes. If you leave now, those edits will be lost.";
+  "You have unsaved changes. If you leave now, those edits will be lost.";
 
 export default function UnsavedChangesDialog({
   open,
@@ -16,6 +20,8 @@ export default function UnsavedChangesDialog({
   onStay,
   onLeave,
 }) {
+  const { mounted, visible } = useOverlayPresence(open);
+
   useEffect(() => {
     if (!open) return undefined;
     function onKeyDown(event) {
@@ -25,11 +31,11 @@ export default function UnsavedChangesDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onStay]);
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   const dialog = (
     <div
-      className="fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6"
+      className={`fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={onStay}
     >
@@ -76,8 +82,8 @@ export default function UnsavedChangesDialog({
   // CSS transform (even a no-op one, e.g. Tailwind's `animate-fade-up`
   // keyframe ends on `translateY(0)` with fill-mode `both`, so it stays
   // applied after the animation finishes) only covers that ancestor's box,
-  // not the real viewport. Rendering inline broke exactly that way inside
-  // the studio pages. MediaLightbox already does this for the same reason.
+  // not the real viewport. Opacity-only fade keeps `fixed` covering the
+  // viewport.
   if (typeof document === "undefined") return null;
   return createPortal(dialog, document.body);
 }

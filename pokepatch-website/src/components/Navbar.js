@@ -9,6 +9,7 @@ import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import { supabase } from "@/lib/supabaseClient";
 import logo from "../app/pokepatch_icon.png";
+import { REVEAL_EASE } from "@/components/ExpandReveal";
 
 const BASE_LINKS = [
   { href: "/", label: "Home" },
@@ -180,7 +181,7 @@ export default function Navbar() {
         </div>
 
         <div
-          className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out sm:hidden ${
+          className={`grid transition-[grid-template-rows,opacity] duration-300 ${REVEAL_EASE} sm:hidden ${
             menuOpen
               ? "grid-rows-[1fr] opacity-100"
               : "grid-rows-[0fr] opacity-0"

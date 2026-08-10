@@ -39,7 +39,6 @@ import ChecklistGroupChip, {
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import {
   AdminNoteField,
-  Chevron,
   EditorDivider,
   EditorLabel,
   FieldGrid,
@@ -48,6 +47,7 @@ import {
   editorFieldClass,
 } from "@/components/admin/orderEditor/editorUi";
 import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
+import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
 function pickCardSection(cardId, draft) {
   const card =
@@ -453,11 +453,13 @@ export default function CardDetailSection({
         >
           {statusLabel}
         </span>
-        <Chevron open={expanded} className="h-4 w-4 text-ink/35" />
+        <ExpandChevron open={expanded} className="h-4 w-4 text-ink/35" />
       </button>
 
-      {expanded ? (
-        <div className="space-y-5 border-t border-ink/10 px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
+      <ExpandPanel
+        open={expanded}
+        innerClassName="space-y-5 border-t border-ink/10 px-4 pb-4 pt-4 sm:px-5 sm:pb-5"
+      >
           <FieldGrid>
             <label className="block">
               <EditorLabel>Card name</EditorLabel>
@@ -629,8 +631,7 @@ export default function CardDetailSection({
               Subtotal {formatMoney(subtotal)}
             </p>
           </div>
-        </div>
-      ) : null}
+      </ExpandPanel>
     </section>
   );
 }

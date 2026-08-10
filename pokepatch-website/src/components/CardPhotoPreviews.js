@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import MediaLightbox from "@/components/MediaLightbox";
+import { ExpandPanel } from "@/components/ExpandReveal";
 import { thumbPath } from "@/lib/imageCompression";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 
@@ -436,86 +437,91 @@ export function AdminOrderCardPhotoGroups({
   );
   const needsMore = hiddenCount > 0;
 
-  const photoPanel = expanded ? (
-    <div
-      className={`rounded-xl bg-night/25 ring-1 ring-ink/10 ${className}`.trim()}
-    >
-      <div className="space-y-4 px-3 py-3">
-        <AdminPhotoCluster
-          title="Customer photos"
-          items={customerItems}
-          emptyText="No customer photos."
-          onOpenItem={(itemId) => openLightbox("customer", itemId)}
-        />
-        {updateCount > 0 ? (
-          <div className="border-t border-ink/10 pt-3">
-            <AdminPhotoCluster
-              title="Update photos"
-              items={allUpdateItems}
-              onRemove={canRemove ? handleRemoveUpdate : undefined}
-              onOpenItem={(itemId) => openLightbox("update", itemId)}
-            />
-            {pendingItems.length > 0 ? (
-              <p className="mt-2 text-[11px] text-ink/45">
-                Unsaved photos upload when you save.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      <button
-        type="button"
-        onClick={() => setExpanded(false)}
-        className="flex w-full items-center justify-center border-t border-ink/10 px-3 py-2 text-xs font-semibold text-ink/55 transition hover:bg-night/30 hover:text-ink"
-      >
-        Show less
-      </button>
-    </div>
-  ) : (
-    <div
-      ref={collapsedRef}
-      className={`flex items-end gap-2 rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10 ${className}`.trim()}
-    >
-      <div className="flex min-w-0 flex-1 items-end gap-4 overflow-hidden">
-        {customerVisible > 0 || customerCount === 0 ? (
-          <AdminPhotoCluster
-            title="Customer photos"
-            items={customerItems.slice(0, customerVisible)}
-            emptyText={customerCount === 0 ? "None" : undefined}
-            onOpenItem={(itemId) => openLightbox("customer", itemId)}
-            nowrap
-          />
-        ) : null}
-        {updateVisible > 0 ? (
-          <>
+  const photoPanel = (
+    <div className={className}>
+      <ExpandPanel open={!expanded}>
+        <div
+          ref={collapsedRef}
+          className="flex items-end gap-2 rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10"
+        >
+          <div className="flex min-w-0 flex-1 items-end gap-4 overflow-hidden">
             {customerVisible > 0 || customerCount === 0 ? (
-              <div
-                className="h-16 w-px shrink-0 bg-ink/10"
-                aria-hidden="true"
+              <AdminPhotoCluster
+                title="Customer photos"
+                items={customerItems.slice(0, customerVisible)}
+                emptyText={customerCount === 0 ? "None" : undefined}
+                onOpenItem={(itemId) => openLightbox("customer", itemId)}
+                nowrap
               />
             ) : null}
+            {updateVisible > 0 ? (
+              <>
+                {customerVisible > 0 || customerCount === 0 ? (
+                  <div
+                    className="h-16 w-px shrink-0 bg-ink/10"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <AdminPhotoCluster
+                  title="Update photos"
+                  items={allUpdateItems.slice(0, updateVisible)}
+                  onRemove={canRemove ? handleRemoveUpdate : undefined}
+                  onOpenItem={(itemId) => openLightbox("update", itemId)}
+                  nowrap
+                />
+              </>
+            ) : null}
+          </div>
+          {needsMore ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="flex h-[4.5rem] w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-ink/25 bg-night/20 text-ink/60 transition hover:border-berry/50 hover:bg-berry/10 hover:text-berry"
+            >
+              <span className="text-sm font-bold leading-none">
+                +{hiddenCount}
+              </span>
+              <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide">
+                more
+              </span>
+            </button>
+          ) : null}
+        </div>
+      </ExpandPanel>
+      <ExpandPanel open={expanded}>
+        <div className="rounded-xl bg-night/25 ring-1 ring-ink/10">
+          <div className="space-y-4 px-3 py-3">
             <AdminPhotoCluster
-              title="Update photos"
-              items={allUpdateItems.slice(0, updateVisible)}
-              onRemove={canRemove ? handleRemoveUpdate : undefined}
-              onOpenItem={(itemId) => openLightbox("update", itemId)}
-              nowrap
+              title="Customer photos"
+              items={customerItems}
+              emptyText="No customer photos."
+              onOpenItem={(itemId) => openLightbox("customer", itemId)}
             />
-          </>
-        ) : null}
-      </div>
-      {needsMore ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="flex h-[4.5rem] w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-ink/25 bg-night/20 text-ink/60 transition hover:border-berry/50 hover:bg-berry/10 hover:text-berry"
-        >
-          <span className="text-sm font-bold leading-none">+{hiddenCount}</span>
-          <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide">
-            more
-          </span>
-        </button>
-      ) : null}
+            {updateCount > 0 ? (
+              <div className="border-t border-ink/10 pt-3">
+                <AdminPhotoCluster
+                  title="Update photos"
+                  items={allUpdateItems}
+                  onRemove={canRemove ? handleRemoveUpdate : undefined}
+                  onOpenItem={(itemId) => openLightbox("update", itemId)}
+                />
+                {pendingItems.length > 0 ? (
+                  <p className="mt-2 text-[11px] text-ink/45">
+                    Unsaved photos upload when you save.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="flex w-full items-center justify-center border-t border-ink/10 px-3 py-2 text-xs font-semibold text-ink/55 transition hover:bg-night/30 hover:text-ink"
+          >
+            Show less
+          </button>
+        </div>
+      </ExpandPanel>
     </div>
   );
 
