@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
@@ -213,6 +219,140 @@ function CardThumbnail({ src, title, onOpen, priority = false }) {
   );
 }
 
+const REVEAL_EASE =
+  "ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
+
+function ExpandChevron({ open }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 transition-transform duration-300 ${REVEAL_EASE} ${
+        open ? "rotate-180" : ""
+      }`}
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function PairPreviewThumb({ pair }) {
+  const src = previewSrc(pair);
+  if (!src) return null;
+
+  const isVideo = pairMediaKind(pair) === "video";
+  const posterSrc = isVideo ? galleryPosterPublicUrl(src) : null;
+
+  return (
+    <span className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10">
+      {isVideo ? (
+        <>
+          {posterSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={posterSrc}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <span className="absolute inset-0 bg-night/30" />
+          )}
+          <span className="absolute inset-0 flex items-center justify-center bg-night/25">
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="h-3 w-3 text-ink"
+              aria-hidden="true"
+            >
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </span>
+        </>
+      ) : (
+        <GalleryImage
+          src={src}
+          width={128}
+          alt=""
+          sizes="32px"
+          className="object-cover"
+        />
+      )}
+    </span>
+  );
+}
+
+function GalleryExtras({ extra, itemTitle, onOpen }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-t border-ink/10 pt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="w-full cursor-pointer text-left"
+      >
+        <span className="flex items-center gap-3">
+          <span className="w-24 shrink-0 text-sm font-semibold text-ink">
+            {open ? "Show less" : "Show more"}
+          </span>
+          <span
+            className={`grid min-w-0 flex-1 transition-[grid-template-rows,opacity] duration-300 ${REVEAL_EASE} ${
+              open ? "grid-rows-[0fr] opacity-0" : "grid-rows-[1fr] opacity-100"
+            }`}
+            aria-hidden={open}
+          >
+            <span className="overflow-hidden">
+              <span className="flex flex-wrap items-center justify-center gap-1.5">
+                {extra.map((pair, previewIndex) => (
+                  <PairPreviewThumb
+                    key={pair.id ?? `${itemTitle}-preview-${previewIndex}`}
+                    pair={pair}
+                  />
+                ))}
+              </span>
+            </span>
+          </span>
+          <span className="flex w-24 shrink-0 justify-end text-blush">
+            <ExpandChevron open={open} />
+          </span>
+        </span>
+      </button>
+
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-500 ${REVEAL_EASE} ${
+          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+        }`}
+      >
+        <div className="overflow-hidden" inert={!open}>
+          <div className="space-y-3 pt-4">
+            {extra.map((pair, pairIndex) => (
+              <div
+                key={pair.id ?? `${itemTitle}-extra-${pairIndex}`}
+                className={`transition duration-500 motion-reduce:transform-none ${REVEAL_EASE} ${
+                  open ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+                }`}
+                style={{
+                  transitionDelay: open ? `${90 + pairIndex * 70}ms` : "0ms",
+                }}
+              >
+                <BeforeAfterPair pair={pair} onOpen={onOpen} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GalleryItemCard({ item, index, onOpen }) {
   const pairs = (item.pairs ?? []).filter((pair) => pair.before || pair.after);
   const featured = pairs[0] ?? null;
@@ -229,10 +369,10 @@ function GalleryItemCard({ item, index, onOpen }) {
 
   return (
     <div
-      className="marketing-panel animate-fade-up flex h-full flex-col overflow-hidden"
+      className="marketing-panel animate-fade-up overflow-hidden"
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
-      <div className="flex flex-1 flex-col space-y-4 p-5">
+      <div className="flex flex-col space-y-4 p-5">
         <div className="flex min-h-[5.5rem] flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="flex min-w-0 items-start gap-3">
             {item.thumbnail ? (
@@ -303,86 +443,45 @@ function GalleryItemCard({ item, index, onOpen }) {
           />
         )}
 
-        <div className="mt-auto shrink-0">
-          {hasExtra && (
-            <details className="group border-t border-ink/10 pt-4">
-              <summary className="cursor-pointer list-none marker:content-none [&::-webkit-details-marker]:hidden">
-                <span className="flex items-center gap-3">
-                  <span className="w-20 shrink-0 text-sm font-semibold text-ink">
-                    <span className="group-open:hidden">Show more</span>
-                    <span className="hidden group-open:inline">Show less</span>
-                  </span>
-                  <span className="flex flex-1 flex-wrap items-center justify-center gap-1.5 group-open:hidden">
-                    {extra.map((pair, previewIndex) => {
-                      const src = previewSrc(pair);
-                      if (!src) return null;
-                      const isVideo = pairMediaKind(pair) === "video";
-                      return (
-                        <span
-                          key={pair.id ?? `${item.title}-preview-${previewIndex}`}
-                          className="relative block h-10 w-8 overflow-hidden rounded-md border border-ink/10 bg-night/10"
-                        >
-                          {isVideo ? (
-                            <>
-                              {galleryPosterPublicUrl(src) ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={galleryPosterPublicUrl(src)}
-                                  alt=""
-                                  loading="lazy"
-                                  decoding="async"
-                                  className="absolute inset-0 h-full w-full object-cover"
-                                />
-                              ) : (
-                                <span className="absolute inset-0 bg-night/30" />
-                              )}
-                              <span className="absolute inset-0 flex items-center justify-center bg-night/25">
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  fill="currentColor"
-                                  className="h-3 w-3 text-ink"
-                                  aria-hidden="true"
-                                >
-                                  <path d="M8 5v14l11-7z" />
-                                </svg>
-                              </span>
-                            </>
-                          ) : (
-                            <GalleryImage
-                              src={src}
-                              width={128}
-                              alt=""
-                              sizes="32px"
-                              className="object-cover"
-                            />
-                          )}
-                        </span>
-                      );
-                    })}
-                  </span>
-                  <span className="flex w-20 shrink-0 justify-end text-blush group-open:invisible">
-                    +
-                  </span>
-                </span>
-              </summary>
-              <div className="space-y-3 pt-4">
-                {extra.map((pair, pairIndex) => (
-                  <BeforeAfterPair
-                    key={pair.id ?? `${item.title}-extra-${pairIndex}`}
-                    pair={pair}
-                    onOpen={openMedia}
-                  />
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
+        {hasExtra ? (
+          <GalleryExtras
+            extra={extra}
+            itemTitle={item.title}
+            onOpen={openMedia}
+          />
+        ) : null}
       </div>
     </div>
   );
 }
 
 const PAGE_SIZE = 10;
+const LG_UP_QUERY = "(min-width: 1024px)";
+
+function subscribeLgUp(onChange) {
+  const media = window.matchMedia(LG_UP_QUERY);
+  media.addEventListener("change", onChange);
+  return () => media.removeEventListener("change", onChange);
+}
+
+function getLgUpSnapshot() {
+  return window.matchMedia(LG_UP_QUERY).matches;
+}
+
+function useLgUp() {
+  return useSyncExternalStore(subscribeLgUp, getLgUpSnapshot, () => false);
+}
+
+function GalleryItemCardList({ items, onOpen }) {
+  return items.map(({ item, index }) => (
+    <GalleryItemCard
+      key={item.id ?? item.title}
+      item={item}
+      index={index}
+      onOpen={onOpen}
+    />
+  ));
+}
 
 // Build a compact list of page numbers with ellipsis gaps for larger sets so
 // the control never grows unbounded. Small sets show every page.
@@ -540,6 +639,7 @@ export default function GalleryContent({ items }) {
   // Lightbox target: { itemKey, index } into that card's own media list.
   const [active, setActive] = useState(null);
   const topRef = useRef(null);
+  const lgUp = useLgUp();
 
   const damageCounts = useMemo(() => {
     const counts = {};
@@ -566,6 +666,15 @@ export default function GalleryContent({ items }) {
     const start = (currentPage - 1) * PAGE_SIZE;
     return filteredItems.slice(start, start + PAGE_SIZE);
   }, [filteredItems, currentPage]);
+
+  const { pageItemEntries, leftColumnItems, rightColumnItems } = useMemo(() => {
+    const entries = pageItems.map((item, index) => ({ item, index }));
+    return {
+      pageItemEntries: entries,
+      leftColumnItems: entries.filter(({ index }) => index % 2 === 0),
+      rightColumnItems: entries.filter(({ index }) => index % 2 === 1),
+    };
+  }, [pageItems]);
 
   // Lightbox navigation is scoped to the clicked card: Prev/Next only move
   // through that card's own before/after media, never across cards.
@@ -646,16 +755,29 @@ export default function GalleryContent({ items }) {
               {filteredItems.length === 1 ? "restoration" : "restorations"}
             </p>
 
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {pageItems.map((item, index) => (
-                <GalleryItemCard
-                  key={item.id ?? item.title}
-                  item={item}
-                  index={index}
+            {lgUp ? (
+              <div className="flex items-start gap-6">
+                <div className="flex min-w-0 flex-1 flex-col gap-6">
+                  <GalleryItemCardList
+                    items={leftColumnItems}
+                    onOpen={openMedia}
+                  />
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-6">
+                  <GalleryItemCardList
+                    items={rightColumnItems}
+                    onOpen={openMedia}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                <GalleryItemCardList
+                  items={pageItemEntries}
                   onOpen={openMedia}
                 />
-              ))}
-            </div>
+              </div>
+            )}
 
             <Pagination
               currentPage={currentPage}
