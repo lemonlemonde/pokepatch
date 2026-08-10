@@ -233,6 +233,66 @@ function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
 }
 
+/** Accent token for a service key (Custom → mint). */
+export function serviceAccent(serviceKey) {
+  return serviceByKey(serviceKey)?.accent ?? "mint";
+}
+
+/** Quiet form-option shell + soft accent wash (not solid pastel badges). */
+const SERVICE_ACCENT_CHIP_STYLES = {
+  blush: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-blush/35 hover:bg-blush/10",
+    selected: "border-blush/45 bg-blush/20 text-ink ring-1 ring-blush/25",
+  },
+  lavender: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-lavender/35 hover:bg-lavender/10",
+    selected: "border-lavender/45 bg-lavender/20 text-ink ring-1 ring-lavender/25",
+  },
+  peach: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-peach/40 hover:bg-peach/10",
+    selected: "border-peach/50 bg-peach/20 text-ink ring-1 ring-peach/25",
+  },
+  sky: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-sky/40 hover:bg-sky/10",
+    selected: "border-sky/50 bg-sky/20 text-ink ring-1 ring-sky/25",
+  },
+  mint: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-mint/35 hover:bg-mint/10",
+    selected: "border-mint/45 bg-mint/20 text-ink ring-1 ring-mint/25",
+  },
+};
+
+/** Soft panel tint for admin expanded quote lines. */
+const SERVICE_ACCENT_PANEL_STYLES = {
+  blush: "border-blush/30 bg-blush/10",
+  lavender: "border-lavender/30 bg-lavender/10",
+  peach: "border-peach/35 bg-peach/10",
+  sky: "border-sky/35 bg-sky/10",
+  mint: "border-mint/30 bg-mint/10",
+};
+
+const SERVICE_ACCENT_DOT = {
+  blush: "bg-blush",
+  lavender: "bg-lavender",
+  peach: "bg-peach",
+  sky: "bg-sky",
+  mint: "bg-mint",
+};
+
+export function serviceAccentChipClass(accent, selected = false) {
+  const styles =
+    SERVICE_ACCENT_CHIP_STYLES[accent] ?? SERVICE_ACCENT_CHIP_STYLES.blush;
+  return selected ? styles.selected : styles.idle;
+}
+
+export function serviceAccentPanelClass(accent) {
+  return SERVICE_ACCENT_PANEL_STYLES[accent] ?? "border-ink/15 bg-night/30";
+}
+
+export function serviceAccentDotClass(accent) {
+  return SERVICE_ACCENT_DOT[accent] ?? SERVICE_ACCENT_DOT.mint;
+}
+
 /** Homepage ServiceCard props (per-card services only). */
 export function marketingServices() {
   return QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
