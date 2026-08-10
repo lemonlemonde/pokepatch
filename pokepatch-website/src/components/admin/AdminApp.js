@@ -65,7 +65,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-      "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+     "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "gallery",
@@ -73,7 +73,7 @@ const ADMIN_TABS = [
     path: "/admin/gallery/",
     title: "Gallery admin",
     subtitle:
-      "Upload and manage restorations shown on the public Gallery page.",
+     "Upload and manage restorations shown on the public Gallery page.",
   },
   {
     id: "studio",
@@ -81,7 +81,7 @@ const ADMIN_TABS = [
     path: "/admin/studio/",
     title: "Studio",
     subtitle:
-      "Format 1×2 before & after Instagram posts.",
+     "Format 1×2 before & after Instagram posts.",
   },
   {
     id: "guide",
@@ -89,7 +89,7 @@ const ADMIN_TABS = [
     path: "/admin/guide/",
     title: "Restoration guide",
     subtitle:
-      "Restoration tree: dirt and scratches first, then any damage branches that apply, cool press when needed, and wrap up.",
+     "Restoration tree: dirt and scratches first, then any damage branches that apply, cool press when needed, and wrap up.",
   },
 ];
 
@@ -97,7 +97,7 @@ const ORDERS_ALL_META = {
   id: "orders-all",
   title: "All orders",
   subtitle:
-    "Spreadsheet view of every order. Click a row to open it.",
+   "Spreadsheet view of every order. Click a row to open it.",
 };
 
 const ORDERS_EDIT_META = {
@@ -416,7 +416,7 @@ function PendingKindChip({
       <div
         ref={menuRef}
         role="listbox"
-        className="fixed z-[220] min-w-[10rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+        className="fixed z-[220] min-w-[10rem] overflow-hidden rounded-xl border border-ink/15 bg-cream py-1 "
         style={{ top: menuPos.top, left: menuPos.left }}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
@@ -632,10 +632,10 @@ function KanbanCard({
       onMouseEnter={handleMouseEnter}
       onMouseMove={handleMouseMove}
       onMouseLeave={scheduleClose}
-      className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border-2 px-2 py-1.5 text-left shadow-cozy-sm transition hover:border-blush/60 active:cursor-grabbing ${
+      className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition hover:border-ink/40 active:cursor-grabbing ${
         order.is_priority
           ? "border-berry/30 bg-berry/[0.08]"
-          : "border-ink/10 bg-cream"
+          : "border-ink/10 bg-ink/[0.03]"
       } ${dragging ? "opacity-50" : ""}`}
     >
       {order.is_priority ? (
@@ -705,7 +705,7 @@ function KanbanCard({
         ref={panelElRef}
         role="tooltip"
         id={`order-inspect-${order.id}`}
-        className="pointer-events-none fixed z-[200] rounded-xl border-2 border-ink/15 bg-cream p-3 shadow-cozy"
+        className="pointer-events-none fixed z-[200] rounded-xl border border-ink/15 bg-cream p-3 "
         style={{
           top: panelPos.top,
           left: panelPos.left,
@@ -870,7 +870,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby="delete-order-title"
-        className="w-full max-w-md rounded-2xl border-2 border-ink/15 bg-cream p-6 shadow-cozy"
+        className="w-full max-w-md rounded-2xl border border-ink/15 bg-cream p-6 "
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start gap-3">
@@ -900,7 +900,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
             type="button"
             onClick={onCancel}
             disabled={deleting}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:opacity-40"
+            className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30 disabled:opacity-40"
           >
             Cancel
           </button>
@@ -908,7 +908,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
             type="button"
             onClick={onConfirm}
             disabled={deleting}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {deleting ? "Deleting…" : confirmLabel}
           </button>
@@ -1073,7 +1073,7 @@ function OrderCardSearch({
 
   return (
     <div ref={rootRef} className="relative z-20">
-      <div className="rounded-2xl border-2 border-ink/10 bg-night/30 p-3 sm:p-4">
+      <div className="rounded-2xl border border-ink/10 bg-night/30 p-3 sm:p-4">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="relative min-w-[12rem] flex-1 basis-[14rem]">
             <span className="sr-only">Search cards by name or set</span>
@@ -1090,7 +1090,7 @@ function OrderCardSearch({
                 }
               }}
               placeholder="Search card name, set, or description…"
-              className="w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 pr-10 text-sm text-ink outline-none transition focus:border-blush"
+              className="w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 pr-10 text-sm text-ink outline-none transition focus:border-ink/40"
               autoComplete="off"
             />
             {searching && (
@@ -1113,7 +1113,7 @@ function OrderCardSearch({
                     : ORDER_STATUSES.map((status) => status.id)
                 )
               }
-              className="relative shrink-0 rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+              className="relative shrink-0 rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
             >
               <span className="invisible block" aria-hidden="true">
                 Deselect all columns
@@ -1135,7 +1135,7 @@ function OrderCardSearch({
                   className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
                     active
                       ? orderStatusBadgeClass(status.id)
-                      : "border border-ink/15 bg-cream/60 text-ink/45 hover:border-ink/30 hover:text-ink/70"
+                      : "border border-ink/15 bg-ink/[0.03] text-ink/45 hover:border-ink/30 hover:text-ink/70"
                   }`}
                 >
                   {status.label}
@@ -1147,7 +1147,7 @@ function OrderCardSearch({
       </div>
 
       {showPanel && (
-        <div className="absolute left-0 right-0 top-[calc(100%-0.5rem)] z-30 mt-2 max-h-[min(28rem,60vh)] overflow-y-auto rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy">
+        <div className="absolute left-0 right-0 top-[calc(100%-0.5rem)] z-30 mt-2 max-h-[min(28rem,60vh)] overflow-y-auto rounded-2xl border border-ink/15 bg-cream ">
           {error ? (
             <p className="px-4 py-3 text-sm text-berry">{error}</p>
           ) : searching && results.length === 0 ? (
@@ -1366,7 +1366,7 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
         <button
           type="button"
           onClick={onBackToBoard}
-          className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+          className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
         >
           Back to board
         </button>
@@ -1573,9 +1573,9 @@ function KanbanBoard({
     return (
       <section
         key={status.id}
-        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border-2 bg-night/40 p-3 transition ${
+        className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-ink/[0.02] p-3 transition ${
           columnDropHighlight
-            ? "border-berry/60 bg-berry/10"
+            ? "border-berry/50 bg-berry/10"
             : "border-ink/10"
         } ${dock ? "" : "h-full"}`}
         onDragOver={(event) => {
@@ -1652,7 +1652,7 @@ function KanbanBoard({
               dock
                 ? "max-h-48 flex-none"
                 : // Mobile: ~4 cards tall, then scroll (keeps stacked columns short).
-                  "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
+                 "flex-1 max-sm:max-h-[calc(4*4.25rem+3*0.5rem)] max-sm:flex-none"
             }`}
             onDragOver={(event) => updateColumnDropTarget(event)}
             onDragLeave={handleColumnDragLeave}
@@ -1689,7 +1689,7 @@ function KanbanBoard({
               <button
                 type="button"
                 onClick={onViewAllOrders}
-                className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-blush/50 hover:text-ink/70"
+                className="w-full rounded-lg border border-dashed border-ink/20 px-2 py-2 text-center text-xs font-semibold text-ink/50 transition hover:border-ink/50 hover:text-ink/70"
               >
                 +{hiddenCount} older than 7 days — show all
               </button>
@@ -1717,7 +1717,7 @@ function KanbanBoard({
         <button
           type="button"
           onClick={onViewAllOrders}
-          className="rounded-xl border-2 border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-blush"
+          className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
         >
           View all orders
         </button>
@@ -1754,9 +1754,9 @@ function KanbanBoard({
           onDragOver={handleTrashDragOver}
           onDragLeave={handleTrashDragLeave}
           onDrop={handleTrashDrop}
-          className={`flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-4 py-4 transition ${
+          className={`flex items-center justify-center gap-3 rounded-2xl border border-dashed px-4 py-4 transition ${
             trashArmed
-              ? "border-berry bg-berry/20 text-berry shadow-cozy"
+              ? "border-berry bg-berry/20 text-berry "
               : "border-ink/15 bg-night/30 text-ink/45"
           }`}
         >
@@ -1783,7 +1783,7 @@ function KanbanBoard({
       {contextMenu && (
         <div
           role="menu"
-          className="fixed z-40 min-w-[12rem] overflow-hidden rounded-xl border-2 border-ink/15 bg-cream py-1 shadow-cozy"
+          className="fixed z-40 min-w-[12rem] overflow-hidden rounded-xl border border-ink/15 bg-cream py-1 "
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
         >
@@ -2308,7 +2308,7 @@ export default function AdminApp() {
         } catch (notifyErr) {
           setListError(
             notifyErr.message ||
-              "Order moved, but the customer notification failed to send."
+             "Order moved, but the customer notification failed to send."
           );
         }
       }
@@ -2391,48 +2391,51 @@ export default function AdminApp() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10">
-      <div className="relative mb-6">
+    <div className="mx-auto max-w-7xl px-3 py-8 sm:px-4 sm:py-10 md:px-6">
+      <div className="relative mb-8">
         {tab !== "orders-edit" ? (
-          <SectionHeading subtitle={activeTab.subtitle}>
+          <SectionHeading
+            note="Admin"
+            subtitle={activeTab.subtitle}
+          >
             {activeTab.title}
           </SectionHeading>
         ) : (
           <div className="h-0 sm:h-10" aria-hidden="true" />
         )}
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-3 sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:justify-end">
+        <div className="mt-3 flex flex-wrap items-center justify-start gap-3 sm:absolute sm:right-0 sm:top-0 sm:mt-0 sm:justify-end">
           {ordersSectionActive && loadingOrders && orders.length > 0 && (
             <LoadingIndicator compact label="Refreshing…" />
           )}
           <button
             type="button"
             onClick={handleLogout}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink hover:border-blush"
+            className="rounded-lg border border-ink/20 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink/70 transition hover:border-ink/40 hover:text-ink"
           >
             Log out
           </button>
         </div>
       </div>
 
-      <div className="mb-6 flex justify-center gap-2 sm:justify-start">
-        {ADMIN_TABS.map((entry) => (
-          <button
-            key={entry.id}
-            type="button"
-            onClick={() => navigateAdmin(entry.path)}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-              entry.id === "orders"
-                ? ordersSectionActive
-                  ? "bg-berry text-night shadow-cozy"
-                  : "border-2 border-ink/15 text-ink hover:border-blush"
-                : tab === entry.id
-                  ? "bg-berry text-night shadow-cozy"
-                  : "border-2 border-ink/15 text-ink hover:border-blush"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
+      <div className="mb-8 flex flex-wrap gap-2">
+        {ADMIN_TABS.map((entry) => {
+          const active =
+            entry.id === "orders" ? ordersSectionActive : tab === entry.id;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => navigateAdmin(entry.path)}
+              className={`rounded-lg px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] transition ${
+                active
+                  ? "bg-ink text-night"
+                  : "border border-ink/15 text-ink/55 hover:border-ink/30 hover:text-ink"
+              }`}
+            >
+              {entry.label}
+            </button>
+          );
+        })}
       </div>
 
       {tab === "gallery" && <GalleryManager />}

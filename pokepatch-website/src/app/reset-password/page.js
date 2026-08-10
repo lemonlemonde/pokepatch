@@ -9,14 +9,9 @@ import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { fieldClassName } from "@/lib/formStyles";
 
 const MIN_PASSWORD_LENGTH = 6;
-
-function fieldClassName(invalid = false) {
-  return invalid
-    ? "w-full rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
-    : "w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
 
 function ResetPasswordContent() {
   const router = useRouter();
@@ -109,14 +104,17 @@ function ResetPasswordContent() {
   };
 
   return (
-    <div className="mx-auto max-w-md px-6 py-16">
+    <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
       <div className="animate-fade-up">
-        <SectionHeading subtitle="Pick a new password for your account">
+        <SectionHeading
+          note="Password"
+          subtitle="Pick a new password for your account."
+        >
           Set a new password
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up space-y-6 p-6 [animation-delay:150ms]">
         {!isSupabaseConfigured && (
           <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">
             Authentication is not configured.

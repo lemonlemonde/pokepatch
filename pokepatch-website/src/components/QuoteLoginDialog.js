@@ -80,7 +80,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
         aria-labelledby="quote-login-title"
         aria-describedby="quote-login-body"
         onSubmit={handleLogin}
-        className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy"
+        className="w-full max-w-md overflow-hidden rounded-xl border border-ink/15 bg-[#120c1f] shadow-2xl"
       >
         <div className="border-b border-ink/10 px-5 py-4">
           <h2 id="quote-login-title" className="text-xl font-bold text-ink">
@@ -115,7 +115,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
                 setNotice("");
               }}
               disabled={busy}
-              className="w-full rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg border border-ink/15 bg-ink/[0.03] px-4 py-2.5 text-ink outline-none focus:border-ink/40 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <p className="mt-2 text-right text-sm">
               <button

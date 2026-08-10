@@ -13,10 +13,9 @@ body {
   font-family: var(--font-nunito), system-ui, sans-serif;
 }
 
-/* Admin uses regular Nunito only — no Pixelify / Gugi display fonts. */
-.admin-plain-type .font-display,
-.admin-plain-type .font-secondary {
-  font-family: var(--font-nunito), system-ui, sans-serif;
+/* Admin shares the public editorial type system (Instrument). */
+.admin-app {
+  font-family: var(--font-instrument-sans), var(--font-nunito), system-ui, sans-serif;
 }
 
 @layer components {
@@ -24,6 +23,45 @@ body {
     border: 3px solid rgba(243, 233, 242, 0.25);
     box-shadow: 0 4px 0 0 rgba(0, 0, 0, 0.35);
   }
+
+  /* Dark editorial panels — hairline borders, sharper edge. */
+  .marketing-panel {
+    @apply rounded-lg border border-ink/10 bg-ink/[0.02];
+    @apply transition-colors duration-200 ease-out;
+    @apply hover:border-ink/20 hover:bg-ink/[0.04];
+  }
+
+  .marketing-section {
+    @apply relative py-12 sm:py-16 md:py-24;
+  }
+}
+
+/* Marketing page: Instrument Sans body. */
+.marketing-page {
+  font-family: var(--font-instrument-sans), var(--font-nunito), system-ui, sans-serif;
+  color: var(--foreground);
+  overflow-x: clip;
+}
+
+.marketing-page ::selection {
+  background: #e0518a;
+  color: #0b1020;
+}
+
+.marketing-site-bg {
+  background-color: #0a0714;
+}
+
+.marketing-glow {
+  background:
+    radial-gradient(55% 40% at 50% 0%, rgba(212, 197, 249, 0.1), transparent 70%),
+    radial-gradient(40% 30% at 85% 18%, rgba(224, 81, 138, 0.06), transparent 70%);
+}
+
+.marketing-grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  opacity: 0.035;
 }
 
 .gradient-bg {
@@ -41,8 +79,134 @@ body {
     radial-gradient(88vw 88vw at 18% 88%, rgba(120, 80, 41, 0.16) 0%, rgba(77, 53, 29, 0) 70%);
 }
 
+/* Scroll reveal: CSS view timelines when available (cheap), IO class fallback. */
+@keyframes scroll-reveal-inout {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 64px, 0);
+  }
+  20%,
+  80% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -48px, 0);
+  }
+}
+
+@keyframes scroll-reveal-dramatic {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 128px, 0) scale(0.88);
+  }
+  18%,
+  82% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -80px, 0) scale(0.92);
+  }
+}
+
+@keyframes scroll-reveal-inout-mobile {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 40px, 0);
+  }
+  20%,
+  80% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -32px, 0);
+  }
+}
+
+@keyframes scroll-reveal-dramatic-mobile {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 72px, 0) scale(0.93);
+  }
+  18%,
+  82% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -48px, 0) scale(0.96);
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scroll-reveal {
+      animation-name: scroll-reveal-inout;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: view();
+      animation-range: entry 0% exit 100%;
+      transform-origin: center bottom;
+    }
+
+    .scroll-reveal--dramatic {
+      animation-name: scroll-reveal-dramatic;
+      transform-origin: center 65%;
+    }
+
+    @media (max-width: 639px) {
+      .scroll-reveal {
+        animation-name: scroll-reveal-inout-mobile;
+      }
+
+      .scroll-reveal--dramatic {
+        animation-name: scroll-reveal-dramatic-mobile;
+      }
+    }
+  }
+}
+
+@supports not (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .scroll-reveal {
+      opacity: 0;
+      transform: translate3d(0, 56px, 0);
+      transition:
+        opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      transform-origin: center bottom;
+    }
+
+    .scroll-reveal--dramatic {
+      transform: translate3d(0, 96px, 0) scale(0.9);
+      transition:
+        opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .scroll-reveal.scroll-reveal-visible {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pixel-square {
     animation-duration: 18s;
   }
+
+  .scroll-reveal {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
 }
+

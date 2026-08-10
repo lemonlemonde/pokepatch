@@ -10,8 +10,6 @@ import GalleryImage from "@/components/GalleryImage";
 
 const FEATURED_COUNT = 3;
 
-// Prefer a photo pair with both sides so the strip always shows a true
-// before/after comparison.
 function featuredPair(item) {
   const pairs = item.pairs ?? [];
   return (
@@ -22,10 +20,16 @@ function featuredPair(item) {
   );
 }
 
-function Side({ src, label, title }) {
+function Side({ src, label, title, variant = "cozy" }) {
+  const isMarketing = variant === "marketing";
+
   return (
     <div className="space-y-1.5">
-      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-lg bg-night/20">
+      <div
+        className={`relative aspect-[3/4] w-full overflow-hidden bg-night/20 ${
+          isMarketing ? "rounded-sm ring-1 ring-ink/10" : "rounded-lg"
+        }`}
+      >
         <GalleryImage
           src={src}
           width={480}
@@ -34,19 +38,69 @@ function Side({ src, label, title }) {
           className="object-cover"
         />
       </div>
-      <p className="text-center text-[0.65rem] font-bold uppercase tracking-wide text-ink/60">
+      <p
+        className={
+          isMarketing
+            ? "text-center font-mono text-[9px] uppercase tracking-[0.2em] text-ink/45"
+            : "text-center text-[0.65rem] font-bold uppercase tracking-wide text-ink/60"
+        }
+      >
         {label}
       </p>
     </div>
   );
 }
 
-/**
- * Home page strip of the latest gallery restorations. Renders the static
- * fallback items immediately and swaps in published Supabase rows when they
- * load, mirroring the Gallery page's data source.
- */
-export default function FeaturedRestorations() {
+function GalleryCard({ item, pair, index, variant = "cozy" }) {
+  const isMarketing = variant === "marketing";
+
+  return (
+    <Link
+      href="/gallery"
+      className={`block transition duration-200 ease-out sm:hover:-translate-y-0.5 ${
+        isMarketing
+          ? "w-[min(78vw,20rem)] shrink-0 snap-start sm:w-auto"
+          : "pixel-border rounded-2xl border-blush/10 bg-cream/60 p-4 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
+      } ${!isMarketing && index === 2 ? "hidden sm:block" : ""}`}
+    >
+      <div className={`grid grid-cols-2 ${isMarketing ? "gap-2.5" : "gap-2"}`}>
+        <Side
+          src={pair.before}
+          label="Before"
+          title={item.title}
+          variant={variant}
+        />
+        <Side
+          src={pair.after}
+          label="After"
+          title={item.title}
+          variant={variant}
+        />
+      </div>
+      <h3
+        className={`mt-3 truncate text-center text-ink ${
+          isMarketing ? "text-sm font-medium" : "font-display text-base font-bold"
+        }`}
+      >
+        {item.title}
+      </h3>
+      {item.setName ? (
+        <p
+          className={`mt-0.5 truncate text-center ${
+            isMarketing
+              ? "font-mono text-[10px] uppercase tracking-[0.12em] text-ink/40"
+              : "text-xs text-ink/55"
+          }`}
+        >
+          {item.setName}
+        </p>
+      ) : null}
+    </Link>
+  );
+}
+
+export default function FeaturedRestorations({ variant = "cozy" }) {
+  const isMarketing = variant === "marketing";
   const [items, setItems] = useState(FALLBACK_GALLERY_ITEMS);
 
   useEffect(() => {
@@ -68,34 +122,31 @@ export default function FeaturedRestorations() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div
+        className={
+          isMarketing
+            ? "-mx-4 flex snap-x snap-mandatory gap-5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-8 sm:overflow-visible sm:px-0 sm:pb-0"
+            : "grid gap-4 sm:grid-cols-3"
+        }
+      >
         {featured.map(({ item, pair }, index) => (
-          <Link
+          <GalleryCard
             key={item.id ?? item.title}
-            href="/gallery"
-            className={`pixel-border rounded-2xl border-blush/10 bg-cream/60 p-4 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${
-              index === 2 ? "hidden sm:block" : ""
-            }`}
-          >
-            <div className="grid grid-cols-2 gap-2">
-              <Side src={pair.before} label="Before" title={item.title} />
-              <Side src={pair.after} label="After" title={item.title} />
-            </div>
-            <h3 className="mt-3 truncate text-center font-display text-base font-bold text-ink">
-              {item.title}
-            </h3>
-            {item.setName ? (
-              <p className="mt-0.5 truncate text-center text-xs text-ink/55">
-                {item.setName}
-              </p>
-            ) : null}
-          </Link>
+            item={item}
+            pair={pair}
+            index={index}
+            variant={variant}
+          />
         ))}
       </div>
       <p className="text-center">
         <Link
           href="/gallery"
-          className="text-sm font-semibold text-blush transition hover:text-ink hover:underline"
+          className={
+            isMarketing
+              ? "font-mono text-[11px] uppercase tracking-[0.22em] text-ink/50 underline-offset-4 transition hover:text-ink hover:underline"
+              : "text-sm font-semibold text-blush transition hover:text-ink hover:underline"
+          }
         >
           View the full gallery →
         </Link>

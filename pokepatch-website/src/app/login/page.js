@@ -13,11 +13,7 @@ import {
   sendExistingAccountNotice,
 } from "@/lib/accountNotice";
 
-function fieldClassName(invalid = false) {
-  return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
-    : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
+import { fieldClassName } from "@/lib/formStyles";
 
 function LoginForm() {
   const router = useRouter();
@@ -153,23 +149,30 @@ function LoginForm() {
     <>
       <div className="animate-fade-up">
         <SectionHeading
+          note={
+            mode === "login"
+              ? "Account"
+              : mode === "signup"
+                ? "New account"
+                : "Password"
+          }
           subtitle={
             mode === "login"
-              ? "Welcome back!"
+              ? "Welcome back."
               : mode === "signup"
-                ? "Create your account"
-                : "We'll email you a link to set a new one"
+                ? "Create an account to track your orders."
+                : "We'll email you a link to set a new one."
           }
         >
           {mode === "login"
             ? "Log in"
             : mode === "signup"
               ? "Sign up"
-              : "Reset your password"}
+              : "Reset password"}
         </SectionHeading>
       </div>
 
-      <div className="pixel-border animate-fade-up space-y-6 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]">
+      <div className="marketing-panel animate-fade-up space-y-6 p-6 [animation-delay:150ms]">
         {!isSupabaseConfigured && (
           <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">
             Authentication is not configured. Please add{" "}
@@ -406,7 +409,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="mx-auto max-w-md px-6 py-16">
+    <div className="mx-auto max-w-md px-4 py-10 sm:px-6 sm:py-16">
       <Suspense
         fallback={
           <div className="flex min-h-[50vh] items-center justify-center">

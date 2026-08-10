@@ -508,7 +508,7 @@ function EditorPanel({
               }}
               className={`rounded-lg px-4 py-1.5 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night shadow-cozy-sm"
+                  ? "bg-berry text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -536,7 +536,7 @@ function EditorPanel({
                     onClick={() => setAspectId(option.id)}
                     className={`rounded-lg px-3 py-1.5 font-secondary text-sm font-semibold transition ${
                       active
-                        ? "bg-berry text-night shadow-cozy-sm"
+                        ? "bg-berry text-night "
                         : "text-ink/70 hover:text-ink"
                     }`}
                   >

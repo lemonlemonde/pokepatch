@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 
 const DEFAULT_TITLE = "Unsaved changes";
 const DEFAULT_BODY =
-  "You have unsaved changes. If you leave now, those edits will be lost.";
+ "You have unsaved changes. If you leave now, those edits will be lost.";
 
 export default function UnsavedChangesDialog({
   open,
@@ -38,7 +38,7 @@ export default function UnsavedChangesDialog({
         aria-modal="true"
         aria-labelledby="unsaved-changes-title"
         aria-describedby="unsaved-changes-body"
-        className="w-full max-w-md overflow-hidden rounded-2xl border-2 border-ink/15 bg-cream shadow-cozy"
+        className="w-full max-w-md overflow-hidden rounded-2xl border border-ink/15 bg-cream "
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-ink/10 px-5 py-4">
@@ -56,14 +56,14 @@ export default function UnsavedChangesDialog({
           <button
             type="button"
             onClick={onStay}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush"
+            className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30"
           >
             {stayLabel}
           </button>
           <button
             type="button"
             onClick={onLeave}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110"
+            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
           >
             {leaveLabel}
           </button>

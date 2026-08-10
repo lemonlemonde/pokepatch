@@ -147,17 +147,17 @@ function OrderEditorContent({
   return (
     <div className="mx-auto max-w-5xl">
       {/* Sticky action bar, pinned just below the floating site navbar. */}
-      <div className="sticky top-24 z-40 mb-4 rounded-2xl border border-ink/10 bg-plum/95 px-4 py-3 shadow-cozy-sm backdrop-blur sm:px-5">
+      <div className="sticky top-20 z-40 sm:top-24 mb-4 rounded-2xl border border-ink/10 bg-[#0a0714]/90 px-4 py-3 backdrop-blur sm:px-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <button
             type="button"
             onClick={onBack}
-            className="shrink-0 text-sm font-medium text-ink/50 transition hover:text-ink"
+            className="shrink-0 font-mono text-[11px] uppercase tracking-[0.16em] text-ink/50 transition hover:text-ink"
           >
             ← {backLabel}
           </button>
           <div className="hidden h-5 w-px bg-ink/15 sm:block" aria-hidden="true" />
-          <h1 className="text-base font-bold tabular-nums tracking-tight text-ink sm:text-lg">
+          <h1 className="text-base font-medium tabular-nums tracking-tight text-ink sm:text-lg">
             Order #{displayId}
           </h1>
           <span
@@ -180,7 +180,7 @@ function OrderEditorContent({
 
           <div className="ml-auto flex items-center gap-2">
             <div className="mr-1 hidden text-right leading-tight sm:block">
-              <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-ink/40">
+              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
                 Total
               </p>
               <p className="text-sm font-bold tabular-nums text-ink">
@@ -200,7 +200,7 @@ function OrderEditorContent({
                 type="button"
                 onClick={discardChanges}
                 disabled={saving}
-                className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80 transition hover:border-blush/50 hover:text-ink disabled:opacity-40"
+                className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80 transition hover:border-ink/50 hover:text-ink disabled:opacity-40"
               >
                 Discard
               </button>
@@ -209,7 +209,7 @@ function OrderEditorContent({
               type="button"
               onClick={requestSave}
               disabled={saving || !dirty}
-              className="rounded-lg bg-berry px-4 py-2 text-sm font-bold text-night shadow-cozy-sm transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
+              className="rounded-lg bg-berry px-4 py-2 text-sm font-bold text-night transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
               {saving ? "Saving…" : "Save"}
             </button>

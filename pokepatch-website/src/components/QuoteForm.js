@@ -14,6 +14,7 @@ import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompressi
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
+import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
@@ -65,19 +66,17 @@ function sanitizeFilename(name) {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
-function fieldClassName(invalid = false, locked = false) {
-  if (locked) {
-    return "w-full scroll-mt-24 cursor-not-allowed rounded-xl border-2 border-ink/10 bg-ink/10 px-4 py-2 text-ink/50 outline-none";
-  }
-  return invalid
-    ? "w-full scroll-mt-24 rounded-xl border-2 border-error bg-cream px-4 py-2 text-ink outline-none focus:border-error"
-    : "w-full scroll-mt-24 rounded-xl border-2 border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-blush";
-}
-
-function optionClassName(invalid = false) {
-  return invalid
-    ? "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-error bg-cream/80 px-4 py-3"
-    : "flex cursor-pointer items-start gap-3 rounded-xl border-2 border-ink/10 bg-cream/80 px-4 py-3";
+// Sits under each field the account controls, so the reason a field is disabled
+// is next to that field rather than at the end of the group.
+function AccountFieldNote({ children }) {
+  return (
+    <p className="mt-1 text-xs text-ink/60">
+      {children}{" "}
+      <Link href="/account" className="font-semibold text-blush hover:underline">
+        Manage account
+      </Link>
+    </p>
+  );
 }
 
 function emptyCard() {
@@ -129,12 +128,26 @@ function cardFieldErrors(card) {
   };
 }
 
-function getFieldErrors({ firstName, lastName, email, deliveryMethod, cards }) {
+function hasAdditionalContact(contactValues) {
+  return CONTACT_TYPES.some(
+    (type) => (contactValues[type.value] ?? "").trim() !== ""
+  );
+}
+
+function getFieldErrors({
+  firstName,
+  lastName,
+  email,
+  deliveryMethod,
+  contactValues,
+  cards,
+}) {
   const errors = {
     firstName: firstName.trim() === "",
     lastName: lastName.trim() === "",
     email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     deliveryMethod: deliveryMethod === "",
+    contacts: !hasAdditionalContact(contactValues),
     cards: {},
     noCards: cards.length === 0,
   };
@@ -159,7 +172,13 @@ function getFieldErrors({ firstName, lastName, email, deliveryMethod, cards }) {
 
 function hasFieldErrors(errors) {
   if (!errors) return false;
-  if (errors.firstName || errors.lastName || errors.email || errors.deliveryMethod) {
+  if (
+    errors.firstName ||
+    errors.lastName ||
+    errors.email ||
+    errors.deliveryMethod ||
+    errors.contacts
+  ) {
     return true;
   }
   if (errors.noCards) return true;
@@ -180,6 +199,13 @@ function getFirstErrorElement(errors, cards) {
   }
   if (errors.deliveryMethod) {
     return document.getElementById("delivery_method");
+  }
+  if (errors.contacts) {
+    const firstType = CONTACT_TYPES[0]?.value;
+    return (
+      (firstType ? document.getElementById(`contact_${firstType}`) : null) ??
+      document.getElementById("additional_contacts")
+    );
   }
   if (errors.noCards) {
     return document.getElementById("cards_empty");
@@ -264,11 +290,17 @@ export default function QuoteForm() {
   useEffect(() => {
     if (customerInfoCompletedRef.current) return;
     const hasEmail = email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (firstName.trim() && lastName.trim() && hasEmail && deliveryMethod) {
+    if (
+      firstName.trim() &&
+      lastName.trim() &&
+      hasEmail &&
+      deliveryMethod &&
+      hasAdditionalContact(contactValues)
+    ) {
       customerInfoCompletedRef.current = true;
       capture("quote_form_step_completed", { step: "customer_info" });
     }
-  }, [firstName, lastName, email, deliveryMethod]);
+  }, [firstName, lastName, email, deliveryMethod, contactValues]);
 
   useEffect(() => {
     if (cardDetailsCompletedRef.current) return;
@@ -298,7 +330,7 @@ export default function QuoteForm() {
     profileLoadedRef.current = true;
     supabase
       .from("customer_profiles")
-      .select("first_name, last_name, contacts")
+      .select("first_name, last_name, contacts, preferred_contact_type")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
@@ -331,6 +363,10 @@ export default function QuoteForm() {
           setContactValues((prev) => ({ ...prev, ...saved }));
           setLockedTypes(locked);
         }
+        // Preferred contact method saved on the account (written back by
+        // create_order when a previous order first supplied it).
+        const savedPreferred = (data.preferred_contact_type ?? "").trim();
+        if (savedPreferred) setPreferredContactId(savedPreferred);
       });
   }, [user]);
 
@@ -358,6 +394,7 @@ export default function QuoteForm() {
   function updateContactValue(type, value) {
     onFormInteraction();
     setContactValues((prev) => ({ ...prev, [type]: value }));
+    if (value.trim() !== "") clearFieldError("contacts");
   }
 
   function updateCard(id, patch) {
@@ -575,6 +612,7 @@ export default function QuoteForm() {
       lastName,
       email,
       deliveryMethod,
+      contactValues,
       cards,
     });
 
@@ -782,7 +820,7 @@ export default function QuoteForm() {
       ref={formRef}
       onSubmit={handleSubmit}
       noValidate
-      className="pixel-border animate-fade-up space-y-10 rounded-2xl bg-cream/60 p-6 [animation-delay:150ms]"
+      className="marketing-panel animate-fade-up space-y-10 p-6 [animation-delay:150ms]"
     >
       {!isSupabaseConfigured && (
         <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">
@@ -837,6 +875,9 @@ export default function QuoteForm() {
                 : undefined
             }
           />
+          {lockedName.firstName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
+          )}
         </div>
 
         <div>
@@ -864,16 +905,8 @@ export default function QuoteForm() {
                 : undefined
             }
           />
-          {(lockedName.firstName || lockedName.lastName) && (
-            <p className="mt-1 text-xs text-ink/60">
-              Your name comes from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
+          {lockedName.lastName && (
+            <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
           )}
         </div>
 
@@ -977,14 +1010,23 @@ export default function QuoteForm() {
           </label>
         </fieldset>
 
-        <div className="space-y-3">
-          <p className="text-sm font-bold text-ink">Other forms of contact</p>
-          <p className="text-sm text-ink/70">
-            Optional. Share any of these so we can reach you.
+        <div id="additional_contacts" className="scroll-mt-24 space-y-3">
+          <p className="text-sm font-bold text-ink">
+            Other forms of contact <span className="text-berry">*</span>
           </p>
+          <p className="text-sm text-ink/70">
+            Provide at least one so we can reach you (phone, Discord, or
+            Instagram).
+          </p>
+          {fieldErrors?.contacts && (
+            <p className="text-sm text-error" role="alert">
+              Please enter at least one additional contact method
+            </p>
+          )}
           {CONTACT_TYPES.map((type) => {
             const value = contactValues[type.value] ?? "";
             const locked = !!lockedTypes[type.value];
+            const showError = fieldErrors?.contacts && value.trim() === "";
             return (
               <div key={type.value}>
                 <label
@@ -993,36 +1035,32 @@ export default function QuoteForm() {
                 >
                   {type.label}
                 </label>
-                {locked ? (
-                  <div className="rounded-xl border-2 border-ink/10 bg-cream/60 px-4 py-2">
-                    <p className="text-sm text-ink/80">{value}</p>
-                  </div>
-                ) : (
-                  <input
-                    id={`contact_${type.value}`}
-                    type="text"
-                    value={value}
-                    onChange={(e) => updateContactValue(type.value, e.target.value)}
-                    placeholder={
-                      type.value === "phone" ? "(555) 555-5555" : "@yourusername"
-                    }
-                    className={fieldClassName()}
-                  />
+                <input
+                  id={`contact_${type.value}`}
+                  type="text"
+                  value={value}
+                  onChange={(e) => updateContactValue(type.value, e.target.value)}
+                  placeholder={
+                    type.value === "phone" ? "(555) 555-5555" : "@yourusername"
+                  }
+                  className={fieldClassName(showError, locked)}
+                  aria-invalid={showError || undefined}
+                  disabled={locked}
+                  readOnly={locked}
+                  title={
+                    locked
+                      ? "Saved on your account. Edit it in account settings."
+                      : undefined
+                  }
+                />
+                {locked && (
+                  <AccountFieldNote>
+                    Saved contact methods come from your account.
+                  </AccountFieldNote>
                 )}
               </div>
             );
           })}
-          {Object.keys(lockedTypes).length > 0 && (
-            <p className="text-xs text-ink/60">
-              Saved contact methods come from your account.{" "}
-              <Link
-                href="/account"
-                className="font-semibold text-blush hover:underline"
-              >
-                Manage account
-              </Link>
-            </p>
-          )}
         </div>
 
         <div className="space-y-3">

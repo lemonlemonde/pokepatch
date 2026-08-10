@@ -78,7 +78,7 @@ export default function ChecklistGroupChip({ group, checklist, onChange }) {
         ? createPortal(
             <div
               ref={popoverRef}
-              className="fixed z-[200] w-40 -translate-x-1/2 rounded-xl border-2 border-ink/15 bg-cream p-2.5 shadow-cozy"
+              className="fixed z-[200] w-40 -translate-x-1/2 rounded-xl border border-ink/15 bg-cream p-2.5 "
               style={{ top: pos.top, left: pos.left }}
             >
               <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-ink/40">

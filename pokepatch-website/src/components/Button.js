@@ -1,9 +1,16 @@
 import Link from "next/link";
 
 const VARIANTS = {
-  primary: "bg-lavender text-night sm:hover:bg-lavender/80",
-  secondary: "bg-blush text-night sm:hover:bg-blush/80",
+  primary: "bg-ink text-night shadow-none sm:hover:bg-ink/90",
+  secondary:
+    "border border-ink/20 bg-transparent text-ink shadow-none sm:hover:border-ink/40 sm:hover:bg-ink/5",
+  marketing: "bg-ink text-night shadow-none sm:hover:bg-ink/90",
+  "marketing-secondary":
+    "border border-ink/20 bg-transparent text-ink shadow-none sm:hover:border-ink/40 sm:hover:bg-ink/5",
 };
+
+const VARIANT_MOTION =
+  "active:translate-y-0 shadow-none sm:hover:-translate-y-0.5";
 
 /**
  * Shared pill CTA. Renders a Next.js Link when `href` is given, otherwise a
@@ -19,10 +26,9 @@ export default function Button({
   ...props
 }) {
   const classes = [
-    "inline-block rounded-full px-6 py-3 font-bold shadow-cozy",
+    "inline-block rounded-full px-6 py-3 font-bold min-h-11",
     "transition-all duration-200 ease-out",
-    "active:translate-y-0.5 active:shadow-cozy-sm",
-    "sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]",
+    VARIANT_MOTION,
     "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-cozy",
     VARIANTS[variant] ?? VARIANTS.primary,
     fullWidth ? "w-full text-center" : "",

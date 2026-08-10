@@ -1,8 +1,22 @@
--- Customer quote form may send optional service_keys per card.
--- create_order inserts matching order_quote_items with server-side list prices.
--- Keep key/label/amount map in sync with src/lib/servicePricing.js (QUOTE_SERVICES).
+-- Autosave contact details from a new order onto the submitter's account.
 --
--- Function body is the live definition from 20260810043402 plus service_keys.
+-- Extends the name write-back from 20260731040000 to cover contact methods and
+-- the preferred contact method:
+--   1. A logged-in customer who enters a contact method the account doesn't
+--      have yet -> saved onto their profile with the order.
+--   2. A contact type the account already has -> the account's value wins and
+--      is left untouched, matching how names already behave.
+--   3. Preferred contact method -> saved only when the account has none.
+-- Anonymous submissions that merely match an account's email never write back;
+-- only an authenticated session may modify its own profile.
+--
+-- The function body is the live definition from 20260806074622 (paid priority
+-- service) with the write-back grafted on, so replacing it here keeps priority
+-- handling intact.
+
+ALTER TABLE public.customer_profiles
+  ADD COLUMN IF NOT EXISTS preferred_contact_type text,
+  ADD COLUMN IF NOT EXISTS preferred_contact_value text;
 
 CREATE OR REPLACE FUNCTION public.create_order(p_payload jsonb)
  RETURNS jsonb
@@ -28,7 +42,6 @@ declare
   v_image jsonb;
   v_card_id uuid;
   v_card_name text;
-  v_set_name text;
   v_images jsonb;
   v_card_count int;
   v_image_count int;
@@ -45,12 +58,6 @@ declare
   v_is_priority boolean;
   v_priority_fee numeric(10, 2);
   v_quote_bulk jsonb;
-  v_service_keys jsonb;
-  v_service_key text;
-  v_service_label text;
-  v_base_amount numeric(10, 2);
-  v_sort_order int := 0;
-  v_seen_keys text[] := '{}';
 begin
   if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
     raise exception 'payload is required';
@@ -152,10 +159,6 @@ begin
   v_contacts := coalesce(p_payload -> 'contacts', '[]'::jsonb);
   if jsonb_typeof(v_contacts) <> 'array' then
     raise exception 'contacts must be an array';
-  end if;
-
-  if jsonb_array_length(v_contacts) < 1 then
-    raise exception 'at least one additional contact is required';
   end if;
 
   v_cards := coalesce(p_payload -> 'cards', '[]'::jsonb);
@@ -294,35 +297,6 @@ begin
         raise exception 'invalid image_type';
       end if;
     end loop;
-
-    if v_card ? 'service_keys' and v_card -> 'service_keys' is not null then
-      v_service_keys := v_card -> 'service_keys';
-      if jsonb_typeof(v_service_keys) <> 'array' then
-        raise exception 'card service_keys must be an array';
-      end if;
-
-      v_seen_keys := '{}';
-      for v_service_key in
-        select trim(value)
-        from jsonb_array_elements_text(v_service_keys)
-      loop
-        if v_service_key = '' then
-          continue;
-        end if;
-        if v_service_key = any (v_seen_keys) then
-          continue;
-        end if;
-        if v_service_key not in (
-          'surface_restoration',
-          'precision_pressing',
-          'advanced_restoration',
-          'slab_cracking'
-        ) then
-          raise exception 'invalid service_key: %', v_service_key;
-        end if;
-        v_seen_keys := array_append(v_seen_keys, v_service_key);
-      end loop;
-    end if;
   end loop;
 
   v_is_priority := coalesce((p_payload ->> 'is_priority')::boolean, false);
@@ -391,20 +365,16 @@ begin
     );
   end loop;
 
-  v_sort_order := 0;
-
   for v_card in select * from jsonb_array_elements(v_cards)
   loop
     v_card_id := (v_card ->> 'id')::uuid;
-    v_card_name := trim(v_card ->> 'card_name');
-    v_set_name := nullif(trim(coalesce(v_card ->> 'set_name', '')), '');
 
     insert into public.cards (id, order_id, card_name, set_name, description)
     values (
       v_card_id,
       v_order_id,
-      v_card_name,
-      v_set_name,
+      trim(v_card ->> 'card_name'),
+      nullif(trim(coalesce(v_card ->> 'set_name', '')), ''),
       nullif(trim(coalesce(v_card ->> 'description', '')), '')
     )
     returning * into v_card_row;
@@ -437,66 +407,6 @@ begin
         v_image_row.storage_path
       );
     end loop;
-
-    v_service_keys := coalesce(v_card -> 'service_keys', '[]'::jsonb);
-    if jsonb_typeof(v_service_keys) = 'array' then
-      v_seen_keys := '{}';
-      for v_service_key in
-        select trim(value)
-        from jsonb_array_elements_text(v_service_keys)
-      loop
-        if v_service_key = '' then
-          continue;
-        end if;
-        if v_service_key = any (v_seen_keys) then
-          continue;
-        end if;
-        v_seen_keys := array_append(v_seen_keys, v_service_key);
-
-        -- Sync with src/lib/servicePricing.js QUOTE_SERVICES listPrice/title.
-        case v_service_key
-          when 'surface_restoration' then
-            v_service_label := 'Surface Cleaning';
-            v_base_amount := 15;
-          when 'precision_pressing' then
-            v_service_label := 'Flattening';
-            v_base_amount := 30;
-          when 'advanced_restoration' then
-            v_service_label := 'Heavy Damage';
-            v_base_amount := 50;
-          when 'slab_cracking' then
-            v_service_label := 'Slab Cracking';
-            v_base_amount := 10;
-          else
-            raise exception 'invalid service_key: %', v_service_key;
-        end case;
-
-        insert into public.order_quote_items (
-          id,
-          order_id,
-          sort_order,
-          card_name,
-          set_name,
-          service_key,
-          service_label,
-          quote_base_amount,
-          high_value_surcharge
-        )
-        values (
-          gen_random_uuid(),
-          v_order_id,
-          v_sort_order,
-          v_card_name,
-          v_set_name,
-          v_service_key,
-          v_service_label,
-          v_base_amount,
-          null
-        );
-
-        v_sort_order := v_sort_order + 1;
-      end loop;
-    end if;
   end loop;
 
   return jsonb_build_object(

@@ -46,7 +46,7 @@ import {
 } from "@/lib/studioLayout";
 
 const INPUT_CLASS =
-  "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-blush";
+ "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-ink/40";
 
 function createEmptyCardMeta() {
   return {
@@ -110,7 +110,7 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
       >
         <span
           aria-hidden="true"
-          className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-cream shadow-cozy-sm transition ${
+          className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-cream transition ${
             checked ? "translate-x-5" : "translate-x-0"
           }`}
         />
@@ -411,14 +411,14 @@ const PHOTO_GROUP_MODES = [
     id: "before-after-pair",
     label: "Before-After Pair",
     subtitle:
-      "Before & after side-by-side. Add as many pair rows as you need — each complete pair becomes its own post.",
+     "Before & after side-by-side. Add as many pair rows as you need — each complete pair becomes its own post.",
     dynamicPairRows: true,
   },
   {
     id: "front-back-pair",
     label: "Front-Back Pair",
     subtitle:
-      "Front & back side-by-side. Fill Before for one post; After is optional for a second.",
+     "Front & back side-by-side. Fill Before for one post; After is optional for a second.",
     dynamicPairRows: false,
   },
 ];
@@ -450,7 +450,7 @@ const STUDIO_OPTIONS = [
     slug: "front-back",
     title: "1×2 formatter",
     description:
-      "Before-After or Front-Back pair posts. Square (1:1) or Reels (9:16). Before-After supports as many pair rows as you need.",
+     "Before-After or Front-Back pair posts. Square (1:1) or Reels (9:16). Before-After supports as many pair rows as you need.",
   },
 ];
 
@@ -475,7 +475,7 @@ function StudioSelector({ onSelect }) {
             key={option.id}
             type="button"
             onClick={() => onSelect(option.id)}
-            className="rounded-xl border border-ink/20 bg-night/50 px-6 py-10 text-left shadow-cozy-sm transition hover:border-berry/40 hover:bg-night/70"
+            className="rounded-xl border border-ink/20 bg-night/50 px-6 py-10 text-left transition hover:border-berry/40 hover:bg-night/70"
           >
             <p className="text-xl font-bold text-ink">{option.title}</p>
             <p className="mt-2 text-sm text-ink/60">{option.description}</p>
@@ -594,7 +594,7 @@ function OutputGrid({
             onClick={() =>
               annotated ? downloadAllAnnotated() : downloadAllFromUrls(outputs)
             }
-            className="rounded-xl bg-berry px-6 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110"
+            className="rounded-xl bg-berry px-6 py-3 font-semibold text-night transition hover:brightness-110"
           >
             Download all ({outputs.length})
           </button>
@@ -797,7 +797,7 @@ function GroupModeToggle({ value, onChange }) {
               onClick={() => onChange(mode.id)}
               className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night shadow-cozy-sm"
+                  ? "bg-berry text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -829,7 +829,7 @@ function OutputFormatToggle({ value, onChange }) {
               onClick={() => onChange(format.id)}
               className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night shadow-cozy-sm"
+                  ? "bg-berry text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -1056,7 +1056,7 @@ function BeforeAfterPairPhotoFormatter({
     try {
       const next = await generatePhotoOutputs(
         files,
-        "before-after-pair",
+       "before-after-pair",
         cardMetaToOverlayOptions(cardMeta),
         outputFormat,
       );
@@ -1156,7 +1156,7 @@ function BeforeAfterPairPhotoFormatter({
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Generating…" : "Generate images"}
           </button>
@@ -1488,7 +1488,7 @@ function FrontBackPairPhotoFormatter({
     try {
       const next = await generatePhotoOutputs(
         files,
-        "front-back-pair",
+       "front-back-pair",
         cardMetaToOverlayOptions(cardMeta),
         outputFormat,
       );
@@ -1753,7 +1753,7 @@ function FrontBackPairPhotoFormatter({
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Generating…" : "Generate images"}
             </button>
