@@ -20,6 +20,15 @@ import { saveAdminOrderDraft } from "@/lib/adminOrderSave";
 
 const OrderEditorContext = createContext(null);
 
+/** Convert once so draft and baseline share any client-minted ids. */
+function seedEditorDrafts(order) {
+  const draft = orderToDraft(order);
+  return {
+    draft,
+    savedDraft: JSON.parse(JSON.stringify(draft)),
+  };
+}
+
 /**
  * One shared draft for the whole order editor. The provider is keyed by
  * orderId in the shell, so switching orders remounts and re-seeds the draft;
@@ -32,8 +41,9 @@ export function OrderEditorProvider({
   onDirtyChange,
   children,
 }) {
-  const [draft, setDraft] = useState(() => orderToDraft(order));
-  const [savedDraft, setSavedDraft] = useState(() => orderToDraft(order));
+  const [seed] = useState(() => seedEditorDrafts(order));
+  const [draft, setDraft] = useState(seed.draft);
+  const [savedDraft, setSavedDraft] = useState(seed.savedDraft);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savePromptOpen, setSavePromptOpen] = useState(false);
