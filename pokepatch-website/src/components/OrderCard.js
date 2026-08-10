@@ -8,6 +8,9 @@ import {
   customerCardStatusLabel,
   orderStatusBadgeClass,
   cardStatusBadgeClass,
+  isPendingOrderStatus,
+  normalizePendingKind,
+  DEFAULT_PENDING_KIND,
 } from "@/lib/orderStatus";
 import {
   cardsWithQuoteHv,
@@ -1069,8 +1072,17 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                 </div>
               )}
 
-              {/* Quote from the team */}
-              {hasQuoteData({
+              {/* Quote from the team — hide while still pending quote so
+                  customer-selected service prefills don't show list prices. */}
+              {!(
+                isPendingOrderStatus(
+                  orderDetails.status ?? order.status
+                ) &&
+                normalizePendingKind(
+                  orderDetails.pending_kind ?? order.pending_kind
+                ) === DEFAULT_PENDING_KIND
+              ) &&
+              hasQuoteData({
                 items: orderDetails.quote_items,
                 cards: quoteCards,
                 adjustments: quoteAdjustments,

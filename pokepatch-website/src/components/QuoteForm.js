@@ -14,10 +14,34 @@ import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompressi
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
-import { priorityServicePricingHint } from "@/lib/servicePricing";
+import {
+  QUOTE_SERVICES,
+  SERVICE_KEYS,
+  priorityServicePricingHint,
+} from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
+
+/** Customer-selectable services (no Custom; no prices shown on the form). */
+const CUSTOMER_QUOTE_SERVICES = QUOTE_SERVICES.filter(
+  (service) => service.key !== SERVICE_KEYS.CUSTOM
+);
+
+const CUSTOMER_SERVICE_KEY_SET = new Set(
+  CUSTOMER_QUOTE_SERVICES.map((service) => service.key)
+);
+
+function normalizeCardServiceKeys(keys) {
+  const seen = new Set();
+  const next = [];
+  for (const key of keys ?? []) {
+    if (!CUSTOMER_SERVICE_KEY_SET.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    next.push(key);
+  }
+  return next;
+}
 
 const HEARD_ABOUT_OPTIONS = [
   { value: "instagram", label: "Instagram" },
@@ -61,6 +85,7 @@ function emptyCard() {
     id: crypto.randomUUID(),
     cardName: "",
     setName: "",
+    serviceKeys: [],
     description: "",
     files: [],
   };
@@ -77,23 +102,21 @@ function initialCard() {
     id: "card-initial",
     cardName: "",
     setName: "",
+    serviceKeys: [],
     description: "",
     files: [],
   };
 }
 
 function isCardComplete(card) {
-  return (
-    card.cardName.trim() !== "" &&
-    card.description.trim() !== "" &&
-    card.files.length > 0
-  );
+  return card.cardName.trim() !== "" && card.files.length > 0;
 }
 
 function isCardEmpty(card) {
   return (
     card.cardName.trim() === "" &&
     card.setName.trim() === "" &&
+    (card.serviceKeys?.length ?? 0) === 0 &&
     card.description.trim() === "" &&
     card.files.length === 0
   );
@@ -102,7 +125,6 @@ function isCardEmpty(card) {
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
-    description: card.description.trim() === "",
     files: card.files.length === 0,
   };
 }
@@ -168,9 +190,6 @@ function getFirstErrorElement(errors, cards) {
     if (!cardErrors) continue;
     if (cardErrors.cardName) {
       return document.getElementById(`card_name_${card.id}`);
-    }
-    if (cardErrors.description) {
-      return document.getElementById(`description_${card.id}`);
     }
     if (cardErrors.files) {
       return (
@@ -327,7 +346,7 @@ export default function QuoteForm() {
       if (!prev?.cards?.[cardId]?.[key]) return prev;
       const card = { ...prev.cards[cardId], [key]: false };
       const cards = { ...prev.cards };
-      if (!card.cardName && !card.description && !card.files) {
+      if (!card.cardName && !card.files) {
         delete cards[cardId];
       } else {
         cards[cardId] = card;
@@ -344,11 +363,22 @@ export default function QuoteForm() {
   function updateCard(id, patch) {
     onFormInteraction();
     if (patch.cardName !== undefined) clearCardFieldError(id, "cardName");
-    if (patch.description !== undefined) {
-      clearCardFieldError(id, "description");
-    }
     setCards((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
+  }
+
+  function toggleCardService(id, serviceKey) {
+    onFormInteraction();
+    setCards((prev) =>
+      prev.map((card) => {
+        if (card.id !== id) return card;
+        const current = card.serviceKeys ?? [];
+        const next = current.includes(serviceKey)
+          ? current.filter((key) => key !== serviceKey)
+          : [...current, serviceKey];
+        return { ...card, serviceKeys: next };
+      })
     );
   }
 
@@ -619,6 +649,7 @@ export default function QuoteForm() {
           card_name: card.cardName.trim(),
           set_name: card.setName.trim() || null,
           description: card.description.trim(),
+          service_keys: normalizeCardServiceKeys(card.serviceKeys),
           images,
         });
       }
@@ -1104,15 +1135,57 @@ export default function QuoteForm() {
               </div>
 
               <div>
+                <p className="mb-1 text-sm font-bold text-ink">Services</p>
+                <p className="mb-2 text-sm text-ink/70">
+                  Select any services you want for this card (optional).
+                </p>
+                <div className="space-y-2">
+                  {CUSTOMER_QUOTE_SERVICES.map((service) => {
+                    const checked = (card.serviceKeys ?? []).includes(
+                      service.key
+                    );
+                    const checkboxId = `service_${card.id}_${service.key}`;
+                    return (
+                      <label
+                        key={service.key}
+                        htmlFor={checkboxId}
+                        className={optionClassName()}
+                      >
+                        <input
+                          id={checkboxId}
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            toggleCardService(card.id, service.key)
+                          }
+                          className="mt-1 h-4 w-4 accent-blush"
+                        />
+                        <span>
+                          <span className="block text-sm font-semibold text-ink">
+                            {service.title}
+                          </span>
+                          {service.features?.length ? (
+                            <span className="mt-0.5 block text-sm text-ink/65">
+                              {service.features.join(" · ")}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
                 <label
                   htmlFor={`description_${card.id}`}
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  Description <span className="text-berry">*</span>
+                  Description
                 </label>
                 <p className="mb-2 text-sm text-ink/70">
-                  Note the damage and where it is (e.g. crease on left edge,
-                  scratches on holo).
+                  Optional notes about the damage and where it is (e.g. crease
+                  on left edge, scratches on holo).
                 </p>
                 <textarea
                   id={`description_${card.id}`}
@@ -1122,8 +1195,7 @@ export default function QuoteForm() {
                     updateCard(card.id, { description: e.target.value })
                   }
                   placeholder="Describe the repair needed..."
-                  className={fieldClassName(cardErrors?.description)}
-                  aria-invalid={cardErrors?.description || undefined}
+                  className={fieldClassName()}
                 />
               </div>
 
