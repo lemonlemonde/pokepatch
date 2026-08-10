@@ -106,12 +106,26 @@ function cardFieldErrors(card) {
   };
 }
 
-function getFieldErrors({ firstName, lastName, email, deliveryMethod, cards }) {
+function hasAdditionalContact(contactValues) {
+  return CONTACT_TYPES.some(
+    (type) => (contactValues[type.value] ?? "").trim() !== ""
+  );
+}
+
+function getFieldErrors({
+  firstName,
+  lastName,
+  email,
+  deliveryMethod,
+  contactValues,
+  cards,
+}) {
   const errors = {
     firstName: firstName.trim() === "",
     lastName: lastName.trim() === "",
     email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     deliveryMethod: deliveryMethod === "",
+    contacts: !hasAdditionalContact(contactValues),
     cards: {},
     noCards: cards.length === 0,
   };
@@ -136,7 +150,13 @@ function getFieldErrors({ firstName, lastName, email, deliveryMethod, cards }) {
 
 function hasFieldErrors(errors) {
   if (!errors) return false;
-  if (errors.firstName || errors.lastName || errors.email || errors.deliveryMethod) {
+  if (
+    errors.firstName ||
+    errors.lastName ||
+    errors.email ||
+    errors.deliveryMethod ||
+    errors.contacts
+  ) {
     return true;
   }
   if (errors.noCards) return true;
@@ -157,6 +177,13 @@ function getFirstErrorElement(errors, cards) {
   }
   if (errors.deliveryMethod) {
     return document.getElementById("delivery_method");
+  }
+  if (errors.contacts) {
+    const firstType = CONTACT_TYPES[0]?.value;
+    return (
+      (firstType ? document.getElementById(`contact_${firstType}`) : null) ??
+      document.getElementById("additional_contacts")
+    );
   }
   if (errors.noCards) {
     return document.getElementById("cards_empty");
@@ -244,11 +271,17 @@ export default function QuoteForm() {
   useEffect(() => {
     if (customerInfoCompletedRef.current) return;
     const hasEmail = email.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    if (firstName.trim() && lastName.trim() && hasEmail && deliveryMethod) {
+    if (
+      firstName.trim() &&
+      lastName.trim() &&
+      hasEmail &&
+      deliveryMethod &&
+      hasAdditionalContact(contactValues)
+    ) {
       customerInfoCompletedRef.current = true;
       capture("quote_form_step_completed", { step: "customer_info" });
     }
-  }, [firstName, lastName, email, deliveryMethod]);
+  }, [firstName, lastName, email, deliveryMethod, contactValues]);
 
   useEffect(() => {
     if (cardDetailsCompletedRef.current) return;
@@ -342,6 +375,7 @@ export default function QuoteForm() {
   function updateContactValue(type, value) {
     onFormInteraction();
     setContactValues((prev) => ({ ...prev, [type]: value }));
+    if (value.trim() !== "") clearFieldError("contacts");
   }
 
   function updateCard(id, patch) {
@@ -548,6 +582,7 @@ export default function QuoteForm() {
       lastName,
       email,
       deliveryMethod,
+      contactValues,
       cards,
     });
 
@@ -944,14 +979,23 @@ export default function QuoteForm() {
           </label>
         </fieldset>
 
-        <div className="space-y-3">
-          <p className="text-sm font-bold text-ink">Other forms of contact</p>
-          <p className="text-sm text-ink/70">
-            Optional. Share any of these so we can reach you.
+        <div id="additional_contacts" className="scroll-mt-24 space-y-3">
+          <p className="text-sm font-bold text-ink">
+            Other forms of contact <span className="text-berry">*</span>
           </p>
+          <p className="text-sm text-ink/70">
+            Provide at least one so we can reach you (phone, Discord, or
+            Instagram).
+          </p>
+          {fieldErrors?.contacts && (
+            <p className="text-sm text-error" role="alert">
+              Please enter at least one additional contact method
+            </p>
+          )}
           {CONTACT_TYPES.map((type) => {
             const value = contactValues[type.value] ?? "";
             const locked = !!lockedTypes[type.value];
+            const showError = fieldErrors?.contacts && value.trim() === "";
             return (
               <div key={type.value}>
                 <label
@@ -968,7 +1012,8 @@ export default function QuoteForm() {
                   placeholder={
                     type.value === "phone" ? "(555) 555-5555" : "@yourusername"
                   }
-                  className={fieldClassName(false, locked)}
+                  className={fieldClassName(showError, locked)}
+                  aria-invalid={showError || undefined}
                   disabled={locked}
                   readOnly={locked}
                   title={
