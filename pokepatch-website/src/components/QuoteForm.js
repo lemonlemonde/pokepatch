@@ -85,7 +85,11 @@ function initialCard() {
 }
 
 function isCardComplete(card) {
-  return card.cardName.trim() !== "" && card.files.length > 0;
+  return (
+    card.cardName.trim() !== "" &&
+    (card.damageTags?.length ?? 0) > 0 &&
+    card.files.length > 0
+  );
 }
 
 function isCardEmpty(card) {
@@ -101,6 +105,7 @@ function isCardEmpty(card) {
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
+    damageTags: (card.damageTags?.length ?? 0) === 0,
     files: card.files.length === 0,
   };
 }
@@ -193,6 +198,9 @@ function getFirstErrorElement(errors, cards) {
     if (!cardErrors) continue;
     if (cardErrors.cardName) {
       return document.getElementById(`card_name_${card.id}`);
+    }
+    if (cardErrors.damageTags) {
+      return document.getElementById(`card_damage_${card.id}`);
     }
     if (cardErrors.files) {
       return (
@@ -359,7 +367,7 @@ export default function QuoteForm() {
       if (!prev?.cards?.[cardId]?.[key]) return prev;
       const card = { ...prev.cards[cardId], [key]: false };
       const cards = { ...prev.cards };
-      if (!card.cardName && !card.files) {
+      if (!card.cardName && !card.files && !card.damageTags) {
         delete cards[cardId];
       } else {
         cards[cardId] = card;
@@ -384,15 +392,18 @@ export default function QuoteForm() {
 
   function toggleCardDamage(id, tagId) {
     onFormInteraction();
+    const card = cards.find((entry) => entry.id === id);
+    if (!card) return;
+    const current = card.damageTags ?? [];
+    const next = current.includes(tagId)
+      ? current.filter((damageId) => damageId !== tagId)
+      : [...current, tagId];
+    const damageTags = normalizeDamageTags(next);
+    if (damageTags.length > 0) clearCardFieldError(id, "damageTags");
     setCards((prev) =>
-      prev.map((card) => {
-        if (card.id !== id) return card;
-        const current = card.damageTags ?? [];
-        const next = current.includes(tagId)
-          ? current.filter((id) => id !== tagId)
-          : [...current, tagId];
-        return { ...card, damageTags: normalizeDamageTags(next) };
-      })
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, damageTags } : entry
+      )
     );
   }
 
@@ -1149,12 +1160,23 @@ export default function QuoteForm() {
                 />
               </div>
 
-              <div>
-                <p className="mb-1 text-sm font-bold text-ink">Damage</p>
-                <p className="mb-2 text-sm text-ink/70">
-                  Select any damage types that apply (optional).
+              <div id={`card_damage_${card.id}`}>
+                <p className="mb-1 text-sm font-bold text-ink">
+                  Damage <span className="text-berry">*</span>
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <p className="mb-2 text-sm text-ink/70">
+                  Select at least one damage type that applies.
+                </p>
+                <div
+                  className={
+                    cardErrors?.damageTags
+                      ? "flex flex-wrap gap-2 rounded-lg border border-error bg-error/10 p-2"
+                      : "flex flex-wrap gap-2"
+                  }
+                  role="group"
+                  aria-label="Damage types"
+                  aria-invalid={cardErrors?.damageTags || undefined}
+                >
                   {DAMAGE_TAGS.map((tag) => {
                     const selected = (card.damageTags ?? []).includes(tag.id);
                     return (
