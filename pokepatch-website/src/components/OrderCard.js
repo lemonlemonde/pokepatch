@@ -31,6 +31,7 @@ import {
   forgetSignedUrl,
   getCachedSignedUrls,
 } from "@/lib/signedUrlCache";
+import { labeledDamageTags } from "@/lib/gallery";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24; // 24h — reuse same token for CDN/browser cache
 const CARD_PHOTOS_BUCKET = "card-photos";
@@ -1115,6 +1116,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                     const cardThumbUrl =
                       thumbUrls[card.images?.[0]?.storage_path];
                     const photoCount = card.images?.length || 0;
+                    const damageTags = labeledDamageTags(card.damage_tags);
                     return (
                       <div
                         key={card.id}
@@ -1166,6 +1168,11 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                                 {card.set_name}
                               </p>
                             )}
+                            {damageTags.length > 0 ? (
+                              <p className="mt-0.5 truncate text-[11px] text-ink/55">
+                                {damageTags.map((tag) => tag.label).join(" · ")}
+                              </p>
+                            ) : null}
                             <CardPokePatchNote
                               note={card.admin_note}
                               variant="collapsed"
@@ -1182,7 +1189,26 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         <ExpandPanel open={isCardOpen}>
                             <CardPokePatchNote note={card.admin_note} />
                             <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
-                              <div className="min-w-0 flex-1 space-y-2">
+                              <div className="min-w-0 flex-1 space-y-3">
+                                <div>
+                                  <p className={LABEL_CLS}>Damage</p>
+                                  {damageTags.length > 0 ? (
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {damageTags.map((tag) => (
+                                        <span
+                                          key={tag.id}
+                                          className="rounded-md border border-ink/15 bg-ink/[0.04] px-2 py-1 text-xs font-semibold text-ink/80"
+                                        >
+                                          {tag.label}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="mt-1 text-sm italic text-ink/60">
+                                      No damage tags selected.
+                                    </p>
+                                  )}
+                                </div>
                                 <div>
                                   <p className={LABEL_CLS}>
                                     {card.admin_note
