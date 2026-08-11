@@ -1,5 +1,6 @@
 import {
   adjustmentKindLabel,
+  billableQuoteItems,
   computeQuoteTotal,
   defaultServiceLabel,
   formatMoney,
@@ -167,21 +168,33 @@ function quoteTotalFromPayload(payload) {
     overrideAmount: null,
   });
   const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
+  const payloadCards = payload.cards ?? [];
+  const cardById = new Map(
+    payloadCards.map((card) => [String(card.id), card])
+  );
   const cardIds = new Set([
     ...Object.keys(cardHvMap),
-    ...(payload.cards ?? []).map((card) => String(card.id)),
+    ...payloadCards.map((card) => String(card.id)),
   ]);
   const cards = cardsWithQuoteHv(
-    [...cardIds].map((id) => ({ id })),
+    [...cardIds].map((id) => {
+      const fromPayload = cardById.get(id);
+      return fromPayload
+        ? {
+            id,
+            card_name: fromPayload.card_name,
+            set_name: fromPayload.set_name,
+            status: fromPayload.status,
+          }
+        : { id };
+    }),
     cardHvMap
   );
-  const cardCount = (payload.cards ?? []).length || null;
   return computeQuoteTotal({
     items,
     cards,
     adjustments,
     isPriority: Boolean(order.is_priority),
-    cardCount,
   });
 }
 
@@ -373,7 +386,10 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   const beforeItems = indexById(beforePayload?.quote_items);
   const afterItems = indexById(afterPayload?.quote_items);
   const quoteSubtotal = quoteItemsSubtotal(
-    afterPayload?.quote_items ?? beforePayload?.quote_items ?? []
+    billableQuoteItems(
+      afterPayload?.quote_items ?? beforePayload?.quote_items ?? [],
+      afterPayload?.cards ?? beforePayload?.cards ?? []
+    )
   );
 
   // Per-card service / quote-line diffs (Order never lists these).

@@ -126,13 +126,15 @@ export function quoteItemBelongsToCard(item, card, cards = null) {
   return findMatchingOrderCardId(item, cards ?? [card]) === cardId;
 }
 
-/** True when every card has at least one ready quote line. */
+/** True when every non-canceled card has at least one ready quote line. */
 export function allCardsHaveQuote(cards, quoteItems) {
-  const list = cards ?? [];
+  const list = (cards ?? []).filter(
+    (card) => normalizeCardStatus(card.status) !== "canceled"
+  );
   if (list.length === 0) return false;
   return list.every((card) =>
     (quoteItems ?? []).some(
-      (item) => quoteItemBelongsToCard(item, card, list) && quoteItemIsReady(item)
+      (item) => quoteItemBelongsToCard(item, card, cards) && quoteItemIsReady(item)
     )
   );
 }

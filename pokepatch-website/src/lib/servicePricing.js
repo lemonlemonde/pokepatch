@@ -367,6 +367,54 @@ export function parseMoneyInput(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function normalizeCardKey(name, setName) {
+  return `${(name || "").trim().toLowerCase()}|${(setName || "").trim().toLowerCase()}`;
+}
+
+/** True when a card is canceled and must not contribute to quote totals. */
+export function cardIsCanceledForQuote(card) {
+  const status = String(card?.status ?? "")
+    .trim()
+    .toLowerCase();
+  return status === "canceled" || status === "cancelled";
+}
+
+/** Cards that still count toward quote totals / priority card count. */
+export function billableQuoteCards(cards = []) {
+  return (cards ?? []).filter((card) => !cardIsCanceledForQuote(card));
+}
+
+/**
+ * Drop quote lines that belong to canceled cards (by card_pick id, else name/set).
+ * When `cards` is empty/unknown, returns items unchanged.
+ */
+export function billableQuoteItems(items = [], cards = []) {
+  const list = items ?? [];
+  const cardList = cards ?? [];
+  if (cardList.length === 0) return list;
+
+  const canceledById = new Set();
+  const canceledByKey = new Set();
+  for (const card of cardList) {
+    if (!cardIsCanceledForQuote(card)) continue;
+    if (card.id != null && String(card.id) !== "") {
+      canceledById.add(String(card.id));
+    }
+    const key = normalizeCardKey(card.card_name, card.set_name);
+    if (key !== "|") canceledByKey.add(key);
+  }
+  if (canceledById.size === 0 && canceledByKey.size === 0) return list;
+
+  return list.filter((item) => {
+    if (item?.card_pick && item.card_pick !== "custom") {
+      return !canceledById.has(String(item.card_pick));
+    }
+    const key = normalizeCardKey(item?.card_name, item?.set_name);
+    if (key !== "|" && canceledByKey.has(key)) return false;
+    return true;
+  });
+}
+
 export function quoteItemsSubtotal(items) {
   let sum = 0;
   for (const item of items ?? []) {
@@ -747,12 +795,16 @@ export function computeQuoteTotal({
   isPriority = false,
   cardCount = null,
 } = {}) {
-  const subtotal = quoteItemsSubtotal(items);
-  const cardHv = quoteCardsHvTotal(cards);
-  const adjustmentTotal = quoteAdjustmentsTotal(adjustments, items);
+  const billableCards = billableQuoteCards(cards);
+  const billableItems = billableQuoteItems(items, cards);
+  const subtotal = quoteItemsSubtotal(billableItems);
+  const cardHv = quoteCardsHvTotal(billableCards);
+  const adjustmentTotal = quoteAdjustmentsTotal(adjustments, billableItems);
+  // Prefer live card list (canceled excluded) over a stale cardCount hint.
   const count =
-    cardCount ??
-    (Array.isArray(cards) && cards.length > 0 ? cards.length : null);
+    Array.isArray(cards) && cards.length > 0
+      ? billableCards.length
+      : cardCount ?? null;
   const priorityFee =
     isPriority &&
     count != null &&
@@ -767,6 +819,7 @@ export function computeQuoteTotal({
 /**
  * Quote total from stored order fields (list rows or full order graphs).
  * Uses quote_items + quote_bulk_counts (+ legacy override columns).
+ * When `order.cards` include status, canceled cards are excluded from the total.
  */
 export function orderQuoteTotalFromStored(order) {
   if (!order) return 0;
@@ -776,14 +829,14 @@ export function orderQuoteTotalFromStored(order) {
     overrideAmount: order.quote_override_amount,
   });
   const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
-  const cards = cardsWithQuoteHv(
-    Object.keys(cardHvMap).map((id) => ({ id })),
-    cardHvMap
-  );
-  const cardCount =
-    order.card_count ??
-    order.cards?.length ??
-    null;
+  const baseCards =
+    Array.isArray(order.cards) && order.cards.length > 0
+      ? order.cards
+      : Object.keys(cardHvMap).map((id) => ({ id }));
+  const cards = cardsWithQuoteHv(baseCards, cardHvMap);
+  const cardCount = Array.isArray(order.cards)
+    ? billableQuoteCards(order.cards).length
+    : (order.card_count ?? null);
   return computeQuoteTotal({
     items,
     cards,
@@ -799,9 +852,11 @@ export function hasQuoteData({
   adjustments = null,
   isPriority = false,
 } = {}) {
-  if ((items ?? []).length > 0) return true;
-  if (quoteCardsHvTotal(cards) > 0) return true;
-  if (quoteAdjustmentLines(adjustments, items).length > 0) return true;
+  const billableItems = billableQuoteItems(items, cards);
+  const billableCards = billableQuoteCards(cards);
+  if (billableItems.length > 0) return true;
+  if (quoteCardsHvTotal(billableCards) > 0) return true;
+  if (quoteAdjustmentLines(adjustments, billableItems).length > 0) return true;
   if (isPriority) return true;
   return false;
 }
@@ -816,17 +871,21 @@ export function quoteItemLineTotal(item) {
   return Math.round((Number(item?.quote_base_amount) || 0) * 100) / 100;
 }
 
-/** Group quote lines by card name/set, preserving first-seen order. */
+/** Group quote lines by card name/set, preserving first-seen order.
+ * Canceled cards are omitted (their amounts are excluded from the quote).
+ */
 export function groupQuoteItemsByCard(items = [], cards = []) {
+  const billableItems = billableQuoteItems(items, cards);
+  const billableCards = billableQuoteCards(cards);
   const cardByKey = new Map(
-    (cards ?? []).map((card) => [
+    billableCards.map((card) => [
       normalizeCardKey(card.card_name, card.set_name),
       card,
     ])
   );
   const groups = [];
   const indexByKey = new Map();
-  for (const item of items ?? []) {
+  for (const item of billableItems) {
     const key = normalizeCardKey(item?.card_name, item?.set_name);
     let group = indexByKey.get(key);
     if (!group) {
@@ -854,7 +913,7 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
   }
 
   // Cards with HV but no quote services still need a receipt row.
-  for (const card of cards ?? []) {
+  for (const card of billableCards) {
     const key = normalizeCardKey(card.card_name, card.set_name);
     if (indexByKey.has(key)) continue;
     const highValueSurcharge = quoteCardHvAmount(card);
@@ -871,10 +930,6 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
   }
 
   return groups;
-}
-
-function normalizeCardKey(name, setName) {
-  return `${(name || "").trim().toLowerCase()}|${(setName || "").trim().toLowerCase()}`;
 }
 
 /**

@@ -3,6 +3,7 @@
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   ADJUSTMENT_KIND_OPTIONS,
+  billableQuoteCards,
   bulkDiscountPercentForCardCount,
   BULK_TIER_RANGES_LABEL,
   cardsWithQuoteHv,
@@ -23,6 +24,7 @@ export function buildQuotePreview(draft) {
     .filter(quoteItemIsReady)
     .map((item) => ({
       id: item.id,
+      card_pick: item.card_pick,
       card_name: item.card_name,
       set_name: item.set_name,
       service_label: item.service_label,
@@ -33,6 +35,7 @@ export function buildQuotePreview(draft) {
       id: card.id,
       card_name: card.card_name,
       set_name: card.set_name,
+      status: card.status,
     })),
     draft.quote_card_hv ?? {}
   );
@@ -40,7 +43,7 @@ export function buildQuotePreview(draft) {
     items,
     cards,
     adjustments: draft.quote_adjustments ?? [],
-    cardCount: (draft.cards ?? []).length,
+    cardCount: billableQuoteCards(draft.cards).length,
   };
 }
 
@@ -159,7 +162,7 @@ export default function QuoteSection() {
             cards={preview.cards}
             adjustments={adjustments}
             isPriority={Boolean(draft.is_priority)}
-            cardCount={(draft.cards ?? []).length}
+            cardCount={preview.cardCount}
             title="Receipt"
             className={
               draft.is_priority ? "border-berry/25 bg-berry/[0.07]" : ""
