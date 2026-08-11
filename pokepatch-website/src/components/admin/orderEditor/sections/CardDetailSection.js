@@ -440,11 +440,29 @@ export default function CardDetailSection({
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink/10 text-[11px] font-bold tabular-nums text-ink/55">
           {cardIndex + 1}
         </span>
-        <span className="min-w-0 flex-1 truncate">
-          <span className="text-sm font-semibold text-ink">{cardName}</span>
-          {cardSet ? (
-            <span className="text-sm text-ink/45"> · {cardSet}</span>
-          ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">
+            <span className="text-sm font-semibold text-ink">{cardName}</span>
+            {cardSet ? (
+              <span className="text-sm text-ink/45"> · {cardSet}</span>
+            ) : null}
+          </span>
+          {customerDamageTags.length > 0 ? (
+            <span className="mt-1 flex flex-wrap gap-1">
+              {customerDamageTags.map((tag) => (
+                <span
+                  key={tag.id}
+                  className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
+                >
+                  {tag.label}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span className="mt-1 block text-[11px] font-medium text-ink/40">
+              No damage tags
+            </span>
+          )}
         </span>
         {subtotal > 0 ? (
           <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
@@ -486,6 +504,24 @@ export default function CardDetailSection({
             </label>
           </FieldGrid>
 
+          <div>
+            <EditorLabel>Customer damage</EditorLabel>
+            {customerDamageTags.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {customerDamageTags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="rounded-md border border-blush/30 bg-blush/10 px-2.5 py-1 text-xs font-semibold text-ink"
+                  >
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-sm text-ink/50">None selected</p>
+            )}
+          </div>
+
           <label className="block">
             <EditorLabel>Description</EditorLabel>
             <textarea
@@ -495,22 +531,6 @@ export default function CardDetailSection({
               onChange={(event) => updateCard({ description: event.target.value })}
             />
           </label>
-
-          {customerDamageTags.length > 0 ? (
-            <div>
-              <EditorLabel>Customer damage tags</EditorLabel>
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {customerDamageTags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="rounded-md border border-ink/15 bg-ink/[0.04] px-2 py-1 text-xs font-semibold text-ink/80"
-                  >
-                    {tag.label}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
 
           <AdminNoteField
             label="Note from PokePatch"
