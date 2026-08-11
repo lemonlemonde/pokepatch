@@ -181,7 +181,7 @@ These can be mixed: e.g. **live API + old frontend**, or **local frontend + live
    - `supabase functions deploy …`
    - `supabase db push` / remote DDL (dashboard SQL, MCP `apply_migration`, etc.)
    - `git push` when that updates what production serves (or otherwise ships the change)
-3. **Agents must never run `npm run deploy`** (or `gh-pages` / other Pages publish). Always tell the user to run frontend publish themselves from `pokepatch-website/` (`npm run deploy`).
+3. **Agents must not run `npm run deploy`** (or `gh-pages` / other Pages publish) unless the user is running **`/reset-main`** (that skill publishes after syncing) or explicitly asks the agent to publish in that message. Otherwise tell the user to run frontend publish from `pokepatch-website/` (`npm run deploy`) or to use `/reset-main` after merge.
 4. Before asking, **give a short deploy impact analysis** (see below). Do not deploy “while you’re at it.”
 
 ### Deploy impact analysis (required before any live action)

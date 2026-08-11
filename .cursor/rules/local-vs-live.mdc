@@ -16,21 +16,24 @@ Follow root [README → Local vs live (deploy safety)](../../README.md#local-vs-
    - `git push` when it ships production
 3. Local frontend, local function files, and unpushed migrations are independent from what is live. Mixed versions are normal while developing.
 
-## Frontend publish — never run by the agent
+## Frontend publish
 
-**Never** run `npm run deploy` (or `gh-pages`, or any other command that publishes the static site to GitHub Pages).
+**Do not** run `npm run deploy` (or `gh-pages`, or any other command that publishes the static site to GitHub Pages) unless one of these is true:
 
-Even if the user says “deploy”, “ship it”, “go live”, or “run it”:
+1. The user is running **`/reset-main`** (or that skill’s workflow) — then the agent **must** publish from `pokepatch-website/` with `npm run deploy` after syncing the base branch.
+2. The user explicitly asks the agent to run frontend publish in that message.
+
+Otherwise, even if the user says “deploy”, “ship it”, or “go live” in a general sense:
 
 - Do **not** execute frontend publish yourself.
-- Tell the user to run it from `pokepatch-website/`:
+- Tell the user to run it from `pokepatch-website/`, or to use `/reset-main` after merge:
 
 ```bash
 cd pokepatch-website
 npm run deploy
 ```
 
-Schema / edge-function deploys may still be run by the agent **only** after explicit permission; frontend publish stays user-only.
+Schema / edge-function deploys may still be run by the agent **only** after explicit permission.
 
 ## Before asking to go live
 
@@ -41,4 +44,4 @@ Give a short **deploy impact analysis**:
 - **Admin** impact (`/admin/`)
 - Cross-version risk (new API + old frontend, new frontend + old API, schema vs clients)
 
-Wait for an explicit yes before deploying or pushing anything to live (except frontend publish, which the user always runs themselves).
+Wait for an explicit yes before deploying or pushing anything to live (except `/reset-main`, which already authorizes frontend publish).
