@@ -17,7 +17,7 @@ import {
   serviceAccentPanelClass,
   serviceSelectLabel,
 } from "@/lib/servicePricing";
-import { labeledDamageTags } from "@/lib/gallery";
+import { DAMAGE_TAGS, labeledDamageTags, normalizeDamageTags } from "@/lib/gallery";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -186,6 +186,14 @@ export default function CardDetailSection({
 
       return { card: nextCard, quote_items, quote_card_hv };
     });
+  }
+
+  function toggleDamageTag(tagId) {
+    const current = normalizeDamageTags(card.damage_tags);
+    const next = current.includes(tagId)
+      ? current.filter((id) => id !== tagId)
+      : [...current, tagId];
+    updateCard({ damage_tags: normalizeDamageTags(next) });
   }
 
   function updateQuoteItem(index, patch) {
@@ -507,17 +515,37 @@ export default function CardDetailSection({
           </FieldGrid>
 
           <div>
-            <EditorLabel>Customer damage</EditorLabel>
-            {customerDamageTags.length > 0 ? (
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                <DamageTagChips
-                  tags={customerDamageTags}
-                  className="rounded-md border border-blush/30 bg-blush/10 px-2.5 py-1 text-xs font-semibold text-ink"
-                />
-              </div>
-            ) : (
-              <p className="mt-1.5 text-sm text-ink/50">None selected</p>
-            )}
+            <EditorLabel>Damage</EditorLabel>
+            <p className="mt-1 text-xs text-ink/50">
+              Customer selection — you can add or remove tags.
+            </p>
+            <div
+              className="mt-1.5 flex flex-wrap gap-1.5"
+              role="group"
+              aria-label="Damage types"
+            >
+              {DAMAGE_TAGS.map((tag) => {
+                const selected = customerDamageTags.some(
+                  (entry) => entry.id === tag.id
+                );
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    disabled={saving}
+                    aria-pressed={selected}
+                    onClick={() => toggleDamageTag(tag.id)}
+                    className={
+                      selected
+                        ? "rounded-md border border-blush/45 bg-blush/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-blush/25 transition"
+                        : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-blush/35 hover:bg-blush/10 hover:text-ink"
+                    }
+                  >
+                    {tag.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <label className="block">
