@@ -13,6 +13,7 @@ import {
   DEFAULT_PENDING_KIND,
 } from "@/lib/orderStatus";
 import {
+  billableQuoteCards,
   cardsWithQuoteHv,
   hasPriorityAdjustment,
   hasQuoteData,
@@ -1092,7 +1093,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   cards={quoteCards}
                   adjustments={quoteAdjustments}
                   isPriority={Boolean(orderDetails.is_priority)}
-                  cardCount={orderDetails.cards?.length ?? 0}
+                  cardCount={billableQuoteCards(orderDetails.cards).length}
                   className={
                     isPriority
                       ? "border-berry/25 bg-berry/[0.07]"

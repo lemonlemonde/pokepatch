@@ -396,13 +396,13 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   ] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, order_id, status, sort_order, checklist")
+      .select("id, order_id, status, sort_order, checklist, card_name, set_name")
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true }),
     supabase
       .from("order_quote_items")
-      .select("order_id, quote_base_amount")
+      .select("order_id, quote_base_amount, card_name, set_name")
       .in("order_id", orderIds),
     listAllAuthUsers(supabase),
   ]);
@@ -439,6 +439,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     Record<string, { done: number; total: number }>
   >();
   const cardOrderById = new Map<string, string>();
+  const cardsByOrder = new Map<string, Array<Record<string, unknown>>>();
   for (const card of cards ?? []) {
     const orderId = card.order_id as string;
     const cardId = card.id as string;
@@ -450,6 +451,14 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       );
     }
     cardOrderById.set(cardId, orderId);
+    const cardList = cardsByOrder.get(orderId) ?? [];
+    cardList.push({
+      id: cardId,
+      status: card.status ?? null,
+      card_name: card.card_name ?? null,
+      set_name: card.set_name ?? null,
+    });
+    cardsByOrder.set(orderId, cardList);
 
     const progress =
       checklistProgressByOrder.get(orderId) ?? emptyChecklistProgress();
@@ -514,6 +523,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       ...withAccountName(order, emailToUserId, namesByUserId),
       has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
+      cards: cardsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
       checklist_progress:

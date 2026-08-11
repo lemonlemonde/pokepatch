@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import {
+  billableQuoteCards,
+  billableQuoteItems,
   computeQuoteTotal,
   formatMoney,
   groupQuoteItemsByCard,
@@ -30,12 +32,13 @@ export default function QuoteReceipt({
   defaultOpen = true,
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const lines = items ?? [];
-  const cardGroups = groupQuoteItemsByCard(lines, cards);
+  const lines = billableQuoteItems(items, cards);
+  const cardGroups = groupQuoteItemsByCard(items, cards);
   const adjustmentLines = quoteAdjustmentLines(adjustments, lines);
   const resolvedCardCount =
-    cardCount ??
-    (Array.isArray(cards) && cards.length > 0 ? cards.length : null);
+    Array.isArray(cards) && cards.length > 0
+      ? billableQuoteCards(cards).length
+      : cardCount ?? null;
   const showComputedPriorityLine =
     isPriority &&
     resolvedCardCount != null &&
@@ -44,7 +47,7 @@ export default function QuoteReceipt({
     ? priorityServiceFee(resolvedCardCount)
     : 0;
   const total = computeQuoteTotal({
-    items: lines,
+    items,
     cards,
     adjustments,
     isPriority,

@@ -300,11 +300,11 @@ export default function CardDetailSection({
   const cardHv = quoteCardHvAmount({
     hv_amount: section.quote_card_hv?.[cardIdStr]?.amount_dollars,
   });
-  const subtotal = servicesSubtotal + cardHv;
-
   const cardName = (card.card_name ?? "").trim() || "Untitled";
   const cardSet = (card.set_name ?? "").trim();
   const cardStatus = normalizeCardStatus(card.status);
+  const subtotal =
+    cardStatus === "canceled" ? 0 : servicesSubtotal + cardHv;
   const statusLabel =
     CARD_STATUSES.find((status) => status.id === cardStatus)?.label ?? cardStatus;
   const customerDamageTags = labeledDamageTags(card.damage_tags);
@@ -678,7 +678,7 @@ export default function CardDetailSection({
                 }
                 placeholder="Market value $"
               />
-              {cardHv > 0 ? (
+              {cardStatus !== "canceled" && cardHv > 0 ? (
                 <span className="text-sm font-semibold tabular-nums text-peach">
                   +{formatMoney(cardHv)} fee
                 </span>
@@ -693,8 +693,14 @@ export default function CardDetailSection({
             <GhostButton danger onClick={onRemoveCard} disabled={saving}>
               Remove card
             </GhostButton>
-            <p className="text-sm font-bold tabular-nums text-ink">
-              Subtotal {formatMoney(subtotal)}
+            <p className="text-right text-sm font-bold tabular-nums text-ink">
+              {cardStatus === "canceled" ? (
+                <span className="font-semibold text-ink/45">
+                  Not in quote
+                </span>
+              ) : (
+                <>Subtotal {formatMoney(subtotal)}</>
+              )}
             </p>
           </div>
       </ExpandPanel>
