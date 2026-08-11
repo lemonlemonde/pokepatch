@@ -17,6 +17,7 @@ import {
   parseMoneyInput,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
+import { normalizeDamageTags } from "@/lib/gallery";
 
 export const MAX_ADMIN_PHOTOS_PER_CARD = 20;
 
@@ -33,6 +34,7 @@ export function emptyAdminCard() {
     card_name: "",
     set_name: "",
     description: "",
+    damage_tags: [],
     admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
@@ -227,6 +229,7 @@ export function orderToDraft(order) {
     card_name: card.card_name ?? "",
     set_name: card.set_name ?? "",
     description: card.description ?? "",
+    damage_tags: normalizeDamageTags(card.damage_tags),
     admin_note: card.admin_note ?? "",
     market_value_raw_nm:
       card.market_value_raw_nm != null
@@ -303,6 +306,7 @@ export function draftPayload(draft) {
       card_name: card.card_name.trim(),
       set_name: card.set_name.trim(),
       description: card.description.trim(),
+      damage_tags: normalizeDamageTags(card.damage_tags),
       admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),

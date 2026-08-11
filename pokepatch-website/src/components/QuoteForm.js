@@ -15,92 +15,11 @@ import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import { fieldClassName, optionClassName } from "@/lib/formStyles";
-import {
-  QUOTE_SERVICES,
-  SERVICE_KEYS,
-  priorityServicePricingHint,
-  serviceAccentChipClass,
-  serviceAccentDotClass,
-} from "@/lib/servicePricing";
+import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { priorityServicePricingHint } from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
-
-/** Customer-selectable services (no Custom; no prices shown on the form). */
-const CUSTOMER_QUOTE_SERVICES = QUOTE_SERVICES.filter(
-  (service) => service.key !== SERVICE_KEYS.CUSTOM
-);
-
-const CUSTOMER_SERVICE_KEY_SET = new Set(
-  CUSTOMER_QUOTE_SERVICES.map((service) => service.key)
-);
-
-/** Hover-tooltip coverage copy for the quote form (not marketing features). */
-const CUSTOMER_SERVICE_INFO = {
-  [SERVICE_KEYS.SURFACE]: ["Dirt", "Scratches"],
-  [SERVICE_KEYS.PRESSING]: ["Any card warping", "Minor small edge lifting"],
-  [SERVICE_KEYS.ADVANCED]: [
-    "Dents",
-    "Creases",
-    "Heavy edge lifting",
-    "Water damage",
-  ],
-  [SERVICE_KEYS.SLAB]: ["Open graded slabs"],
-};
-
-function normalizeCardServiceKeys(keys) {
-  const seen = new Set();
-  const next = [];
-  for (const key of keys ?? []) {
-    if (!CUSTOMER_SERVICE_KEY_SET.has(key) || seen.has(key)) continue;
-    seen.add(key);
-    next.push(key);
-  }
-  return next;
-}
-
-function ServiceInfoTip({ serviceKey, title }) {
-  const items = CUSTOMER_SERVICE_INFO[serviceKey] ?? [];
-  if (items.length === 0) return null;
-
-  return (
-    <span className="group/tip relative shrink-0">
-      <button
-        type="button"
-        aria-label={`What's covered under ${title}`}
-        className="grid h-6 w-6 place-items-center rounded-md text-ink/40 transition-colors hover:bg-ink/5 hover:text-ink/70"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-3.5 w-3.5"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 16v-5" />
-          <path d="M12 8h.01" />
-        </svg>
-      </button>
-      <span
-        role="tooltip"
-        className="pointer-events-none absolute bottom-full right-0 z-20 mb-1.5 w-44 rounded-lg border border-ink/15 bg-cream px-3 py-2.5 text-left text-xs text-ink opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.35)] transition-opacity duration-150 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100"
-      >
-        <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
-          {title}
-        </span>
-        <ul className="list-disc space-y-0.5 pl-3.5 text-ink/75">
-          {items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </span>
-    </span>
-  );
-}
 
 const HEARD_ABOUT_OPTIONS = [
   { value: "instagram", label: "Instagram" },
@@ -142,7 +61,7 @@ function emptyCard() {
     id: crypto.randomUUID(),
     cardName: "",
     setName: "",
-    serviceKeys: [],
+    damageTags: [],
     description: "",
     files: [],
   };
@@ -159,21 +78,25 @@ function initialCard() {
     id: "card-initial",
     cardName: "",
     setName: "",
-    serviceKeys: [],
+    damageTags: [],
     description: "",
     files: [],
   };
 }
 
 function isCardComplete(card) {
-  return card.cardName.trim() !== "" && card.files.length > 0;
+  return (
+    card.cardName.trim() !== "" &&
+    normalizeDamageTags(card.damageTags).length > 0 &&
+    card.files.length > 0
+  );
 }
 
 function isCardEmpty(card) {
   return (
     card.cardName.trim() === "" &&
     card.setName.trim() === "" &&
-    (card.serviceKeys?.length ?? 0) === 0 &&
+    normalizeDamageTags(card.damageTags).length === 0 &&
     card.description.trim() === "" &&
     card.files.length === 0
   );
@@ -182,6 +105,7 @@ function isCardEmpty(card) {
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
+    damageTags: normalizeDamageTags(card.damageTags).length === 0,
     files: card.files.length === 0,
   };
 }
@@ -274,6 +198,9 @@ function getFirstErrorElement(errors, cards) {
     if (!cardErrors) continue;
     if (cardErrors.cardName) {
       return document.getElementById(`card_name_${card.id}`);
+    }
+    if (cardErrors.damageTags) {
+      return document.getElementById(`card_damage_${card.id}`);
     }
     if (cardErrors.files) {
       return (
@@ -440,7 +367,7 @@ export default function QuoteForm() {
       if (!prev?.cards?.[cardId]?.[key]) return prev;
       const card = { ...prev.cards[cardId], [key]: false };
       const cards = { ...prev.cards };
-      if (!card.cardName && !card.files) {
+      if (!card.cardName && !card.files && !card.damageTags) {
         delete cards[cardId];
       } else {
         cards[cardId] = card;
@@ -463,17 +390,20 @@ export default function QuoteForm() {
     );
   }
 
-  function toggleCardService(id, serviceKey) {
+  function toggleCardDamage(id, tagId) {
     onFormInteraction();
+    const card = cards.find((entry) => entry.id === id);
+    if (!card) return;
+    const current = card.damageTags ?? [];
+    const next = current.includes(tagId)
+      ? current.filter((damageId) => damageId !== tagId)
+      : [...current, tagId];
+    const damageTags = normalizeDamageTags(next);
+    if (damageTags.length > 0) clearCardFieldError(id, "damageTags");
     setCards((prev) =>
-      prev.map((card) => {
-        if (card.id !== id) return card;
-        const current = card.serviceKeys ?? [];
-        const next = current.includes(serviceKey)
-          ? current.filter((key) => key !== serviceKey)
-          : [...current, serviceKey];
-        return { ...card, serviceKeys: next };
-      })
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, damageTags } : entry
+      )
     );
   }
 
@@ -745,7 +675,7 @@ export default function QuoteForm() {
           card_name: card.cardName.trim(),
           set_name: card.setName.trim() || null,
           description: card.description.trim(),
-          service_keys: normalizeCardServiceKeys(card.serviceKeys),
+          damage_tags: normalizeDamageTags(card.damageTags),
           images,
         });
       }
@@ -1230,47 +1160,39 @@ export default function QuoteForm() {
                 />
               </div>
 
-              <div>
-                <p className="mb-1 text-sm font-bold text-ink">Services</p>
-                <p className="mb-2 text-sm text-ink/70">
-                  Select any services you want for this card (optional).
+              <div id={`card_damage_${card.id}`}>
+                <p className="mb-1 text-sm font-bold text-ink">
+                  Damage <span className="text-berry">*</span>
                 </p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {CUSTOMER_QUOTE_SERVICES.map((service) => {
-                    const selected = (card.serviceKeys ?? []).includes(
-                      service.key
-                    );
+                <p className="mb-2 text-sm text-ink/70">
+                  Select at least one damage type that applies.
+                </p>
+                <div
+                  className={
+                    cardErrors?.damageTags
+                      ? "flex flex-wrap gap-2 rounded-lg border border-error bg-error/10 p-2"
+                      : "flex flex-wrap gap-2"
+                  }
+                  role="group"
+                  aria-label="Damage types"
+                  aria-invalid={cardErrors?.damageTags || undefined}
+                >
+                  {DAMAGE_TAGS.map((tag) => {
+                    const selected = (card.damageTags ?? []).includes(tag.id);
                     return (
-                      <div
-                        key={service.key}
-                        className={`flex items-center gap-1 rounded-lg border pl-3 pr-1.5 py-1.5 transition-colors duration-150 ${serviceAccentChipClass(
-                          service.accent,
+                      <button
+                        key={tag.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => toggleCardDamage(card.id, tag.id)}
+                        className={
                           selected
-                        )}`}
+                            ? "rounded-lg border border-blush/45 bg-blush/20 px-3 py-1.5 text-sm font-semibold text-ink ring-1 ring-blush/25 transition-colors duration-150"
+                            : "rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-1.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-blush/35 hover:bg-blush/10"
+                        }
                       >
-                        <button
-                          type="button"
-                          aria-pressed={selected}
-                          onClick={() =>
-                            toggleCardService(card.id, service.key)
-                          }
-                          className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
-                        >
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${serviceAccentDotClass(
-                              service.accent
-                            )} ${selected ? "opacity-100" : "opacity-70"}`}
-                            aria-hidden="true"
-                          />
-                          <span className="truncate text-sm font-semibold">
-                            {service.title}
-                          </span>
-                        </button>
-                        <ServiceInfoTip
-                          serviceKey={service.key}
-                          title={service.title}
-                        />
-                      </div>
+                        {tag.label}
+                      </button>
                     );
                   })}
                 </div>

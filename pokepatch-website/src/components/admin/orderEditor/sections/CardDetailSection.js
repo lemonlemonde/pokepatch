@@ -17,6 +17,7 @@ import {
   serviceAccentPanelClass,
   serviceSelectLabel,
 } from "@/lib/servicePricing";
+import { DAMAGE_TAGS, labeledDamageTags, normalizeDamageTags } from "@/lib/gallery";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -49,6 +50,14 @@ import {
 } from "@/components/admin/orderEditor/editorUi";
 import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
+
+function DamageTagChips({ tags, className }) {
+  return tags.map((tag) => (
+    <span key={tag.id} className={className}>
+      {tag.label}
+    </span>
+  ));
+}
 
 function pickCardSection(cardId, draft) {
   const card =
@@ -179,6 +188,14 @@ export default function CardDetailSection({
     });
   }
 
+  function toggleDamageTag(tagId) {
+    const current = normalizeDamageTags(card.damage_tags);
+    const next = current.includes(tagId)
+      ? current.filter((id) => id !== tagId)
+      : [...current, tagId];
+    updateCard({ damage_tags: next });
+  }
+
   function updateQuoteItem(index, patch) {
     updateCardSection((current) => ({
       ...current,
@@ -290,6 +307,8 @@ export default function CardDetailSection({
   const cardStatus = normalizeCardStatus(card.status);
   const statusLabel =
     CARD_STATUSES.find((status) => status.id === cardStatus)?.label ?? cardStatus;
+  const customerDamageTags = labeledDamageTags(card.damage_tags);
+  const selectedDamageIds = new Set(customerDamageTags.map((tag) => tag.id));
 
   function renderQuoteServiceLine(item, index) {
     const hasService = quoteItemHasService(item);
@@ -436,11 +455,25 @@ export default function CardDetailSection({
         <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink/10 text-[11px] font-bold tabular-nums text-ink/55">
           {cardIndex + 1}
         </span>
-        <span className="min-w-0 flex-1 truncate">
-          <span className="text-sm font-semibold text-ink">{cardName}</span>
-          {cardSet ? (
-            <span className="text-sm text-ink/45"> · {cardSet}</span>
-          ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">
+            <span className="text-sm font-semibold text-ink">{cardName}</span>
+            {cardSet ? (
+              <span className="text-sm text-ink/45"> · {cardSet}</span>
+            ) : null}
+          </span>
+          {customerDamageTags.length > 0 ? (
+            <span className="mt-1 flex flex-wrap gap-1">
+              <DamageTagChips
+                tags={customerDamageTags}
+                className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
+              />
+            </span>
+          ) : (
+            <span className="mt-1 block text-[11px] font-medium text-ink/40">
+              No damage tags
+            </span>
+          )}
         </span>
         {subtotal > 0 ? (
           <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
@@ -481,6 +514,38 @@ export default function CardDetailSection({
               />
             </label>
           </FieldGrid>
+
+          <div>
+            <EditorLabel>Damage</EditorLabel>
+            <p className="mt-1 text-xs text-ink/50">
+              Customer selection — you can add or remove tags.
+            </p>
+            <div
+              className="mt-1.5 flex flex-wrap gap-1.5"
+              role="group"
+              aria-label="Damage types"
+            >
+              {DAMAGE_TAGS.map((tag) => {
+                const selected = selectedDamageIds.has(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    disabled={saving}
+                    aria-pressed={selected}
+                    onClick={() => toggleDamageTag(tag.id)}
+                    className={
+                      selected
+                        ? "rounded-md border border-blush/45 bg-blush/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-blush/25 transition"
+                        : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-blush/35 hover:bg-blush/10 hover:text-ink"
+                    }
+                  >
+                    {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <label className="block">
             <EditorLabel>Description</EditorLabel>
