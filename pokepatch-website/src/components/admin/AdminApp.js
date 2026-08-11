@@ -57,7 +57,6 @@ import {
   isClosedOrderStatus,
   isPendingOrderStatus,
   filterClosedColumnOrders,
-  sortOrdersForStatusColumn,
   pendingKindShortLabel,
   pendingKindBadgeClass,
 } from "@/lib/orderStatus";

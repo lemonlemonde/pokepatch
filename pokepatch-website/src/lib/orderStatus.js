@@ -338,35 +338,23 @@ function timeMs(value, fallback) {
   return Number.isNaN(secondary) ? 0 : secondary;
 }
 
-/** Only To do orders participate in the customer/admin workshop queue. */
-export const QUEUE_ORDER_STATUS = "new";
-
-export function isQueueOrderStatus(statusId) {
-  return normalizeOrderStatus(statusId) === QUEUE_ORDER_STATUS;
-}
-
 /**
- * Column sort: paid priority first in every column. To do uses created_at;
- * other columns use status_changed_at.
+ * Column sort for every status: paid priority first, then earliest
+ * status_changed_at (when the order entered this column). created_at / id
+ * are tiebreakers only.
  */
-export function sortOrdersForStatusColumn(orders, statusId) {
-  const status = normalizeOrderStatus(statusId);
+export function sortOrdersForStatusColumn(orders) {
   return [...(orders ?? [])].sort((a, b) => {
     const aPriority = Boolean(a.is_priority);
     const bPriority = Boolean(b.is_priority);
     if (aPriority !== bPriority) return aPriority ? -1 : 1;
 
-    if (isQueueOrderStatus(status)) {
-      const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
-      if (byCreated !== 0) return byCreated;
-    } else {
-      const byChanged =
-        timeMs(a.status_changed_at, a.created_at) -
-        timeMs(b.status_changed_at, b.created_at);
-      if (byChanged !== 0) return byChanged;
-      const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
-      if (byCreated !== 0) return byCreated;
-    }
+    const byChanged =
+      timeMs(a.status_changed_at, a.created_at) -
+      timeMs(b.status_changed_at, b.created_at);
+    if (byChanged !== 0) return byChanged;
+    const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
+    if (byCreated !== 0) return byCreated;
     return String(a.id ?? "").localeCompare(String(b.id ?? ""));
   });
 }
@@ -381,10 +369,7 @@ export function groupOrdersByStatus(orders) {
     grouped[status].push(order);
   }
   for (const status of ORDER_STATUSES) {
-    grouped[status.id] = sortOrdersForStatusColumn(
-      grouped[status.id],
-      status.id
-    );
+    grouped[status.id] = sortOrdersForStatusColumn(grouped[status.id]);
   }
   return grouped;
 }
