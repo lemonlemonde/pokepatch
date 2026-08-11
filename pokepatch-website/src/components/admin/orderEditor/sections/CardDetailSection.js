@@ -39,6 +39,7 @@ import ChecklistGroupChip, {
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import {
   AdminNoteField,
+  Chevron,
   EditorDivider,
   EditorLabel,
   FieldGrid,
