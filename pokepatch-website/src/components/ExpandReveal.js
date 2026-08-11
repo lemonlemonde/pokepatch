@@ -40,8 +40,9 @@ export function ExpandChevron({ open, className = "h-4 w-4" }) {
 }
 
 /**
- * Height + opacity accordion panel. Keeps children mounted through the close
- * animation so content does not vanish mid-transition.
+ * Height accordion panel. Content stays opaque while closing so overflow
+ * clips it instead of fading images out before the collapse.
+ * Children stay mounted through the close animation.
  */
 export function ExpandPanel({
   open,
@@ -66,8 +67,8 @@ export function ExpandPanel({
 
   return (
     <div
-      className={`grid transition-[grid-template-rows,opacity] ${REVEAL_EASE} ${
-        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+      className={`grid transition-[grid-template-rows] ${REVEAL_EASE} ${
+        open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
       } ${className}`}
       style={{ transitionDuration: `${durationMs}ms` }}
     >
@@ -78,16 +79,46 @@ export function ExpandPanel({
   );
 }
 
-/** Staggered child fade/slide used inside expand panels (e.g. gallery extras). */
+/**
+ * Staggered enter for expand-panel children. On close, stay fully visible so
+ * the parent height clip hides content — never fade images out first.
+ */
 export function ExpandStaggerItem({ open, index = 0, children, className = "" }) {
+  const [entered, setEntered] = useState(false);
+
+  if (!open && entered) {
+    setEntered(false);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    if (prefersReducedMotion()) {
+      const id = window.requestAnimationFrame(() => setEntered(true));
+      return () => window.cancelAnimationFrame(id);
+    }
+    let innerId = 0;
+    const outerId = window.requestAnimationFrame(() => {
+      innerId = window.requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(outerId);
+      window.cancelAnimationFrame(innerId);
+    };
+  }, [open]);
+
+  // Closing (!open) while still mounted: keep opaque for height clipping.
+  // Opening: start hidden, then stagger in once `entered` flips.
+  const visible = !open || entered;
+
   return (
     <div
       className={`transition motion-reduce:transform-none ${REVEAL_EASE} ${
-        open ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+        visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
       } ${className}`}
       style={{
         transitionDuration: `${EXPAND_DURATION_MS}ms`,
-        transitionDelay: open ? `${90 + index * 70}ms` : "0ms",
+        transitionDelay:
+          visible && open ? `${90 + index * 70}ms` : "0ms",
       }}
     >
       {children}
