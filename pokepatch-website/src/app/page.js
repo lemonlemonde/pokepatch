@@ -68,6 +68,11 @@ const faqs = [
     answer:
       "Yes! We document every restoration and share before-and-after photos. Check out our Gallery page for examples.",
   },
+  {
+    question: "How are high-value fees calculated?",
+    answer:
+      "We set each card's market price from the average of the last 3 recently sold eBay listings for a raw near mint copy. Cards valued $200–$499 add a 4% high-value handling fee; cards $500 and up add 8%. Cards under $200 have no high-value fee.",
+  },
 ];
 
 export default function Home() {
