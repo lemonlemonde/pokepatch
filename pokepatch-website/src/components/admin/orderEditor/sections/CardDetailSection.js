@@ -17,7 +17,7 @@ import {
   serviceAccentPanelClass,
   serviceSelectLabel,
 } from "@/lib/servicePricing";
-import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
+import { labeledDamageTags } from "@/lib/gallery";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -50,6 +50,14 @@ import {
 } from "@/components/admin/orderEditor/editorUi";
 import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
+
+function DamageTagChips({ tags, className }) {
+  return tags.map((tag) => (
+    <span key={tag.id} className={className}>
+      {tag.label}
+    </span>
+  ));
+}
 
 function pickCardSection(cardId, draft) {
   const card =
@@ -291,9 +299,7 @@ export default function CardDetailSection({
   const cardStatus = normalizeCardStatus(card.status);
   const statusLabel =
     CARD_STATUSES.find((status) => status.id === cardStatus)?.label ?? cardStatus;
-  const customerDamageTags = normalizeDamageTags(card.damage_tags)
-    .map((id) => DAMAGE_TAGS.find((tag) => tag.id === id))
-    .filter(Boolean);
+  const customerDamageTags = labeledDamageTags(card.damage_tags);
 
   function renderQuoteServiceLine(item, index) {
     const hasService = quoteItemHasService(item);
@@ -449,14 +455,10 @@ export default function CardDetailSection({
           </span>
           {customerDamageTags.length > 0 ? (
             <span className="mt-1 flex flex-wrap gap-1">
-              {customerDamageTags.map((tag) => (
-                <span
-                  key={tag.id}
-                  className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
-                >
-                  {tag.label}
-                </span>
-              ))}
+              <DamageTagChips
+                tags={customerDamageTags}
+                className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
+              />
             </span>
           ) : (
             <span className="mt-1 block text-[11px] font-medium text-ink/40">
@@ -508,14 +510,10 @@ export default function CardDetailSection({
             <EditorLabel>Customer damage</EditorLabel>
             {customerDamageTags.length > 0 ? (
               <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {customerDamageTags.map((tag) => (
-                  <span
-                    key={tag.id}
-                    className="rounded-md border border-blush/30 bg-blush/10 px-2.5 py-1 text-xs font-semibold text-ink"
-                  >
-                    {tag.label}
-                  </span>
-                ))}
+                <DamageTagChips
+                  tags={customerDamageTags}
+                  className="rounded-md border border-blush/30 bg-blush/10 px-2.5 py-1 text-xs font-semibold text-ink"
+                />
               </div>
             ) : (
               <p className="mt-1.5 text-sm text-ink/50">None selected</p>

@@ -33,6 +33,12 @@ export function normalizeDamageTags(raw) {
   return tags;
 }
 
+/** Allowlisted tags with labels, preserving bank order. */
+export function labeledDamageTags(raw) {
+  const selected = new Set(normalizeDamageTags(raw));
+  return DAMAGE_TAGS.filter((tag) => selected.has(tag.id));
+}
+
 /**
  * Relative post age, one unit only
  * (minutes → hours → days → weeks → months → years).

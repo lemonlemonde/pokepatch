@@ -87,7 +87,7 @@ function initialCard() {
 function isCardComplete(card) {
   return (
     card.cardName.trim() !== "" &&
-    (card.damageTags?.length ?? 0) > 0 &&
+    normalizeDamageTags(card.damageTags).length > 0 &&
     card.files.length > 0
   );
 }
@@ -96,7 +96,7 @@ function isCardEmpty(card) {
   return (
     card.cardName.trim() === "" &&
     card.setName.trim() === "" &&
-    (card.damageTags?.length ?? 0) === 0 &&
+    normalizeDamageTags(card.damageTags).length === 0 &&
     card.description.trim() === "" &&
     card.files.length === 0
   );
@@ -105,7 +105,7 @@ function isCardEmpty(card) {
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
-    damageTags: (card.damageTags?.length ?? 0) === 0,
+    damageTags: normalizeDamageTags(card.damageTags).length === 0,
     files: card.files.length === 0,
   };
 }
