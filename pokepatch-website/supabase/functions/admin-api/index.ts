@@ -78,8 +78,10 @@ const GALLERY_DAMAGE_TAGS = new Set([
   "scratching",
   "dent",
   "edge_lift",
+  "edge_peeling",
   "dirt",
   "water_damage",
+  "warping",
 ]);
 
 function sanitizeDamageTags(raw: unknown): string[] {
@@ -854,7 +856,7 @@ async function fetchOrderGraph(
     supabase
       .from("cards")
       .select(
-        "id, order_id, sort_order, card_name, set_name, description, admin_note, market_value_raw_nm, status, checklist"
+        "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, checklist"
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true })

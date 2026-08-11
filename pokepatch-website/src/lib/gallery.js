@@ -1,14 +1,16 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { posterPath, thumbPath } from "@/lib/imageCompression";
 
-/** Canonical damage tag bank for gallery cards. */
+/** Canonical damage tag bank for gallery cards and quote requests. */
 export const DAMAGE_TAGS = [
   { id: "crease", label: "Crease" },
   { id: "scratching", label: "Scratching" },
   { id: "dent", label: "Dent" },
   { id: "edge_lift", label: "Edge lift" },
+  { id: "edge_peeling", label: "Edge peeling" },
   { id: "dirt", label: "Dirt" },
   { id: "water_damage", label: "Water damage" },
+  { id: "warping", label: "Warping" },
 ];
 
 export const DAMAGE_TAG_IDS = new Set(DAMAGE_TAGS.map((tag) => tag.id));

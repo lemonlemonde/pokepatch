@@ -17,6 +17,7 @@ import {
   serviceAccentPanelClass,
   serviceSelectLabel,
 } from "@/lib/servicePricing";
+import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -290,6 +291,9 @@ export default function CardDetailSection({
   const cardStatus = normalizeCardStatus(card.status);
   const statusLabel =
     CARD_STATUSES.find((status) => status.id === cardStatus)?.label ?? cardStatus;
+  const customerDamageTags = normalizeDamageTags(card.damage_tags)
+    .map((id) => DAMAGE_TAGS.find((tag) => tag.id === id))
+    .filter(Boolean);
 
   function renderQuoteServiceLine(item, index) {
     const hasService = quoteItemHasService(item);
@@ -491,6 +495,22 @@ export default function CardDetailSection({
               onChange={(event) => updateCard({ description: event.target.value })}
             />
           </label>
+
+          {customerDamageTags.length > 0 ? (
+            <div>
+              <EditorLabel>Customer damage tags</EditorLabel>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {customerDamageTags.map((tag) => (
+                  <span
+                    key={tag.id}
+                    className="rounded-md border border-ink/15 bg-ink/[0.04] px-2 py-1 text-xs font-semibold text-ink/80"
+                  >
+                    {tag.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <AdminNoteField
             label="Note from PokePatch"
