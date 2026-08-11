@@ -193,7 +193,7 @@ export default function CardDetailSection({
     const next = current.includes(tagId)
       ? current.filter((id) => id !== tagId)
       : [...current, tagId];
-    updateCard({ damage_tags: normalizeDamageTags(next) });
+    updateCard({ damage_tags: next });
   }
 
   function updateQuoteItem(index, patch) {
@@ -308,6 +308,7 @@ export default function CardDetailSection({
   const statusLabel =
     CARD_STATUSES.find((status) => status.id === cardStatus)?.label ?? cardStatus;
   const customerDamageTags = labeledDamageTags(card.damage_tags);
+  const selectedDamageIds = new Set(customerDamageTags.map((tag) => tag.id));
 
   function renderQuoteServiceLine(item, index) {
     const hasService = quoteItemHasService(item);
@@ -525,9 +526,7 @@ export default function CardDetailSection({
               aria-label="Damage types"
             >
               {DAMAGE_TAGS.map((tag) => {
-                const selected = customerDamageTags.some(
-                  (entry) => entry.id === tag.id
-                );
+                const selected = selectedDamageIds.has(tag.id);
                 return (
                   <button
                     key={tag.id}
