@@ -10,11 +10,19 @@ export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
   PRESSING: "precision_pressing",
   ADVANCED: "advanced_restoration",
+  WHITENING: "card_whitening",
   SLAB: "slab_cracking",
   CUSTOM: "custom",
 };
 
 const SERVICE_UNIT = "/ card";
+
+/**
+ * Shared risk copy for Card Whitening (homepage, quote form, admin).
+ * Keep in sync with FAQ wording on the homepage.
+ */
+export const CARD_WHITENING_WARNING =
+  "Only for very small whitening dots on edges and corners. Grading companies like PSA may potentially detect added ink and mark the card as altered.";
 
 /** Services that can appear on a quote line (excludes marketing-only cards). */
 export const QUOTE_SERVICES = [
@@ -39,6 +47,17 @@ export const QUOTE_SERVICES = [
     priceSuffix: "+",
     features: ["Creases", "Dents", "Edge peeling", "Water damage"],
     accent: "peach",
+  },
+  {
+    key: SERVICE_KEYS.WHITENING,
+    title: "Card Whitening",
+    listPrice: 25,
+    features: [
+      "Tiny edge & corner dots only",
+      "Not for heavy or widespread whitening",
+    ],
+    warning: CARD_WHITENING_WARNING,
+    accent: "berry",
   },
   {
     key: SERVICE_KEYS.SLAB,
@@ -214,6 +233,10 @@ const SERVICE_ACCENT_CHIP_STYLES = {
     idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-peach/40 hover:bg-peach/10",
     selected: "border-peach/50 bg-peach/20 text-ink ring-1 ring-peach/25",
   },
+  berry: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-berry/35 hover:bg-berry/10",
+    selected: "border-berry/45 bg-berry/20 text-ink ring-1 ring-berry/25",
+  },
   sky: {
     idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-sky/40 hover:bg-sky/10",
     selected: "border-sky/50 bg-sky/20 text-ink ring-1 ring-sky/25",
@@ -229,6 +252,7 @@ const SERVICE_ACCENT_PANEL_STYLES = {
   blush: "border-blush/30 bg-blush/10",
   lavender: "border-lavender/30 bg-lavender/10",
   peach: "border-peach/35 bg-peach/10",
+  berry: "border-berry/30 bg-berry/10",
   sky: "border-sky/35 bg-sky/10",
   mint: "border-mint/30 bg-mint/10",
 };
@@ -237,6 +261,7 @@ const SERVICE_ACCENT_DOT = {
   blush: "bg-blush",
   lavender: "bg-lavender",
   peach: "bg-peach",
+  berry: "bg-berry",
   sky: "bg-sky",
   mint: "bg-mint",
 };
@@ -265,6 +290,7 @@ export function marketingServices() {
     unit: SERVICE_UNIT,
     features: service.features,
     featuresLabel: "Includes",
+    warning: service.warning ?? null,
   }));
 }
 

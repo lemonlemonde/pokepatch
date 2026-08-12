@@ -697,5 +697,6 @@ begin
   );
 end;
 $function$;
+
 REVOKE ALL ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) FROM public;
 GRANT EXECUTE ON FUNCTION public.update_order(uuid, jsonb, jsonb, jsonb) TO service_role;

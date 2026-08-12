@@ -1,5 +1,5 @@
 -- Add Card Whitening ($25) service_key and whitening damage_tag.
--- Sync with src/lib/servicePricing.js QUOTE_SERVICES and src/lib/gallery.js DAMAGE_TAGS.
+-- Sync with src/lib/servicePricing.js QUOTE_SERVICES and src/lib/damageTags.js.
 -- create_order: latest body from 20260811220024 + whitening.
 -- update_order: latest body from 20260811024500 + whitening damage_tag.
 
@@ -593,8 +593,10 @@ begin
   );
 end;
 $function$;
+
 REVOKE ALL ON FUNCTION public.create_order(jsonb) FROM public;
 GRANT EXECUTE ON FUNCTION public.create_order(jsonb) TO anon, authenticated, service_role;
+
 CREATE OR REPLACE FUNCTION public.update_order(p_order_id uuid, p_order jsonb DEFAULT NULL::jsonb, p_contacts jsonb DEFAULT NULL::jsonb, p_cards jsonb DEFAULT NULL::jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
