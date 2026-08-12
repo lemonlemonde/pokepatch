@@ -4,7 +4,7 @@ import {
   normalizeCardStatus,
   normalizeOrderStatus,
   normalizePendingKind,
-  orderStatusIfAllCardsCompleted,
+  orderStatusFromCardStatuses,
   orderStatusManuallyChanged,
   DEFAULT_CARD_STATUS,
   DEFAULT_PENDING_KIND,
@@ -339,13 +339,13 @@ export function draftPayload(draft) {
   };
 }
 
-/** Changelog / notify preview: includes order auto-advance when all cards are completed. */
+/** Changelog / notify preview: includes order auto-advance from card statuses. */
 export function draftPayloadForSavePreview(draft, savedDraft = null) {
   const payload = draftPayload(draft);
   if (savedDraft && orderStatusManuallyChanged(savedDraft, draft)) {
     return payload;
   }
-  const autoStatus = orderStatusIfAllCardsCompleted(draft.status, draft.cards);
+  const autoStatus = orderStatusFromCardStatuses(draft.status, draft.cards);
   if (!autoStatus) return payload;
   return {
     ...payload,
