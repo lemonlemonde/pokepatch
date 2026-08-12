@@ -6,6 +6,7 @@ export default function ServiceCard({
   priceNote = null,
   features = [],
   featuresLabel = null,
+  warning = null,
   bulk = [],
   bulkLabel = "Bulk Pricing",
   accent,
@@ -111,6 +112,27 @@ export default function ServiceCard({
           </ul>
         </div>
       )}
+
+      {warning ? (
+        <p
+          className={`mt-4 text-sm leading-relaxed ${
+            isMarketing
+              ? "border-t border-ink/10 pt-3 text-ink/70"
+              : "text-ink/65"
+          }`}
+        >
+          <span
+            className={
+              isMarketing
+                ? "font-mono text-[10px] uppercase tracking-[0.18em] text-berry"
+                : "font-semibold text-berry"
+            }
+          >
+            Note
+          </span>
+          <span className="mt-1.5 block">{warning}</span>
+        </p>
+      ) : null}
 
       {bulk.length > 0 && (
         <div className="mt-4 border-t border-ink/10 pt-3">
