@@ -6,6 +6,7 @@ import { adminDeletePhoto } from "@/lib/adminApi";
 import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
+  CARD_WHITENING_WARNING,
   HV_TIER_RANGES_LABEL,
   defaultBaseAmount,
   defaultServiceLabel,
@@ -433,6 +434,15 @@ export default function CardDetailSection({
             }
             placeholder="Custom service name"
           />
+        ) : null}
+        {item.service_key === SERVICE_KEYS.WHITENING ? (
+          <p
+            className="rounded-lg border border-berry/25 bg-berry/10 px-3 py-2 text-xs leading-relaxed text-ink/75"
+            role="note"
+          >
+            <span className="font-semibold text-berry">Note. </span>
+            {CARD_WHITENING_WARNING}
+          </p>
         ) : null}
       </div>
     );

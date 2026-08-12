@@ -61,7 +61,7 @@ const faqs = [
   {
     question: "Can whitening on cards be fixed?",
     answer:
-      "No — whitening cannot be fixed, and the card will be marked as altered if graded.",
+      "Only very small whitening dots on edges and corners. Whitening repair adds ink, and grading companies like PSA may potentially detect that and mark the card as altered. Card Whitening is $25 per card.",
   },
   {
     question: "Is shipping covered?",
@@ -133,7 +133,7 @@ export default function Home() {
           <MarketingSectionHeading note="Pricing">
             What we fix
           </MarketingSectionHeading>
-          <div className="grid gap-4 sm:grid-cols-3 sm:auto-rows-fr">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:auto-rows-fr">
             {services.map((service) => (
               <ScrollReveal key={service.title} className="h-full">
                 <ServiceCard {...service} variant="marketing" />

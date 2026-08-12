@@ -11,6 +11,7 @@ import {
   searchPokemonTcgCatalog,
   tcgCardImageSmallUrl,
 } from "../_shared/pokemonTcg.ts";
+import { sanitizeDamageTags } from "../_shared/damageTags.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -73,29 +74,6 @@ const ADMIN_IMAGE_TYPES = new Set([
 
 const GALLERY_SIDES = new Set(["before", "after"]);
 const GALLERY_MEDIA_KINDS = new Set(["image", "video"]);
-const GALLERY_DAMAGE_TAGS = new Set([
-  "crease",
-  "scratching",
-  "dent",
-  "edge_lift",
-  "edge_peeling",
-  "dirt",
-  "water_damage",
-  "warping",
-]);
-
-function sanitizeDamageTags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  const seen = new Set<string>();
-  const tags: string[] = [];
-  for (const value of raw) {
-    const id = String(value ?? "").trim();
-    if (!GALLERY_DAMAGE_TAGS.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    tags.push(id);
-  }
-  return tags;
-}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
