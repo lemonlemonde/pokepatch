@@ -88,20 +88,30 @@ export function normalizeCardStatus(statusId) {
   return DEFAULT_CARD_STATUS;
 }
 
-/** Matches update_order: every card completed → order moves to ready. */
-export function orderStatusIfAllCardsCompleted(orderStatus, cards) {
+/**
+ * Matches update_order auto-advance from card statuses (skipped when the admin
+ * manually changed order status on the same save):
+ * - every card completed → ready
+ * - else any card in_progress → in_progress
+ * Returns null when no auto change applies.
+ */
+export function orderStatusFromCardStatuses(orderStatus, cards) {
   const list = cards ?? [];
   if (list.length === 0) return null;
-  if (
-    !list.every((card) => normalizeCardStatus(card.status) === "completed")
-  ) {
-    return null;
-  }
   const status = normalizeOrderStatus(orderStatus);
   if (status === "ready" || status === "completed" || status === "canceled") {
     return null;
   }
-  return "ready";
+  if (list.every((card) => normalizeCardStatus(card.status) === "completed")) {
+    return "ready";
+  }
+  if (
+    list.some((card) => normalizeCardStatus(card.status) === "in_progress") &&
+    status !== "in_progress"
+  ) {
+    return "in_progress";
+  }
+  return null;
 }
 
 export function orderStatusManuallyChanged(beforeDraft, afterDraft) {
