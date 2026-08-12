@@ -5,6 +5,7 @@ import {
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
+import { notifyDueCardTimers } from "../_shared/notifyCardTimers.ts";
 import {
   fetchPokemonTcgCard,
   normalizeSearchText,
@@ -310,6 +311,133 @@ async function signPathsThumbsOnly(
     }
   }
   return result;
+}
+
+const MAX_TIMER_MINUTES = 30 * 24 * 60;
+
+type TimerOrderJoin =
+  | { display_id: number | string | null; customer_name: string | null }
+  | { display_id: number | string | null; customer_name: string | null }[]
+  | null;
+
+function unwrapTimerOrder(orders: TimerOrderJoin) {
+  const row = Array.isArray(orders) ? orders[0] : orders;
+  return {
+    display_id: row?.display_id ?? null,
+    customer_name: row?.customer_name ?? null,
+  };
+}
+
+async function fetchInProgressTimers(
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const { data, error } = await supabase
+    .from("cards")
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at, sort_order, orders!inner(display_id, customer_name)"
+    )
+    .eq("status", "in_progress")
+    .order("timer_ends_at", { ascending: true, nullsFirst: false })
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const order = unwrapTimerOrder(row.orders as TimerOrderJoin);
+    return {
+      id: row.id,
+      order_id: row.order_id,
+      card_name: row.card_name ?? null,
+      set_name: row.set_name ?? null,
+      status: row.status ?? null,
+      timer_ends_at: row.timer_ends_at ?? null,
+      timer_notified_at: row.timer_notified_at ?? null,
+      order_display_id: order.display_id,
+      customer_name: order.customer_name,
+    };
+  });
+}
+
+async function addCardTimer(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string,
+  durationMinutes: number
+) {
+  if (!cardId) throw new Error("card_id required");
+  if (
+    !Number.isFinite(durationMinutes) ||
+    durationMinutes <= 0 ||
+    durationMinutes > MAX_TIMER_MINUTES
+  ) {
+    throw new Error(
+      `duration_minutes must be between 1 and ${MAX_TIMER_MINUTES}`
+    );
+  }
+
+  const { data: card, error: fetchError } = await supabase
+    .from("cards")
+    .select("id, status, timer_ends_at")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!card) throw new Error("card not found");
+  if (card.status !== "in_progress") {
+    throw new Error("timer only allowed on in_progress cards");
+  }
+
+  const nowMs = Date.now();
+  const existingEndsMs = card.timer_ends_at
+    ? new Date(card.timer_ends_at as string).getTime()
+    : NaN;
+  const baseMs =
+    Number.isFinite(existingEndsMs) && existingEndsMs > nowMs
+      ? existingEndsMs
+      : nowMs;
+  const endsAt = new Date(
+    baseMs + durationMinutes * 60 * 1000
+  ).toISOString();
+
+  const maxEndsAt = new Date(nowMs + MAX_TIMER_MINUTES * 60 * 1000).getTime();
+  if (new Date(endsAt).getTime() > maxEndsAt) {
+    throw new Error("timer cannot extend more than 30 days from now");
+  }
+
+  const { data: updated, error } = await supabase
+    .from("cards")
+    .update({
+      timer_ends_at: endsAt,
+      timer_notified_at: null,
+    })
+    .eq("id", cardId)
+    .eq("status", "in_progress")
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at"
+    )
+    .maybeSingle();
+  if (error) throw error;
+  if (!updated) throw new Error("failed to update timer");
+  return updated;
+}
+
+async function clearCardTimer(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string
+) {
+  if (!cardId) throw new Error("card_id required");
+  const { data: updated, error } = await supabase
+    .from("cards")
+    .update({
+      timer_ends_at: null,
+      timer_notified_at: null,
+    })
+    .eq("id", cardId)
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at"
+    )
+    .maybeSingle();
+  if (error) throw error;
+  if (!updated) throw new Error("card not found");
+  return updated;
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
@@ -2540,6 +2668,56 @@ Deno.serve(async (req) => {
         failed,
         results,
       });
+    }
+
+    if (action === "timers_list") {
+      const cards = await fetchInProgressTimers(supabase);
+      return jsonResponse(req, { ok: true, cards });
+    }
+
+    if (action === "timers_notify_due") {
+      const result = await notifyDueCardTimers(
+        supabase,
+        Deno.env.get("CARD_TIMER_DISCORD_WEBHOOK_URL")
+      );
+      return jsonResponse(req, result);
+    }
+
+    if (action === "timer_add") {
+      const cardId = String(body.card_id ?? "");
+      const durationMinutes = Number(body.duration_minutes);
+      try {
+        const card = await addCardTimer(supabase, cardId, durationMinutes);
+        return jsonResponse(req, { ok: true, card });
+      } catch (err) {
+        const message = rpcErrorMessage(err);
+        const status =
+          message.includes("required") ||
+          message.includes("must be") ||
+          message.includes("only allowed") ||
+          message.includes("cannot extend")
+            ? 400
+            : message.includes("not found")
+              ? 404
+              : 500;
+        return jsonResponse(req, { ok: false, error: message }, status);
+      }
+    }
+
+    if (action === "timer_clear") {
+      const cardId = String(body.card_id ?? "");
+      try {
+        const card = await clearCardTimer(supabase, cardId);
+        return jsonResponse(req, { ok: true, card });
+      } catch (err) {
+        const message = rpcErrorMessage(err);
+        const status = message.includes("required")
+          ? 400
+          : message.includes("not found")
+            ? 404
+            : 500;
+        return jsonResponse(req, { ok: false, error: message }, status);
+      }
     }
 
     return jsonResponse(req, { ok: false, error: `unknown action: ${action || "(missing)"}` }, 400);

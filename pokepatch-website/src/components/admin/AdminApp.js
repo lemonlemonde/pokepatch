@@ -24,6 +24,7 @@ import { thumbPath } from "@/lib/imageCompression";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
+import CardTimers from "@/components/admin/CardTimers";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
@@ -70,6 +71,14 @@ const ADMIN_TABS = [
     title: "Orders admin",
     subtitle:
      "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+  },
+  {
+    id: "timers",
+    label: "Timers",
+    path: "/admin/timers/",
+    title: "Card timers",
+    subtitle:
+     "Every in-progress card. Tap +1m / +1h / +1d to add time; Discord pings when it hits zero. Completed cards leave this list automatically.",
   },
   {
     id: "gallery",
@@ -2459,6 +2468,14 @@ export default function AdminApp() {
         })}
       </div>
 
+      {tab === "timers" && (
+        <CardTimers
+          onOpenOrder={(orderId) => {
+            if (!orderId) return;
+            router.push(`/admin/orders/?edit=${encodeURIComponent(orderId)}`);
+          }}
+        />
+      )}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}
