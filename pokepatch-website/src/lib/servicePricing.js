@@ -22,33 +22,29 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.SURFACE,
     title: "Surface Cleaning",
     listPrice: 15,
-    features: [
-      "Surface cleaning",
-      "Scratch minimization",
-      "Shine enhancement",
-    ],
+    features: ["Dirt", "Scratches"],
     accent: "blush",
   },
   {
     key: SERVICE_KEYS.PRESSING,
-    title: "Flattening",
+    title: "Minor Damage",
     listPrice: 30,
-    features: ["Minor bends", "Light warping", "Subtle edge lift"],
+    features: ["Bends", "Warping", "Minor edge lift"],
     accent: "lavender",
   },
   {
     key: SERVICE_KEYS.ADVANCED,
-    title: "Heavy Damage",
+    title: "Major Damage",
     listPrice: 50,
     priceSuffix: "+",
-    features: ["Creases", "Heavy dents", "Severe warping"],
+    features: ["Creases", "Dents", "Edge peeling", "Water damage"],
     accent: "peach",
   },
   {
     key: SERVICE_KEYS.SLAB,
     title: "Slab Cracking",
     listPrice: 10,
-    features: ["Open graded slabs", "Pairs with any restoration"],
+    features: [],
     accent: "sky",
   },
   {
@@ -149,16 +145,6 @@ export function syncPriorityQuoteAdjustments(
   return [...without, priorityQuoteAdjustment(cardCount)];
 }
 
-const PRIORITY_PRICING_MARKETING = {
-  title: "Priority service",
-  features: ["Faster queue handling for your order"],
-  bulk: [
-    { label: "First card", value: `$${PRIORITY_BASE_FEE}` },
-    { label: "Each additional card", value: `+$${PRIORITY_EXTRA_CARD_FEE}` },
-  ],
-  bulkLabel: "Pricing",
-};
-
 /**
  * Order-level bulk discount, applied to the whole order (not per service).
  * Highest matching tier wins.
@@ -184,16 +170,6 @@ export const BULK_TIER_RANGES_LABEL = BULK_DISCOUNT_TIERS.map(
   (tier) => `${tier.minCards}+ cards → ${tier.percent}% off`
 ).join(", ");
 
-const BULK_PRICING_MARKETING = {
-  title: "Bulk Pricing",
-  features: ["Applied to your whole order"],
-  bulk: BULK_DISCOUNT_TIERS.map((tier) => ({
-    label: `${tier.minCards}+ cards`,
-    value: `${tier.percent}% off`,
-  })),
-  bulkLabel: "Order Discounts",
-};
-
 /**
  * High-value surcharge tiers from Raw NM market value.
  * Highest matching tier wins; values below the first tier are 0%.
@@ -210,24 +186,10 @@ function formatHvTierLabel(tier) {
   return `$${tier.minValue}+`;
 }
 
-function formatHvTierValue(tier) {
-  return `+${tier.percent}%`;
-}
-
 /** Short admin/customer hint for default HV market-value tiers. */
 export const HV_TIER_RANGES_LABEL = HV_SURCHARGE_TIERS.map(
   (tier) => `${formatHvTierLabel(tier)} → ${tier.percent}%`
 ).join(", ");
-
-const HIGH_VALUE_MARKETING = {
-  title: "High-Value Handling",
-  features: ["Applied per card"],
-  bulk: HV_SURCHARGE_TIERS.map((tier) => ({
-    label: formatHvTierLabel(tier),
-    value: formatHvTierValue(tier),
-  })),
-  bulkLabel: "Surcharge Tiers",
-};
 
 function serviceByKey(key) {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
@@ -293,22 +255,75 @@ export function serviceAccentDotClass(accent) {
   return SERVICE_ACCENT_DOT[accent] ?? SERVICE_ACCENT_DOT.mint;
 }
 
-/** Homepage ServiceCard props (per-card services only). */
+/** Homepage restoration-tier cards (excludes slab add-on and custom). */
 export function marketingServices() {
-  return QUOTE_SERVICES.filter((s) => s.key !== SERVICE_KEYS.CUSTOM).map(
-    (service) => ({
-      title: service.title,
-      price: servicePriceDisplay(service),
-      unit: SERVICE_UNIT,
-      features: service.features,
-      accent: service.accent,
-    })
-  );
+  return QUOTE_SERVICES.filter(
+    (s) => s.key !== SERVICE_KEYS.CUSTOM && s.key !== SERVICE_KEYS.SLAB
+  ).map((service) => ({
+    title: service.title,
+    price: servicePriceDisplay(service),
+    unit: SERVICE_UNIT,
+    features: service.features,
+    featuresLabel: "Includes",
+  }));
 }
 
-/** Order-level modifiers — rendered together in one full-width card. */
-export function marketingModifiers() {
-  return [PRIORITY_PRICING_MARKETING, BULK_PRICING_MARKETING, HIGH_VALUE_MARKETING];
+function slabMarketingPanel() {
+  const service = QUOTE_SERVICES.find((s) => s.key === SERVICE_KEYS.SLAB);
+  if (!service) return null;
+  return {
+    title: service.title,
+    features: [],
+    bulk: [
+      {
+        label: "Per card",
+        value: formatListPrice(service.listPrice, service.priceSuffix ?? ""),
+      },
+    ],
+    bulkLabel: "Pricing",
+  };
+}
+
+const PRIORITY_PRICING_MARKETING = {
+  title: "Priority",
+  features: ["Faster queue for your order"],
+  bulk: [
+    { label: "First card", value: `$${PRIORITY_BASE_FEE}` },
+    { label: "Each additional card", value: `+$${PRIORITY_EXTRA_CARD_FEE}` },
+  ],
+  bulkLabel: "Pricing",
+};
+
+const BULK_PRICING_MARKETING = {
+  title: "Bulk discount",
+  features: ["Off the whole order"],
+  bulk: BULK_DISCOUNT_TIERS.map((tier) => ({
+    label: `${tier.minCards}+ cards`,
+    value: `${tier.percent}% off`,
+  })),
+  bulkLabel: "Discounts",
+};
+
+/** Homepage extras — purchasable options only. */
+export function marketingExtras() {
+  return [
+    slabMarketingPanel(),
+    PRIORITY_PRICING_MARKETING,
+    BULK_PRICING_MARKETING,
+  ].filter(Boolean);
+}
+
+/** Homepage high-value fee module — same visual weight as extras. */
+export function marketingHighValue() {
+  return {
+    title: "High-Value Handling",
+    features: ["Extra fee on higher-value cards, based on market price"],
+    bulk: HV_SURCHARGE_TIERS.map((tier) => ({
+      label: formatHvTierLabel(tier),
+      value: `+${tier.percent}%`,
+    })),
+    bulkLabel: "Fee by card value",
+  };
 }
 
 export function defaultBaseAmount(serviceKey) {

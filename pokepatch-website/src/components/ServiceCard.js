@@ -5,6 +5,7 @@ export default function ServiceCard({
   priceStacked = false,
   priceNote = null,
   features = [],
+  featuresLabel = null,
   bulk = [],
   bulkLabel = "Bulk Pricing",
   accent,
@@ -21,11 +22,11 @@ export default function ServiceCard({
 
   const isMarketing = variant === "marketing";
   const shellClass = isMarketing
-    ? "marketing-panel p-4 sm:p-6"
+    ? "marketing-panel h-full p-4 sm:p-6"
     : `pixel-border rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.blush}`;
 
   return (
-    <div className={`flex flex-col ${shellClass}`}>
+    <div className={`flex h-full flex-col ${shellClass}`}>
       <div className="flex items-start justify-between gap-3">
         <h3
           className={
@@ -84,18 +85,31 @@ export default function ServiceCard({
       </div>
 
       {features.length > 0 && (
-        <ul
-          className={`mt-4 space-y-1 text-sm ${
-            isMarketing ? "text-ink/60" : "text-ink/70"
-          }`}
-        >
-          {features.map((feature) => (
-            <li key={feature} className="flex items-start gap-2">
-              <span className="text-ink/35">{isMarketing ? "—" : "•"}</span>
-              {feature}
-            </li>
-          ))}
-        </ul>
+        <div className="mt-4">
+          {featuresLabel ? (
+            <p
+              className={
+                isMarketing
+                  ? "font-mono text-[10px] uppercase tracking-[0.2em] text-ink/45"
+                  : "text-xs font-bold uppercase tracking-wide text-ink/50"
+              }
+            >
+              {featuresLabel}
+            </p>
+          ) : null}
+          <ul
+            className={`space-y-1 text-sm ${
+              featuresLabel ? "mt-2" : ""
+            } ${isMarketing ? "text-ink/60" : "text-ink/70"}`}
+          >
+            {features.map((feature) => (
+              <li key={feature} className="flex items-start gap-2">
+                <span className="text-ink/35">{isMarketing ? "—" : "•"}</span>
+                {feature}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {bulk.length > 0 && (

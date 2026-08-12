@@ -1,6 +1,6 @@
 /**
- * One card holding order-level modifiers (priority, bulk, high-value handling),
- * split by dividers — three columns on desktop, stacked on mobile.
+ * Modular extras / fees panel — one shell, equal columns.
+ * Marketing uses a gap grid so 2–4 items stay even.
  */
 export default function ServiceModifiersCard({
   panels = [],
@@ -17,17 +17,19 @@ export default function ServiceModifiersCard({
 
   const isMarketing = variant === "marketing";
   const shellClass = isMarketing
-    ? "marketing-panel h-full p-4 sm:p-6"
+    ? "marketing-panel p-4 sm:p-6"
     : `pixel-border rounded-2xl p-6 transition-all duration-200 ease-out sm:col-span-2 sm:hover:-translate-y-1 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.mint}`;
 
   const columnClass =
-    panels.length >= 3
-      ? "sm:grid-cols-3"
-      : panels.length === 2
-        ? "sm:grid-cols-2"
-        : "sm:grid-cols-1";
+    panels.length >= 4
+      ? "sm:grid-cols-2 lg:grid-cols-4"
+      : panels.length === 3
+        ? "sm:grid-cols-3"
+        : panels.length === 2
+          ? "sm:grid-cols-2"
+          : "sm:grid-cols-1";
 
-  function panelClassName(index, total) {
+  function cozyPanelClassName(index, total) {
     const parts = ["min-w-0"];
     if (index > 0) {
       parts.push(
@@ -44,11 +46,17 @@ export default function ServiceModifiersCard({
 
   return (
     <div className={shellClass}>
-      <div className={`grid items-start gap-5 sm:gap-0 ${columnClass}`}>
+      <div
+        className={`grid items-start ${
+          isMarketing ? `gap-8 ${columnClass}` : `gap-5 sm:gap-0 ${columnClass}`
+        }`}
+      >
         {panels.map((panel, index) => (
           <div
             key={panel.title}
-            className={panelClassName(index, panels.length)}
+            className={
+              isMarketing ? "min-w-0" : cozyPanelClassName(index, panels.length)
+            }
           >
             <h3
               className={
@@ -86,17 +94,29 @@ export default function ServiceModifiersCard({
             ) : null}
 
             {panel.bulk?.length > 0 ? (
-              <div className="mt-3 border-t border-ink/10 pt-2.5">
-                <p
-                  className={
-                    isMarketing
-                      ? "font-mono text-[10px] uppercase tracking-[0.2em] text-ink/45"
-                      : "text-xs font-bold uppercase tracking-wide text-ink/50"
-                  }
+              <div
+                className={
+                  panel.features?.length > 0
+                    ? "mt-3 border-t border-ink/10 pt-2.5"
+                    : "mt-3"
+                }
+              >
+                {panel.bulkLabel ? (
+                  <p
+                    className={
+                      isMarketing
+                        ? "font-mono text-[10px] uppercase tracking-[0.2em] text-ink/45"
+                        : "text-xs font-bold uppercase tracking-wide text-ink/50"
+                    }
+                  >
+                    {panel.bulkLabel}
+                  </p>
+                ) : null}
+                <ul
+                  className={`space-y-1.5 text-sm ${
+                    panel.bulkLabel ? "mt-2" : ""
+                  }`}
                 >
-                  {panel.bulkLabel}
-                </p>
-                <ul className="mt-2 space-y-1.5 text-sm">
                   {panel.bulk.map((item) => (
                     <li key={item.label}>
                       <span
