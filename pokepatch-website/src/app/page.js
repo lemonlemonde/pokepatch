@@ -9,7 +9,11 @@ import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
 import HomeStructuredData from "@/components/HomeStructuredData";
 import QueueCount from "@/components/QueueCount";
-import { marketingModifiers, marketingServices } from "@/lib/servicePricing";
+import {
+  marketingExtras,
+  marketingHighValue,
+  marketingServices,
+} from "@/lib/servicePricing";
 
 const steps = [
   {
@@ -31,7 +35,8 @@ const steps = [
 ];
 
 const services = marketingServices();
-const modifiers = marketingModifiers();
+const extras = marketingExtras();
+const highValue = marketingHighValue();
 
 const faqs = [
   {
@@ -128,20 +133,25 @@ export default function Home() {
           <MarketingSectionHeading note="Pricing">
             What we fix
           </MarketingSectionHeading>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3 sm:auto-rows-fr">
             {services.map((service) => (
-              <ScrollReveal key={service.title}>
+              <ScrollReveal key={service.title} className="h-full">
                 <ServiceCard {...service} variant="marketing" />
               </ScrollReveal>
             ))}
-            <ScrollReveal className="sm:col-span-2" variant="dramatic">
-              <ServiceModifiersCard
-                panels={modifiers}
-                accent="mint"
-                variant="marketing"
-              />
-            </ScrollReveal>
           </div>
+          <ScrollReveal className="mt-4">
+            <ServiceModifiersCard panels={[highValue]} variant="marketing" />
+          </ScrollReveal>
+          <ScrollReveal className="mt-10 sm:mt-12" variant="dramatic">
+            <div className="mb-4 flex items-center gap-4 sm:mb-5">
+              <p className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40 sm:text-[11px] sm:tracking-[0.28em]">
+                Extras
+              </p>
+              <div className="h-px min-w-0 flex-1 bg-ink/10" aria-hidden="true" />
+            </div>
+            <ServiceModifiersCard panels={extras} variant="marketing" />
+          </ScrollReveal>
         </section>
 
         <section className="marketing-section">
