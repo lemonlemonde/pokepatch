@@ -1719,6 +1719,87 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, order });
     }
 
+    // Guest shell order — no auth user / prior orders required.
+    // user_id stays null; claim_my_orders links by email on signup.
+    if (action === "create") {
+      const firstName = String(body.first_name ?? "").trim();
+      const lastName = String(body.last_name ?? "").trim();
+      const customerEmail = String(body.customer_email ?? "").trim();
+      const deliveryMethod = String(body.delivery_method ?? "").trim();
+
+      if (!firstName) {
+        return jsonResponse(req, { ok: false, error: "first_name required" }, 400);
+      }
+      if (!lastName) {
+        return jsonResponse(req, { ok: false, error: "last_name required" }, 400);
+      }
+      if (!customerEmail || !isValidEmail(normalizeEmail(customerEmail))) {
+        return jsonResponse(req, { ok: false, error: "valid customer_email required" }, 400);
+      }
+      if (
+        deliveryMethod !== "local_dropoff" &&
+        deliveryMethod !== "shipping"
+      ) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "delivery_method must be local_dropoff or shipping" },
+          400
+        );
+      }
+
+      const orderId = crypto.randomUUID();
+      const customerName = `${firstName} ${lastName}`.trim();
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("orders")
+        .insert({
+          id: orderId,
+          user_id: null,
+          first_name: firstName,
+          last_name: lastName,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          delivery_method: deliveryMethod,
+          preferred_contact_type: "email",
+          preferred_contact_value: customerEmail,
+          status: "pending",
+          pending_kind: "quote",
+          is_priority: false,
+        })
+        .select(
+          "id, display_id, created_at, first_name, last_name, customer_name, delivery_method, general_notes"
+        )
+        .single();
+      if (insertError) throw insertError;
+
+      const { error: originalError } = await supabase
+        .from("orders_original")
+        .insert({
+          id: inserted.id,
+          display_id: inserted.display_id,
+          created_at: inserted.created_at,
+          first_name: inserted.first_name,
+          last_name: inserted.last_name,
+          customer_name: inserted.customer_name,
+          delivery_method: inserted.delivery_method,
+          general_notes: inserted.general_notes,
+        });
+      if (originalError) {
+        await supabase.from("orders").delete().eq("id", orderId);
+        throw originalError;
+      }
+
+      const order = await fetchOrderGraph(supabase, orderId);
+      if (!order) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order not found after create" },
+          404
+        );
+      }
+      return jsonResponse(req, { ok: true, order, full: order });
+    }
+
     if (action === "set_status") {
       const orderId = String(body.order_id ?? "");
       const status = normalizeOrderStatusForApi(String(body.status ?? ""));
