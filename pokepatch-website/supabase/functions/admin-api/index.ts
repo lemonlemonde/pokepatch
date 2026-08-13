@@ -2542,22 +2542,37 @@ Deno.serve(async (req) => {
         ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
         : 100;
 
-      let query = supabase
-        .from("customer_messages")
-        .select(
-          "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)"
-        )
-        .order("sent_at", { ascending: false })
-        .limit(limit);
+      const messageColumnsWithSender =
+        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, sender, orders(display_id)";
+      const messageColumnsLegacy =
+        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)";
 
-      if (emailFilter) {
-        query = query.eq("recipient_email", emailFilter);
-      }
-      if (orderIdFilter) {
-        query = query.eq("order_id", orderIdFilter);
+      async function runMessagesQuery(columns: string) {
+        let query = supabase
+          .from("customer_messages")
+          .select(columns)
+          .order("sent_at", { ascending: false })
+          .limit(limit);
+
+        if (emailFilter) {
+          query = query.eq("recipient_email", emailFilter);
+        }
+        if (orderIdFilter) {
+          query = query.eq("order_id", orderIdFilter);
+        }
+
+        return query;
       }
 
-      const { data, error } = await query;
+      let { data, error } = await runMessagesQuery(messageColumnsWithSender);
+      if (
+        error &&
+        (/sender/i.test(error.message || "") ||
+          /sender/i.test(error.details || "") ||
+          error.code === "42703")
+      ) {
+        ({ data, error } = await runMessagesQuery(messageColumnsLegacy));
+      }
       if (error) throw error;
 
       const messages = (data ?? []).map((row) => {
@@ -2570,7 +2585,13 @@ Deno.serve(async (req) => {
           ? orderRel[0]?.display_id ?? null
           : orderRel?.display_id ?? null;
         const { orders: _orders, ...rest } = row as Record<string, unknown>;
-        return { ...rest, order_display_id: displayId };
+        return {
+          ...rest,
+          sender: (rest as { sender?: string }).sender === "customer"
+            ? "customer"
+            : "admin",
+          order_display_id: displayId,
+        };
       });
 
       return jsonResponse(req, { ok: true, messages });
@@ -2670,6 +2691,8 @@ Deno.serve(async (req) => {
           (await resolveUserIdByEmail(supabase, email, authUsers));
         const storedBody = buildStoredMessageBody(messageBody, orderDisplayId);
 
+        // sender defaults to 'admin' once the customer_update_my_order migration
+        // is applied; omit the column so pre-migration deploys keep working.
         const { data: inserted, error: insertError } = await supabase
           .from("customer_messages")
           .insert({

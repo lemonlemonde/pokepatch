@@ -1,198 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { thumbPath } from "@/lib/imageCompression";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { signPaths } from "@/lib/customerOrderMedia";
+import {
+  hasPriorityAdjustment,
+  unpackQuoteAdjustments,
+} from "@/lib/servicePricing";
 import {
   customerOrderStatusLabel,
-  customerCardStatusLabel,
-  orderStatusBadgeClass,
-  cardStatusBadgeClass,
   isPendingOrderStatus,
-  normalizePendingKind,
-  DEFAULT_PENDING_KIND,
+  orderStatusBadgeClass,
 } from "@/lib/orderStatus";
-import {
-  billableQuoteCards,
-  cardsWithQuoteHv,
-  hasPriorityAdjustment,
-  hasQuoteData,
-  unpackQuoteAdjustments,
-  unpackQuoteCardHv,
-} from "@/lib/servicePricing";
-import QuoteReceipt from "@/components/QuoteReceipt";
-import MediaLightbox from "@/components/MediaLightbox";
-import { ChangelogDiff } from "@/components/ChangelogDiff";
-import {
-  EXPAND_DURATION_MS,
-  ExpandChevron,
-  ExpandPanel,
-} from "@/components/ExpandReveal";
-import {
-  forgetSignedUrl,
-  getCachedSignedUrls,
-} from "@/lib/signedUrlCache";
-import { labeledDamageTags } from "@/lib/gallery";
-
-const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24; // 24h — reuse same token for CDN/browser cache
-const CARD_PHOTOS_BUCKET = "card-photos";
-
-const LABEL_CLS =
-  "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/60";
-
-// card-photos is a private bucket, so we mint short-lived signed URLs. RLS
-// ensures a customer can only sign photos that belong to their own orders.
-// Prefer .thumb.webp siblings for list UI; fall back to the full object.
-// Reuse cached signed URLs (same token) so Smart CDN + browser cache can hit.
-async function signPaths(paths, { preferThumb = false } = {}) {
-  const unique = [...new Set((paths || []).filter(Boolean))];
-  if (!supabase || unique.length === 0) return {};
-
-  const requestPaths = preferThumb ? unique.map((p) => thumbPath(p)) : unique;
-  const signedByRequestPath = await getCachedSignedUrls(
-    supabase,
-    CARD_PHOTOS_BUCKET,
-    requestPaths,
-    SIGNED_URL_EXPIRES_IN
-  );
-
-  const map = {};
-  const missingOriginals = [];
-  for (let i = 0; i < unique.length; i += 1) {
-    const original = unique[i];
-    const requestPath = requestPaths[i];
-    const url = signedByRequestPath[requestPath];
-    if (url) {
-      map[original] = url;
-    } else if (preferThumb) {
-      missingOriginals.push(original);
-    }
-  }
-
-  if (missingOriginals.length > 0) {
-    const fallback = await getCachedSignedUrls(
-      supabase,
-      CARD_PHOTOS_BUCKET,
-      missingOriginals,
-      SIGNED_URL_EXPIRES_IN
-    );
-    Object.assign(map, fallback);
-  }
-
-  return map;
-}
-
-function contactLabel(type) {
-  if (type === "phone") return "Phone";
-  if (type === "discord") return "Discord";
-  if (type === "instagram") return "Instagram";
-  if (type === "email") return "Email";
-  return "Contact";
-}
-
-function deliveryLabel(method) {
-  return method === "local_dropoff"
-    ? { text: "Local Drop-Off", sub: "North San Jose" }
-    : { text: "Shipping", sub: "Mailed to you" };
-}
-
-// Non-customer photos are the ones our team adds, so we badge progress/final.
-function imageBadge(type) {
-  switch (type) {
-    case "progress_front":
-    case "progress_back":
-      return { label: "Progress", cls: "bg-lavender text-night" };
-    case "final_front":
-    case "final_back":
-      return { label: "Final", cls: "bg-blush text-night" };
-    default:
-      return null;
-  }
-}
-
-function UpdateChip({ className = "" }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-night ${className}`.trim()}
-    >
-      New
-    </span>
-  );
-}
-
-function CustomerPriorityBadge({ className = "" }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border border-berry/35 bg-berry/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-blush ${className}`.trim()}
-    >
-      <span
-        className="h-1.5 w-1.5 rounded-full bg-berry shadow-[0_0_10px_rgba(224,81,138,0.8)]"
-        aria-hidden="true"
-      />
-      Priority
-    </span>
-  );
-}
-
-function CustomerPriorityBanner({ queuePosition = null }) {
-  const queueLine =
-    queuePosition != null
-      ? `You're #${queuePosition} in the workshop queue.`
-      : "Your order is marked for priority handling.";
-  return (
-    <div className="rounded-xl border border-berry/25 bg-berry/[0.08] px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <CustomerPriorityBadge />
-        <span className="font-display text-sm font-bold text-ink">
-          Priority service is active
-        </span>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-ink/70">
-        We&apos;ll keep this order moving ahead in the queue and watch it closely.
-        {queueLine ? ` ${queueLine}` : ""}
-      </p>
-    </div>
-  );
-}
-
-function SectionLabel({ children, showUpdate = false, className = "" }) {
-  return (
-    <p
-      className={`${LABEL_CLS} flex flex-wrap items-center gap-2 ${className}`.trim()}
-    >
-      <span>{children}</span>
-      {showUpdate ? <UpdateChip /> : null}
-    </p>
-  );
-}
-
-function CardPokePatchNote({ note, variant = "expanded" }) {
-  const text = String(note ?? "").trim();
-  if (!text) return null;
-
-  if (variant === "collapsed") {
-    return (
-      <span className="mt-1 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink/50">
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-mint"
-          aria-hidden="true"
-        />
-        Note from PokePatch
-      </span>
-    );
-  }
-
-  return (
-    <div className="border-t border-mint/20 bg-mint/[0.07] px-3 py-3 sm:px-4">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
-        Note from PokePatch
-      </p>
-      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink/90">
-        {text}
-      </p>
-    </div>
-  );
-}
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -215,7 +34,6 @@ function formatUpdateTime(dateString) {
   });
 }
 
-/** Latest of several ISO timestamps (invalid/null skipped). */
 function latestTimestamp(...values) {
   let bestMs = null;
   for (const value of values) {
@@ -227,7 +45,6 @@ function latestTimestamp(...values) {
   return bestMs === null ? null : new Date(bestMs).toISOString();
 }
 
-/** Latest activity: team updates, status changes, or order creation. */
 function latestActivityAt(order) {
   return latestTimestamp(
     order?.updates_available_at,
@@ -236,1070 +53,117 @@ function latestActivityAt(order) {
   );
 }
 
-function Photo({ url, alt, badge, onOpen, onThumbError }) {
-  const [src, setSrc] = useState(url);
-  const [failedThumb, setFailedThumb] = useState(false);
-
-  useEffect(() => {
-    setSrc(url);
-    setFailedThumb(false);
-  }, [url]);
-
+function CustomerPriorityBadge({ className = "" }) {
   return (
-    <div className="relative aspect-[3/4] overflow-hidden rounded-lg border border-ink/10 bg-night/40">
-      {src ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          disabled={!onOpen}
-          className="block h-full w-full cursor-zoom-in disabled:cursor-default"
-          aria-label={`Enlarge ${alt}`}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={src}
-            alt={alt}
-            loading="lazy"
-            decoding="async"
-            className="h-full w-full object-cover"
-            onError={() => {
-              if (failedThumb || !onThumbError) return;
-              setFailedThumb(true);
-              onThumbError().then((fullUrl) => {
-                if (fullUrl) setSrc(fullUrl);
-              });
-            }}
-          />
-        </button>
-      ) : (
-        <div className="h-full w-full animate-pulse bg-ink/5" />
-      )}
-      {badge && (
-        <span
-          className={`pointer-events-none absolute left-1 top-1 rounded px-1.5 py-0.5 text-[10px] font-bold shadow-sm ${badge.cls}`}
-        >
-          {badge.label}
-        </span>
-      )}
-    </div>
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border border-berry/35 bg-berry/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-blush ${className}`.trim()}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full bg-berry shadow-[0_0_10px_rgba(224,81,138,0.8)]"
+        aria-hidden="true"
+      />
+      Priority
+    </span>
   );
 }
 
-function formatMessageTime(value) {
-  if (!value) return "";
-  try {
-    return new Date(value).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  } catch {
-    return String(value);
-  }
-}
-
-function messageBodyText(body) {
-  return String(body ?? "")
-    .replace(/^Regarding Order #\d+\s*/i, "")
-    .trim();
-}
-
-/** null = unknown; skip the missing-column round-trip after first probe. */
-let customerMessagesChangelogAvailable = null;
-
-async function fetchOrderMessages(orderId) {
-  async function query(columns) {
-    return supabase
-      .from("customer_messages")
-      .select(columns)
-      .eq("order_id", orderId)
-      .order("sent_at", { ascending: false });
-  }
-
-  if (customerMessagesChangelogAvailable !== false) {
-    const withChangelog = await query(
-      "id, subject, body, changelog, sent_at, read_at"
-    );
-    if (!withChangelog.error) {
-      customerMessagesChangelogAvailable = true;
-      return { data: withChangelog.data ?? [], error: null };
-    }
-
-    const missingChangelog =
-      withChangelog.error.code === "PGRST204" ||
-      /changelog/i.test(withChangelog.error.message || "") ||
-      /changelog/i.test(withChangelog.error.details || "") ||
-      /changelog/i.test(withChangelog.error.hint || "");
-
-    if (!missingChangelog) {
-      return { data: [], error: withChangelog.error };
-    }
-    customerMessagesChangelogAvailable = false;
-  }
-
-  const withoutChangelog = await query("id, subject, body, sent_at, read_at");
-  if (withoutChangelog.error) {
-    return { data: [], error: withoutChangelog.error };
-  }
-  return { data: withoutChangelog.data ?? [], error: null };
-}
-
-export default function OrderCard({ order, onClick, isExpanded = false }) {
-  const [orderDetails, setOrderDetails] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [expandedCardId, setExpandedCardId] = useState(null);
-  const [lightbox, setLightbox] = useState(null); // { cardId, index }
-  const [previewUrls, setPreviewUrls] = useState({});
-  // Grid / card chips: thumbs only. Full URLs load on lightbox open and are cached.
-  const [thumbUrls, setThumbUrls] = useState({});
-  const [fullUrls, setFullUrls] = useState({});
-  const [messages, setMessages] = useState([]);
-  const [messagesLoading, setMessagesLoading] = useState(false);
-  const [messagesLoadedForId, setMessagesLoadedForId] = useState(null);
-  const [updatesOpen, setUpdatesOpen] = useState(false);
-  const [expandedMessageId, setExpandedMessageId] = useState(null);
-  const [messagesListExpanded, setMessagesListExpanded] = useState(false);
-  const [highlightedMessageIds, setHighlightedMessageIds] = useState(
-    () => new Set()
-  );
-
+/**
+ * Compact My Orders list row — detail/edit lives on /my-orders/[orderId].
+ */
+export default function OrderCard({ order }) {
+  const [previewUrl, setPreviewUrl] = useState(null);
   const previewPaths = Array.isArray(order.preview_paths)
     ? order.preview_paths
     : [];
-  const previewPathsKey = previewPaths.join(",");
-  const expectMessages = Boolean(order.has_unread_messages);
-  const messagesReady = messagesLoadedForId === order.id;
-  const showMessagesPanel =
-    messages.length > 0 ||
-    (isExpanded && expectMessages && (!messagesReady || messagesLoading));
-
-  if (!isExpanded && expandedCardId != null) {
-    setExpandedCardId(null);
-  }
+  const previewPath = previewPaths[0] ?? null;
 
   useEffect(() => {
-    if (!isExpanded) {
-      // Keep details through the close animation, then drop them.
-      const timer = window.setTimeout(() => {
-        setOrderDetails(null);
-        setError("");
-      }, EXPAND_DURATION_MS);
-      return () => window.clearTimeout(timer);
-    }
-    if (!supabase) return undefined;
-
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-
-    supabase
-      .rpc("get_my_order", { p_order_id: order.id })
-      .then(({ data, error: loadError }) => {
-        if (cancelled) return;
-        if (loadError) throw loadError;
-        setOrderDetails(data);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setOrderDetails(null);
-        setError(err.message || "Failed to load order details");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isExpanded, order.id]);
-
-  useEffect(() => {
-    if (!isExpanded || !supabase) return undefined;
-
-    let cancelled = false;
-    // Keep cached messages visible; only show a loading shell on first fetch.
-    if (messagesLoadedForId !== order.id) {
-      setMessagesLoading(true);
-    }
-
-    async function loadMessages() {
-      const { data, error: loadError } = await fetchOrderMessages(order.id);
-      if (cancelled) return;
-      if (loadError) {
-        console.error(
-          "Failed to load order messages",
-          loadError.message || loadError.code || loadError
-        );
-        if (messagesLoadedForId !== order.id) setMessages([]);
-        setMessagesLoadedForId(order.id);
-        return;
-      }
-      setMessages(data);
-      setMessagesLoadedForId(order.id);
-    }
-
-    loadMessages().finally(() => {
-      if (!cancelled) setMessagesLoading(false);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-    // messagesLoadedForId intentionally omitted — only re-fetch on expand/order change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExpanded, order.id]);
-
-  const markMessageRead = useCallback(
-    async (messageId) => {
-      if (!supabase || !messageId) return;
-
-      const target = messages.find((row) => row.id === messageId);
-      if (!target || target.read_at) return;
-
-      try {
-        const { error: markError } = await supabase.rpc(
-          "mark_my_messages_read",
-          { p_ids: [messageId] }
-        );
-        if (markError) throw markError;
-
-        const now = new Date().toISOString();
-        const remainingUnread = messages.filter(
-          (row) => row.id !== messageId && !row.read_at
-        ).length;
-        setMessages((prev) =>
-          prev.map((row) =>
-            row.id === messageId ? { ...row, read_at: now } : row
-          )
-        );
-        setHighlightedMessageIds((prev) => {
-          if (!prev.has(messageId)) return prev;
-          const next = new Set(prev);
-          next.delete(messageId);
-          return next;
-        });
-
-        // Clear legacy order-level chip only once every message has been opened.
-        if (remainingUnread === 0) {
-          const { error: seenError } = await supabase.rpc(
-            "mark_my_order_updates_seen",
-            { p_order_id: order.id }
-          );
-          if (seenError) {
-            const missing =
-              seenError.code === "PGRST202" ||
-              /mark_my_order_updates_seen/i.test(seenError.message || "");
-            if (!missing) {
-              console.error("mark_my_order_updates_seen failed", seenError);
-            }
-          }
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(
-              new CustomEvent("pokepatch:messages-read", {
-                detail: { orderId: order.id },
-              })
-            );
-          }
-        } else if (typeof window !== "undefined") {
-          // Keep navbar badge in sync even when some messages remain unread.
-          window.dispatchEvent(new Event("pokepatch:messages-read"));
-        }
-      } catch (err) {
-        console.error("mark_my_messages_read failed", err);
-      }
-    },
-    [messages, order.id]
-  );
-
-  useEffect(() => {
-    if (!isExpanded) {
-      setUpdatesOpen(false);
-      setExpandedMessageId(null);
-      setMessagesListExpanded(false);
-      setHighlightedMessageIds(new Set());
-      setLightbox(null);
-    }
-  }, [isExpanded]);
-
-  useEffect(() => {
-    setLightbox(null);
-  }, [expandedCardId]);
-
-  useEffect(() => {
+    if (!previewPath) return undefined;
     let active = true;
-    // List strip: one thumb only.
-    const paths = previewPaths.slice(0, 1);
-    signPaths(paths, { preferThumb: true }).then((map) => {
-      if (active) setPreviewUrls(map);
+    signPaths([previewPath], { preferThumb: true }).then((map) => {
+      if (active) setPreviewUrl(map[previewPath] ?? null);
     });
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewPathsKey]);
+  }, [previewPath]);
 
-  useEffect(() => {
-    if (!orderDetails) return undefined;
-    let active = true;
-    const paths = (orderDetails.cards || []).flatMap((card) =>
-      (card.images || []).map((image) => image.storage_path)
-    );
-    // Expanded grids / card chips: thumbs only (fallback to full if sibling missing).
-    signPaths(paths, { preferThumb: true }).then((map) => {
-      if (active) setThumbUrls(map);
-    });
-    return () => {
-      active = false;
-    };
-  }, [orderDetails]);
-
-  // Full-size URLs only when lightbox opens; cache across navigations.
-  useEffect(() => {
-    if (!lightbox || !orderDetails) return undefined;
-    const card = (orderDetails.cards || []).find(
-      (row) => row.id === lightbox.cardId
-    );
-    const path = card?.images?.[lightbox.index]?.storage_path;
-    if (!path) return undefined;
-    let active = true;
-    signPaths([path], { preferThumb: false }).then((map) => {
-      if (!active || !map[path]) return;
-      setFullUrls((prev) => (prev[path] ? prev : { ...prev, ...map }));
-    });
-    return () => {
-      active = false;
-    };
-  }, [lightbox, orderDetails]);
-
-  async function resolveFullAfterBadThumb(storagePath) {
-    if (!storagePath) return null;
-    if (fullUrls[storagePath]) return fullUrls[storagePath];
-    // Drop phantom thumb URL so we don't keep serving a 404 token.
-    forgetSignedUrl(CARD_PHOTOS_BUCKET, thumbPath(storagePath));
-    const map = await signPaths([storagePath], { preferThumb: false });
-    const full = map[storagePath] ?? null;
-    if (full) {
-      setFullUrls((prev) =>
-        prev[storagePath] ? prev : { ...prev, [storagePath]: full }
-      );
-      setThumbUrls((prev) => ({ ...prev, [storagePath]: full }));
-    }
-    return full;
-  }
+  const displayPreviewUrl = previewPath ? previewUrl : null;
 
   const cardCountText =
     order.card_count === 1 ? "1 card" : `${order.card_count} cards`;
-  const listQuoteAdjustments = unpackQuoteAdjustments(
-    order.quote_bulk_counts,
-    {
-      overrideLabel: order.quote_override_label ?? "",
-      overrideAmount: order.quote_override_amount,
-    }
-  );
-  const isPriority = Boolean(
-    order.is_priority ||
-      orderDetails?.is_priority ||
-      hasPriorityAdjustment(listQuoteAdjustments)
-  );
+  const listQuoteAdjustments = unpackQuoteAdjustments(order.quote_bulk_counts, {
+    overrideLabel: order.quote_override_label ?? "",
+    overrideAmount: order.quote_override_amount,
+  });
+  const isPriority =
+    Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
   const statusChipLabel =
     order.queue_position != null
       ? isPriority
         ? `Priority · #${order.queue_position} in queue`
         : `#${order.queue_position} in queue`
       : customerOrderStatusLabel(order.status, order.pending_kind);
-  // Unread chip = emailed messages with read_at null only (not silent edits).
-  const hasUnreadMessages = messagesReady
-    ? messages.some((row) => !row.read_at)
-    : Boolean(order.has_unread_messages);
-  const latestMessageAt = messagesReady
-    ? messages.reduce((best, row) => {
-        if (!row.sent_at) return best;
-        if (!best) return row.sent_at;
-        return new Date(row.sent_at).getTime() > new Date(best).getTime()
-          ? row.sent_at
-          : best;
-      }, null)
-    : order.latest_message_at ?? null;
-  const latestUnreadMessageAt = messagesReady
-    ? messages.reduce((best, row) => {
-        if (row.read_at || !row.sent_at) return best;
-        if (!best) return row.sent_at;
-        return new Date(row.sent_at).getTime() > new Date(best).getTime()
-          ? row.sent_at
-          : best;
-      }, null)
-    : order.latest_unread_message_at ?? null;
-  // New message → unread sent time; otherwise max(order activity, latest message).
+  const hasUnreadMessages = Boolean(order.has_unread_messages);
   const lastUpdatedAt = hasUnreadMessages
-    ? latestUnreadMessageAt ||
-      latestTimestamp(latestActivityAt(order), latestMessageAt)
-    : latestTimestamp(latestActivityAt(order), latestMessageAt);
-  const lastUpdatedLabel = formatUpdateTime(lastUpdatedAt);
-  const isFirstActivityOnly =
-    Boolean(order.created_at) &&
-    lastUpdatedAt &&
-    new Date(lastUpdatedAt).getTime() === new Date(order.created_at).getTime();
-  const activityChipLabel = isFirstActivityOnly ? "Placed" : "Updated";
-  const delivery = orderDetails
-    ? deliveryLabel(orderDetails.delivery_method)
-    : null;
-  const quoteAdjustments = orderDetails
-    ? unpackQuoteAdjustments(orderDetails.quote_bulk_counts, {
-        overrideLabel: orderDetails.quote_override_label ?? "",
-        overrideAmount: orderDetails.quote_override_amount,
-      })
-    : [];
-  const quoteCards = orderDetails
-    ? cardsWithQuoteHv(
-        orderDetails.cards,
-        unpackQuoteCardHv(orderDetails.quote_bulk_counts)
-      )
-    : [];
-
-  const messageThumbByCardId = useMemo(() => {
-    const map = {};
-    for (const card of orderDetails?.cards ?? []) {
-      if (card?.id == null) continue;
-      const images = card.images ?? [];
-      const preferred =
-        images.find((image) => image?.image_type === "customer") ?? images[0];
-      const path = preferred?.storage_path;
-      if (path && thumbUrls[path]) {
-        map[String(card.id)] = thumbUrls[path];
-      }
-    }
-    return map;
-  }, [orderDetails, thumbUrls]);
-
-  const lightboxCard =
-    lightbox && orderDetails
-      ? (orderDetails.cards || []).find((card) => card.id === lightbox.cardId)
-      : null;
-  const lightboxImages = lightboxCard?.images || [];
-  const lightboxImage = lightboxImages[lightbox?.index] ?? null;
-  const lightboxPath = lightboxImage?.storage_path ?? null;
-  const lightboxUrl = lightboxPath
-    ? fullUrls[lightboxPath] || thumbUrls[lightboxPath] || null
-    : null;
-  const lightboxBadge = lightboxImage
-    ? imageBadge(lightboxImage.image_type)
-    : null;
-  const lightboxMedia =
-    lightboxUrl && lightboxImage
-      ? {
-          type: "image",
-          src: lightboxUrl,
-          alt: `${lightboxCard.card_name} - ${lightboxImage.image_type}`,
-          label:
-            lightboxBadge?.label ||
-            lightboxImage.image_type?.replaceAll("_", " ") ||
-            "Photo",
-          sectionTitle: lightboxCard.card_name,
-        }
-      : null;
-
-  function handleOpenUpdates() {
-    const nextOpen = !updatesOpen;
-    setUpdatesOpen(nextOpen);
-    if (!nextOpen) {
-      setHighlightedMessageIds(new Set());
-      setExpandedMessageId(null);
-      return;
-    }
-    // Highlight unread rows only — do not mark read until a message is opened.
-    setHighlightedMessageIds(
-      new Set(messages.filter((row) => !row.read_at).map((row) => row.id))
-    );
-  }
-
-  function handleToggleMessage(messageId) {
-    const opening = expandedMessageId !== messageId;
-    setExpandedMessageId(opening ? messageId : null);
-    if (opening) {
-      void markMessageRead(messageId);
-    }
-  }
-
-  function renderMessageRow(message) {
-    const expanded = expandedMessageId === message.id;
-    const isNew = highlightedMessageIds.has(message.id);
-    const changelog = message.changelog;
-    const hasChangelog =
-      (changelog?.cardGroups?.length ?? 0) > 0 ||
-      (changelog?.orderChanges?.length ?? 0) > 0 ||
-      Boolean(changelog?.quoteSummary);
-    const hasBody = Boolean(messageBodyText(message.body));
-    const hasContent = hasBody || hasChangelog;
-    return (
-      <li key={message.id}>
-        <div
-          className={`rounded-lg border transition ${
-            isNew
-              ? "border-sky/50 bg-sky/20 ring-1 ring-sky/30"
-              : "border-sky/20 bg-cream/50"
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => handleToggleMessage(message.id)}
-            className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left"
-            aria-expanded={expanded}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
-                <span>{message.subject}</span>
-                {isNew ? <UpdateChip /> : null}
-              </span>
-              <time
-                dateTime={message.sent_at}
-                className="mt-0.5 block text-[11px] text-ink/55"
-              >
-                {formatMessageTime(message.sent_at)}
-              </time>
-              {hasContent ? (
-                <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-sky">
-                  {expanded ? "See less" : "See more"}
-                  <span className="inline-flex scale-75">
-                    <ExpandChevron open={expanded} />
-                  </span>
-                </span>
-              ) : null}
-            </span>
-          </button>
-          <ExpandPanel
-            open={expanded && hasContent}
-            innerClassName="space-y-2 border-t border-sky/25 px-3 py-2.5"
-          >
-            {hasBody ? (
-              <p className="whitespace-pre-wrap text-sm text-ink/80">
-                {messageBodyText(message.body)}
-              </p>
-            ) : null}
-            {hasChangelog ? (
-              <ChangelogDiff
-                cardGroups={changelog.cardGroups ?? []}
-                orderChanges={changelog.orderChanges ?? []}
-                quoteSummary={changelog.quoteSummary ?? null}
-                thumbByCardId={messageThumbByCardId}
-              />
-            ) : null}
-          </ExpandPanel>
-        </div>
-      </li>
-    );
-  }
+    ? order.latest_unread_message_at ?? order.latest_message_at
+    : order.latest_message_at ?? latestActivityAt(order);
+  const activityChipLabel = hasUnreadMessages
+    ? "New message"
+    : formatUpdateTime(lastUpdatedAt) || "View order";
+  const editable = isPendingOrderStatus(order.status);
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-xl border transition-colors duration-200 ${
-        isPriority
-          ? isExpanded
-            ? "border-berry/40 bg-berry/[0.08]"
-            : "border-berry/25 bg-berry/[0.05]"
-          : isExpanded
-            ? "border-ink/20 bg-ink/[0.04]"
-            : "border-ink/10 bg-ink/[0.02]"
-      }`}
+    <Link
+      href={`/my-orders/detail/?id=${encodeURIComponent(order.id)}`}
+      className="marketing-panel flex items-center gap-3 p-3 transition hover:border-ink/25 sm:p-4"
     >
-      {isPriority ? (
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-blush via-berry to-berry/40"
-          aria-hidden="true"
-        />
-      ) : null}
-      {/* Header */}
-      <button
-        onClick={onClick}
-        className={`flex w-full items-center gap-4 p-4 text-left transition-colors duration-150 ${
-          isPriority ? "hover:bg-berry/[0.06]" : "hover:bg-ink/[0.04]"
-        }`}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-lg font-bold tabular-nums leading-none text-ink">
-              Order #{order.display_id}
-            </h3>
-            {isPriority ? <CustomerPriorityBadge /> : null}
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                orderStatusBadgeClass(order.status, order.pending_kind)
-              }`}
-            >
-              {statusChipLabel}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-display text-base font-bold text-ink">
+            Order #{order.display_id}
+          </p>
+          <span
+            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${orderStatusBadgeClass(
+              order.status,
+              order.pending_kind
+            )}`}
+          >
+            {statusChipLabel}
+          </span>
+          {isPriority ? <CustomerPriorityBadge /> : null}
+          {editable ? (
+            <span className="inline-flex rounded-full border border-mint/35 bg-mint/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-mint">
+              Editable
             </span>
-            {lastUpdatedLabel ? (
-              <span
-                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                  hasUnreadMessages
-                    ? "bg-mint text-night"
-                    : "bg-night/30 text-ink/70"
-                }`}
-              >
-                {hasUnreadMessages ? (
-                  <span className="h-1.5 w-1.5 rounded-full bg-night/70" />
-                ) : null}
-                {hasUnreadMessages ? "New message" : activityChipLabel}
-                <span
-                  className={
-                    hasUnreadMessages
-                      ? "font-semibold text-night/70"
-                      : "font-semibold"
-                  }
-                >
-                  · {lastUpdatedLabel}
-                </span>
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink/55">
-            <span className="rounded-full bg-night/30 px-2 py-0.5">
-              {formatDate(order.created_at)}
-            </span>
-            <span className="rounded-full bg-night/30 px-2 py-0.5">
-              {cardCountText}
-            </span>
-            {isPriority ? (
-              <span className="rounded-full border border-berry/20 bg-berry/10 px-2 py-0.5 font-semibold text-blush">
-                Priority service
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1 rounded-xl border border-ink/10 bg-night/40 p-1">
-          {previewPaths.length === 0 ? (
-            <div className="aspect-[3/4] w-9 rounded-md bg-night/50" />
-          ) : (
-            (() => {
-              const path = previewPaths[0];
-              const url = previewUrls[path];
-              return (
-                <div
-                  className={`relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50 ${
-                    isPriority ? "ring-1 ring-berry/50" : ""
-                  }`}
-                >
-                  {url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={url}
-                      alt={`Order #${order.display_id} preview`}
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover"
-                      onError={() => {
-                        resolveFullAfterBadThumb(path).then((full) => {
-                          if (full) {
-                            setPreviewUrls((prev) => ({
-                              ...prev,
-                              [path]: full,
-                            }));
-                          }
-                        });
-                      }}
-                    />
-                  ) : (
-                    <div className="h-full w-full animate-pulse bg-ink/5" />
-                  )}
-                </div>
-              );
-            })()
-          )}
-        </div>
-
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-night/30 text-ink/60">
-          <ExpandChevron open={isExpanded} />
-        </span>
-      </button>
-
-      <ExpandPanel
-        open={isExpanded}
-        innerClassName="border-t border-ink/10 p-4"
-      >
-          {showMessagesPanel || orderDetails?.general_notes ? (
-            <div className="mb-5 space-y-3">
-              {showMessagesPanel ? (
-                <div className="rounded-xl border border-sky/35 bg-sky/10">
-                  <button
-                    type="button"
-                    onClick={handleOpenUpdates}
-                    disabled={messages.length === 0}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left disabled:cursor-default"
-                  >
-                    <span>
-                      <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-sky">
-                        <span>Messages</span>
-                        {hasUnreadMessages ? <UpdateChip /> : null}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-ink/55">
-                        {messages.length > 0
-                          ? `${messages.length} ${
-                              messages.length === 1 ? "message" : "messages"
-                            }`
-                          : "Loading…"}
-                      </span>
-                    </span>
-                    <ExpandChevron open={updatesOpen && messages.length > 0} />
-                  </button>
-                  <ExpandPanel
-                    open={updatesOpen && messages.length > 0}
-                    innerClassName="border-t border-sky/25 px-3 py-3"
-                  >
-                    <ul className="space-y-2">
-                      {messages.slice(0, 3).map(renderMessageRow)}
-                    </ul>
-                    {messages.length > 3 ? (
-                      <>
-                        <ExpandPanel
-                          open={messagesListExpanded}
-                          innerClassName="mt-2"
-                        >
-                          <ul className="space-y-2">
-                            {messages.slice(3).map(renderMessageRow)}
-                          </ul>
-                        </ExpandPanel>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMessagesListExpanded((open) => !open)
-                          }
-                          className="mt-2 w-full rounded-lg px-2 py-1.5 text-center text-xs font-semibold text-sky transition hover:bg-sky/15"
-                        >
-                          {messagesListExpanded
-                            ? "Show less"
-                            : `Show more (${messages.length - 3} older)`}
-                        </button>
-                      </>
-                    ) : null}
-                  </ExpandPanel>
-                </div>
-              ) : null}
-
-              {orderDetails?.general_notes ? (
-                <div className="rounded-xl border border-mint/30 bg-mint/10 p-3">
-                  <p className="flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-mint">
-                    <span>Notes from PokePatch</span>
-                  </p>
-                  <p className="mt-1 text-sm text-ink/85">
-                    {orderDetails.general_notes}
-                  </p>
-                </div>
-              ) : null}
-            </div>
           ) : null}
+          {hasUnreadMessages ? (
+            <span className="inline-flex rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-night">
+              New
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-1 text-xs text-ink/55">
+          {formatDate(order.created_at)} · {cardCountText}
+          {activityChipLabel ? ` · ${activityChipLabel}` : ""}
+        </p>
+      </div>
 
-          {loading && (
-            <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink/60">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-blush" />
-              Loading order details…
-            </div>
-          )}
+      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/40">
+        {displayPreviewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={displayPreviewUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="h-full w-full animate-pulse bg-ink/5" />
+        )}
+      </div>
 
-          {error && (
-            <p className="rounded-xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
-              {error}
-            </p>
-          )}
-
-          {orderDetails && (
-            <div className="space-y-5">
-              {isPriority ? (
-                <CustomerPriorityBanner queuePosition={order.queue_position} />
-              ) : null}
-
-              {/* Summary tiles */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <p className={LABEL_CLS}>Delivery</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">
-                    {delivery.text}
-                  </p>
-                  <p className="text-xs text-ink/55">
-                    {delivery.sub}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <p className={LABEL_CLS}>Preferred contact</p>
-                  <p className="mt-1 text-sm font-semibold text-ink">
-                    {orderDetails.preferred_contact_type
-                      ? `${contactLabel(orderDetails.preferred_contact_type)} · ${
-                          orderDetails.preferred_contact_value
-                        }`
-                      : "—"}
-                  </p>
-                  {orderDetails.contacts?.length > 0 && (
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                      {orderDetails.contacts.map((contact) => (
-                        <span
-                          key={contact.id}
-                          className="inline-flex items-center gap-1 rounded-full bg-night/40 px-2 py-0.5 text-xs text-ink/70"
-                        >
-                          {contactLabel(contact.contact_type)} · {contact.value}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Google Drive folder from the team */}
-              {orderDetails.photos_drive_url && (
-                <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-                  <SectionLabel>
-                    Photo folder
-                  </SectionLabel>
-                  <a
-                    href={orderDetails.photos_drive_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-ink transition hover:underline"
-                  >
-                    Open Google Drive
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    >
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                      <polyline points="15 3 21 3 21 9" />
-                      <line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                  </a>
-                </div>
-              )}
-
-              {/* Hide receipt on pending quote — prefills must not show prices yet. */}
-              {!(
-                isPendingOrderStatus(orderDetails.status ?? order.status) &&
-                normalizePendingKind(
-                  orderDetails.pending_kind ?? order.pending_kind
-                ) === DEFAULT_PENDING_KIND
-              ) &&
-              hasQuoteData({
-                items: orderDetails.quote_items,
-                cards: quoteCards,
-                adjustments: quoteAdjustments,
-                isPriority: Boolean(orderDetails.is_priority),
-              }) ? (
-                <QuoteReceipt
-                  title="Your quote"
-                  items={orderDetails.quote_items}
-                  cards={quoteCards}
-                  adjustments={quoteAdjustments}
-                  isPriority={Boolean(orderDetails.is_priority)}
-                  cardCount={billableQuoteCards(orderDetails.cards).length}
-                  className={
-                    isPriority
-                      ? "border-berry/25 bg-berry/[0.07]"
-                      : "border-peach/30 bg-peach/10"
-                  }
-                  collapsible
-                  defaultOpen={false}
-                />
-              ) : null}
-
-              {/* Cards */}
-              <div>
-                <SectionLabel
-                  className="mb-2"
-                >
-                  {`Cards · ${orderDetails.cards.length}`}
-                </SectionLabel>
-                <div className="space-y-2">
-                  {orderDetails.cards.map((card) => {
-                    const isCardOpen = expandedCardId === card.id;
-                    const cardThumbUrl =
-                      thumbUrls[card.images?.[0]?.storage_path];
-                    const photoCount = card.images?.length || 0;
-                    const damageTags = labeledDamageTags(card.damage_tags);
-                    return (
-                      <div
-                        key={card.id}
-                        className={`overflow-hidden rounded-xl border transition-colors duration-200 ${
-                          isCardOpen
-                            ? "border-blush/30 bg-night/35"
-                            : "border-ink/10 bg-night/20"
-                        }`}
-                      >
-                        <button
-                          onClick={() =>
-                            setExpandedCardId((prev) =>
-                              prev === card.id ? null : card.id
-                            )
-                          }
-                          className="flex w-full items-center gap-3 p-2.5 text-left transition-colors duration-150 hover:bg-ink/[0.04]"
-                        >
-                          <div className="relative aspect-[3/4] w-12 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/50">
-                            {cardThumbUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={cardThumbUrl}
-                                alt={`${card.card_name} preview`}
-                                className="h-full w-full object-cover"
-                                onError={() => {
-                                  const path = card.images?.[0]?.storage_path;
-                                  if (path) resolveFullAfterBadThumb(path);
-                                }}
-                              />
-                            ) : (
-                              <div className="h-full w-full animate-pulse bg-ink/5" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <h5 className="truncate text-sm font-bold text-ink">
-                                {card.card_name}
-                              </h5>
-                              <span
-                                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
-                                  card.status
-                                )}`}
-                              >
-                                {customerCardStatusLabel(card.status)}
-                              </span>
-                            </div>
-                            {card.set_name && (
-                              <p className="truncate text-xs text-ink/60">
-                                {card.set_name}
-                              </p>
-                            )}
-                            {damageTags.length > 0 ? (
-                              <p className="mt-0.5 truncate text-[11px] text-ink/55">
-                                {damageTags.map((tag) => tag.label).join(" · ")}
-                              </p>
-                            ) : null}
-                            <CardPokePatchNote
-                              note={card.admin_note}
-                              variant="collapsed"
-                            />
-                            <p className="mt-0.5 text-[11px] text-ink/60">
-                              {photoCount} {photoCount === 1 ? "photo" : "photos"}
-                            </p>
-                          </div>
-                          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-night/40 text-ink/60">
-                            <ExpandChevron open={isCardOpen} />
-                          </span>
-                        </button>
-
-                        <ExpandPanel open={isCardOpen}>
-                            <CardPokePatchNote note={card.admin_note} />
-                            <div className="flex flex-col gap-4 border-t border-ink/10 p-3 sm:flex-row">
-                              <div className="min-w-0 flex-1 space-y-3">
-                                <div>
-                                  <p className={LABEL_CLS}>Damage</p>
-                                  {damageTags.length > 0 ? (
-                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                      {damageTags.map((tag) => (
-                                        <span
-                                          key={tag.id}
-                                          className="rounded-md border border-ink/15 bg-ink/[0.04] px-2 py-1 text-xs font-semibold text-ink/80"
-                                        >
-                                          {tag.label}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="mt-1 text-sm italic text-ink/60">
-                                      No damage tags selected.
-                                    </p>
-                                  )}
-                                </div>
-                                <div>
-                                  <p className={LABEL_CLS}>
-                                    {card.admin_note
-                                      ? "Your description"
-                                      : "Description"}
-                                  </p>
-                                  {card.description ? (
-                                    <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-ink/80">
-                                      {card.description}
-                                    </p>
-                                  ) : (
-                                    <p className="mt-1 text-sm italic text-ink/60">
-                                      No description provided.
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="sm:w-1/2 sm:shrink-0">
-                                <p className={`${LABEL_CLS} mb-2`}>
-                                  Photos · {photoCount}
-                                </p>
-                                <div className="grid grid-cols-3 gap-2">
-                                  {(card.images || []).map(
-                                    (image, imageIndex) => (
-                                      <Photo
-                                        key={image.id}
-                                        url={thumbUrls[image.storage_path]}
-                                        alt={`${card.card_name} - ${image.image_type}`}
-                                        badge={imageBadge(image.image_type)}
-                                        onOpen={
-                                          thumbUrls[image.storage_path]
-                                            ? () =>
-                                                setLightbox({
-                                                  cardId: card.id,
-                                                  index: imageIndex,
-                                                })
-                                            : undefined
-                                        }
-                                        onThumbError={() =>
-                                          resolveFullAfterBadThumb(
-                                            image.storage_path
-                                          )
-                                        }
-                                      />
-                                    )
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                        </ExpandPanel>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-      </ExpandPanel>
-      {lightboxMedia ? (
-        <MediaLightbox
-          media={lightboxMedia}
-          onClose={() => setLightbox(null)}
-          onPrevious={() =>
-            setLightbox((current) =>
-              !current || current.index <= 0
-                ? current
-                : { ...current, index: current.index - 1 }
-            )
-          }
-          onNext={() =>
-            setLightbox((current) => {
-              if (!current) return current;
-              const card = (orderDetails?.cards || []).find(
-                (row) => row.id === current.cardId
-              );
-              const count = card?.images?.length ?? 0;
-              return current.index >= count - 1
-                ? current
-                : { ...current, index: current.index + 1 };
-            })
-          }
-          hasPrevious={Boolean(lightbox && lightbox.index > 0)}
-          hasNext={Boolean(
-            lightbox && lightbox.index < lightboxImages.length - 1
-          )}
-          position={(lightbox?.index ?? 0) + 1}
-          total={lightboxImages.length}
-        />
-      ) : null}
-    </div>
+      <span className="shrink-0 text-sm font-semibold text-ink/50">View →</span>
+    </Link>
   );
 }

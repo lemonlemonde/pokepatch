@@ -24,6 +24,7 @@ import {
   CustomerPanel,
   OrderPanel,
 } from "@/components/admin/orderEditor/OrderEditorSidebar";
+import AdminOrderMessagesPanel from "@/components/admin/orderEditor/AdminOrderMessagesPanel";
 import CardDetailSection from "@/components/admin/orderEditor/sections/CardDetailSection";
 import QuoteSection, {
   buildQuotePreview,
@@ -38,6 +39,7 @@ function scrollToCard(cardId) {
 }
 
 function OrderEditorContent({
+  orderId,
   displayId,
   onBack,
   backLabel,
@@ -281,6 +283,7 @@ function OrderEditorContent({
         <aside className="space-y-4">
           <CustomerPanel />
           <OrderPanel />
+          <AdminOrderMessagesPanel orderId={orderId} />
         </aside>
       </div>
 
@@ -335,6 +338,7 @@ export default function OrderEditorShell(props) {
       onDirtyChange={props.onDirtyChange}
     >
       <OrderEditorContent
+        orderId={props.orderId}
         displayId={props.displayId}
         onBack={props.onBack}
         backLabel={props.backLabel ?? "Back"}
