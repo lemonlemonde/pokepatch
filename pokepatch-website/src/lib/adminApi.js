@@ -297,6 +297,26 @@ export async function adminGetOrder(orderId) {
   return stabilizeOrderDetail(payload.order);
 }
 
+/** Create a guest order shell (no signup / prior orders required). */
+export async function adminCreateOrder({
+  first_name,
+  last_name,
+  customer_email,
+  delivery_method,
+} = {}) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "create",
+      first_name,
+      last_name,
+      customer_email,
+      delivery_method,
+    },
+  });
+  return stabilizeOrderDetail(payload.full ?? payload.order);
+}
+
 export async function adminSaveOrder(
   orderId,
   { order, contacts, cards, quote_items }

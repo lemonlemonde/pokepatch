@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import {
+  adminCreateOrder,
   adminDeleteOrders,
   adminGetOrder,
   adminListOrders,
@@ -25,6 +26,7 @@ import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import CardTimers from "@/components/admin/CardTimers";
+import CreateOrderDialog from "@/components/admin/CreateOrderDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
@@ -1422,6 +1424,7 @@ function KanbanBoard({
   onSetPendingKind,
   onRequestDelete,
   onViewAllOrders,
+  onCreateOrder,
   suppressInspect = false,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
@@ -1744,13 +1747,22 @@ function KanbanBoard({
           completedTotal={revenue.completed}
           pipelineTotal={revenue.pipeline}
         />
-        <button
-          type="button"
-          onClick={onViewAllOrders}
-          className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
-        >
-          View all orders
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onCreateOrder}
+            className="rounded-xl bg-mint px-3 py-1.5 text-sm font-semibold text-night transition hover:brightness-105"
+          >
+            New order
+          </button>
+          <button
+            type="button"
+            onClick={onViewAllOrders}
+            className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
+          >
+            View all orders
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
@@ -1867,6 +1879,8 @@ export default function AdminApp() {
   const [movePrompt, setMovePrompt] = useState(null);
   const [moveSaving, setMoveSaving] = useState(false);
   const [noteOnlySending, setNoteOnlySending] = useState(false);
+  const [createOrderOpen, setCreateOrderOpen] = useState(false);
+  const [creatingOrder, setCreatingOrder] = useState(false);
 
   const unsavedOrderEdit = editorDirty && tab === "orders-edit";
   const { requestLeave, dialog: unsavedChangesDialog } =
@@ -2290,6 +2304,23 @@ export default function AdminApp() {
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
+  async function handleCreateOrder(fields) {
+    setCreatingOrder(true);
+    setListError("");
+    try {
+      const created = await adminCreateOrder(fields);
+      const summary = orderToKanbanSummary(created);
+      setOrders((current) => [
+        summary,
+        ...current.filter((row) => row.id !== summary.id),
+      ]);
+      setCreateOrderOpen(false);
+      openOrder(created.id);
+    } finally {
+      setCreatingOrder(false);
+    }
+  }
+
   async function leaveEditor({ skipConfirm = false } = {}) {
     if (!skipConfirm && editorDirty && !(await requestLeave())) return;
     setEditorDismissed(true);
@@ -2577,7 +2608,19 @@ export default function AdminApp() {
                 onSetPendingKind={handleSetPendingKind}
                 onRequestDelete={handleRequestDelete}
                 onViewAllOrders={() => router.push("/admin/orders/all/")}
+                onCreateOrder={() => {
+                  setListError("");
+                  setCreateOrderOpen(true);
+                }}
                 suppressInspect={Boolean(movePrompt || deleteTargets?.length)}
+              />
+              <CreateOrderDialog
+                open={createOrderOpen}
+                creating={creatingOrder}
+                onCancel={() => {
+                  if (!creatingOrder) setCreateOrderOpen(false);
+                }}
+                onCreate={handleCreateOrder}
               />
               <DeleteOrderDialog
                 orders={deleteTargets}
