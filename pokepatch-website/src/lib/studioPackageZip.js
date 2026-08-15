@@ -1,10 +1,5 @@
 import JSZip from "jszip";
-import {
-  imageBaseName,
-  renderStudioSlotBlob,
-  slotImageFileName,
-  slugify,
-} from "@/lib/studioSlotImage";
+import { imageBaseName, slugify } from "@/lib/studioSlotImage";
 import { downloadBlob } from "@/lib/downloadFile";
 
 const DEFAULT_PACKAGE_ZIP_NAME = "pokepatch-package.zip";
@@ -53,13 +48,11 @@ export function packageZipName({ card = "", set = "" } = {}) {
 
 /**
  * Builds and downloads a zip containing:
- * - gallery/: every slot image (crop + annotations baked in), deduped by item id
- * - insta/: every generated pair output
+ * - insta/: every generated (finalized) pair output
  * - insta/text/: one alt-text .txt per pair, caption.txt, and cardname/cardset
  *   .txt when those fields are filled
  *
  * @param outputs [{ key, label, url, filename }] — generated pair images
- * @param outputSources [[{ item, previewUrl, label, exportName }]] — parallel to outputs, slot inputs per pair
  * @param exporters Map<key, () => Promise<{blob, filename}>> — optional annotated-output exporters
  * @param altTextByKey { [outputKey]: string }
  * @param caption string
@@ -67,33 +60,14 @@ export function packageZipName({ card = "", set = "" } = {}) {
  */
 export async function downloadStudioPackageZip({
   outputs,
-  outputSources,
   exporters = new Map(),
   altTextByKey = {},
   caption = "",
   cardMeta = null,
 }) {
   const zip = new JSZip();
-  const gallery = zip.folder("gallery");
   const insta = zip.folder("insta");
   const instaText = insta.folder("text");
-
-  const seenSlotIds = new Set();
-  const galleryNames = new Set();
-  for (const sources of outputSources ?? []) {
-    for (const source of sources ?? []) {
-      const item = source?.item;
-      if (!item?.file || !source.previewUrl || seenSlotIds.has(item.id)) {
-        continue;
-      }
-      seenSlotIds.add(item.id);
-      const blob = await renderStudioSlotBlob(item, source.previewUrl);
-      gallery.file(
-        uniqueName(slotImageFileName(source, blob), galleryNames),
-        blob,
-      );
-    }
-  }
 
   const instaNames = new Set();
   for (const output of outputs ?? []) {
