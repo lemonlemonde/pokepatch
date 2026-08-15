@@ -72,7 +72,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-     "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+     "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "timers",
@@ -112,7 +112,7 @@ const ORDERS_ALL_META = {
   id: "orders-all",
   title: "All orders",
   subtitle:
-   "Spreadsheet view of every order. Click a row to open it.",
+   "Spreadsheet view of every order. Search cards by name or set and filter by status. Click a row to open it.",
 };
 
 const ORDERS_EDIT_META = {
@@ -962,7 +962,6 @@ function truncateText(value, max = 140) {
   return `${text.slice(0, max - 1)}…`;
 }
 
-const DEFAULT_SEARCH_STATUSES = ACTIVE_ORDER_STATUSES.map((status) => status.id);
 const ALL_SEARCH_STATUSES = ORDER_STATUSES.map((status) => status.id);
 
 function orderMatchesLocalQuery(order, query) {
@@ -974,8 +973,16 @@ function orderMatchesLocalQuery(order, query) {
   return false;
 }
 
-function filterOrdersForAllList(orders, { query, searchOrderIds }) {
+function filterOrdersForAllList(orders, { query, statuses, searchOrderIds }) {
+  if (!statuses?.length) return [];
+
   let list = orders ?? [];
+
+  if (statuses.length < ORDER_STATUSES.length) {
+    list = list.filter((order) =>
+      statuses.includes(normalizeOrderStatus(order.status))
+    );
+  }
 
   const q = query.trim();
   if (q.length >= 2) {
@@ -988,12 +995,9 @@ function filterOrdersForAllList(orders, { query, searchOrderIds }) {
   return list;
 }
 
-function OrderCardSearch({
-  onOpenOrder,
-  defaultStatuses = DEFAULT_SEARCH_STATUSES,
-  onFilterChange,
-}) {
+function OrderCardSearch({ onOpenOrder, onFilterChange }) {
   const [query, setQuery] = useState("");
+  const [statuses, setStatuses] = useState(ALL_SEARCH_STATUSES);
   const [results, setResults] = useState([]);
   const [truncated, setTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1001,7 +1005,6 @@ function OrderCardSearch({
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const requestIdRef = useRef(0);
-  const statuses = defaultStatuses;
 
   useEffect(() => {
     const q = query.trim();
@@ -1047,13 +1050,14 @@ function OrderCardSearch({
     const q = query.trim();
     onFilterChange({
       query,
+      statuses,
       searchOrderIds:
         q.length >= 2
           ? [...new Set(results.map((hit) => hit.order_id))]
           : null,
       searching: q.length >= 2 && searching,
     });
-  }, [query, results, searching, onFilterChange]);
+  }, [query, statuses, results, searching, onFilterChange]);
 
   useEffect(() => {
     function onPointerDown(event) {
@@ -1072,35 +1076,92 @@ function OrderCardSearch({
     };
   }, []);
 
-  const showPanel = open && query.trim().length >= 2 && statuses.length > 0;
+  function toggleStatus(statusId) {
+    setStatuses((current) => {
+      if (current.includes(statusId)) {
+        return current.filter((id) => id !== statusId);
+      }
+      return [...current, statusId];
+    });
+  }
+
+  const allStatusesSelected = statuses.length === ORDER_STATUSES.length;
+  const showPanel =
+    open && query.trim().length >= 2 && statuses.length > 0;
 
   return (
     <div ref={rootRef} className="relative z-20">
       <div className="rounded-2xl border border-ink/10 bg-night/30 p-3 sm:p-4">
-        <label className="relative block w-full">
-          <span className="sr-only">Search cards by name or set</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setOpen(true);
-            }}
-            onFocus={() => {
-              if (query.trim().length >= 2 && statuses.length > 0) {
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <label className="relative min-w-[12rem] flex-1 basis-[14rem]">
+            <span className="sr-only">Search cards by name or set</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
                 setOpen(true);
+              }}
+              onFocus={() => {
+                if (query.trim().length >= 2 && statuses.length > 0) {
+                  setOpen(true);
+                }
+              }}
+              placeholder="Search card name, set, or description…"
+              className="w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 pr-10 text-sm text-ink outline-none transition focus:border-ink/40"
+              autoComplete="off"
+            />
+            {searching && (
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-ink/45">
+                …
+              </span>
+            )}
+          </label>
+
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:ml-auto">
+            <p className="shrink-0 text-xs font-semibold text-ink/50">
+              Filter by column
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setStatuses(
+                  allStatusesSelected
+                    ? []
+                    : ORDER_STATUSES.map((status) => status.id)
+                )
               }
-            }}
-            placeholder="Search card name, set, or description…"
-            className="w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 pr-10 text-sm text-ink outline-none transition focus:border-ink/40"
-            autoComplete="off"
-          />
-          {searching && (
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-ink/45">
-              …
-            </span>
-          )}
-        </label>
+              className="relative shrink-0 rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
+            >
+              <span className="invisible block" aria-hidden="true">
+                Deselect all columns
+              </span>
+              <span className="absolute inset-0 flex items-center justify-center px-3">
+                {allStatusesSelected
+                  ? "Deselect all columns"
+                  : "Select all columns"}
+              </span>
+            </button>
+            {ORDER_STATUSES.map((status) => {
+              const active = statuses.includes(status.id);
+              return (
+                <button
+                  key={status.id}
+                  type="button"
+                  onClick={() => toggleStatus(status.id)}
+                  aria-pressed={active}
+                  className={`shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
+                    active
+                      ? orderStatusBadgeClass(status.id)
+                      : "border border-ink/15 bg-ink/[0.03] text-ink/45 hover:border-ink/30 hover:text-ink/70"
+                  }`}
+                >
+                  {status.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
       {showPanel && (
@@ -1110,7 +1171,9 @@ function OrderCardSearch({
           ) : searching && results.length === 0 ? (
             <p className="px-4 py-3 text-sm text-ink/50">Searching…</p>
           ) : results.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-ink/50">No cards matched.</p>
+            <p className="px-4 py-3 text-sm text-ink/50">
+              No cards matched in the selected columns.
+            </p>
           ) : (
             <ul className="divide-y divide-ink/10">
               {results.map((hit) => {
@@ -1195,7 +1258,8 @@ function OrderCardSearch({
           )}
           {truncated && !error && (
             <p className="border-t border-ink/10 px-4 py-2 text-xs text-ink/45">
-              Showing the first matches — refine the query for more precision.
+              Showing the first matches — refine the query or column scope for
+              more precision.
             </p>
           )}
         </div>
@@ -1295,6 +1359,7 @@ function OrdersAllList({ orders, onOpenOrder, emptyMessage = "No orders yet." })
 function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
   const [listFilter, setListFilter] = useState({
     query: "",
+    statuses: ALL_SEARCH_STATUSES,
     searchOrderIds: null,
     searching: false,
   });
@@ -1304,7 +1369,9 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
     [orders, listFilter]
   );
 
-  const isFiltering = listFilter.query.trim().length >= 2;
+  const isFiltering =
+    listFilter.statuses.length < ORDER_STATUSES.length ||
+    listFilter.query.trim().length >= 2;
 
   return (
     <div className="space-y-4">
@@ -1323,7 +1390,6 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
         </button>
       </div>
       <OrderCardSearch
-        defaultStatuses={ALL_SEARCH_STATUSES}
         onFilterChange={setListFilter}
         onOpenOrder={(orderId, options) =>
           onOpenOrder(orderId, { from: "all", ...options })
@@ -2526,9 +2592,6 @@ export default function AdminApp() {
             />
           ) : (
             <>
-              <div className="mb-4">
-                <OrderCardSearch onOpenOrder={openOrder} />
-              </div>
               <KanbanBoard
                 orders={orders}
                 onOpenOrder={openOrder}
