@@ -82,7 +82,7 @@ async function stitchComparison(
   leftLabel,
   rightLabel,
   overlay = null,
-  format = "square",
+  format = "reel",
 ) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
@@ -112,7 +112,7 @@ async function stitchComparison(
 export async function stitchBeforeAfterPairRows(
   files,
   overlayOptions = null,
-  format = "square",
+  format = "reel",
 ) {
   const overlay = await resolveOverlay(overlayOptions);
   const complete = [];

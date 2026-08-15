@@ -360,16 +360,23 @@ function exportSizeHint(format) {
 
 const PHOTO_OUTPUT_FORMATS = [
   {
-    id: "square",
-    label: "Square feed",
-    sizeHint: exportSizeHint("square"),
-  },
-  {
     id: "reel",
     label: "Reel 9:16",
     sizeHint: exportSizeHint("reel"),
   },
+  {
+    id: "carousel",
+    label: "Carousel 4:5",
+    sizeHint: exportSizeHint("carousel"),
+  },
 ];
+
+/** Map older draft format ids onto the current set. */
+function normalizeOutputFormat(format) {
+  if (format === "carousel" || format === "reel") return format;
+  if (format === "square") return "carousel";
+  return "reel";
+}
 
 function ClearAllButton({ onClick }) {
   return (
@@ -470,7 +477,7 @@ function OutputGrid({
  */
 async function canvasOutputsFromPairs(
   pairs,
-  sizeHint = exportSizeHint("square"),
+  sizeHint = exportSizeHint("reel"),
 ) {
   return Promise.all(
     pairs.map(async ({ key, label, canvas }) => {
@@ -512,10 +519,10 @@ function validatePhotoPairFiles(files) {
   return null;
 }
 
-async function generatePhotoOutputs(files, overlayOptions = null, format = "square") {
+async function generatePhotoOutputs(files, overlayOptions = null, format = "reel") {
   const sizeHint =
     PHOTO_OUTPUT_FORMATS.find((entry) => entry.id === format)?.sizeHint ??
-    exportSizeHint("square");
+    exportSizeHint("reel");
   const pairs = await stitchBeforeAfterPairRows(files, overlayOptions, format);
   return canvasOutputsFromPairs(pairs, sizeHint);
 }
@@ -924,7 +931,7 @@ function BeforeAfterPairPhotoFormatter({
 }
 
 export default function StudioTool() {
-  const [outputFormat, setOutputFormat] = useState("square");
+  const [outputFormat, setOutputFormat] = useState("reel");
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
 
   const draftPayload = useMemo(
@@ -938,7 +945,9 @@ export default function StudioTool() {
   );
   useEffect(() => {
     if (!restored) return;
-    if (restored.outputFormat) setOutputFormat(restored.outputFormat);
+    if (restored.outputFormat) {
+      setOutputFormat(normalizeOutputFormat(restored.outputFormat));
+    }
     if (restored.cardMeta) {
       const frontFile = restored.cardMeta.frontFile ?? null;
       setCardMeta({

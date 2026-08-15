@@ -1,9 +1,13 @@
 import logoSrc from "@/app/pokepatch_icon.png";
 
-/** Square feed canvas (1×2 default). */
+/** Shared canvas width for feed + Reels exports (logical px). */
 export const INSTAGRAM_WIDTH = 1080;
+/** Legacy 1:1 height — slot math and older callers still reference this. */
 export const INSTAGRAM_HEIGHT = 1080;
-/** 9:16 Reels canvas (1×2 optional). */
+/** 4:5 carousel / feed portrait canvas. */
+export const CAROUSEL_WIDTH = 1080;
+export const CAROUSEL_HEIGHT = 1350;
+/** 9:16 Reels canvas. */
 export const REEL_WIDTH = 1080;
 export const REEL_HEIGHT = 1920;
 
@@ -15,21 +19,21 @@ export const REEL_HEIGHT = 1920;
  */
 export const STUDIO_EXPORT_SCALE = 6;
 
-/** @typedef {'square' | 'reel'} StudioOutputFormat */
+/** @typedef {'carousel' | 'reel'} StudioOutputFormat */
 
-/** Canvas size for a 1×2 output format. Defaults to square. */
-export function getOutputCanvasSize(format = "square") {
-  if (format === "reel") {
-    return { width: REEL_WIDTH, height: REEL_HEIGHT };
+/** Canvas size for a 1×2 output format. Defaults to Reels 9:16. */
+export function getOutputCanvasSize(format = "reel") {
+  if (format === "carousel" || format === "square") {
+    return { width: CAROUSEL_WIDTH, height: CAROUSEL_HEIGHT };
   }
-  return { width: INSTAGRAM_WIDTH, height: INSTAGRAM_HEIGHT };
+  return { width: REEL_WIDTH, height: REEL_HEIGHT };
 }
 
 /**
  * Logical (pre-supersample) canvas size, stamped on by the stitchers. Layout
  * code must read these instead of the canvas's own width/height — the raw
  * backing store is `STUDIO_EXPORT_SCALE` times larger, which would make
- * `isTallCanvas` mistake a square post for a Reel.
+ * `isTallCanvas` mistake a carousel post for a Reel.
  */
 export function stampLogicalSize(canvas, width, height) {
   canvas.__logicalWidth = width;
@@ -72,7 +76,7 @@ export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
 export const CARD_INFO_FONT_SIZE = 26;
 export const CARD_INFO_THUMB_SIZE = 112;
-/** 9:16 card chip thumb: 3× square, then −10%. */
+/** 9:16 card chip thumb: 3× carousel thumb, then −10%. */
 export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
   CARD_INFO_THUMB_SIZE * 3 * 0.9,
 );
@@ -110,8 +114,9 @@ const BRANDING_MAX_FRAME = 72;
 const BRANDING_INNER_PAD = 14;
 const BRANDING_FONT_SIZE = 24;
 
+/** Reel-only layout (9:16). Carousel 4:5 stays on the feed layout path. */
 function isTallCanvas(height) {
-  return height > INSTAGRAM_HEIGHT;
+  return height >= REEL_HEIGHT;
 }
 
 /** Side-by-side column geometry for 1×2 frames. */
@@ -171,7 +176,7 @@ function reelCardInfoBottomReserve() {
   );
 }
 
-/** Equal gaps: chip → caption → images (square / feed layout). */
+/** Equal gaps: chip → caption → images (carousel / feed layout). */
 function captionStackBelowChip() {
   const chipBottom = cardInfoChipBottom();
   return {
@@ -700,7 +705,7 @@ function drawLabeledLine(ctx, label, value, x, y, fontSize) {
 }
 
 /**
- * Card-info chip: top-left on square; larger + centered under content on 9:16.
+ * Card-info chip: top-left on carousel; larger + centered under content on 9:16.
  * @param {{ frontImg: CanvasImageSource, card: string, set: string }} cardInfo
  * @param {{ blockX?: number, blockY?: number, thumbBox?: number } | null} layout
  */
@@ -869,7 +874,7 @@ export function drawComparisonFrame(
     tall && hasCardInfo ? reelCardInfoBottomReserve() : EDGE_PADDING;
 
   // Tall: always reserve caption band + use the same imagesTop (caption optional).
-  // Square + caption: pin under the card-info chip (tight feed layout).
+  // Carousel + caption: pin under the card-info chip (tight feed layout).
   const pinnedStack = hasCaption && !tall ? captionStackBelowChip() : null;
   const contentTop = pinnedStack?.imagesTop ?? EDGE_PADDING;
   const captionReserve =
