@@ -76,7 +76,7 @@ export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
 export const CARD_INFO_FONT_SIZE = 26;
 export const CARD_INFO_THUMB_SIZE = 112;
-/** 9:16 card chip thumb: 3× carousel thumb, then −10%. */
+/** 9:16 card chip thumb: 3× feed thumb, then −10%. */
 export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
   CARD_INFO_THUMB_SIZE * 3 * 0.9,
 );
@@ -921,8 +921,11 @@ export function drawComparisonFrame(
   const pinnedStack =
     hasCaption && !reel && !cardBelow ? captionStackBelowChip() : null;
   const contentTop = pinnedStack?.imagesTop ?? EDGE_PADDING;
-  const captionReserve =
-    reel || hasCaption ? type.captionFont + type.captionGap : 0;
+  const captionReserve = reel
+    ? type.captionFont + type.captionGap
+    : hasCaption && !cardBelow
+      ? type.captionFont + type.captionGap
+      : 0;
   const maxImageHeight =
     canvasHeight -
     (reel || cardBelow ? EDGE_PADDING : contentTop) -

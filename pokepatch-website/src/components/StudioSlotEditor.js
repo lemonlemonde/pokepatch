@@ -491,7 +491,7 @@ function EditModeToggle({ step, onStepChange }) {
             aria-pressed={active}
             onClick={() => onStepChange(option.id)}
             className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
-              active ? "bg-berry text-night " : "text-ink/70 hover:text-ink"
+              active ? "bg-berry text-night" : "text-ink/70 hover:text-ink"
             }`}
           >
             {option.label}
