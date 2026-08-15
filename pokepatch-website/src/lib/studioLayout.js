@@ -33,7 +33,7 @@ export function getOutputCanvasSize(format = "reel") {
  * Logical (pre-supersample) canvas size, stamped on by the stitchers. Layout
  * code must read these instead of the canvas's own width/height — the raw
  * backing store is `STUDIO_EXPORT_SCALE` times larger, which would make
- * `isTallCanvas` mistake a carousel post for a Reel.
+ * `isTallCanvas` mistake a 1:1 post for a tall portrait layout.
  */
 export function stampLogicalSize(canvas, width, height) {
   canvas.__logicalWidth = width;
@@ -114,9 +114,9 @@ const BRANDING_MAX_FRAME = 72;
 const BRANDING_INNER_PAD = 14;
 const BRANDING_FONT_SIZE = 24;
 
-/** Reel-only layout (9:16). Carousel 4:5 stays on the feed layout path. */
+/** Portrait composition (card below images, larger branding) for carousel + reel. */
 function isTallCanvas(height) {
-  return height >= REEL_HEIGHT;
+  return height > INSTAGRAM_HEIGHT;
 }
 
 /** Side-by-side column geometry for 1×2 frames. */
@@ -531,8 +531,8 @@ export function drawBranding(ctx, logoImg) {
   const fontSize = type.brandFont;
   const innerPad = type.brandInnerPad;
 
-  // Keep the old small visual size (full-frame scale), but crop transparent
-  // padding so it doesn't add empty space left/right of the mark in the badge.
+  // Size the mark to the branding frame using opaque bounds (the PNG has
+  // wide transparent padding that would otherwise shrink the visible logo).
   const bounds =
     logoImg.contentBounds ?? {
       sx: 0,
@@ -541,8 +541,8 @@ export function drawBranding(ctx, logoImg) {
       sh: logoImg.naturalHeight,
     };
   const logoScale = Math.min(
-    maxFrameSize / logoImg.naturalWidth,
-    maxFrameSize / logoImg.naturalHeight,
+    maxFrameSize / bounds.sw,
+    maxFrameSize / bounds.sh,
   );
   const logoW = Math.max(1, Math.round(bounds.sw * logoScale));
   const logoH = Math.max(1, Math.round(bounds.sh * logoScale));
@@ -705,7 +705,7 @@ function drawLabeledLine(ctx, label, value, x, y, fontSize) {
 }
 
 /**
- * Card-info chip: top-left on carousel; larger + centered under content on 9:16.
+ * Card-info chip: top-left on 1:1; larger + centered under content on portrait.
  * @param {{ frontImg: CanvasImageSource, card: string, set: string }} cardInfo
  * @param {{ blockX?: number, blockY?: number, thumbBox?: number } | null} layout
  */
@@ -874,7 +874,7 @@ export function drawComparisonFrame(
     tall && hasCardInfo ? reelCardInfoBottomReserve() : EDGE_PADDING;
 
   // Tall: always reserve caption band + use the same imagesTop (caption optional).
-  // Carousel + caption: pin under the card-info chip (tight feed layout).
+  // 1:1 + caption: pin under the card-info chip (tight feed layout).
   const pinnedStack = hasCaption && !tall ? captionStackBelowChip() : null;
   const contentTop = pinnedStack?.imagesTop ?? EDGE_PADDING;
   const captionReserve =

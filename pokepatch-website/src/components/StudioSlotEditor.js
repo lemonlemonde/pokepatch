@@ -469,17 +469,48 @@ function AnnotateStepSurface({
   );
 }
 
+const EDITOR_STEPS = [
+  { id: "crop", label: "Crop" },
+  { id: "annotate", label: "Annotate" },
+];
+
+function EditModeToggle({ step, onStepChange }) {
+  return (
+    <div
+      className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
+      role="group"
+      aria-label="Edit mode"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {EDITOR_STEPS.map((option) => {
+        const active = step === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onStepChange(option.id)}
+            className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
+              active ? "bg-berry text-night " : "text-ink/70 hover:text-ink"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * One independently-editable photo: its own Crop/Annotate mode and drag
- * surface. `draftCrop` / `draftAnnotations` / `selectedId` are controlled from
- * the parent (StudioSlotEditor needs both photos' current values at once to
- * commit them together), but `step` stays local here — that's what makes two
- * panels' modes independent of each other for free, no cross-panel plumbing.
+ * One photo's crop/annotate surface. Mode (`step`) is owned by the parent so
+ * paired before/after panels stay in lockstep behind a single toggle.
  */
 function EditorPanel({
   previewUrl,
   alt,
   label,
+  step,
   draftCrop,
   draftAnnotations,
   selectedId,
@@ -487,7 +518,6 @@ function EditorPanel({
   onDraftAnnotationsChange,
   onSelectedIdChange,
 }) {
-  const [step, setStep] = useState("crop");
   // Shared across every circle on this photo; survives deleting down to zero
   // so the next Add circle keeps the last thickness the user picked.
   const [strokeWidth, setStrokeWidth] = useState(() =>
@@ -534,11 +564,6 @@ function EditorPanel({
     onDraftAnnotationsChange((prev) => applyStrokeWidth(prev, width));
   }
 
-  const steps = [
-    { id: "crop", label: "Crop" },
-    { id: "annotate", label: "Annotate" },
-  ];
-
   return (
     <div className="flex flex-col items-center gap-3">
       <p className="text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
@@ -549,34 +574,6 @@ function EditorPanel({
         className="flex max-w-full flex-wrap items-center justify-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
-          role="group"
-          aria-label="Edit mode"
-        >
-          {steps.map((option) => {
-            const active = step === option.id;
-            return (
-              <button
-                key={option.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  setStep(option.id);
-                  onSelectedIdChange(null);
-                }}
-                className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
-                  active
-                    ? "bg-berry text-night "
-                    : "text-ink/70 hover:text-ink"
-                }`}
-              >
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
-
         {step === "crop" ? (
           <button
             type="button"
@@ -637,7 +634,7 @@ function EditorPanel({
 /**
  * Crop → Annotate editor for a studio slot image and — when the slot is
  * paired (before/after) — its sibling too, open and editable side by side.
- * Each photo's Crop/Annotate mode is fully independent (see `EditorPanel`).
+ * Crop/Annotate mode is shared across both photos (one toggle).
  *
  * Edits apply to a local draft as you go; the slot(s) only see them once the
  * session ends. Done, backdrop click, the lightbox Close button, and Escape
@@ -660,6 +657,7 @@ export default function StudioSlotEditor({
   // Initialized once per mount (StudioCroppableThumb mounts a fresh editor
   // each time it opens), so these don't need to resync if the underlying
   // items change underneath the editor.
+  const [step, setStep] = useState("crop");
   const [draftCropA, setDraftCropA] = useState(() =>
     clampCrop(item?.crop ?? DEFAULT_CROP),
   );
@@ -679,6 +677,12 @@ export default function StudioSlotEditor({
     () => sibling?.item?.annotations ?? [],
   );
   const [selectedIdB, setSelectedIdB] = useState(null);
+
+  function changeStep(next) {
+    setStep(next);
+    setSelectedIdA(null);
+    setSelectedIdB(null);
+  }
 
   /** Any dismissal except the explicit Cancel button keeps the edits. */
   function commitAndClose() {
@@ -701,6 +705,7 @@ export default function StudioSlotEditor({
       previewUrl={previewUrl}
       alt={alt || label || ""}
       label={label || alt || "Photo"}
+      step={step}
       draftCrop={draftCropA}
       draftAnnotations={draftAnnotationsA}
       selectedId={selectedIdA}
@@ -716,6 +721,7 @@ export default function StudioSlotEditor({
       previewUrl={sibling.src}
       alt={sibling.alt || sibling.label || "Photo"}
       label={sibling.label || "Paired photo"}
+      step={step}
       draftCrop={draftCropB}
       draftAnnotations={draftAnnotationsB}
       selectedId={selectedIdB}
@@ -758,6 +764,8 @@ export default function StudioSlotEditor({
         their own stopPropagation.
       */}
       <div className="flex flex-col items-center gap-6" onClick={commitAndClose}>
+        <EditModeToggle step={step} onStepChange={changeStep} />
+
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center">
           {orderedPanels}
         </div>
