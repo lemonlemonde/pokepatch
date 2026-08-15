@@ -614,11 +614,6 @@ function EditorPanel({
           onCropChange={onDraftCropChange}
           annotations={draftAnnotations}
         />
-
-        <p className="text-center text-xs text-ink/50">
-          Drag the box to move · drag handles to zoom · crop keeps the
-          photo&apos;s original ratio · circles stay in the frame
-        </p>
       </div>
 
       <div
@@ -634,11 +629,6 @@ function EditorPanel({
           onSelectShape={onSelectedIdChange}
           onShapesChange={onDraftAnnotationsChange}
         />
-
-        <p className="text-center text-xs text-ink/50">
-          This is the cropped image as it will appear in the output ·
-          drag a shape to move it · Delete removes the selected shape
-        </p>
       </div>
     </div>
   );
@@ -771,10 +761,6 @@ export default function StudioSlotEditor({
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center">
           {orderedPanels}
         </div>
-
-        <p className="text-center text-xs text-ink/40">
-          Done saves your edits · Cancel discards them · click outside to save
-        </p>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
           <button

@@ -435,10 +435,6 @@ function AnnotatedPreviewSession({
         />
       </button>
 
-      <p className="text-center text-xs text-ink/50">
-        Click to enlarge and mark spots with circles
-      </p>
-
       {children}
 
       {open ? (
