@@ -9,33 +9,29 @@ Follow root [README → Local vs live (deploy safety)](../../README.md#local-vs-
 
 ## Defaults
 
-1. **Everything stays local** unless the user explicitly asks to deploy or push to live.
-2. Treat these as live-affecting — **do not run them without permission**:
+1. **Everything stays on a branch** and is tested with `npm run local` unless the user explicitly asks to merge or manually go live.
+2. **Merging to `main` is the ship** — CI (`.github/workflows/deploy.yml`) runs schema → edge functions → frontend. Do not also manually deploy those surfaces after a successful merge.
+3. Treat these as live-affecting — **do not run them without permission**:
+   - Merging a PR to `main` / `git push` to `main`
    - `supabase functions deploy …`
    - Schema to remote (`supabase db push`, dashboard/MCP DDL)
-   - `git push` when it ships production
-3. Local frontend, local function files, and unpushed migrations are independent from what is live. Mixed versions are normal while developing.
+   - Manual `npm run deploy` / `gh-pages`
+4. Local frontend, local function files, and unpushed migrations are independent from what is live until they land on `main`.
 
-## Frontend publish
+## Frontend / API publish
 
-**Do not** run `npm run deploy` (or `gh-pages`, or any other command that publishes the static site to GitHub Pages) unless one of these is true:
+**Do not** run manual publish (`npm run deploy`, `gh-pages`, `supabase functions deploy`, `supabase db push`) unless one of these is true:
 
-1. The user is running **`/reset-main`** (or that skill’s workflow) — then the agent **must** publish from `pokepatch-website/` with `npm run deploy` after syncing the base branch.
-2. The user explicitly asks the agent to run frontend publish in that message.
+1. CI failed and the user explicitly asks for an **emergency** manual deploy of a named surface.
+2. The user is running **`/reset-main`** (or that skill’s workflow) — then follow that skill (including frontend publish if it requires it).
+3. The user explicitly asks the agent to run a specific live command in that message.
 
 Otherwise, even if the user says “deploy”, “ship it”, or “go live” in a general sense:
 
-- Do **not** execute frontend publish yourself.
-- Tell the user to run it from `pokepatch-website/`, or to use `/reset-main` after merge:
+- Do **not** execute manual publish yourself.
+- Tell the user that **merging to `main` triggers CI** (schema + functions + frontend), or to re-run the failed Actions workflow.
 
-```bash
-cd pokepatch-website
-npm run deploy
-```
-
-Schema / edge-function deploys may still be run by the agent **only** after explicit permission.
-
-## Before asking to go live
+## Before asking to merge / go live
 
 Give a short **deploy impact analysis**:
 
@@ -44,4 +40,4 @@ Give a short **deploy impact analysis**:
 - **Admin** impact (`/admin/`)
 - Cross-version risk (new API + old frontend, new frontend + old API, schema vs clients)
 
-Wait for an explicit yes before deploying or pushing anything to live (except `/reset-main`, which already authorizes frontend publish).
+Wait for an explicit yes before merging to `main` or running any manual live command.

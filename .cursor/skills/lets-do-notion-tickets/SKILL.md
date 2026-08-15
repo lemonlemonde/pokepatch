@@ -104,7 +104,7 @@ While this skill is active (user invoked it and/or asked to execute tickets), MC
 
 ## Execution rules (strict)
 
-Make absolutely sure that any db, api, or frontend changes are only made on each ticket’s branch, and never deployed live until the user explicitly tells you to deploy for that ticket.
+Make absolutely sure that any db, api, or frontend changes are only made on each ticket’s branch. Live ship is **merge to `main`** (CI runs schema → functions → frontend). Do not merge or manually deploy until the user explicitly asks for that ticket.
 
 Also:
 
@@ -113,10 +113,9 @@ Also:
 - It's allowed to git push changes to the branches it made specifically for that ticket (`cursor/<feature>/...`) but not to main.
 - After the branch exists and has been pushed: **always open a PR** whose base is the ticket’s stated merge base (typically `main`). See **Pull requests** below.
 - Never push to `main` / `master`. Never merge to main unless the user explicitly asks.
-- Do not `supabase db push`, `supabase functions deploy`, or any live DDL/API ship unless the user explicitly authorizes **that ticket**.
-- Never run frontend publish (`npm run deploy` / gh-pages). Even if the user says deploy for a ticket, tell them to run frontend publish themselves from `pokepatch-website/` when applicable; schema/edge deploys may be run by the agent only after explicit per-ticket permission.
-- Before any authorized go-live, give a short deploy impact analysis (customer vs admin, what stays local, cross-version risk).
-- Prefer local verification on the ticket branch before marking **🐭 needs review**.
+- Do not `supabase db push`, `supabase functions deploy`, manual `npm run deploy` / gh-pages, or any live DDL/API ship unless the user explicitly authorizes an **emergency** fallback for that ticket (CI is the normal path after merge).
+- Prefer local verification with `npm run local` on the ticket branch before marking **🐭 needs review**.
+- Before any authorized merge / go-live, give a short deploy impact analysis (customer vs admin, what CI will ship, cross-version risk).
 
 ## Pull requests
 
@@ -140,7 +139,7 @@ After creating all PRs in the batch, output one summary to the user with:
 1. **PRs** — for each PR: short summary + markdown hyperlink to the PR URL.
 2. **Tickets resolved** — numbered list of which Notion tickets this batch covered, and **how** each was addressed (1–2 sentences of behavior/intent, not a file list).
 3. **What to check** — concrete verification checklist so the user can confirm the tickets are satisfied (UI paths, edge cases, acceptance checks).
-4. **Remaining deployment items** — anything still needed to go live (e.g. merge PR(s), user-run `npm run deploy`, authorized `supabase db push` / `functions deploy`, env/secrets, PostHog project settings). Omit items that do not apply; do not invent deploy work.
+4. **Remaining deployment items** — anything still needed to go live (e.g. merge PR(s) so CI ships schema + functions + frontend, GitHub Actions secrets, Supabase runtime secrets, PostHog project settings). Omit items that do not apply; do not invent deploy work. Do not list manual `npm run deploy` / `db push` / `functions deploy` unless CI is unavailable and an emergency path is needed.
 
 Keep it scannable (bullets). Do not mark tickets Done in Notion from this summary alone.
 

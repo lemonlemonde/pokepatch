@@ -23,11 +23,12 @@ Admin `update_order` calls do **not** notify (no webhook on UPDATE).
 The orders schema (`orders`, `contacts`, `cards`, `card_images`, related RPCs)
 is already on live. Do **not** drop `quote_requests` (legacy path still used).
 
-Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → `db push`). Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
+Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → test locally → merge to `main`). CI runs `db push` + function deploy. Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 ```bash
 supabase migration new <short_name>
-supabase db push
+# test with npm run local / supabase db reset
+# merge to main → CI db push + functions deploy
 supabase migration list
 ```
 
@@ -56,10 +57,11 @@ supabase secrets set ORDERS_SHEETS_WEBHOOK_URL="https://script.google.com/macros
 supabase secrets set ORDERS_SHEETS_SECRET="new-long-random-string-matching-orders-gs-SHARED_SECRET"
 supabase secrets set ORDERS_SHEET_VIEW_URL="https://docs.google.com/spreadsheets/d/XXXX/edit#gid=ORDERS_TAB"
 
+# Emergency only — normal path is merge to main (CI deploys all functions)
 supabase functions deploy notify --no-verify-jwt
 ```
 
-`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically. `verify_jwt = false` is set for `notify` in `supabase/config.toml`.
 
 ### Secrets reference
 

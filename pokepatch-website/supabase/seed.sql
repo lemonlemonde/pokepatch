@@ -1,0 +1,2 @@
+-- Local seed (optional). Applied after migrations on `supabase db reset`.
+-- Keep empty unless you need sample rows for localhost testing.

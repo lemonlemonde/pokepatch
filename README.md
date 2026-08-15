@@ -2,55 +2,91 @@
 
 A [Next.js](https://nextjs.org/) + React + Tailwind CSS site for PokePatch card restoration, deployed to GitHub Pages with custom domain **pokepatch.cards**.
 
-## Quick Start
+## Quick Start (local full stack)
+
+Branch work should hit a **local** Supabase stack (DB + edge functions) so you can test end-to-end without deploying or pushing migrations to live.
+
+One-time setup (single env file — no separate Supabase env copy):
 
 ```bash
 cd pokepatch-website
 npm install
-npm run dev
+cp .env.local.example .env.local.prod
+# edit .env.local.prod: NEXT_PUBLIC_* plus any edge secrets you want locally
+# (DISCORD_WEBHOOK_URL, ADMIN_ALLOWED_EMAILS / NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS, Resend, Sheets, …)
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
-
-Copy `.env.local.example` to `.env.local` and set:
-
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `NEXT_PUBLIC_POSTHOG_KEY` (optional — analytics disabled if unset)
-
-### Switching between the hosted project and a local Supabase stack
-
-`npm run dev` points at whatever `.env.local` says, which by default is the **hosted** Supabase project — the same database the live site uses. To develop against a local stack instead (required to exercise migrations that haven't been pushed yet), keep both configs side by side and flip a symlink:
+Daily — only this:
 
 ```bash
 cd pokepatch-website
-mv .env.local .env.local.prod   # one time — your hosted-project values
-supabase start                  # boots local Postgres + applies every migration
-npm run devenv                  # points .env.local at the local stack, then runs the dev server
+npm run local
 ```
 
-`npm run prodenv` is the same thing against the hosted project. Both replace `npm run dev`; run `sh scripts/use-env.sh dev|prod` to switch without starting a server. Check which one is active with `readlink .env.local`.
+That starts Supabase (if needed), syncs edge secrets from `.env.local.prod` into the local function runtime, retargets order/quote INSERT triggers at **local** `notify` (so Discord/Sheets don’t hit production), points the app at the local API, and runs Next.js.
 
-`.env.local` is a symlink; the real values live in `.env.local.prod`. `.env.local.dev` is regenerated from it on every `devenv`, swapping only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for what the running stack reports — everything else (PostHog, admin emails, feature flags) stays identical, so the two configs can't drift. All three files are gitignored.
+Open [http://localhost:3000](http://localhost:3000). Studio is usually at [http://127.0.0.1:54323](http://127.0.0.1:54323).
+
+Submit a quote on `/contact/` → local DB → local `notify` → Discord (if `DISCORD_WEBHOOK_URL` is in `.env.local.prod`).
+
+New schema on a branch: `supabase migration new <name>`, edit the file, then `supabase db reset` and `npm run local` again. Remote apply happens when the PR merges (CI `db push`).
+
+### Switching between local stack and hosted project
+
+`npm run local` / `npm run devenv` point at the local stack. `npm run prodenv` points at the **hosted** project (same DB as live — useful only for quick UI checks against production data; do not rely on it for unpushed migrations or undeployed functions).
+
+```bash
+cd pokepatch-website
+npm run devenv   # local stack already running → next dev
+npm run prodenv  # hosted project → next dev
+sh scripts/use-env.sh dev|prod   # switch symlink without starting the server
+readlink .env.local              # which env is active
+```
+
+`.env.local` is a symlink; the real values live in `.env.local.prod`. `.env.local.dev` is regenerated from it on every local switch, swapping only `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for what the running stack reports — everything else (PostHog, admin emails, feature flags) stays identical. All three files are gitignored.
 
 Local auth emails (signup confirmation, password recovery) don't leave the machine — they go to the local mail catcher. `supabase start` prints its URL if one is running; `supabase/config.toml` has no `[inbucket]` block, so enable it there if the emails don't show up.
 
-## Deploy (GitHub Pages)
+## Deploy (CI on merge)
 
-Repo: `lemonlemonde/pokepatch` → **https://lemonlemonde.github.io/pokepatch/**
+Repo: `lemonlemonde/pokepatch` → **https://pokepatch.cards** (GitHub Pages via `gh-pages`).
 
-Before publishing, see [Local vs live (deploy safety)](#local-vs-live-deploy-safety) (impact analysis + explicit permission).
+**Normal path:** merge (or push) to `main`. [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) ships in order:
+
+1. Schema — `supabase db push`
+2. Edge functions — `supabase functions deploy` (all functions; JWT flags from `supabase/config.toml`)
+3. Frontend — Next.js static export → `gh-pages` branch
+
+See [Local vs live (deploy safety)](#local-vs-live-deploy-safety). Merging to `main` **is** the go-live action.
+
+### One-time GitHub Actions secrets
+
+Repo **Settings → Secrets and variables → Actions**:
+
+| Secret | Purpose |
+|--------|---------|
+| `SUPABASE_ACCESS_TOKEN` | Supabase personal access token |
+| `SUPABASE_PROJECT_ID` | Project ref |
+| `SUPABASE_DB_PASSWORD` | Database password (for `db push`) |
+| `NEXT_PUBLIC_SUPABASE_URL` | Frontend build |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Frontend build |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Frontend build (optional) |
+| `NEXT_PUBLIC_POSTHOG_HOST` | Frontend build (optional) |
+| `NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS` | Frontend build (if used) |
+| `NEXT_PUBLIC_CUSTOMER_AUTH_ENABLED` | Frontend build (if used) |
+
+Edge-function **runtime** secrets (`ADMIN_ALLOWED_EMAILS`, Resend, Discord, Sheets, …) stay in the Supabase project dashboard; CI only redeploys function code.
+
+In **Settings → Pages**, source should be the `gh-pages` branch (root). `.nojekyll` is written by CI so `_next` assets are served correctly.
+
+### Manual frontend publish (emergency only)
 
 ```bash
 cd pokepatch-website
 npm run deploy
 ```
 
-In the repo **Settings → Pages**, set source to the `gh-pages` branch (root).
-
-**Note:** GitHub Pages runs Jekyll by default, which ignores folders starting with `_` (like `_next`). This project includes a `.nojekyll` file so CSS/JS assets are served correctly.
-
-**Analytics:** `NEXT_PUBLIC_*` vars (including PostHog) are inlined at build time. Set them in `.env.local` before running `npm run deploy`.
+Uses `.env.local.prod` via `use-env.sh prod`. Prefer fixing/re-running the Actions workflow instead.
 
 ## Tech Stack
 
@@ -115,10 +151,10 @@ While executing:
 ### Setup
 
 1. Create a PostHog project (US region: `https://us.i.posthog.com`).
-2. Add to `.env.local`:
+2. Add to `.env.local.prod` (and the matching GitHub Actions secret for CI builds):
    - `NEXT_PUBLIC_POSTHOG_KEY` — project API key
    - `NEXT_PUBLIC_POSTHOG_HOST` — defaults to `https://us.i.posthog.com` if unset
-3. Rebuild and deploy (`npm run deploy`).
+3. Merge to `main` so CI rebuilds the site (or emergency `npm run deploy`).
 
 Tracking is skipped on `/admin/`. If `NEXT_PUBLIC_POSTHOG_KEY` is unset, analytics are a no-op (safe for local dev).
 
@@ -164,25 +200,27 @@ New customer submissions write to the **orders** relational model. Legacy rows i
 
 ## Local vs live (deploy safety)
 
-Work stays **local by default**. Local edits (frontend, edge functions, migration files) do not affect production until something is explicitly pushed or deployed. Live is three independent surfaces that can drift from each other:
+Work stays **local by default**. Local edits (frontend, edge functions, migration files) do not affect production until they land on `main`. Live is three surfaces shipped together by CI:
 
 | Surface | Local (working copy) | Live (production) | How it goes live |
 |---------|----------------------|-------------------|------------------|
-| **Frontend** | `npm run dev` / uncommitted or unreleased build | GitHub Pages (`pokepatch.cards`) | `npm run deploy` (and/or merging what that publish path uses) |
-| **Edge functions** | Files under `pokepatch-website/supabase/functions/` | Deployed Supabase functions (`admin-api`, `notify`, …) | `supabase functions deploy …` |
-| **Schema** | Pending files in `pokepatch-website/supabase/migrations/` | Remote Postgres + `schema_migrations` | `supabase db push` (or other remote DDL — avoid) |
+| **Frontend** | `npm run local` / `npm run devenv` | GitHub Pages (`pokepatch.cards`) | CI on push to `main` (manual `npm run deploy` = emergency only) |
+| **Edge functions** | Served by local `supabase start` | Deployed Supabase functions (`admin-api`, `notify`, …) | CI `supabase functions deploy` on `main` |
+| **Schema** | Applied by local `supabase start` / `db reset` | Remote Postgres + `schema_migrations` | CI `supabase db push` on `main` |
 
-These can be mixed: e.g. **live API + old frontend**, or **local frontend + live API + unpushed migrations**. That is normal during development — and it is why every live action needs a breakage check first.
+On a feature branch, use `npm run local` so all three stay in sync locally. Mixing **local frontend + hosted API** (`npm run prodenv`) is possible but skips unpushed migrations and undeployed functions.
 
 ### Default rules
 
-1. **Keep changes local** until the user explicitly asks to deploy or push to live.
-2. **Never** run live-affecting commands without asking first, including:
+1. **Keep changes on a branch** and test with `npm run local` until the user merges (or asks to merge) to `main`.
+2. **Merging to `main` is the ship** — CI runs schema → functions → frontend. Do not also manually `db push` / `functions deploy` / `npm run deploy` after a merge unless CI failed and the user wants an emergency fallback.
+3. **Never** run live-affecting commands without asking first, including:
    - `supabase functions deploy …`
    - `supabase db push` / remote DDL (dashboard SQL, MCP `apply_migration`, etc.)
-   - `git push` when that updates what production serves (or otherwise ships the change)
-3. **Agents must not run `npm run deploy`** (or `gh-pages` / other Pages publish) unless the user is running **`/reset-main`** (that skill publishes after syncing) or explicitly asks the agent to publish in that message. Otherwise tell the user to run frontend publish from `pokepatch-website/` (`npm run deploy`) or to use `/reset-main` after merge.
-4. Before asking, **give a short deploy impact analysis** (see below). Do not deploy “while you’re at it.”
+   - `git push` to `main` / merging a PR to `main`
+   - Manual `npm run deploy` / `gh-pages`
+4. **Agents must not** manually publish after merge (CI owns that). Exception: **`/reset-main`** still may publish frontend if that skill requires it, or the user explicitly asks for a manual emergency deploy in that message.
+5. Before asking to merge or manually go live, **give a short deploy impact analysis** (see below).
 
 ### Deploy impact analysis (required before any live action)
 
@@ -207,13 +245,7 @@ Also call out **cross-version risk** when surfaces are not shipped together:
 
 ### Suggested ship order
 
-When a feature needs more than one surface:
-
-1. **Schema** first if required (backward-compatible when possible).
-2. **Edge functions** next (additive/compatible with the currently live frontend).
-3. **Frontend** last (once live API/schema support it).
-
-Reverse or skip steps only when the impact analysis says it is safe (e.g. UI-only change, or additive API with no UI yet).
+CI on `main` always applies **schema → edge functions → frontend**. Prefer backward-compatible migrations and additive API changes in the same PR so a single merge is safe. If you must split across PRs, ship schema/API before UI that depends on them.
 
 Schema CLI workflow details: [Schema changes (CLI-managed)](#schema-changes-cli-managed).
 
@@ -316,29 +348,28 @@ Schema reference (informational, may lag live): [`pokepatch-website/supabase/sch
 
 Live production is the baseline. Historical migration files were cleared once; from then on, **local files and remote `schema_migrations` must stay in lockstep**. That truncation is why `20260721000000_baseline_from_live.sql` exists — it is a `supabase db dump` of the live schema, timestamped ahead of every other migration, so the directory can build a database from scratch. It is recorded as already-applied on the hosted project, so `db push` never runs it there. Don't edit it; new changes go in new migrations as usual. The CLI keys each migration by the **timestamp prefix in the filename**, not by SQL content — mismatched names = “dirty” history even if the DB already looks correct.
 
-Writing a migration file is local only. Applying it (`db push` / remote DDL) is a live action — see [Local vs live (deploy safety)](#local-vs-live-deploy-safety).
+Writing a migration file is local only. Applying it to the **hosted** project is a live action — normally done by CI on merge to `main` (`db push`). Manual `db push` / remote DDL only as emergency fallback with permission — see [Local vs live (deploy safety)](#local-vs-live-deploy-safety).
 
-To try a migration before pushing it, run it against a local stack: `supabase start` applies the baseline plus every file under `supabase/migrations/`, and `npm run devenv` points the app at it — see [Switching between the hosted project and a local Supabase stack](#switching-between-the-hosted-project-and-a-local-supabase-stack).
+To try a migration before merge, use the local stack: `npm run local` (or `supabase start`) applies every file under `supabase/migrations/`. After adding a migration while the stack is already up, run `supabase db reset` or `supabase migration up`.
 
 #### Happy path (preferred)
 
 ```bash
 cd pokepatch-website
-supabase link --project-ref <ref>   # once per machine
 supabase migration new <short_name> # creates supabase/migrations/<timestamp>_<short_name>.sql
 # edit only that new file (delta only)
-# after impact analysis + explicit permission:
-supabase db push                    # applies pending migrations to the linked project
-supabase migration list             # confirm Local and Remote versions match
+npm run local                       # or: supabase db reset — exercise locally
+# open PR → merge to main → CI runs supabase db push
+supabase migration list             # optional check that Local === Remote after CI
 ```
 
 #### Rules
 
 - Put **only the delta** in each new migration (never re-apply the whole live schema).
 - **Always** create files with `supabase migration new`. Never invent or rename migration timestamps by hand.
-- Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer `db push` instead — and only after permission.
+- Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer merge-to-`main` CI (or emergency `db push` with permission).
 - Keep `schema.sql` as a human reference if useful; it is not what the CLI applies.
-- Before committing migration changes, run `supabase migration list` and fix any Local/Remote mismatch.
+- Before committing migration changes, run `supabase migration list` against the linked project when you can, and fix any Local/Remote mismatch.
 
 #### If something was applied on remote first (MCP / dashboard)
 
@@ -381,19 +412,15 @@ Each card has a title, set name, damage-tag checklist (`crease`, `scratching`, `
 
 ### Setup
 
-Gallery tables, storage, and RLS are already on live. For future gallery schema changes, use CLI migrations (`supabase migration new` → `supabase db push`) as described under [Schema changes (CLI-managed)](#schema-changes-cli-managed).
+Gallery tables, storage, and RLS are already on live. For future gallery schema/API/UI changes, use CLI migrations + branch PRs; merge to `main` so CI ships schema → functions → frontend — see [Schema changes (CLI-managed)](#schema-changes-cli-managed) and [Deploy (CI on merge)](#deploy-ci-on-merge).
 
-1. Redeploy `admin-api` if the edge function changed:
-   ```bash
-   cd pokepatch-website
-   supabase functions deploy admin-api --no-verify-jwt --project-ref <ref>
-   ```
-2. (Optional) One-time seed of existing `public/gallery` assets into Supabase:
-   ```bash
-   # needs SUPABASE_SERVICE_ROLE_KEY in .env.local (service role — never commit)
-   node --env-file=.env.local scripts/seed-gallery.mjs
-   ```
-3. Deploy the static site so the admin Gallery tab and client fetch are live.
+Optional one-time seed of existing `public/gallery` assets into Supabase:
+
+```bash
+# needs SUPABASE_SERVICE_ROLE_KEY in .env.local (service role — never commit)
+cd pokepatch-website
+node --env-file=.env.local scripts/seed-gallery.mjs
+```
 
 Until published rows exist in `gallery_items`, `/gallery` still shows the built-in static assets. Once any published DB row exists, the page uses Supabase only.
 
