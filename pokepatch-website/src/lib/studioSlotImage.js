@@ -3,12 +3,6 @@ import { drawShapesOnCanvas } from "@/lib/shapeAnnotations";
 const MIN_NORM = 0.05;
 export const DEFAULT_CROP = { x: 0, y: 0, w: 1, h: 1 };
 
-export const ASPECT_OPTIONS = [
-  { id: "free", label: "Free", ratio: null },
-  { id: "3:4", label: "3:4", ratio: 3 / 4 },
-  { id: "1:1", label: "1:1", ratio: 1 },
-];
-
 export const CROP_HANDLES = [
   { id: "nw", cursor: "nwse-resize" },
   { id: "n", cursor: "ns-resize" },
