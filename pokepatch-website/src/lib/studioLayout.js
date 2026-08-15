@@ -127,6 +127,65 @@ const BRANDING_MAX_FRAME = 72;
 const BRANDING_INNER_PAD = 14;
 const BRANDING_FONT_SIZE = 24;
 
+/**
+ * Experimental 4:5 composition — cards as hero, quiet brand, balanced stack.
+ * Revert: set to `false`, or `git revert` the experiment commit.
+ */
+export const CAROUSEL_LAYOUT_EXPERIMENT = true;
+
+/** Active 4:5 layout numbers (experiment or prior baseline). */
+function carouselMetrics() {
+  if (!CAROUSEL_LAYOUT_EXPERIMENT) {
+    return {
+      edge: EDGE_PADDING,
+      columnGap: COLUMN_GAP,
+      contentTop: CAROUSEL_CONTENT_TOP,
+      labelFont: LABEL_FONT_SIZE,
+      labelGap: LABEL_GAP,
+      labelTracking: LABEL_TRACKING,
+      chipThumb: CAROUSEL_CARD_INFO_THUMB_SIZE,
+      chipFont: CAROUSEL_CARD_INFO_FONT_SIZE,
+      chipTextW: CAROUSEL_CARD_INFO_TEXT_WIDTH,
+      chipPadX: CAROUSEL_CARD_INFO_INNER_PAD_X,
+      chipPadY: CAROUSEL_CARD_INFO_INNER_PAD_Y,
+      chipGap: CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT,
+      chipTextGap: 10,
+      chipLineGap: 8,
+      brandFrame: BRANDING_MAX_FRAME,
+      brandFont: BRANDING_FONT_SIZE,
+      brandPad: BRANDING_INNER_PAD,
+      brandGap: 10,
+      brandOpaque: false,
+      /** @type {'bottom' | 'center'} */
+      stackMode: "bottom",
+    };
+  }
+  // Cards own the frame; brand + chip are supporting captions.
+  return {
+    edge: 28,
+    columnGap: 24,
+    contentTop: 108,
+    labelFont: 28,
+    labelGap: 18,
+    labelTracking: 10,
+    chipThumb: 168,
+    chipFont: 28,
+    chipTextW: 400,
+    chipPadX: 14,
+    chipPadY: 10,
+    chipGap: 40,
+    chipTextGap: 12,
+    chipLineGap: 6,
+    brandFrame: 48,
+    brandFont: 22,
+    brandPad: 12,
+    brandGap: 16,
+    brandOpaque: true,
+    /** @type {'bottom' | 'center'} */
+    stackMode: "center",
+  };
+}
+
 /** 9:16 Reels canvas — Instagram UI safe-area layout. */
 function isReelCanvas(height) {
   return height >= REEL_HEIGHT;
@@ -139,14 +198,17 @@ function placesCardBelow(height) {
 
 /** Side-by-side column geometry for 1×2 frames. */
 function pairLayout(reel) {
-  const edge = EDGE_PADDING + (reel ? REEL_SIDE_PADDING_EXTRA : 0);
+  const carousel = !reel ? carouselMetrics() : null;
+  const edge =
+    (carousel?.edge ?? EDGE_PADDING) + (reel ? REEL_SIDE_PADDING_EXTRA : 0);
+  const columnGap = carousel?.columnGap ?? COLUMN_GAP;
   const canvasW = INSTAGRAM_WIDTH;
-  const slotWidth = (canvasW - 2 * edge - COLUMN_GAP) / 2;
+  const slotWidth = (canvasW - 2 * edge - columnGap) / 2;
   return {
     edge,
     slotWidth,
     leftX: edge,
-    rightX: edge + slotWidth + COLUMN_GAP,
+    rightX: edge + slotWidth + columnGap,
   };
 }
 
@@ -156,18 +218,34 @@ function reelTyped(value, reel) {
 
 /** Font / tracking / gap sizes for the current canvas. */
 function typeMetrics(reel) {
+  if (!reel) {
+    const m = carouselMetrics();
+    return {
+      labelFont: m.labelFont,
+      labelGap: m.labelGap,
+      labelTracking: m.labelTracking,
+      labelBlockHeight: m.labelGap + m.labelFont,
+      captionFont: CAPTION_FONT_SIZE,
+      captionTracking: CAPTION_TRACKING,
+      captionGap: CAPTION_GAP,
+      cardInfoFont: m.chipFont,
+      brandFont: m.brandFont,
+      brandLogoFrame: m.brandFrame,
+      brandInnerPad: m.brandPad,
+    };
+  }
   return {
-    labelFont: reelTyped(LABEL_FONT_SIZE, reel),
-    labelGap: reelTyped(LABEL_GAP, reel),
-    labelTracking: reelTyped(LABEL_TRACKING, reel),
-    labelBlockHeight: reelTyped(LABEL_GAP, reel) + reelTyped(LABEL_FONT_SIZE, reel),
-    captionFont: reelTyped(CAPTION_FONT_SIZE, reel),
-    captionTracking: reelTyped(CAPTION_TRACKING, reel),
-    captionGap: reelTyped(CAPTION_GAP, reel),
-    cardInfoFont: reelTyped(CARD_INFO_FONT_SIZE, reel),
-    brandFont: reelTyped(BRANDING_FONT_SIZE, reel),
-    brandLogoFrame: reelTyped(BRANDING_MAX_FRAME, reel),
-    brandInnerPad: reelTyped(BRANDING_INNER_PAD, reel),
+    labelFont: reelTyped(LABEL_FONT_SIZE, true),
+    labelGap: reelTyped(LABEL_GAP, true),
+    labelTracking: reelTyped(LABEL_TRACKING, true),
+    labelBlockHeight: reelTyped(LABEL_GAP, true) + reelTyped(LABEL_FONT_SIZE, true),
+    captionFont: reelTyped(CAPTION_FONT_SIZE, true),
+    captionTracking: reelTyped(CAPTION_TRACKING, true),
+    captionGap: reelTyped(CAPTION_GAP, true),
+    cardInfoFont: reelTyped(CARD_INFO_FONT_SIZE, true),
+    brandFont: reelTyped(BRANDING_FONT_SIZE, true),
+    brandLogoFrame: reelTyped(BRANDING_MAX_FRAME, true),
+    brandInnerPad: reelTyped(BRANDING_INNER_PAD, true),
   };
 }
 
@@ -186,11 +264,9 @@ function reelCardInfoChipHeight() {
 }
 
 function carouselCardInfoChipHeight() {
-  const textH = CAROUSEL_CARD_INFO_FONT_SIZE * 2 + 8;
-  return (
-    Math.max(CAROUSEL_CARD_INFO_THUMB_SIZE, textH) +
-    2 * CAROUSEL_CARD_INFO_INNER_PAD_Y
-  );
+  const m = carouselMetrics();
+  const textH = m.chipFont * 2 + m.chipLineGap;
+  return Math.max(m.chipThumb, textH) + 2 * m.chipPadY;
 }
 
 /** Bottom reserve so the card chip fits under the content. */
@@ -202,11 +278,8 @@ function cardInfoBottomReserve(height) {
       EDGE_PADDING
     );
   }
-  return (
-    CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT +
-    carouselCardInfoChipHeight() +
-    EDGE_PADDING
-  );
+  const m = carouselMetrics();
+  return m.chipGap + carouselCardInfoChipHeight() + m.edge;
 }
 
 /** Equal gaps: chip → caption → images (legacy top-left chip + caption). */
@@ -257,12 +330,15 @@ export function enableHighQuality(ctx) {
 export function ensureLabelFont() {
   if (!labelFontReady) {
     const reel = typeMetrics(true);
+    const carousel = carouselMetrics();
     labelFontReady = Promise.all([
       document.fonts.load(`500 ${LABEL_FONT_SIZE}px Nunito`),
       document.fonts.load(`700 ${CARD_INFO_FONT_SIZE}px Nunito`),
       document.fonts.load(`italic 400 ${CARD_INFO_FONT_SIZE}px Nunito`),
-      document.fonts.load(`700 ${CAROUSEL_CARD_INFO_FONT_SIZE}px Nunito`),
-      document.fonts.load(`italic 400 ${CAROUSEL_CARD_INFO_FONT_SIZE}px Nunito`),
+      document.fonts.load(`700 ${carousel.chipFont}px Nunito`),
+      document.fonts.load(`italic 400 ${carousel.chipFont}px Nunito`),
+      document.fonts.load(`500 ${carousel.labelFont}px Nunito`),
+      document.fonts.load(`500 ${carousel.brandFont}px Nunito`),
       document.fonts.load(`500 ${reel.labelFont}px Nunito`),
       document.fonts.load(`700 ${reel.cardInfoFont}px Nunito`),
       document.fonts.load(`italic 400 ${reel.cardInfoFont}px Nunito`),
@@ -550,16 +626,17 @@ function drawBadgeBackground(ctx, blockX, blockY, blockW, blockH) {
 export function drawBranding(ctx, logoImg) {
   const reel = isReelCanvas(logicalHeight(ctx));
   const type = typeMetrics(reel);
+  const carousel = !reel ? carouselMetrics() : null;
   const padding = chipEdgePadding(ctx, 24);
-  const maxFrameSize = reel ? type.brandLogoFrame : BRANDING_MAX_FRAME;
-  const gap = reelTyped(10, reel);
-  const fontSize = reel ? type.brandFont : BRANDING_FONT_SIZE;
-  const innerPad = reel ? type.brandInnerPad : BRANDING_INNER_PAD;
+  const maxFrameSize = type.brandLogoFrame;
+  const gap = carousel?.brandGap ?? reelTyped(10, reel);
+  const fontSize = type.brandFont;
+  const innerPad = type.brandInnerPad;
 
-  // Reels: crop to opaque bounds so the mark fills the larger frame.
-  // Carousel/feed: scale the full PNG (including transparent padding) so the
-  // logo↔@handle spacing matches classic Instagram exports.
-  const bounds = reel
+  // Reels always crop to opaque bounds. Carousel experiment does too (balanced
+  // mark size); baseline carousel keeps the full PNG for classic spacing.
+  const useOpaque = reel || Boolean(carousel?.brandOpaque);
+  const bounds = useOpaque
     ? (logoImg.contentBounds ?? {
         sx: 0,
         sy: 0,
@@ -749,6 +826,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const below = Boolean(layout);
   // 4:5 card-below uses its own chip metrics (not the tiny top-left feed chip).
   const carousel = below && !reel;
+  const m = carousel ? carouselMetrics() : null;
   const type = typeMetrics(reel);
   const padding = chipEdgePadding(ctx, CARD_INFO_EDGE_PADDING);
   const thumbBox =
@@ -756,16 +834,20 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
     (reel
       ? REEL_CARD_INFO_THUMB_SIZE
       : carousel
-        ? CAROUSEL_CARD_INFO_THUMB_SIZE
+        ? m.chipThumb
         : CARD_INFO_THUMB_SIZE);
   const gap = reelTyped(12, reel);
   // 9:16: pull Card/Set text about halfway closer to the thumb.
-  const textGap = reel ? Math.round(gap / 2) : carousel ? 10 : gap;
-  const fontSize = carousel ? CAROUSEL_CARD_INFO_FONT_SIZE : type.cardInfoFont;
-  const lineGap = carousel ? 8 : reelTyped(6, reel);
-  const fieldGap = carousel ? 8 : reelTyped(6, reel);
+  const textGap = reel
+    ? Math.round(gap / 2)
+    : carousel
+      ? m.chipTextGap
+      : gap;
+  const fontSize = carousel ? m.chipFont : type.cardInfoFont;
+  const lineGap = carousel ? m.chipLineGap : reelTyped(6, reel);
+  const fieldGap = carousel ? m.chipLineGap : reelTyped(6, reel);
   const padX = carousel
-    ? CAROUSEL_CARD_INFO_INNER_PAD_X
+    ? m.chipPadX
     : Math.max(
         4,
         reelTyped(CARD_INFO_INNER_PAD_X, reel) -
@@ -776,9 +858,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const padRight = reel
     ? padX + reelTyped(REEL_CARD_INFO_PAD_RIGHT_EXTRA, reel)
     : padX;
-  const padY = carousel
-    ? CAROUSEL_CARD_INFO_INNER_PAD_Y
-    : reelTyped(CARD_INFO_INNER_PAD_Y, reel);
+  const padY = carousel ? m.chipPadY : reelTyped(CARD_INFO_INNER_PAD_Y, reel);
   const thumbRadius = reel || below ? 14 : 8;
 
   const cardLabel = "Card: ";
@@ -786,7 +866,7 @@ export function drawCardInfo(ctx, cardInfo, layout = null) {
   const maxTextW = reel
     ? reelTyped(REEL_CARD_INFO_TEXT_WIDTH, reel)
     : carousel
-      ? CAROUSEL_CARD_INFO_TEXT_WIDTH
+      ? m.chipTextW
       : Math.max(
           80,
           logicalWidth(ctx) -
@@ -898,13 +978,12 @@ function drawOverlays(ctx, logoImg, overlay, cardInfoLayout = null) {
 
 function cardInfoLayoutBelowContent(contentBottom, height) {
   const reel = isReelCanvas(height);
+  const m = !reel ? carouselMetrics() : null;
   return {
     blockY:
       contentBottom +
-      (reel
-        ? REEL_CARD_INFO_GAP_BELOW_CONTENT
-        : CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT),
-    thumbBox: reel ? REEL_CARD_INFO_THUMB_SIZE : CAROUSEL_CARD_INFO_THUMB_SIZE,
+      (reel ? REEL_CARD_INFO_GAP_BELOW_CONTENT : m.chipGap),
+    thumbBox: reel ? REEL_CARD_INFO_THUMB_SIZE : m.chipThumb,
   };
 }
 
@@ -921,6 +1000,7 @@ export function drawComparisonFrame(
   const reel = isReelCanvas(canvasHeight);
   const cardBelow = placesCardBelow(canvasHeight);
   const type = typeMetrics(reel);
+  const carousel = !reel ? carouselMetrics() : null;
   const cols = pairLayout(reel);
   const hasCaption = Boolean(overlay?.caption);
   const hasCardInfo = Boolean(overlay?.cardInfo);
@@ -930,13 +1010,13 @@ export function drawComparisonFrame(
       : EDGE_PADDING;
 
   // Reels: reserved caption band + vertically centered stack.
-  // Carousel with card-below: clear branding at top, pin stack to the bottom
-  // so the card chip sits near the lower edge (classic feed look).
-  // Legacy top-left chip + caption: pin under the chip.
+  // Carousel: brand clearance at top; experiment centers the stack, baseline
+  // pins it toward the bottom. Legacy top-left chip + caption: pin under chip.
   const pinnedStack =
     hasCaption && !reel && !cardBelow ? captionStackBelowChip() : null;
-  const contentTop = pinnedStack?.imagesTop
-    ?? (cardBelow && !reel ? CAROUSEL_CONTENT_TOP : EDGE_PADDING);
+  const contentTop =
+    pinnedStack?.imagesTop ??
+    (cardBelow && !reel ? carousel.contentTop : EDGE_PADDING);
   const captionReserve = reel
     ? type.captionFont + type.captionGap
     : hasCaption && !cardBelow
@@ -970,17 +1050,28 @@ export function drawComparisonFrame(
     : null;
 
   const availableH = canvasHeight - contentTop - bottomReserve;
-  const imageTop = reelStack
-    ? reelStack.imagesTop
-    : pinnedStack
-      ? pinnedStack.imagesTop
-      : cardBelow && !reel
-        ? Math.max(
-            contentTop,
-            canvasHeight - bottomReserve - imagesAndLabelsHeight,
-          )
-        : contentTop +
-          Math.floor((availableH - imagesAndLabelsHeight) / 2);
+  let imageTop;
+  if (reelStack) {
+    imageTop = reelStack.imagesTop;
+  } else if (pinnedStack) {
+    imageTop = pinnedStack.imagesTop;
+  } else if (cardBelow && !reel && carousel.stackMode === "center") {
+    // Center photos + labels + chip as one unit under the brand band.
+    const stackH = hasCardInfo
+      ? imagesAndLabelsHeight + bottomReserve - carousel.edge
+      : imagesAndLabelsHeight;
+    const bandH = canvasHeight - contentTop - carousel.edge;
+    imageTop =
+      contentTop + Math.max(0, Math.floor((bandH - stackH) / 2));
+  } else if (cardBelow && !reel) {
+    imageTop = Math.max(
+      contentTop,
+      canvasHeight - bottomReserve - imagesAndLabelsHeight,
+    );
+  } else {
+    imageTop =
+      contentTop + Math.floor((availableH - imagesAndLabelsHeight) / 2);
+  }
 
   const leftResized = prepareCardResized(
     ctx,
