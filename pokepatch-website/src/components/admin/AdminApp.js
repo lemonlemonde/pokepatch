@@ -72,7 +72,7 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-     "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+     "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "timers",
@@ -112,7 +112,7 @@ const ORDERS_ALL_META = {
   id: "orders-all",
   title: "All orders",
   subtitle:
-   "Spreadsheet view of every order. Click a row to open it.",
+   "Spreadsheet view of every order. Search cards by name or set and filter by status. Click a row to open it.",
 };
 
 const ORDERS_EDIT_META = {
@@ -962,7 +962,6 @@ function truncateText(value, max = 140) {
   return `${text.slice(0, max - 1)}…`;
 }
 
-const DEFAULT_SEARCH_STATUSES = ACTIVE_ORDER_STATUSES.map((status) => status.id);
 const ALL_SEARCH_STATUSES = ORDER_STATUSES.map((status) => status.id);
 
 function orderMatchesLocalQuery(order, query) {
@@ -996,13 +995,9 @@ function filterOrdersForAllList(orders, { query, statuses, searchOrderIds }) {
   return list;
 }
 
-function OrderCardSearch({
-  onOpenOrder,
-  defaultStatuses = DEFAULT_SEARCH_STATUSES,
-  onFilterChange,
-}) {
+function OrderCardSearch({ onOpenOrder, onFilterChange }) {
   const [query, setQuery] = useState("");
-  const [statuses, setStatuses] = useState(defaultStatuses);
+  const [statuses, setStatuses] = useState(ALL_SEARCH_STATUSES);
   const [results, setResults] = useState([]);
   const [truncated, setTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1395,7 +1390,6 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
         </button>
       </div>
       <OrderCardSearch
-        defaultStatuses={ALL_SEARCH_STATUSES}
         onFilterChange={setListFilter}
         onOpenOrder={(orderId, options) =>
           onOpenOrder(orderId, { from: "all", ...options })
@@ -2598,9 +2592,6 @@ export default function AdminApp() {
             />
           ) : (
             <>
-              <div className="mb-4">
-                <OrderCardSearch onOpenOrder={openOrder} />
-              </div>
               <KanbanBoard
                 orders={orders}
                 onOpenOrder={openOrder}
