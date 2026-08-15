@@ -392,7 +392,7 @@ function hasCardMetaContent(cardMeta) {
 
 /**
  * Finalized-output grid. Per-post downloads and source-image downloads are
- * intentionally omitted — use "Download all" or the package zip.
+ * intentionally omitted — use "Download all" or the package zip at the bottom.
  *
  * `onAltTextChange`, when given, turns on a per-post alt text field under each
  * image — only the package download consumes alt text.
@@ -405,7 +405,6 @@ function OutputGrid({
 }) {
   const internalExportersRef = useRef(new Map());
   const exportersRef = externalExportersRef ?? internalExportersRef;
-  const [downloading, setDownloading] = useState(false);
 
   const setExporter = useCallback(
     (key, exporter) => {
@@ -415,49 +414,8 @@ function OutputGrid({
     [exportersRef],
   );
 
-  async function downloadAllFinalized() {
-    setDownloading(true);
-    try {
-      for (let index = 0; index < outputs.length; index += 1) {
-        const output = outputs[index];
-        const exporter = exportersRef.current.get(output.key);
-        if (exporter) {
-          const { blob, filename } = await exporter();
-          downloadBlob(blob, filename);
-        } else {
-          downloadBlob(
-            await fetch(output.url).then((res) => res.blob()),
-            output.filename,
-          );
-        }
-        if (index < outputs.length - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
-        }
-      }
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   return (
-    <div className="mt-10 space-y-6">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <button
-          type="button"
-          onClick={downloadAllFinalized}
-          disabled={downloading}
-          className="rounded-xl bg-berry px-6 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {downloading
-            ? "Downloading…"
-            : outputs.length > 1
-              ? `Download all images (${outputs.length})`
-              : "Download image"}
-        </button>
-        <p className="max-w-md text-xs text-ink/45">
-          Final posts only — includes any circles you added on the previews
-        </p>
-      </div>
+    <div className="mt-10">
       <div className="grid gap-10 sm:grid-cols-2">
         {outputs.map((output) => {
           const altTextField = onAltTextChange ? (
@@ -631,6 +589,7 @@ function BeforeAfterPairPhotoFormatter({
   const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
   const [altTextByKey, setAltTextByKey] = useState({});
   const [packaging, setPackaging] = useState(false);
+  const [downloadingImages, setDownloadingImages] = useState(false);
   const exportersRef = useRef(new Map());
   const resultsRef = useRef(null);
   const activeFormat =
@@ -789,6 +748,31 @@ function BeforeAfterPairPhotoFormatter({
     }
   }
 
+  async function handleDownloadAllImages() {
+    if (!outputs?.length) return;
+    setDownloadingImages(true);
+    try {
+      for (let index = 0; index < outputs.length; index += 1) {
+        const output = outputs[index];
+        const exporter = exportersRef.current.get(output.key);
+        if (exporter) {
+          const { blob, filename } = await exporter();
+          downloadBlob(blob, filename);
+        } else {
+          downloadBlob(
+            await fetch(output.url).then((res) => res.blob()),
+            output.filename,
+          );
+        }
+        if (index < outputs.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+    } finally {
+      setDownloadingImages(false);
+    }
+  }
+
   async function handleDownloadPackage() {
     if (!outputs?.length) return;
     setPackaging(true);
@@ -879,11 +863,11 @@ function BeforeAfterPairPhotoFormatter({
           <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
             <div>
               <p className="font-secondary text-sm font-semibold text-ink">
-                Instagram package (.zip)
+                Downloads
               </p>
               <p className="mt-1 text-xs text-ink/50">
-                Same final images, plus caption.txt, optional alt-text files,
-                and card name/set for posting.
+                Images alone, or a zip with caption.txt, optional alt-text
+                files, and card name/set for posting.
               </p>
             </div>
 
@@ -909,14 +893,28 @@ function BeforeAfterPairPhotoFormatter({
               />
             </label>
 
-            <button
-              type="button"
-              onClick={handleDownloadPackage}
-              disabled={packaging || busy}
-              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {packaging ? "Building package…" : "Download package (.zip)"}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleDownloadAllImages}
+                disabled={downloadingImages || packaging || busy}
+                className="flex-1 rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {downloadingImages
+                  ? "Downloading…"
+                  : outputs.length > 1
+                    ? `Download all images (${outputs.length})`
+                    : "Download image"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPackage}
+                disabled={packaging || downloadingImages || busy}
+                className="flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {packaging ? "Building package…" : "Download package (.zip)"}
+              </button>
+            </div>
           </div>
         </div>
       )}
