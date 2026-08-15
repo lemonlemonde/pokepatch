@@ -48,15 +48,14 @@ deploying admin functions (they do on production):
 **Customer messages**
 - `customer_messages` table + order-linked RLS / related RPCs (shown on My Orders)
 
-Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → `db push`). Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
+Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → test locally → merge to `main`). CI runs `db push` + function deploy. Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
 
 ```bash
 supabase migration new <short_name>
-supabase db push
+# test with npm run local / supabase db reset
+# merge to main → CI db push + functions deploy
 supabase migration list
 ```
-
-Apply pending migrations before deploying if the function depends on new schema.
 
 Optional one-time seed of existing `public/gallery` files:
 
@@ -65,18 +64,23 @@ Optional one-time seed of existing `public/gallery` files:
 node --env-file=.env.local scripts/seed-gallery.mjs
 ```
 
-## Deploy (manual)
+## Deploy
 
-From `pokepatch-website/`:
+**Normal path:** merge to `main` — CI deploys all edge functions (JWT flags from `supabase/config.toml`) and the site.
+
+**Secrets** (Supabase project, once):
 
 ```bash
 supabase secrets set ADMIN_ALLOWED_EMAILS="you@example.com"
 supabase secrets set RESEND_API_KEY="re_..." RESEND_FROM_EMAIL="PokePatch <noreply@pokepatch.cards>"
+```
+
+**Emergency manual function deploy** from `pokepatch-website/`:
+
+```bash
 supabase functions deploy admin-auth --no-verify-jwt
 supabase functions deploy admin-api --no-verify-jwt
 ```
-
-Then deploy the static site so `/admin/` is available.
 
 ## Safety
 

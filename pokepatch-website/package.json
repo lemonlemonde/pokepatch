@@ -7,6 +7,7 @@
     "add-domain": "mkdir -p out && echo pokepatch.cards > out/CNAME",
     "deploy": "sh scripts/use-env.sh prod && npm run build && npm run add-domain && touch out/.nojekyll && gh-pages -d out --dotfiles",
     "dev": "next dev --turbopack",
+    "local": "sh scripts/local-stack.sh",
     "devenv": "sh scripts/use-env.sh dev && npm run dev",
     "prodenv": "sh scripts/use-env.sh prod && npm run dev",
     "build": "next build",
