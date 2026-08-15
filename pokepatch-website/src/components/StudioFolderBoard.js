@@ -298,9 +298,6 @@ function PairSlot({
               Remove
             </button>
           </div>
-          <p className="mt-1 text-[10px] text-ink/35">
-            Click photo to crop or add circles
-          </p>
         </div>
       ) : (
         <p className="px-3 py-10 text-center text-xs text-ink/35">
