@@ -4,10 +4,13 @@
  * and the per-slot editor (StudioSlotEditor). No React here.
  */
 
-/** Single fixed stroke colour and width — annotations are deliberately
- * uniform, so there are no per-shape colour/thickness overrides. */
+/** Single fixed stroke colour — annotations stay visually uniform. Stroke
+ * width is shared across every shape in a set (edits always apply to all). */
 export const SHAPE_STROKE = "#f87171";
 export const SHAPE_STROKE_WIDTH = 6;
+export const MIN_STROKE_WIDTH = 2;
+export const MAX_STROKE_WIDTH = 16;
+export const STROKE_WIDTH_STEP = 1;
 /** Reference width shapes are authored against, so stroke thickness reads the
  * same whether drawn on the small thumbnail, the zoomed editor, or exported
  * at full image resolution. */
@@ -89,7 +92,36 @@ export function toLocalPoint(shape, nx, ny, aspect = 1) {
   return rotateNormalized(nx, ny, cx, cy, -shapeRotation(shape), aspect);
 }
 
-export function createShape(type, index = 0) {
+export function clampStrokeWidth(value) {
+  return clamp(
+    Math.round(Number(value) || SHAPE_STROKE_WIDTH),
+    MIN_STROKE_WIDTH,
+    MAX_STROKE_WIDTH,
+  );
+}
+
+export function shapeStrokeWidth(shape) {
+  return typeof shape?.strokeWidth === "number" && shape.strokeWidth > 0
+    ? clampStrokeWidth(shape.strokeWidth)
+    : SHAPE_STROKE_WIDTH;
+}
+
+/** Shared stroke width for a shape set — read from the first shape (they
+ * stay in lockstep), else the default. */
+export function getSharedStrokeWidth(shapes) {
+  if (!shapes?.length) return SHAPE_STROKE_WIDTH;
+  return shapeStrokeWidth(shapes[0]);
+}
+
+/** Thickness is never per-circle — rewrite every shape to the same width. */
+export function applyStrokeWidth(shapes, strokeWidth) {
+  const next = clampStrokeWidth(strokeWidth);
+  return (shapes ?? []).map((shape) =>
+    shape.strokeWidth === next ? shape : { ...shape, strokeWidth: next },
+  );
+}
+
+export function createShape(type, index = 0, options = {}) {
   const offset = (index % 5) * 0.04;
   return {
     id: createId(),
@@ -99,6 +131,9 @@ export function createShape(type, index = 0) {
     w: DEFAULT_SIZE,
     h: DEFAULT_SIZE,
     rotation: 0,
+    strokeWidth: clampStrokeWidth(
+      options.strokeWidth ?? SHAPE_STROKE_WIDTH,
+    ),
   };
 }
 
@@ -165,10 +200,7 @@ function strokeShapePath(ctx, shape, w, h) {
  * no matter how tight the crop was.
  */
 export function drawShapesOnCanvas(ctx, shapes, width, height) {
-  const strokeWidth = Math.max(
-    1,
-    SHAPE_STROKE_WIDTH * (width / STROKE_REFERENCE_WIDTH),
-  );
+  const scale = width / STROKE_REFERENCE_WIDTH;
 
   for (const shape of shapes) {
     const x = shape.x * width;
@@ -178,6 +210,7 @@ export function drawShapesOnCanvas(ctx, shapes, width, height) {
     const cx = x + w / 2;
     const cy = y + h / 2;
     const rotationRad = (shapeRotation(shape) * Math.PI) / 180;
+    const strokeWidth = Math.max(1, shapeStrokeWidth(shape) * scale);
 
     ctx.save();
     ctx.translate(cx, cy);

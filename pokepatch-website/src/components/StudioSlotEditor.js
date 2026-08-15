@@ -21,32 +21,47 @@ import {
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   STROKE_REFERENCE_WIDTH,
+  applyStrokeWidth,
   clamp,
+  clampStrokeWidth,
   createShape,
   getImageContentMetrics,
+  getSharedStrokeWidth,
 } from "@/lib/shapeAnnotations";
 
 const CROP_HANDLE_SIZE = 10;
 
+/** Survives Crop ↔ Annotate remounts so aspect never flashes to 1:1. */
+const naturalSizeCache = new Map();
+
 /** Natural pixel dimensions of an image URL, once it has loaded. */
 export function useNaturalSize(src) {
-  const [size, setSize] = useState(null);
+  const [version, setVersion] = useState(0);
+
   useEffect(() => {
-    setSize(null);
-    if (!src) return undefined;
+    if (!src || naturalSizeCache.has(src)) return undefined;
     let cancelled = false;
     const img = new Image();
-    img.onload = () => {
-      if (!cancelled) {
-        setSize({ width: img.naturalWidth, height: img.naturalHeight });
-      }
+    const commit = () => {
+      if (cancelled || !img.naturalWidth || naturalSizeCache.has(src)) return;
+      naturalSizeCache.set(src, {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
+      setVersion((v) => v + 1);
     };
+    img.onload = commit;
     img.src = src;
+    // Cached decodes can be complete before onload is scheduled.
+    if (img.complete) queueMicrotask(commit);
     return () => {
       cancelled = true;
     };
   }, [src]);
-  return size;
+
+  void version; // re-render when cache fills after async decode
+  if (!src) return null;
+  return naturalSizeCache.get(src) ?? null;
 }
 
 /** Visual aspect (w/h) of the cropped region of an image. */
@@ -295,7 +310,9 @@ function CropStepSurface({
         src={src}
         alt={alt}
         draggable={false}
-        className={LIGHTBOX_MEDIA_CLASSNAME}
+        // Stay laid out (so we can measure) but invisible until the dim
+        // overlay is ready — otherwise Crop mode blinks a full bright photo.
+        className={`${LIGHTBOX_MEDIA_CLASSNAME}${contentBox.width > 0 ? "" : " opacity-0"}`}
       />
       {contentBox.width > 0 ? (
         <div className="absolute" style={overlayStyle}>
@@ -471,6 +488,11 @@ function EditorPanel({
   onSelectedIdChange,
 }) {
   const [step, setStep] = useState("crop");
+  // Shared across every circle on this photo; survives deleting down to zero
+  // so the next Add circle keeps the last thickness the user picked.
+  const [strokeWidth, setStrokeWidth] = useState(() =>
+    getSharedStrokeWidth(draftAnnotations),
+  );
 
   const hasCrop = !isDefaultCrop(draftCrop);
 
@@ -493,7 +515,7 @@ function EditorPanel({
   }, [step, selectedId, onDraftAnnotationsChange, onSelectedIdChange]);
 
   function addShape(type) {
-    const next = createShape(type, draftAnnotations.length);
+    const next = createShape(type, draftAnnotations.length, { strokeWidth });
     onDraftAnnotationsChange([...draftAnnotations, next]);
     onSelectedIdChange(next.id);
   }
@@ -504,6 +526,12 @@ function EditorPanel({
       draftAnnotations.filter((shape) => shape.id !== selectedId),
     );
     onSelectedIdChange(null);
+  }
+
+  function changeStrokeWidth(next) {
+    const width = clampStrokeWidth(next);
+    setStrokeWidth(width);
+    onDraftAnnotationsChange((prev) => applyStrokeWidth(prev, width));
   }
 
   const steps = [
@@ -563,43 +591,55 @@ function EditorPanel({
             selectedId={selectedId}
             onAdd={addShape}
             onDelete={deleteSelected}
+            strokeWidth={strokeWidth}
+            onStrokeWidthChange={changeStrokeWidth}
           />
         )}
       </div>
 
-      {step === "crop" ? (
-        <>
-          <CropStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            onCropChange={onDraftCropChange}
-            annotations={draftAnnotations}
-          />
+      {/*
+        Keep both surfaces mounted and toggle with `hidden` instead of
+        unmounting. Remounting reloaded the <img>, reset naturalSize to null
+        (square aspect flash), and dropped the crop overlay until ResizeObserver
+        re-measured — the blink when flipping Crop ↔ Annotate.
+      */}
+      <div
+        className={step === "crop" ? "contents" : "hidden"}
+        aria-hidden={step !== "crop"}
+      >
+        <CropStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          onCropChange={onDraftCropChange}
+          annotations={draftAnnotations}
+        />
 
-          <p className="text-center text-xs text-ink/50">
-            Drag the box to move · drag handles to zoom · crop keeps the
-            photo&apos;s original ratio · circles stay in the frame
-          </p>
-        </>
-      ) : (
-        <>
-          <AnnotateStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            shapes={draftAnnotations}
-            selectedId={selectedId}
-            onSelectShape={onSelectedIdChange}
-            onShapesChange={onDraftAnnotationsChange}
-          />
+        <p className="text-center text-xs text-ink/50">
+          Drag the box to move · drag handles to zoom · crop keeps the
+          photo&apos;s original ratio · circles stay in the frame
+        </p>
+      </div>
 
-          <p className="text-center text-xs text-ink/50">
-            This is the cropped image as it will appear in the output ·
-            drag a shape to move it · Delete removes the selected shape
-          </p>
-        </>
-      )}
+      <div
+        className={step === "annotate" ? "contents" : "hidden"}
+        aria-hidden={step !== "annotate"}
+      >
+        <AnnotateStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          shapes={draftAnnotations}
+          selectedId={selectedId}
+          onSelectShape={onSelectedIdChange}
+          onShapesChange={onDraftAnnotationsChange}
+        />
+
+        <p className="text-center text-xs text-ink/50">
+          This is the cropped image as it will appear in the output ·
+          drag a shape to move it · Delete removes the selected shape
+        </p>
+      </div>
     </div>
   );
 }
