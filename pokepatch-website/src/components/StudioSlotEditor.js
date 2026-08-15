@@ -5,7 +5,6 @@ import MediaLightbox, {
   LIGHTBOX_MEDIA_CLASSNAME,
 } from "@/components/MediaLightbox";
 import {
-  ASPECT_OPTIONS,
   CROP_HANDLES,
   DEFAULT_CROP,
   clampCrop,
@@ -138,12 +137,21 @@ export function CroppedShapePreview({
   );
 }
 
-/** Step 1: position the crop box over the full image. */
-function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
+/** Step 1: position the crop box over the full image.
+ * Annotations stay visible inside the crop frame (same coords as Annotate).
+ * Crop aspect is always locked to the source image so every crop is a
+ * same-ratio zoom/pan of the original photo. */
+function CropStepSurface({
+  src,
+  alt,
+  crop,
+  onCropChange,
+  annotations = [],
+}) {
   const surfaceRef = useRef(null);
   const imageRef = useRef(null);
+  const naturalSize = useNaturalSize(src);
   const [drag, setDrag] = useState(null);
-  const [imageAspect, setImageAspect] = useState(null);
   const [contentBox, setContentBox] = useState({
     offsetLeft: 0,
     offsetTop: 0,
@@ -154,10 +162,15 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
   // Buffer the drag locally; the parent (and the slot grid it re-renders)
   // only hears about it on release.
   const liveCrop = drag?.value ?? crop;
+  const imageAspect = naturalSize
+    ? naturalSize.width / naturalSize.height
+    : null;
+  const cropAspect = cropAspectRatio(liveCrop, naturalSize);
+  const shapeViewW = STROKE_REFERENCE_WIDTH;
+  const shapeViewH = STROKE_REFERENCE_WIDTH / cropAspect;
 
   const updateContentBox = useCallback(() => {
-    const img = imageRef.current;
-    const metrics = getImageContentMetrics(img);
+    const metrics = getImageContentMetrics(imageRef.current);
     if (!metrics) return;
     setContentBox({
       offsetLeft: metrics.offsetLeft,
@@ -165,9 +178,6 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
       width: metrics.width,
       height: metrics.height,
     });
-    if (img?.naturalWidth && img?.naturalHeight) {
-      setImageAspect(img.naturalWidth / img.naturalHeight);
-    }
   }, []);
 
   useEffect(() => {
@@ -184,11 +194,11 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
   }, [src, updateContentBox]);
 
   useEffect(() => {
-    if (!aspectRatio || !imageAspect) return;
-    onCropChange(fitCropToAspect(crop, aspectRatio, imageAspect));
-    // Only re-fit when the aspect preset or natural image ratio changes.
+    if (!imageAspect) return;
+    onCropChange(fitCropToAspect(crop, imageAspect, imageAspect));
+    // Re-fit whenever the natural image ratio is known / changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [aspectRatio, imageAspect]);
+  }, [imageAspect]);
 
   const clientToNormalized = useCallback((clientX, clientY) => {
     const metrics = getImageContentMetrics(imageRef.current);
@@ -246,8 +256,7 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
         prev.handleId,
         point.x,
         point.y,
-        // Shift locks to the original image aspect (overrides Free / presets).
-        event.shiftKey ? imageAspect : aspectRatio,
+        imageAspect,
         imageAspect,
       ),
     }));
@@ -312,6 +321,27 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
               vectorEffect="non-scaling-stroke"
             />
           </svg>
+          {annotations.length > 0 ? (
+            <svg
+              className="pointer-events-none absolute overflow-visible"
+              style={{
+                left: `${liveCrop.x * 100}%`,
+                top: `${liveCrop.y * 100}%`,
+                width: `${liveCrop.w * 100}%`,
+                height: `${liveCrop.h * 100}%`,
+              }}
+              viewBox={`0 0 ${shapeViewW} ${shapeViewH}`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <ShapesLayer
+                shapes={annotations}
+                selectedId={null}
+                viewW={shapeViewW}
+                viewH={shapeViewH}
+              />
+            </svg>
+          ) : null}
           <button
             type="button"
             aria-label="Move crop"
@@ -423,12 +453,11 @@ function AnnotateStepSurface({
 }
 
 /**
- * One independently-editable photo: its own Crop/Annotate mode, aspect
- * controls, and drag surface. `draftCrop` / `draftAnnotations` / `selectedId`
- * are controlled from the parent (StudioSlotEditor needs both photos' current
- * values at once to commit them together), but `step` and `aspectId` stay
- * local here — that's what makes two panels' modes independent of each
- * other for free, no cross-panel plumbing required.
+ * One independently-editable photo: its own Crop/Annotate mode and drag
+ * surface. `draftCrop` / `draftAnnotations` / `selectedId` are controlled from
+ * the parent (StudioSlotEditor needs both photos' current values at once to
+ * commit them together), but `step` stays local here — that's what makes two
+ * panels' modes independent of each other for free, no cross-panel plumbing.
  */
 function EditorPanel({
   previewUrl,
@@ -442,11 +471,8 @@ function EditorPanel({
   onSelectedIdChange,
 }) {
   const [step, setStep] = useState("crop");
-  const [aspectId, setAspectId] = useState("free");
 
   const hasCrop = !isDefaultCrop(draftCrop);
-  const aspectRatio =
-    ASPECT_OPTIONS.find((option) => option.id === aspectId)?.ratio ?? null;
 
   useEffect(() => {
     if (step !== "annotate" || !selectedId) return undefined;
@@ -524,36 +550,14 @@ function EditorPanel({
         </div>
 
         {step === "crop" ? (
-          <>
-            <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
-              {ASPECT_OPTIONS.map((option) => {
-                const active = aspectId === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setAspectId(option.id)}
-                    className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
-                      active
-                        ? "bg-berry text-night "
-                        : "text-ink/70 hover:text-ink"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => onDraftCropChange(DEFAULT_CROP)}
-              disabled={!hasCrop}
-              className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Reset crop
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={() => onDraftCropChange(DEFAULT_CROP)}
+            disabled={!hasCrop}
+            className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Reset crop
+          </button>
         ) : (
           <ShapeToolbar
             selectedId={selectedId}
@@ -570,12 +574,12 @@ function EditorPanel({
             alt={alt}
             crop={draftCrop}
             onCropChange={onDraftCropChange}
-            aspectRatio={aspectRatio}
+            annotations={draftAnnotations}
           />
 
           <p className="text-center text-xs text-ink/50">
-            Drag the box to move · drag handles to resize · hold Shift for
-            original aspect
+            Drag the box to move · drag handles to zoom · crop keeps the
+            photo&apos;s original ratio · circles stay in the frame
           </p>
         </>
       ) : (
