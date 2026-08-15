@@ -96,7 +96,7 @@ const ADMIN_TABS = [
     path: "/admin/studio/",
     title: "Studio",
     subtitle:
-     "Format 1×2 before & after Instagram posts.",
+      "Upload before & after folders, drag into pairs, then generate Instagram posts.",
   },
   {
     id: "guide",

@@ -492,39 +492,39 @@ function EditorPanel({
       </p>
 
       <div
-        className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
+        className="flex max-w-full flex-wrap items-center justify-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
-        {steps.map((option) => {
-          const active = step === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                setStep(option.id);
-                onSelectedIdChange(null);
-              }}
-              className={`rounded-lg px-4 py-1.5 font-secondary text-sm font-semibold transition ${
-                active
-                  ? "bg-berry text-night "
-                  : "text-ink/70 hover:text-ink"
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-      </div>
+        <div
+          className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
+          role="group"
+          aria-label="Edit mode"
+        >
+          {steps.map((option) => {
+            const active = step === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setStep(option.id);
+                  onSelectedIdChange(null);
+                }}
+                className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
+                  active
+                    ? "bg-berry text-night "
+                    : "text-ink/70 hover:text-ink"
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
 
-      {step === "crop" ? (
-        <>
-          <div
-            className="flex flex-wrap items-center justify-center gap-2"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="font-secondary text-sm text-ink/60">Aspect</p>
+        {step === "crop" ? (
+          <>
             <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
               {ASPECT_OPTIONS.map((option) => {
                 const active = aspectId === option.id;
@@ -534,7 +534,7 @@ function EditorPanel({
                     type="button"
                     aria-pressed={active}
                     onClick={() => setAspectId(option.id)}
-                    className={`rounded-lg px-3 py-1.5 font-secondary text-sm font-semibold transition ${
+                    className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
                       active
                         ? "bg-berry text-night "
                         : "text-ink/70 hover:text-ink"
@@ -553,8 +553,18 @@ function EditorPanel({
             >
               Reset crop
             </button>
-          </div>
+          </>
+        ) : (
+          <ShapeToolbar
+            selectedId={selectedId}
+            onAdd={addShape}
+            onDelete={deleteSelected}
+          />
+        )}
+      </div>
 
+      {step === "crop" ? (
+        <>
           <CropStepSurface
             src={previewUrl}
             alt={alt}
@@ -570,19 +580,6 @@ function EditorPanel({
         </>
       ) : (
         <>
-          {/* display:contents keeps this out of layout entirely, so it
-              can't itself become a too-wide dead-click wrapper. */}
-          <div
-            style={{ display: "contents" }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ShapeToolbar
-              selectedId={selectedId}
-              onAdd={addShape}
-              onDelete={deleteSelected}
-            />
-          </div>
-
           <AnnotateStepSurface
             src={previewUrl}
             alt={alt}
@@ -605,15 +602,12 @@ function EditorPanel({
 
 /**
  * Crop → Annotate editor for a studio slot image and — when the slot is
- * paired (before/after, front/back) — its sibling too, open and editable
- * side by side at once. Each photo's Crop/Annotate mode is fully
- * independent (see `EditorPanel`).
+ * paired (before/after) — its sibling too, open and editable side by side.
+ * Each photo's Crop/Annotate mode is fully independent (see `EditorPanel`).
  *
  * Edits apply to a local draft as you go; the slot(s) only see them once the
- * session ends. Any way of dismissing the editor *except* the explicit
- * Cancel button commits the draft(s) — clicking the shaded backdrop, the
- * lightbox's own Close button, and Escape (with nothing selected in either
- * photo) all save. Cancel discards both photos' edits at once.
+ * session ends. Done, backdrop click, the lightbox Close button, and Escape
+ * (with nothing selected) all save. Cancel discards both photos' edits.
  *
  * Annotations are normalized against each photo's own *cropped* frame, so
  * re-cropping later keeps them fixed in the frame while the image content
@@ -726,7 +720,7 @@ export default function StudioSlotEditor({
         Without this, clicking that leftover space read as "inside" and
         didn't close. So this whole block closes on click by default, and
         only the specific, tightly-sized interactive pieces (each control
-        group, the crop/annotate surface itself, Cancel) opt back out via
+        group, the crop/annotate surface itself, Done/Cancel) opt back out via
         their own stopPropagation.
       */}
       <div className="flex flex-col items-center gap-6" onClick={commitAndClose}>
@@ -734,16 +728,32 @@ export default function StudioSlotEditor({
           {orderedPanels}
         </div>
 
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            cancelAndClose();
-          }}
-          className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-        >
-          Cancel
-        </button>
+        <p className="text-center text-xs text-ink/40">
+          Done saves your edits · Cancel discards them · click outside to save
+        </p>
+
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              commitAndClose();
+            }}
+            className="rounded-xl bg-berry px-5 py-2.5 font-semibold text-night transition hover:brightness-110"
+          >
+            Done
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              cancelAndClose();
+            }}
+            className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </MediaLightbox>
   );

@@ -6,7 +6,6 @@ import MediaLightbox, {
 } from "@/components/MediaLightbox";
 import { canvasToBlob } from "@/lib/instagramStitch";
 import { INSTAGRAM_HEIGHT, INSTAGRAM_WIDTH } from "@/lib/studioLayout";
-import { downloadBlob } from "@/lib/downloadFile";
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   SHAPE_STROKE,
@@ -48,20 +47,13 @@ export async function compositeImageWithShapes(imageUrl, shapes) {
   return canvasToBlob(canvas);
 }
 
-export function ShapeToolbar({ selectedId, onAdd, onDelete }) {
+export function ShapeToolbar({ selectedId, onAdd, onDelete, className = "" }) {
   return (
     <div
-      className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-2"
+      className={`flex max-w-full flex-wrap items-center justify-center gap-2 ${className}`}
       role="toolbar"
       aria-label="Shape tools"
     >
-      <button
-        type="button"
-        onClick={() => onAdd("rect")}
-        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20"
-      >
-        Add rectangle
-      </button>
       <button
         type="button"
         onClick={() => onAdd("circle")}
@@ -304,15 +296,14 @@ export function ShapeSurface({
 /**
  * Studio output preview: click to enlarge in MediaLightbox and edit shapes there.
  *
- * `children` render between the image and the download row (the per-post alt
- * text field); `extraActions` render alongside the download button.
+ * `children` render below the image (e.g. per-post alt text). Downloads are
+ * handled by the parent (Download all finalized / package zip).
  */
 export default function StudioAnnotatedPreview({
   label,
   url,
   filename,
   onExporterChange,
-  extraActions = null,
   children = null,
 }) {
   const [shapes, setShapes] = useState([]);
@@ -369,15 +360,10 @@ export default function StudioAnnotatedPreview({
     setOpen(false);
   }
 
-  async function handleDownload() {
-    const blob = await compositeImageWithShapes(url, shapes);
-    downloadBlob(blob, filename);
-  }
-
   return (
     <div className="space-y-3">
       <p id={labelId} className="sr-only">
-        Preview for {label}. Click to enlarge and edit rectangles or circles.
+        Preview for {label}. Click to enlarge and edit circles.
       </p>
 
       <button
@@ -397,21 +383,10 @@ export default function StudioAnnotatedPreview({
       </button>
 
       <p className="text-center text-xs text-ink/50">
-        Click image to enlarge and edit shapes
+        Click to enlarge and mark spots with circles
       </p>
 
       {children}
-
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={handleDownload}
-          className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
-        >
-          Download {label.toLowerCase()}
-        </button>
-        {extraActions}
-      </div>
 
       {open ? (
         <MediaLightbox
@@ -432,6 +407,7 @@ export default function StudioAnnotatedPreview({
               selectedId={selectedId}
               onAdd={addShape}
               onDelete={deleteSelected}
+              className="mb-3"
             />
             <ShapeSurface
               url={url}
