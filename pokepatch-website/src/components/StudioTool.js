@@ -92,7 +92,7 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-          checked ? "bg-berry" : "bg-ink/25"
+          checked ? "bg-ink" : "bg-ink/25"
         }`}
       >
         <span
@@ -224,7 +224,7 @@ function StudioCardMetaControls({
               onDragLeave={() => setUploadDragging(false)}
               onDrop={handleUploadDrop}
               className={`rounded-xl transition ${
-                uploadDragging ? "ring-2 ring-berry/60" : ""
+                uploadDragging ? "ring-2 ring-ink/60" : ""
               }`}
             >
               {value.frontPreviewUrl ? (
@@ -245,14 +245,14 @@ function StudioCardMetaControls({
                   <div className="flex w-24 flex-col gap-1">
                     <label
                       htmlFor={frontInputId}
-                      className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                      className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                     >
                       Replace
                     </label>
                     <button
                       type="button"
                       onClick={clearFront}
-                      className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                      className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                     >
                       Clear
                     </button>
@@ -263,8 +263,8 @@ function StudioCardMetaControls({
                   htmlFor={frontInputId}
                   className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-6 text-center transition ${
                     uploadDragging
-                      ? "border-berry bg-berry/10"
-                      : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+                      ? "border-ink bg-ink/10"
+                      : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
                   }`}
                 >
                   <p className="text-xs text-ink/70">
@@ -316,7 +316,7 @@ function StudioCardMetaControls({
               type="button"
               onClick={() => setSearchOpen((open) => !open)}
               aria-expanded={searchOpen}
-              className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+              className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
             >
               {searchOpen ? "Hide catalog search" : "Search TCG catalog"}
             </button>
@@ -344,7 +344,7 @@ function StudioCardMetaControls({
             </p>
           ) : null}
           {pickError ? (
-            <p className="font-secondary text-xs font-semibold text-berry">
+            <p className="font-secondary text-xs font-semibold text-ink">
               {pickError}
             </p>
           ) : null}
@@ -385,7 +385,7 @@ function ClearAllButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
+      className="inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
     >
       Clear all
     </button>
@@ -559,7 +559,7 @@ function OutputFormatToggle({ value, onChange }) {
               onClick={() => onChange(format.id)}
               className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night "
+                  ? "bg-ink text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -882,7 +882,7 @@ function BeforeAfterPairPhotoFormatter({
           />
 
           {error && (
-            <p className="text-center text-sm text-berry" role="alert">
+            <p className="text-center text-sm text-error" role="alert">
               {error}
             </p>
           )}
@@ -891,7 +891,7 @@ function BeforeAfterPairPhotoFormatter({
             <button
               type="submit"
               disabled={busy || sendingToGallery || completePairCount === 0}
-              className="w-full flex-1 rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full flex-1 rounded-xl bg-ink px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy
                 ? "Generating…"
@@ -905,7 +905,7 @@ function BeforeAfterPairPhotoFormatter({
               type="button"
               onClick={handleSendToGallery}
               disabled={busy || sendingToGallery || completePairCount === 0}
-              className="w-full flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {sendingToGallery
                 ? "Sending to gallery…"
@@ -948,7 +948,7 @@ function BeforeAfterPairPhotoFormatter({
                   type="button"
                   onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
                   disabled={caption === DEFAULT_PACKAGE_CAPTION}
-                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Restore default
                 </button>
@@ -966,7 +966,7 @@ function BeforeAfterPairPhotoFormatter({
                 type="button"
                 onClick={handleDownloadAllImages}
                 disabled={downloadingImages || packaging || busy}
-                className="flex-1 rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1 rounded-xl bg-ink px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {downloadingImages
                   ? "Downloading…"
@@ -978,7 +978,7 @@ function BeforeAfterPairPhotoFormatter({
                 type="button"
                 onClick={handleDownloadPackage}
                 disabled={packaging || downloadingImages || busy}
-                className="flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+                className="flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {packaging ? "Building package…" : "Download package (.zip)"}
               </button>

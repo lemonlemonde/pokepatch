@@ -43,7 +43,7 @@ function primaryButtonClassName() {
 }
 
 function dangerButtonClassName() {
-  return "rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-berry disabled:opacity-50";
+  return "rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50";
 }
 
 function LoadingIndicator({ label = "Loading…", className = "" }) {
@@ -55,7 +55,7 @@ function LoadingIndicator({ label = "Loading…", className = "" }) {
     >
       <div
         aria-hidden="true"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-berry border-r-blush"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-ink border-r-ink"
       />
       <p className="animate-soft-bounce text-sm font-semibold text-ink/70">{label}</p>
     </div>
@@ -819,8 +819,8 @@ export default function GalleryManager() {
                     }}
                     className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors duration-150 ${
                       checked
-                        ? "border-blush/45 bg-blush/20 text-ink ring-1 ring-blush/25"
-                        : "border-ink/10 bg-ink/[0.03] text-ink hover:border-blush/35 hover:bg-blush/10"
+                        ? "border-ink/45 bg-ink/20 text-ink ring-1 ring-ink/25"
+                        : "border-ink/10 bg-ink/[0.03] text-ink hover:border-ink/35 hover:bg-ink/10"
                     }`}
                   >
                     {tag.label}
@@ -1025,7 +1025,7 @@ export default function GalleryManager() {
         )}
 
         {editorError && (
-          <p className="mt-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+          <p className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
             {editorError}
           </p>
         )}
@@ -1082,7 +1082,7 @@ export default function GalleryManager() {
       </div>
 
       {listError && (
-        <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+        <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {listError}
         </p>
       )}

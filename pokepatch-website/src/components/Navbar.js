@@ -160,7 +160,7 @@ export default function Navbar() {
                 >
                   {label}
                   {badge > 0 ? (
-                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-ink px-1.5 text-[11px] font-bold leading-5 text-night">
                       {badge > 99 ? "99+" : badge}
                     </span>
                   ) : null}
@@ -203,7 +203,7 @@ export default function Navbar() {
                   >
                     {label}
                     {badge > 0 ? (
-                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-berry px-1.5 text-[11px] font-bold leading-5 text-night">
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-ink px-1.5 text-[11px] font-bold leading-5 text-night">
                         {badge > 99 ? "99+" : badge}
                       </span>
                     ) : null}

@@ -3,7 +3,7 @@
 /**
  * Shared primitives for the admin order editor.
  * One visual language: quiet panels, small-caps labels, dark inset fields,
- * berry reserved for primary actions and money.
+ * primary actions use ink (editorial), not a colored brand accent.
  */
 
 export function Chevron({ open = false, className = "h-4 w-4" }) {
@@ -67,7 +67,9 @@ export function GhostButton({ children, className = "", danger = false, ...props
     <button
       type="button"
       className={`text-sm font-semibold transition disabled:opacity-40 ${
-        danger ? "text-ink/40 hover:text-berry" : "text-berry hover:text-blush"
+        danger
+          ? "text-ink/40 hover:text-error"
+          : "text-ink/70 hover:text-ink"
       } ${className}`}
       {...props}
     >
@@ -82,7 +84,7 @@ export function RemoveButton({ label = "Remove", className = "", ...props }) {
       type="button"
       aria-label={label}
       title={label}
-      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base leading-none text-ink/35 transition hover:bg-berry/10 hover:text-berry disabled:opacity-40 ${className}`}
+      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base leading-none text-ink/35 transition hover:bg-error/10 hover:text-error disabled:opacity-40 ${className}`}
       {...props}
     >
       ×

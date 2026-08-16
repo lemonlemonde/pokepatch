@@ -490,8 +490,8 @@ function FilterButton({ active, disabled, count, onClick, children }) {
       aria-pressed={active}
       className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors duration-150 ${
         active
-          ? "border-blush/45 bg-blush/20 text-ink ring-1 ring-blush/25"
-          : "border-ink/10 bg-ink/[0.03] text-ink hover:border-blush/35 hover:bg-blush/10"
+          ? "border-ink/45 bg-ink/20 text-ink ring-1 ring-ink/25"
+          : "border-ink/10 bg-ink/[0.03] text-ink hover:border-ink/35 hover:bg-ink/10"
       } ${
         disabled
           ? "cursor-not-allowed opacity-30 hover:border-ink/10 hover:bg-ink/[0.03]"

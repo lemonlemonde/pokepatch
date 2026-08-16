@@ -10,7 +10,7 @@ export const metadata = {
 export default function NotFound() {
   return (
     <div className="mx-auto max-w-2xl px-6 py-20 text-center">
-      <p className="font-display text-6xl font-bold text-berry">404</p>
+      <p className="font-display text-6xl font-bold text-ink">404</p>
       <h1 className="mt-4 font-display text-3xl font-bold text-ink md:text-4xl">
         Page not found
       </h1>
@@ -25,7 +25,7 @@ export default function NotFound() {
       </div>
       <p className="mt-6 text-sm text-ink/60">
         Need a quote?{" "}
-        <Link href="/contact" className="font-semibold text-blush hover:underline">
+        <Link href="/contact" className="font-semibold text-ink hover:underline">
           Get in touch
         </Link>
         .

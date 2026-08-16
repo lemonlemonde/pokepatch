@@ -133,7 +133,7 @@ function ResetPasswordContent() {
             <p className="text-sm text-ink/70">
               <Link
                 href="/login"
-                className="font-semibold text-blush hover:underline"
+                className="font-semibold text-ink hover:underline"
               >
                 Request a new one
               </Link>{" "}
@@ -156,7 +156,7 @@ function ResetPasswordContent() {
                   htmlFor="new_password"
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  New password <span className="text-berry">*</span>
+                  New password <span className="text-error">*</span>
                 </label>
                 <input
                   id="new_password"
@@ -184,7 +184,7 @@ function ResetPasswordContent() {
                   htmlFor="confirm_new_password"
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  Confirm new password <span className="text-berry">*</span>
+                  Confirm new password <span className="text-error">*</span>
                 </label>
                 <input
                   id="confirm_new_password"

@@ -422,7 +422,7 @@ function AnnotatedPreviewSession({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mx-auto block cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-berry/50"
+        className="mx-auto block cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ink/50"
         aria-labelledby={labelId}
       >
         <ShapeSurface

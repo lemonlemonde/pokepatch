@@ -44,7 +44,7 @@ body {
 }
 
 .marketing-page ::selection {
-  background: #e0518a;
+  background: #F3E9F2;
   color: #0b1020;
 }
 
@@ -55,7 +55,7 @@ body {
 .marketing-glow {
   background:
     radial-gradient(55% 40% at 50% 0%, rgba(212, 197, 249, 0.1), transparent 70%),
-    radial-gradient(40% 30% at 85% 18%, rgba(224, 81, 138, 0.06), transparent 70%);
+    radial-gradient(40% 30% at 85% 18%, rgba(243, 233, 242, 0.06), transparent 70%);
 }
 
 .marketing-grain {
@@ -73,7 +73,7 @@ body {
      painted once, then just composited on scroll. */
   background-color: #120c1f;
   background-image:
-    radial-gradient(95vw 95vw at 12% 18%, rgba(121, 52, 77, 0.22) 0%, rgba(125, 45, 74, 0) 70%),
+    radial-gradient(95vw 95vw at 12% 18%, rgba(72, 52, 110, 0.22) 0%, rgba(44, 28, 75, 0) 70%),
     radial-gradient(90vw 90vw at 85% 12%, rgba(61, 98, 76, 0.18) 0%, rgba(30, 69, 46, 0) 70%),
     radial-gradient(100vw 100vw at 78% 82%, rgba(50, 37, 77, 0.2) 0%, rgba(44, 28, 75, 0) 70%),
     radial-gradient(88vw 88vw at 18% 88%, rgba(120, 80, 41, 0.16) 0%, rgba(77, 53, 29, 0) 70%);

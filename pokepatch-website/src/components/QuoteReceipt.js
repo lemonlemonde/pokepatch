@@ -164,7 +164,7 @@ export default function QuoteReceipt({
 
   return (
     <div
-      className={`rounded-xl border border-berry/25 bg-berry/10 px-3 py-3 font-mono text-sm ${className}`}
+      className={`rounded-xl border border-ink/25 bg-ink/10 px-3 py-3 font-mono text-sm ${className}`}
     >
       {collapsible ? (
         <button

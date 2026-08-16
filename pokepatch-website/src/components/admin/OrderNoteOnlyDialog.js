@@ -85,7 +85,7 @@ export default function OrderNoteOnlyDialog({
         </div>
         <div className="space-y-4 px-5 py-4">
           {error ? (
-            <p className="rounded-xl border border-berry/30 bg-berry/10 px-3 py-2 text-sm text-berry">
+            <p className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
               {error}
             </p>
           ) : null}
@@ -127,7 +127,7 @@ export default function OrderNoteOnlyDialog({
             type="button"
             onClick={handleSend}
             disabled={sending}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {sending ? "Sending…" : "Send message"}
           </button>

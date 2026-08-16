@@ -44,7 +44,7 @@ function LoadingIndicator({ label = "Loading…" }) {
     >
       <div
         aria-hidden="true"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-berry border-r-blush"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-ink border-r-ink"
       />
       <p className="animate-soft-bounce text-sm font-semibold text-ink/70">
         {label}
@@ -82,7 +82,7 @@ function TimerRow({
           <button
             type="button"
             onClick={() => onOpenOrder(card.order_id)}
-            className="text-left font-semibold text-ink transition hover:text-berry"
+            className="text-left font-semibold text-ink transition hover:text-ink"
           >
             {title}
           </button>
@@ -94,7 +94,7 @@ function TimerRow({
           <p
             className={`mt-2 font-mono text-2xl tracking-tight ${
               isDue
-                ? "text-berry"
+                ? "text-ink"
                 : hasTimer
                   ? "text-ink"
                   : "text-ink/35"
@@ -161,7 +161,7 @@ function TimerRow({
                 type="button"
                 disabled={busy}
                 onClick={() => onClear(card.id)}
-                className="rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-berry disabled:opacity-50"
+                className="rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50"
               >
                 Clear
               </button>
@@ -259,7 +259,7 @@ export default function CardTimers({ onOpenOrder }) {
   return (
     <div className="mx-auto max-w-3xl">
       {error && (
-        <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+        <p className="mb-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {error}
         </p>
       )}

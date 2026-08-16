@@ -8,7 +8,7 @@ export default function ServiceModifiersCard({
   variant = "cozy",
 }) {
   const accents = {
-    blush: "bg-blush/30 border-blush/10",
+    ink: "bg-ink/30 border-ink/10",
     mint: "bg-mint/30 border-mint/10",
     lavender: "bg-lavender/30 border-lavender/10",
     peach: "bg-peach/30 border-peach/10",
@@ -128,7 +128,7 @@ export default function ServiceModifiersCard({
                         className={`ml-2 tabular-nums ${
                           isMarketing
                             ? "font-mono text-ink"
-                            : "font-bold text-berry"
+                            : "font-bold text-ink"
                         }`}
                       >
                         {item.value}

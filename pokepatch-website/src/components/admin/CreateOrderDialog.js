@@ -108,7 +108,7 @@ export default function CreateOrderDialog({
         </div>
         <div className="space-y-4 px-5 py-4">
           {error ? (
-            <p className="rounded-xl border border-berry/30 bg-berry/10 px-3 py-2 text-sm text-berry">
+            <p className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
               {error}
             </p>
           ) : null}

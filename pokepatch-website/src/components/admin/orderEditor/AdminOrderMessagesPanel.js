@@ -77,7 +77,7 @@ export default function AdminOrderMessagesPanel({ orderId }) {
       {loading ? (
         <p className="text-xs text-ink/45">Loading…</p>
       ) : null}
-      {error ? <p className="text-xs text-berry">{error}</p> : null}
+      {error ? <p className="text-xs text-error">{error}</p> : null}
       {!loading && !error && messages.length === 0 ? (
         <p className="text-xs text-ink/40">No messages yet.</p>
       ) : null}
@@ -120,7 +120,7 @@ export default function AdminOrderMessagesPanel({ orderId }) {
                       {isCustomer ? "Customer" : "PokePatch"}
                     </span>
                     {message.email_status === "failed" ? (
-                      <span className="text-[9px] font-bold uppercase tracking-wide text-berry">
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-ink">
                         Email failed
                       </span>
                     ) : null}

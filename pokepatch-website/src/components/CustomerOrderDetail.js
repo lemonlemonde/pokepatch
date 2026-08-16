@@ -51,7 +51,7 @@ function imageBadge(type) {
       return { label: "Progress", cls: "bg-lavender text-night" };
     case "final_front":
     case "final_back":
-      return { label: "Final", cls: "bg-blush text-night" };
+      return { label: "Final", cls: "bg-ink text-night" };
     default:
       return null;
   }
@@ -69,10 +69,10 @@ function formatDate(dateString) {
 function CustomerPriorityBadge({ className = "" }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border border-berry/35 bg-berry/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-blush ${className}`.trim()}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-ink/35 bg-ink/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink ${className}`.trim()}
     >
       <span
-        className="h-1.5 w-1.5 rounded-full bg-berry shadow-[0_0_10px_rgba(224,81,138,0.8)]"
+        className="h-1.5 w-1.5 rounded-full bg-ink shadow-[0_0_10px_rgba(243, 233, 242,0.8)]"
         aria-hidden="true"
       />
       Priority
@@ -406,7 +406,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
           isPriority={isPriority}
           cardCount={billableQuoteCards(order.cards).length}
           className={
-            isPriority ? "border-berry/25 bg-berry/[0.07]" : undefined
+            isPriority ? "border-ink/25 bg-ink/[0.07]" : undefined
           }
         />
       ) : null}
@@ -474,7 +474,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="rounded-lg bg-berry px-3 py-1.5 text-xs font-bold text-night transition hover:brightness-110"
+                  className="rounded-lg bg-ink px-3 py-1.5 text-xs font-bold text-night transition hover:brightness-110"
                 >
                   Edit order
                 </button>
@@ -496,7 +496,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="rounded-lg border border-berry/30 px-4 py-2 text-sm font-semibold text-berry transition hover:bg-berry/10"
+                className="rounded-lg border border-ink/30 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink/10"
               >
                 Edit delivery, contacts, or cards
               </button>

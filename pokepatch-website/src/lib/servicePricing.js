@@ -31,7 +31,7 @@ export const QUOTE_SERVICES = [
     title: "Surface Cleaning",
     listPrice: 15,
     features: ["Dirt", "Scratches"],
-    accent: "blush",
+    accent: "ink",
   },
   {
     key: SERVICE_KEYS.PRESSING,
@@ -57,7 +57,7 @@ export const QUOTE_SERVICES = [
       "Not for heavy or widespread whitening",
     ],
     warning: CARD_WHITENING_WARNING,
-    accent: "berry",
+    accent: "ink",
   },
   {
     key: SERVICE_KEYS.SLAB,
@@ -221,9 +221,9 @@ export function serviceAccent(serviceKey) {
 
 /** Quiet form-option shell + soft accent wash (not solid pastel badges). */
 const SERVICE_ACCENT_CHIP_STYLES = {
-  blush: {
-    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-blush/35 hover:bg-blush/10",
-    selected: "border-blush/45 bg-blush/20 text-ink ring-1 ring-blush/25",
+  ink: {
+    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-ink/35 hover:bg-ink/10",
+    selected: "border-ink/45 bg-ink/20 text-ink ring-1 ring-ink/25",
   },
   lavender: {
     idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-lavender/35 hover:bg-lavender/10",
@@ -232,10 +232,6 @@ const SERVICE_ACCENT_CHIP_STYLES = {
   peach: {
     idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-peach/40 hover:bg-peach/10",
     selected: "border-peach/50 bg-peach/20 text-ink ring-1 ring-peach/25",
-  },
-  berry: {
-    idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-berry/35 hover:bg-berry/10",
-    selected: "border-berry/45 bg-berry/20 text-ink ring-1 ring-berry/25",
   },
   sky: {
     idle: "border-ink/10 bg-ink/[0.03] text-ink hover:border-sky/40 hover:bg-sky/10",
@@ -249,26 +245,24 @@ const SERVICE_ACCENT_CHIP_STYLES = {
 
 /** Soft panel tint for admin expanded quote lines. */
 const SERVICE_ACCENT_PANEL_STYLES = {
-  blush: "border-blush/30 bg-blush/10",
+  ink: "border-ink/30 bg-ink/10",
   lavender: "border-lavender/30 bg-lavender/10",
   peach: "border-peach/35 bg-peach/10",
-  berry: "border-berry/30 bg-berry/10",
   sky: "border-sky/35 bg-sky/10",
   mint: "border-mint/30 bg-mint/10",
 };
 
 const SERVICE_ACCENT_DOT = {
-  blush: "bg-blush",
+  ink: "bg-ink",
   lavender: "bg-lavender",
   peach: "bg-peach",
-  berry: "bg-berry",
   sky: "bg-sky",
   mint: "bg-mint",
 };
 
 export function serviceAccentChipClass(accent, selected = false) {
   const styles =
-    SERVICE_ACCENT_CHIP_STYLES[accent] ?? SERVICE_ACCENT_CHIP_STYLES.blush;
+    SERVICE_ACCENT_CHIP_STYLES[accent] ?? SERVICE_ACCENT_CHIP_STYLES.ink;
   return selected ? styles.selected : styles.idle;
 }
 

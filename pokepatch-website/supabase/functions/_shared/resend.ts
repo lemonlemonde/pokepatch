@@ -88,7 +88,7 @@ function formatDiffLineHtml(text: string): string {
     return (label
       ? `<span style="color:#C9B8C8;">${escapeHtml(label)}</span> `
       : "") +
-      `<span style="color:#E0518A;text-decoration:line-through;font-weight:600;">${escapeHtml(parts.from)}</span>` +
+      `<span style="color:#F87171;text-decoration:line-through;font-weight:600;">${escapeHtml(parts.from)}</span>` +
       `<span style="color:#8A7A89;margin:0 0.35em;">→</span>` +
       `<span style="color:#5EC8A7;font-weight:600;">${escapeHtml(parts.to)}</span>`;
   }
@@ -97,7 +97,7 @@ function formatDiffLineHtml(text: string): string {
   );
   if (labeled) {
     const removed = /^removed/i.test(labeled[1]);
-    const valueColor = removed ? "#E0518A" : "#5EC8A7";
+    const valueColor = removed ? "#F87171" : "#5EC8A7";
     return `<span style="color:#C9B8C8;">${escapeHtml(`${labeled[1]}:`)}</span> ` +
       `<span style="color:${valueColor};font-weight:600;">${escapeHtml(labeled[2])}</span>`;
   }
@@ -178,19 +178,19 @@ function formatChangelogHtml(changelog?: ChangelogPayload | null): string {
       status === "added"
         ? "rgba(94,200,167,0.45)"
         : status === "removed"
-          ? "rgba(224,81,138,0.4)"
+          ? "rgba(248,113,113,0.4)"
           : "rgba(110,168,220,0.4)";
     const bg =
       status === "added"
         ? "rgba(94,200,167,0.12)"
         : status === "removed"
-          ? "rgba(224,81,138,0.12)"
+          ? "rgba(248,113,113,0.12)"
           : "rgba(110,168,220,0.12)";
     const badge =
       status === "added"
         ? '<span style="color:#5EC8A7;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">New</span>'
         : status === "removed"
-          ? '<span style="color:#E0518A;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Removed</span>'
+          ? '<span style="color:#F87171;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Removed</span>'
           : '<span style="color:#6EA8DC;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Updated</span>';
     const changeLines = (group.changes ?? [])
       .map(
@@ -263,7 +263,7 @@ function buildHtmlEmail(options: {
   const changelogHtml = formatChangelogHtml(options.changelog);
   const regardingHtml = regarding
     ? `<p style="margin:0 0 1.25rem;font-size:15px;font-weight:700;">
-         <a href="${escapeHtml(MY_ORDERS_URL)}" style="color:#E0518A;text-decoration:underline;">${escapeHtml(regarding)}</a>
+         <a href="${escapeHtml(MY_ORDERS_URL)}" style="color:#F3E9F2;text-decoration:underline;">${escapeHtml(regarding)}</a>
        </p>`
     : "";
   const logoUrl = escapeHtml(getLogoUrl());
@@ -303,10 +303,10 @@ function buildHtmlEmail(options: {
               <div style="border-top:1px solid rgba(243,233,242,0.15);padding-top:1.25rem;font-size:13px;line-height:1.5;">
                 <p style="margin:0 0 0.35rem;font-weight:700;color:#F3E9F2;">The PokePatch Team</p>
                 <p style="margin:0 0 0.2rem;">
-                  <a href="${siteUrl}" style="color:#F9C5D5;text-decoration:underline;">${siteUrl}</a>
+                  <a href="${siteUrl}" style="color:#F3E9F2;text-decoration:underline;">${siteUrl}</a>
                 </p>
                 <p style="margin:0;">
-                  <a href="${instagramUrl}" style="color:#F9C5D5;text-decoration:underline;">${instagramHandle}</a>
+                  <a href="${instagramUrl}" style="color:#F3E9F2;text-decoration:underline;">${instagramHandle}</a>
                 </p>
               </div>
             </td>

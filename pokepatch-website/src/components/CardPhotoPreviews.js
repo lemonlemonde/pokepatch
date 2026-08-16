@@ -275,7 +275,7 @@ function AdminThumb({
             onRemove();
           }}
           aria-label={removeAriaLabel ?? `Remove ${alt}`}
-          className="absolute right-0.5 top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-night/80 text-[10px] font-bold text-cream opacity-100 transition hover:bg-berry sm:opacity-0 sm:group-hover:opacity-100"
+          className="absolute right-0.5 top-0.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-night/80 text-[10px] font-bold text-cream opacity-100 transition hover:bg-ink sm:opacity-0 sm:group-hover:opacity-100"
         >
           ✕
         </button>
@@ -476,7 +476,7 @@ export function AdminOrderCardPhotoGroups({
             <button
               type="button"
               onClick={() => setExpanded(true)}
-              className="flex h-[4.5rem] w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-ink/25 bg-night/20 text-ink/60 transition hover:border-berry/50 hover:bg-berry/10 hover:text-berry"
+              className="flex h-[4.5rem] w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-dashed border-ink/25 bg-night/20 text-ink/60 transition hover:border-ink/50 hover:bg-ink/10 hover:text-ink"
             >
               <span className="text-sm font-bold leading-none">
                 +{hiddenCount}

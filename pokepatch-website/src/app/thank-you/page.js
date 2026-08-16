@@ -163,7 +163,7 @@ function ThankYouContent() {
               Already have an account?{" "}
               <Link
                 href="/login?redirect=/my-orders"
-                className="font-bold text-blush hover:underline"
+                className="font-bold text-ink hover:underline"
               >
                 Log in
               </Link>
@@ -180,7 +180,7 @@ function ThankYouContent() {
                 {notice}{" "}
                 <Link
                   href="/login?redirect=/my-orders"
-                  className="font-bold text-blush hover:underline"
+                  className="font-bold text-ink hover:underline"
                 >
                   Log in
                 </Link>
@@ -190,7 +190,7 @@ function ThankYouContent() {
             <form onSubmit={handleCreateAccount} className="space-y-4">
               <div>
                 <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
-                  First name <span className="text-berry">*</span>
+                  First name <span className="text-error">*</span>
                 </label>
                 <input
                   id="first_name"
@@ -209,7 +209,7 @@ function ThankYouContent() {
 
               <div>
                 <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
-                  Last name <span className="text-berry">*</span>
+                  Last name <span className="text-error">*</span>
                 </label>
                 <input
                   id="last_name"
@@ -228,7 +228,7 @@ function ThankYouContent() {
 
               <div>
                 <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
-                  Email <span className="text-berry">*</span>
+                  Email <span className="text-error">*</span>
                 </label>
                 <input
                   id="email"
@@ -255,7 +255,7 @@ function ThankYouContent() {
                   htmlFor="password"
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  Password <span className="text-berry">*</span>
+                  Password <span className="text-error">*</span>
                 </label>
                 <input
                   id="password"
@@ -282,7 +282,7 @@ function ThankYouContent() {
                   htmlFor="confirm-password"
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  Confirm Password <span className="text-berry">*</span>
+                  Confirm Password <span className="text-error">*</span>
                 </label>
                 <input
                   id="confirm-password"

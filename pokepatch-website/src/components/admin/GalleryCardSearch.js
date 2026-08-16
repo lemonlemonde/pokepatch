@@ -49,7 +49,7 @@ function CardResultButton({ card, selected, onSelect }) {
       onClick={() => onSelect(card)}
       className={`flex flex-col overflow-hidden rounded-lg border text-left transition ${
         isSelected
-          ? "border-blush/45 bg-blush/15 ring-1 ring-blush/25"
+          ? "border-ink/45 bg-ink/15 ring-1 ring-ink/25"
           : "border-ink/10 bg-ink/[0.03] hover:border-ink/25 hover:bg-ink/[0.05]"
       }`}
     >
@@ -281,7 +281,7 @@ export default function GalleryCardSearch({
       </div>
 
       {error && !loading && (
-        <p className="mt-3 text-xs font-semibold text-berry">{error}</p>
+        <p className="mt-3 text-xs font-semibold text-error">{error}</p>
       )}
 
       {!loading && results.length > 0 && (

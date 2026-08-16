@@ -55,7 +55,7 @@ export default function FaqItem({ question, answer, items, variant = "cozy" }) {
   }
 
   return (
-    <div className="pixel-border rounded-2xl border-blush/10 bg-cream/60 transition-colors duration-200 ease-out sm:hover:bg-cream/80">
+    <div className="pixel-border rounded-2xl border-ink/10 bg-cream/60 transition-colors duration-200 ease-out sm:hover:bg-cream/80">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
@@ -65,7 +65,7 @@ export default function FaqItem({ question, answer, items, variant = "cozy" }) {
         {question}
         <span
           aria-hidden="true"
-          className={`text-blush transition-transform duration-300 ${REVEAL_EASE} ${
+          className={`text-ink transition-transform duration-300 ${REVEAL_EASE} ${
             open ? "rotate-45" : ""
           }`}
         >

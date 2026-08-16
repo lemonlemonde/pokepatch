@@ -59,7 +59,7 @@ const links = [
   },
 ];
 
-const iconClassName = "h-3.5 w-3.5 shrink-0 text-blush/80";
+const iconClassName = "h-3.5 w-3.5 shrink-0 text-ink/80";
 
 export default function SocialLinks({ className = "" }) {
   return (
@@ -71,7 +71,7 @@ export default function SocialLinks({ className = "" }) {
           <>
             <Icon className={iconClassName} />
             <span className="text-ink/50">{label}: </span>
-            <span className="text-blush/90">{value}</span>
+            <span className="text-ink/90">{value}</span>
           </>
         );
 

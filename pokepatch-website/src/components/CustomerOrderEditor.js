@@ -35,7 +35,7 @@ function AccountFieldNote({ children }) {
   return (
     <p className="mt-1 text-xs text-ink/60">
       {children}{" "}
-      <Link href="/account" className="font-semibold text-blush hover:underline">
+      <Link href="/account" className="font-semibold text-ink hover:underline">
         Manage account
       </Link>
     </p>
@@ -459,7 +459,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   return (
     <form onSubmit={handleSave} noValidate className="space-y-10">
       {errorMessage ? (
-        <p className="rounded-2xl border-2 border-blush bg-blush/40 px-4 py-3 text-sm font-semibold text-ink">
+        <p className="rounded-2xl border-2 border-error bg-error/20 px-4 py-3 text-sm font-semibold text-error">
           {errorMessage}
         </p>
       ) : null}
@@ -469,7 +469,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
         <fieldset id="delivery_method" className="space-y-3 scroll-mt-24">
           <legend className="text-sm font-bold text-ink">
-            Delivery method <span className="text-berry">*</span>
+            Delivery method <span className="text-error">*</span>
           </legend>
           <p className="text-sm text-ink/70">
             If you choose local drop-off, we&apos;ll provide the address after we
@@ -515,7 +515,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
         <div id="additional_contacts" className="scroll-mt-24 space-y-3">
           <p className="text-sm font-bold text-ink">
-            Other forms of contact <span className="text-berry">*</span>
+            Other forms of contact <span className="text-error">*</span>
           </p>
           <p className="text-sm text-ink/70">
             Provide at least one so we can reach you (phone, Discord, or
@@ -572,7 +572,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                     edited here.{" "}
                     <Link
                       href="/account"
-                      className="font-semibold text-blush hover:underline"
+                      className="font-semibold text-ink hover:underline"
                     >
                       Add it to your account
                     </Link>{" "}
@@ -671,7 +671,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                   htmlFor={`edit_card_name_${card.id}`}
                   className="mb-1 block text-sm font-bold text-ink"
                 >
-                  Card name <span className="text-berry">*</span>
+                  Card name <span className="text-error">*</span>
                 </label>
                 <input
                   id={`edit_card_name_${card.id}`}
@@ -709,7 +709,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
               <div id={`edit_card_damage_${card.id}`}>
                 <p className="mb-1 text-sm font-bold text-ink">
-                  Damage <span className="text-berry">*</span>
+                  Damage <span className="text-error">*</span>
                 </p>
                 <p className="mb-2 text-sm text-ink/70">
                   Select at least one damage type that applies.
@@ -734,8 +734,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                         onClick={() => toggleCardDamage(card.id, tag.id)}
                         className={
                           selected
-                            ? "rounded-lg border border-blush/45 bg-blush/20 px-3 py-1.5 text-sm font-semibold text-ink ring-1 ring-blush/25 transition-colors duration-150"
-                            : "rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-1.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-blush/35 hover:bg-blush/10"
+                            ? "rounded-lg border border-ink/45 bg-ink/20 px-3 py-1.5 text-sm font-semibold text-ink ring-1 ring-ink/25 transition-colors duration-150"
+                            : "rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-1.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-ink/35 hover:bg-ink/10"
                         }
                       >
                         {tag.label}
@@ -745,10 +745,10 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 </div>
                 {(card.damageTags ?? []).includes("whitening") ? (
                   <p
-                    className="mt-3 rounded-lg border border-berry/25 bg-berry/10 px-3 py-2.5 text-sm leading-relaxed text-ink/75"
+                    className="mt-3 rounded-lg border border-ink/25 bg-ink/10 px-3 py-2.5 text-sm leading-relaxed text-ink/75"
                     role="note"
                   >
-                    <span className="font-semibold text-berry">Note. </span>
+                    <span className="font-semibold text-ink">Note. </span>
                     {CARD_WHITENING_WARNING}
                   </p>
                 ) : null}
@@ -780,7 +780,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
               <div>
                 <p className="mb-1 text-sm font-bold text-ink">
-                  Photos <span className="text-berry">*</span>
+                  Photos <span className="text-error">*</span>
                 </p>
                 <p className="mb-2 text-sm text-ink/70">
                   Clear photos of the front and back (up to {MAX_PHOTOS_PER_CARD}{" "}
@@ -922,7 +922,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         <label
           className={`${optionClassName()} ${
             draft.isPriority
-              ? "border-berry/35 bg-berry/[0.08] ring-1 ring-berry/20"
+              ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
               : ""
           }`.trim()}
         >
@@ -936,13 +936,13 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 isPriority: event.target.checked,
               }))
             }
-            className="mt-1 h-4 w-4 shrink-0 accent-berry"
+            className="mt-1 h-4 w-4 shrink-0 accent-ink"
           />
           <span className="text-sm leading-relaxed text-ink/80">
             <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
               <span>Prioritize my order</span>
               {draft.isPriority ? (
-                <span className="rounded-full border border-berry/25 bg-berry/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blush">
+                <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
                   Active
                 </span>
               ) : null}
@@ -957,7 +957,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       <div className="space-y-3 border-t border-ink/10 pt-6">
         {showValidationError ? (
           <p
-            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
+            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-error"
             role="alert"
           >
             Please fill out all required fields

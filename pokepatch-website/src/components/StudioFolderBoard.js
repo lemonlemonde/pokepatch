@@ -124,14 +124,14 @@ export function SideBank({
     <div className="w-full shrink-0 lg:sticky lg:top-28 lg:w-52 lg:self-start">
       <div className="flex flex-col gap-2 lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto lg:pb-4">
         <div className="flex items-center justify-between">
-          <p className="font-secondary text-sm font-semibold text-blush/90">
+          <p className="font-secondary text-sm font-semibold text-ink/90">
             {title}
           </p>
           {totalCount > 0 && (
             <button
               type="button"
               onClick={onClear}
-              className="text-xs font-semibold text-berry/90 hover:text-berry"
+              className="text-xs font-semibold text-ink/90 hover:text-ink"
             >
               Clear ({totalCount})
             </button>
@@ -148,8 +148,8 @@ export function SideBank({
           onDrop={handleDrop}
           className={`flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-dashed px-3 py-4 text-center transition ${
             dragging
-              ? "border-berry bg-berry/10"
-              : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+              ? "border-ink bg-ink/10"
+              : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
           }`}
         >
           <p className="text-xs text-ink/70">Drop folder or browse</p>
@@ -183,7 +183,7 @@ export function SideBank({
           }}
           className={`min-h-[5rem] max-h-56 flex-1 overflow-y-auto rounded-xl border border-dashed p-2 transition lg:max-h-none ${
             itemDragging
-              ? "border-berry bg-berry/10"
+              ? "border-ink bg-ink/10"
               : "border-ink/15 bg-night/30"
           }`}
         >
@@ -215,7 +215,7 @@ export function SideBank({
                       event.stopPropagation();
                       onRemoveItem(item.id);
                     }}
-                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-berry text-[10px] font-bold text-night group-hover:flex"
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] font-bold text-night group-hover:flex"
                     aria-label={`Remove ${item.file.name}`}
                   >
                     ×
@@ -260,13 +260,13 @@ function PairSlot({
       onDrop={onDrop}
       className={`overflow-hidden rounded-xl border bg-night/50 transition ${
         active
-          ? "border-berry bg-berry/10"
+          ? "border-ink bg-ink/10"
           : item
             ? "border-ink/15"
             : "border-dashed border-ink/10"
       }`}
     >
-      <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+      <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-ink/80">
         {label}
       </p>
       {item && previewUrl ? (
@@ -293,7 +293,7 @@ function PairSlot({
                 event.stopPropagation();
                 onClear();
               }}
-              className="shrink-0 text-xs font-semibold text-berry/90 hover:text-berry"
+              className="shrink-0 text-xs font-semibold text-ink/90 hover:text-ink"
             >
               Remove
             </button>
@@ -453,7 +453,7 @@ export default function StudioFolderBoard({
 
       <div className="min-w-0 flex-1 space-y-4">
         <div>
-          <p className="font-secondary text-sm font-semibold text-blush/90">
+          <p className="font-secondary text-sm font-semibold text-ink/90">
             Pairs
           </p>
           <p className="mt-1 text-xs text-ink/45">
@@ -475,7 +475,7 @@ export default function StudioFolderBoard({
                   }`}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="font-secondary text-xs font-semibold text-blush/80">
+                    <p className="font-secondary text-xs font-semibold text-ink/80">
                       Pair {index + 1}
                       {pairReady ? (
                         <span className="ml-2 font-normal text-ink/40">
@@ -487,7 +487,7 @@ export default function StudioFolderBoard({
                       <button
                         type="button"
                         onClick={() => removePair(pair.id)}
-                        className="text-xs font-semibold text-berry/90 hover:text-berry"
+                        className="text-xs font-semibold text-ink/90 hover:text-ink"
                       >
                         Remove pair
                       </button>
@@ -565,7 +565,7 @@ export default function StudioFolderBoard({
         <button
           type="button"
           onClick={addPair}
-          className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
+          className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
         >
           + Add another pair
         </button>
