@@ -11,7 +11,7 @@ import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
   DAMAGE_TAGS,
-  formatPostedRelative,
+  formatPostedDate,
   galleryPosterPublicUrl,
 } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
@@ -333,7 +333,7 @@ function GalleryItemCard({ item, index, onOpen }) {
   // Scope lightbox navigation to this card's media only.
   const openMedia = (media) => onOpen(itemKeyOf(item), media);
   const postedLabel = item.createdAt
-    ? formatPostedRelative(item.createdAt)
+    ? formatPostedDate(item.createdAt)
     : "";
   const damageTags = DAMAGE_TAGS.filter((tag) =>
     (item.damageTags ?? []).includes(tag.id),
