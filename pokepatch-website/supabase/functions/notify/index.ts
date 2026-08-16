@@ -8,6 +8,8 @@ const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
 const CONTACT_DISCORD = "pokepatch.cards";
+const MY_ORDERS_TRACK_URL =
+  "https://pokepatch.cards/login?redirect=/my-orders";
 
 const BUCKET = "card-photos";
 // Signed URLs expire. 1 year keeps links working in Discord history / the Sheet.
@@ -173,6 +175,9 @@ function buildQuoteConfirmationBody(customerName: string): string {
     `${greeting}Thanks for submitting your restoration quote request to PokePatch! ` +
     `We've received your form successfully and will review your cards shortly.\n\n` +
     `We'll reach out to you soon with a quote, usually within about 2 hours.\n\n` +
+    `Track your order online — create a free account or log in with this email ` +
+    `to see updates and photos:\n` +
+    `${MY_ORDERS_TRACK_URL}\n\n` +
     `In the meantime, contact us at:\n` +
     `- Email: ${CONTACT_EMAIL}\n` +
     `- Instagram: ${CONTACT_INSTAGRAM}\n` +

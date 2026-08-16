@@ -28,7 +28,7 @@ function ThankYouContent() {
   const orderNumber = searchParams.get("order");
   const customerAuthEnabled = isCustomerAuthEnabled();
   const { user, signUp } = useAuth();
-  const [showAccountCreation, setShowAccountCreation] = useState(false);
+  const [skippedAccount, setSkippedAccount] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -39,12 +39,8 @@ function ThankYouContent() {
   const [notice, setNotice] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
-  // If already logged in, don't show account creation
-  useEffect(() => {
-    if (user) {
-      setShowAccountCreation(false);
-    }
-  }, [user]);
+  const showGuestAccountPrompt =
+    customerAuthEnabled && !user && isSupabaseConfigured && !skippedAccount;
 
   // Pre-fill from the order they just submitted so the account links up and
   // their entered name + contacts get saved to the new profile.
@@ -136,9 +132,15 @@ function ThankYouContent() {
       <div className="animate-fade-up">
         <SectionHeading
           note="Quote received"
-          subtitle="Thank you — we got your submission and will follow up soon."
+          subtitle={
+            showGuestAccountPrompt
+              ? "Your request is in — create an account so you can track updates and photos here."
+              : "Thank you — we got your submission and will follow up soon."
+          }
         >
-          You&apos;re all set
+          {showGuestAccountPrompt
+            ? "Create an account to track your order"
+            : "You're all set"}
         </SectionHeading>
       </div>
 
@@ -153,33 +155,19 @@ function ThankYouContent() {
           shortly. A confirmation email is on its way — we&apos;ll reach out to you
           soon with a quote, usually within about 2 hours.
         </p>
-        <p className="font-semibold text-ink">
-          We look forward to helping bring your cards back to life!
-        </p>
 
-        {customerAuthEnabled &&
-          !user &&
-          isSupabaseConfigured &&
-          !showAccountCreation && (
-          <div className="space-y-3 border-t border-ink/10 pt-5">
-            <p className="text-sm font-semibold text-ink">
-              Want to track your order online?
-            </p>
-            <p className="text-sm text-ink/70">
-              Create an account to view order updates and photos as we work on your
-              cards.
-            </p>
-            <Button onClick={() => setShowAccountCreation(true)}>
-              Create account
-            </Button>
-          </div>
-        )}
-
-        {customerAuthEnabled && showAccountCreation && !user && (
+        {showGuestAccountPrompt && (
           <div className="space-y-4 border-t border-ink/10 pt-5 text-left">
-            <h3 className="text-center text-lg font-bold text-ink">
-              Create your account
-            </h3>
+            <p className="text-center text-sm text-ink/70">
+              Use the same email from your order so it links automatically.
+              Already have an account?{" "}
+              <Link
+                href="/login?redirect=/my-orders"
+                className="font-bold text-blush hover:underline"
+              >
+                Log in
+              </Link>
+            </p>
 
             {error && (
               <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
@@ -191,7 +179,7 @@ function ThankYouContent() {
               <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
                 {notice}{" "}
                 <Link
-                  href="/login"
+                  href="/login?redirect=/my-orders"
                   className="font-bold text-blush hover:underline"
                 >
                   Log in
@@ -250,7 +238,7 @@ function ThankYouContent() {
                     setEmail(e.target.value);
                     setFieldErrors((prev) => ({ ...prev, email: false }));
                   }}
-                  placeholder="Use the same email from your order"
+                  placeholder="Same email as your order"
                   className={fieldClassName(fieldErrors.email)}
                   disabled={loading}
                   required
@@ -260,10 +248,6 @@ function ThankYouContent() {
                     Please enter a valid email address
                   </p>
                 )}
-                <p className="mt-1 text-xs text-ink/60">
-                  Use the same email you provided in your contact info to automatically
-                  link this order.
-                </p>
               </div>
 
               <div>
@@ -330,6 +314,16 @@ function ThankYouContent() {
                 </Button>
               </div>
             </form>
+
+            <p className="pt-1 text-center">
+              <button
+                type="button"
+                onClick={() => setSkippedAccount(true)}
+                className="text-sm font-semibold text-ink/50 underline-offset-2 hover:text-ink/70 hover:underline"
+              >
+                Skip for now
+              </button>
+            </p>
           </div>
         )}
 
@@ -342,11 +336,20 @@ function ThankYouContent() {
           </div>
         )}
 
-        <div className="pt-2">
-          <Button href="/" variant="secondary">
-            Back to home
-          </Button>
-        </div>
+        {customerAuthEnabled && !user && skippedAccount && (
+          <p className="border-t border-ink/10 pt-5 text-sm text-ink/70">
+            You can still create an account later from your confirmation email
+            to track this order.
+          </p>
+        )}
+
+        {!showGuestAccountPrompt && (
+          <div className="pt-2">
+            <Button href="/" variant="secondary">
+              Back to home
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
