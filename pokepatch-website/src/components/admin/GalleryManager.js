@@ -1156,7 +1156,7 @@ export default function GalleryManager() {
                           ? `${formatPostedRelative(item.created_at)} · `
                           : ""}
                         {item.set_name ? `${item.set_name} · ` : ""}
-                        {item.card_number ? `#${item.card_number} · ` : ""}
+                        {item.card_number ? `${item.card_number} · ` : ""}
                         {(item.pairs ?? []).length} pair
                         {(item.pairs ?? []).length === 1 ? "" : "s"}
                         {(item.damage_tags ?? []).length
