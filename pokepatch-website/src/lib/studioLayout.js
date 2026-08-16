@@ -116,13 +116,8 @@ const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
 const REEL_CARD_INFO_GAP_BELOW_CONTENT = 60;
 /** Gap between BEFORE/AFTER labels and the card chip on 4:5. */
 const CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT = 28;
-/**
- * Drop the top-right brand chip on 4:5 so Instagram's carousel page
- * counter (1/2, 2/2, …) does not cover it.
- */
-const CAROUSEL_BRANDING_TOP_NUDGE = 36;
-/** Clear the top-right branding badge before the cards start on 4:5. */
-const CAROUSEL_CONTENT_TOP = 96 + CAROUSEL_BRANDING_TOP_NUDGE;
+/** Gap between the brand chip and the before/after images on 4:5. */
+const CAROUSEL_BRANDING_GAP_ABOVE_IMAGES = 16;
 /** Nudge caption+images (and the chip below them) above true vertical center on 9:16. */
 const REEL_CENTER_NUDGE_UP = 135;
 /** Scale fonts + branding logo on 9:16 only. */
@@ -144,7 +139,7 @@ function carouselMetrics() {
     return {
       edge: EDGE_PADDING,
       columnGap: COLUMN_GAP,
-      contentTop: CAROUSEL_CONTENT_TOP,
+      contentTop: EDGE_PADDING,
       labelFont: LABEL_FONT_SIZE,
       labelGap: LABEL_GAP,
       labelTracking: LABEL_TRACKING,
@@ -165,11 +160,11 @@ function carouselMetrics() {
       stackMode: "bottom",
     };
   }
-  // Cards own the frame; brand + chip are supporting captions.
+  // Cards own the frame; brand sits just above the images in the stack.
   return {
     edge: 28,
     columnGap: 24,
-    contentTop: 108 + CAROUSEL_BRANDING_TOP_NUDGE,
+    contentTop: 28,
     labelFont: 28,
     labelGap: 18,
     labelTracking: 10,
@@ -628,7 +623,19 @@ function drawBadgeBackground(ctx, blockX, blockY, blockW, blockH) {
   ctx.stroke();
 }
 
-export function drawBranding(ctx, logoImg) {
+function logoDrawBounds(logoImg, useOpaque) {
+  if (useOpaque && logoImg.contentBounds) {
+    return logoImg.contentBounds;
+  }
+  return {
+    sx: 0,
+    sy: 0,
+    sw: logoImg.naturalWidth,
+    sh: logoImg.naturalHeight,
+  };
+}
+
+export function drawBranding(ctx, logoImg, blockY = null) {
   const reel = isReelCanvas(logicalHeight(ctx));
   const type = typeMetrics(reel);
   const carousel = !reel ? carouselMetrics() : null;
@@ -641,19 +648,7 @@ export function drawBranding(ctx, logoImg) {
   // Reels always crop to opaque bounds. Carousel experiment does too (balanced
   // mark size); baseline carousel keeps the full PNG for classic spacing.
   const useOpaque = reel || Boolean(carousel?.brandOpaque);
-  const bounds = useOpaque
-    ? (logoImg.contentBounds ?? {
-        sx: 0,
-        sy: 0,
-        sw: logoImg.naturalWidth,
-        sh: logoImg.naturalHeight,
-      })
-    : {
-        sx: 0,
-        sy: 0,
-        sw: logoImg.naturalWidth,
-        sh: logoImg.naturalHeight,
-      };
+  const bounds = logoDrawBounds(logoImg, useOpaque);
   const logoScale = Math.min(
     maxFrameSize / bounds.sw,
     maxFrameSize / bounds.sh,
@@ -670,12 +665,13 @@ export function drawBranding(ctx, logoImg) {
     padding -
     blockW -
     (reel ? REEL_BRANDING_RIGHT_EXTRA : 0);
-  // Reels need a deep top inset to clear Instagram UI; carousel drops
-  // slightly so the 1/N page counter does not cover the chip.
-  const blockY =
-    padding + (reel ? REEL_BRANDING_TOP_NUDGE : CAROUSEL_BRANDING_TOP_NUDGE);
+  // Reels clear Instagram UI. Carousel callers pass blockY so the chip
+  // sits just above the before/after images.
+  const y =
+    blockY ??
+    padding + (reel ? REEL_BRANDING_TOP_NUDGE : 0);
 
-  drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
+  drawBadgeBackground(ctx, blockX, y, blockW, blockH);
 
   enableHighQuality(ctx);
   ctx.drawImage(
@@ -685,7 +681,7 @@ export function drawBranding(ctx, logoImg) {
     bounds.sw,
     bounds.sh,
     blockX + innerPad,
-    blockY + (blockH - logoH) / 2,
+    y + (blockH - logoH) / 2,
     logoW,
     logoH,
   );
@@ -696,8 +692,20 @@ export function drawBranding(ctx, logoImg) {
   ctx.fillText(
     BRAND_HANDLE,
     blockX + innerPad + logoW + gap,
-    blockY + blockH / 2,
+    y + blockH / 2,
   );
+}
+
+/** Brand chip height for carousel stack layout (must match drawBranding). */
+function carouselBrandingBlockHeight(logoImg) {
+  const m = carouselMetrics();
+  const bounds = logoDrawBounds(logoImg, Boolean(m.brandOpaque));
+  const logoScale = Math.min(
+    m.brandFrame / bounds.sw,
+    m.brandFrame / bounds.sh,
+  );
+  const logoH = Math.max(1, Math.round(bounds.sh * logoScale));
+  return Math.max(logoH, m.brandFont) + m.brandPad * 2;
 }
 
 function measureLabeledLineWidth(ctx, label, value, fontSize) {
@@ -975,11 +983,11 @@ function drawRestorationCaption(ctx, caption, centerY) {
 }
 
 /** Card-info chip → branding (draw after cards/labels/caption). */
-function drawOverlays(ctx, logoImg, overlay, cardInfoLayout = null) {
+function drawOverlays(ctx, logoImg, overlay, cardInfoLayout = null, brandY = null) {
   if (overlay?.cardInfo) {
     drawCardInfo(ctx, overlay.cardInfo, cardInfoLayout);
   }
-  drawBranding(ctx, logoImg);
+  drawBranding(ctx, logoImg, brandY);
 }
 
 function cardInfoLayoutBelowContent(contentBottom, height) {
@@ -1000,17 +1008,24 @@ function carouselImageTop(
   imagesAndLabelsHeight,
   bottomReserve,
   hasCardInfo,
+  brandLift = 0,
 ) {
   const m = carouselMetrics();
   if (m.stackMode === "center") {
-    const stackH = hasCardInfo
-      ? imagesAndLabelsHeight + bottomReserve - m.edge
-      : imagesAndLabelsHeight;
+    const stackH =
+      brandLift +
+      (hasCardInfo
+        ? imagesAndLabelsHeight + bottomReserve - m.edge
+        : imagesAndLabelsHeight);
     const bandH = canvasHeight - contentTop - m.edge;
-    return contentTop + Math.max(0, Math.floor((bandH - stackH) / 2));
+    return (
+      contentTop +
+      brandLift +
+      Math.max(0, Math.floor((bandH - stackH) / 2))
+    );
   }
   return Math.max(
-    contentTop,
+    contentTop + brandLift,
     canvasHeight - bottomReserve - imagesAndLabelsHeight,
   );
 }
@@ -1037,8 +1052,15 @@ export function drawComparisonFrame(
       ? cardInfoBottomReserve(canvasHeight)
       : EDGE_PADDING;
 
+  // Carousel brand sits in the image stack (just above before/after).
+  const brandLift =
+    cardBelow && !reel
+      ? carouselBrandingBlockHeight(logoImg) +
+        CAROUSEL_BRANDING_GAP_ABOVE_IMAGES
+      : 0;
+
   // Reels: reserved caption band + vertically centered stack.
-  // Carousel: brand clearance at top; stack placement from carouselMetrics.
+  // Carousel: stack placement from carouselMetrics (+ brandLift).
   // Legacy top-left chip + caption: pin under chip.
   const pinnedStack =
     hasCaption && !reel && !cardBelow ? captionStackBelowChip() : null;
@@ -1053,6 +1075,7 @@ export function drawComparisonFrame(
   const maxImageHeight =
     canvasHeight -
     contentTop -
+    brandLift -
     bottomReserve -
     captionReserve -
     2 * type.labelBlockHeight;
@@ -1077,7 +1100,7 @@ export function drawComparisonFrame(
     ? captionStackCentered(canvasHeight, imagesAndLabelsHeight)
     : null;
 
-  const availableH = canvasHeight - contentTop - bottomReserve;
+  const availableH = canvasHeight - contentTop - brandLift - bottomReserve;
   const imageTop = reelStack
     ? reelStack.imagesTop
     : pinnedStack
@@ -1089,9 +1112,13 @@ export function drawComparisonFrame(
             imagesAndLabelsHeight,
             bottomReserve,
             hasCardInfo,
+            brandLift,
           )
         : contentTop +
+          brandLift +
           Math.floor((availableH - imagesAndLabelsHeight) / 2);
+  const carouselBrandY =
+    brandLift > 0 ? imageTop - brandLift : null;
 
   const leftResized = prepareCardResized(
     ctx,
@@ -1145,6 +1172,6 @@ export function drawComparisonFrame(
           canvasHeight,
         )
       : null;
-  drawOverlays(ctx, logoImg, overlay, cardInfoLayout);
+  drawOverlays(ctx, logoImg, overlay, cardInfoLayout, carouselBrandY);
 }
 
