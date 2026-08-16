@@ -1272,6 +1272,19 @@ function OrderCardSearch({ onOpenOrder, onFilterChange }) {
 function OrdersAllList({ orders, onOpenOrder, emptyMessage = "No orders yet." }) {
   const sorted = useMemo(() => {
     return [...(orders ?? [])].sort((a, b) => {
+      const aCompleted = a.completed_at
+        ? new Date(a.completed_at).getTime()
+        : NaN;
+      const bCompleted = b.completed_at
+        ? new Date(b.completed_at).getTime()
+        : NaN;
+      const aHasCompleted = !Number.isNaN(aCompleted);
+      const bHasCompleted = !Number.isNaN(bCompleted);
+      // Most recently completed first; open / never-closed orders last.
+      if (aHasCompleted !== bHasCompleted) return aHasCompleted ? -1 : 1;
+      if (aHasCompleted && aCompleted !== bCompleted) {
+        return bCompleted - aCompleted;
+      }
       const aId = Number(a.display_id) || 0;
       const bId = Number(b.display_id) || 0;
       return bId - aId;
