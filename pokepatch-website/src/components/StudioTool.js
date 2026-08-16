@@ -782,7 +782,7 @@ function BeforeAfterPairPhotoFormatter({
 
     setSendingToGallery(true);
     try {
-      const item = await publishStudioPairsToGallery({
+      await publishStudioPairsToGallery({
         pairs,
         beforeItems,
         afterItems,
@@ -792,7 +792,7 @@ function BeforeAfterPairPhotoFormatter({
           set_name: cardMeta.set.trim(),
         },
       });
-      router.push(`/admin/gallery/?edit=${encodeURIComponent(item.id)}`);
+      router.push("/admin/gallery/");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not send to gallery.",

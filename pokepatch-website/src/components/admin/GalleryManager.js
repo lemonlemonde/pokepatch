@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
@@ -362,7 +362,7 @@ function cardFromItem(item) {
   };
 }
 
-export default function GalleryManager({ initialEditId = null }) {
+export default function GalleryManager() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -376,7 +376,6 @@ export default function GalleryManager({ initialEditId = null }) {
   const [reordering, setReordering] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [applyingCard, setApplyingCard] = useState(false);
-  const openedEditIdRef = useRef(null);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -429,20 +428,6 @@ export default function GalleryManager({ initialEditId = null }) {
   function openItem(item) {
     syncEditorFromItem(item, { resetStaged: true });
   }
-
-  useEffect(() => {
-    if (!initialEditId) {
-      openedEditIdRef.current = null;
-      return;
-    }
-    if (loading) return;
-    if (openedEditIdRef.current === initialEditId) return;
-    openedEditIdRef.current = initialEditId;
-    const match = items.find((item) => item.id === initialEditId);
-    if (match) {
-      syncEditorFromItem(match, { resetStaged: true });
-    }
-  }, [initialEditId, loading, items]);
 
   function startCreate() {
     setSelectedId(null);
@@ -776,10 +761,6 @@ export default function GalleryManager({ initialEditId = null }) {
 
   function renderEditor() {
     if (!draft) return null;
-    const cardLocked = Boolean(draft.tcg_card_id?.trim());
-    const lockedFieldClassName = cardLocked
-      ? `${fieldClassName()} bg-night/20 text-ink/80`
-      : fieldClassName();
 
     return (
       <section className="rounded-lg border border-ink/10 bg-ink/[0.02] p-5">
@@ -818,11 +799,10 @@ export default function GalleryManager({ initialEditId = null }) {
             <span className="text-sm font-semibold text-ink">Card name</span>
             <input
               value={draft.title}
-              readOnly={cardLocked}
               onChange={(event) =>
                 setDraft({ ...draft, title: event.target.value })
               }
-              className={lockedFieldClassName}
+              className={fieldClassName()}
               placeholder="e.g. Pikachu ex"
             />
           </label>
@@ -830,11 +810,10 @@ export default function GalleryManager({ initialEditId = null }) {
             <span className="text-sm font-semibold text-ink">Set</span>
             <input
               value={draft.set_name}
-              readOnly={cardLocked}
               onChange={(event) =>
                 setDraft({ ...draft, set_name: event.target.value })
               }
-              className={lockedFieldClassName}
+              className={fieldClassName()}
               placeholder="e.g. Ascended Heroes"
             />
           </label>
@@ -842,11 +821,10 @@ export default function GalleryManager({ initialEditId = null }) {
             <span className="text-sm font-semibold text-ink">Card number</span>
             <input
               value={draft.card_number}
-              readOnly={cardLocked}
               onChange={(event) =>
                 setDraft({ ...draft, card_number: event.target.value })
               }
-              className={lockedFieldClassName}
+              className={fieldClassName()}
               placeholder="e.g. 277/297"
             />
           </label>

@@ -372,9 +372,7 @@ function GalleryItemCard({ item, index, onOpen }) {
                   ) : null}
                   {item.cardNumber ? (
                     <span className="font-semibold normal-case tracking-wide text-ink/45">
-                      {item.cardNumber.startsWith("#")
-                        ? item.cardNumber
-                        : `#${item.cardNumber}`}
+                      {item.cardNumber.replace(/^#\s*/, "")}
                     </span>
                   ) : null}
                 </p>
