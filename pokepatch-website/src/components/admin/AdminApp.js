@@ -1852,11 +1852,10 @@ export default function AdminApp() {
   // Static export can no-op same-path query clears via router.push. Dismiss the
   // editor in React state first so "Back to board" never lands on a blank page.
   const [editorDismissed, setEditorDismissed] = useState(false);
-  // ?edit= opens the order editor only on order routes; gallery reuses it for items.
+  // ?edit= opens the order editor only on order routes.
   const ordersPath = pathTab === "orders" || pathTab === "orders-all";
   const routeOrderId =
     editorDismissed || !ordersPath ? null : searchEditId;
-  const galleryEditId = pathTab === "gallery" ? searchEditId : null;
   const tab = routeOrderId ? "orders-edit" : pathTab;
   const editReturnPath =
     searchParams.get("from") === "all" ? "/admin/orders/all/" : "/admin/orders/";
@@ -2505,9 +2504,7 @@ export default function AdminApp() {
           }}
         />
       )}
-      {tab === "gallery" && (
-        <GalleryManager initialEditId={galleryEditId} />
-      )}
+      {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}
       {ordersSectionActive && (
