@@ -81,7 +81,7 @@ export const REEL_CARD_INFO_THUMB_SIZE = Math.round(
   CARD_INFO_THUMB_SIZE * 3 * 0.9,
 );
 /** 4:5 card chip thumb — near Reels size so Card/Set stays readable. */
-export const CAROUSEL_CARD_INFO_THUMB_SIZE = Math.round(
+const CAROUSEL_CARD_INFO_THUMB_SIZE = Math.round(
   CARD_INFO_THUMB_SIZE * 2.7,
 );
 /** Fixed text column inside the 4:5 card chip (keeps the badge wide). */
@@ -987,6 +987,28 @@ function cardInfoLayoutBelowContent(contentBottom, height) {
   };
 }
 
+/** Vertical start of before/after images on 4:5 (experiment center vs baseline bottom). */
+function carouselImageTop(
+  contentTop,
+  canvasHeight,
+  imagesAndLabelsHeight,
+  bottomReserve,
+  hasCardInfo,
+) {
+  const m = carouselMetrics();
+  if (m.stackMode === "center") {
+    const stackH = hasCardInfo
+      ? imagesAndLabelsHeight + bottomReserve - m.edge
+      : imagesAndLabelsHeight;
+    const bandH = canvasHeight - contentTop - m.edge;
+    return contentTop + Math.max(0, Math.floor((bandH - stackH) / 2));
+  }
+  return Math.max(
+    contentTop,
+    canvasHeight - bottomReserve - imagesAndLabelsHeight,
+  );
+}
+
 export function drawComparisonFrame(
   ctx,
   leftSource,
@@ -1010,8 +1032,8 @@ export function drawComparisonFrame(
       : EDGE_PADDING;
 
   // Reels: reserved caption band + vertically centered stack.
-  // Carousel: brand clearance at top; experiment centers the stack, baseline
-  // pins it toward the bottom. Legacy top-left chip + caption: pin under chip.
+  // Carousel: brand clearance at top; stack placement from carouselMetrics.
+  // Legacy top-left chip + caption: pin under chip.
   const pinnedStack =
     hasCaption && !reel && !cardBelow ? captionStackBelowChip() : null;
   const contentTop =
@@ -1050,28 +1072,20 @@ export function drawComparisonFrame(
     : null;
 
   const availableH = canvasHeight - contentTop - bottomReserve;
-  let imageTop;
-  if (reelStack) {
-    imageTop = reelStack.imagesTop;
-  } else if (pinnedStack) {
-    imageTop = pinnedStack.imagesTop;
-  } else if (cardBelow && !reel && carousel.stackMode === "center") {
-    // Center photos + labels + chip as one unit under the brand band.
-    const stackH = hasCardInfo
-      ? imagesAndLabelsHeight + bottomReserve - carousel.edge
-      : imagesAndLabelsHeight;
-    const bandH = canvasHeight - contentTop - carousel.edge;
-    imageTop =
-      contentTop + Math.max(0, Math.floor((bandH - stackH) / 2));
-  } else if (cardBelow && !reel) {
-    imageTop = Math.max(
-      contentTop,
-      canvasHeight - bottomReserve - imagesAndLabelsHeight,
-    );
-  } else {
-    imageTop =
-      contentTop + Math.floor((availableH - imagesAndLabelsHeight) / 2);
-  }
+  const imageTop = reelStack
+    ? reelStack.imagesTop
+    : pinnedStack
+      ? pinnedStack.imagesTop
+      : cardBelow && !reel
+        ? carouselImageTop(
+            contentTop,
+            canvasHeight,
+            imagesAndLabelsHeight,
+            bottomReserve,
+            hasCardInfo,
+          )
+        : contentTop +
+          Math.floor((availableH - imagesAndLabelsHeight) / 2);
 
   const leftResized = prepareCardResized(
     ctx,
