@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
@@ -152,12 +152,9 @@ function SideUpload({
   }
 
   return (
-    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-        {label}
-      </p>
+    <div className="flex items-start gap-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-2.5">
       <div
-        className={`mt-2 aspect-[3/4] overflow-hidden rounded-lg border border-dashed transition ${
+        className={`relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-md border border-dashed transition ${
           uploading
             ? "opacity-60"
             : dragging
@@ -192,8 +189,8 @@ function SideUpload({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-night/40 text-xs text-ink/50">
-                Video (poster pending)
+              <div className="flex h-full w-full items-center justify-center bg-night/40 px-1 text-center text-[10px] leading-tight text-ink/50">
+                Video
               </div>
             )
           ) : (
@@ -205,9 +202,9 @@ function SideUpload({
             />
           )
         ) : (
-          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
-            <span>Drop image or video here</span>
-            <span className="text-ink/30">or click to browse</span>
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center text-[10px] leading-tight text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
+            <span>Drop</span>
+            <span className="text-ink/30">or browse</span>
             <input
               type="file"
               accept="image/*,video/*"
@@ -218,27 +215,32 @@ function SideUpload({
           </label>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
-          {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
-          <input
-            type="file"
-            accept="image/*,video/*"
-            className="hidden"
-            disabled={uploading}
-            onChange={handleFileInput}
-          />
-        </label>
-        {hasSomething && (
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={onClear}
-            className={dangerButtonClassName()}
-          >
-            Remove
-          </button>
-        )}
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          {label}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
+            {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
+            <input
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
+          {hasSomething && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={onClear}
+              className={dangerButtonClassName()}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -269,12 +271,9 @@ function ThumbnailUpload({
   }
 
   return (
-    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-        Card thumbnail
-      </p>
+    <div className="flex items-start gap-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-2.5">
       <div
-        className={`mt-2 ${CARD_THUMB_ASPECT_CLASS} max-w-[200px] overflow-hidden rounded-lg border border-dashed transition ${
+        className={`relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-md border border-dashed transition ${
           uploading
             ? "opacity-60"
             : dragging
@@ -308,9 +307,9 @@ function ThumbnailUpload({
             className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
         ) : (
-          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
-            <span>Drop image here</span>
-            <span className="text-ink/30">or click to browse</span>
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center text-[10px] leading-tight text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
+            <span>Drop</span>
+            <span className="text-ink/30">or browse</span>
             <input
               type="file"
               accept="image/*"
@@ -321,27 +320,32 @@ function ThumbnailUpload({
           </label>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
-          {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={uploading}
-            onChange={handleFileInput}
-          />
-        </label>
-        {hasSomething && (
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={onClear}
-            className={dangerButtonClassName()}
-          >
-            Remove
-          </button>
-        )}
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          Card thumbnail
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
+            {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
+          {hasSomething && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={onClear}
+              className={dangerButtonClassName()}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -358,7 +362,7 @@ function cardFromItem(item) {
   };
 }
 
-export default function GalleryManager() {
+export default function GalleryManager({ initialEditId = null }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -372,6 +376,7 @@ export default function GalleryManager() {
   const [reordering, setReordering] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [applyingCard, setApplyingCard] = useState(false);
+  const openedEditIdRef = useRef(null);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -424,6 +429,20 @@ export default function GalleryManager() {
   function openItem(item) {
     syncEditorFromItem(item, { resetStaged: true });
   }
+
+  useEffect(() => {
+    if (!initialEditId) {
+      openedEditIdRef.current = null;
+      return;
+    }
+    if (loading) return;
+    if (openedEditIdRef.current === initialEditId) return;
+    openedEditIdRef.current = initialEditId;
+    const match = items.find((item) => item.id === initialEditId);
+    if (match) {
+      syncEditorFromItem(match, { resetStaged: true });
+    }
+  }, [initialEditId, loading, items]);
 
   function startCreate() {
     setSelectedId(null);
@@ -907,7 +926,7 @@ export default function GalleryManager() {
         )}
 
         {selected && (
-          <div className="mt-6 space-y-4">
+          <div className="mt-5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
                 Before / after pairs
@@ -933,16 +952,16 @@ export default function GalleryManager() {
             </div>
 
             {(selected.pairs ?? []).length === 0 ? (
-              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-sm text-ink/50">
+              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-4 text-center text-sm text-ink/50">
                 No pairs yet. Add an image or video pair.
               </p>
             ) : (
               (selected.pairs ?? []).map((pair, index) => (
                 <div
                   key={pair.id}
-                  className="rounded-lg border border-ink/10 bg-ink/[0.02] p-4"
+                  className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3"
                 >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-ink">
                       Pair {index + 1}
                       <span className="ml-2 font-mono text-[10px] font-normal uppercase tracking-[0.14em] text-ink/45">
@@ -982,12 +1001,9 @@ export default function GalleryManager() {
                       </button>
                     </div>
                   </div>
-                  <label className="mb-3 block space-y-1">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-                      Caption{" "}
-                      <span className="normal-case tracking-normal text-ink/35">
-                        (optional)
-                      </span>
+                  <label className="mb-2 block">
+                    <span className="sr-only">
+                      Caption (optional)
                     </span>
                     <input
                       value={captionDrafts[pair.id] ?? pair.caption ?? ""}
@@ -998,10 +1014,10 @@ export default function GalleryManager() {
                         }))
                       }
                       className={fieldClassName()}
-                      placeholder="e.g. Front, Corner close-up"
+                      placeholder="Caption (optional)"
                     />
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <SideUpload
                       label="Before"
                       previewUrl={pair.urls?.before}
