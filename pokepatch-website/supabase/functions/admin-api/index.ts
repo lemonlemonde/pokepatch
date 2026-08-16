@@ -1304,10 +1304,16 @@ async function handleGalleryThumbnailUpload(
   if (!file.type.startsWith("image/")) {
     return jsonResponse(req, { ok: false, error: "image required" }, 400);
   }
-  if (file.type !== "image/webp") {
+  // Client prefers WebP; Safari falls back to JPEG (or PNG). Accept those.
+  const allowedThumbTypes = new Set([
+    "image/webp",
+    "image/jpeg",
+    "image/png",
+  ]);
+  if (!allowedThumbTypes.has(file.type)) {
     return jsonResponse(
       req,
-      { ok: false, error: "thumbnail must be compressed WebP" },
+      { ok: false, error: "thumbnail must be compressed WebP, JPEG, or PNG" },
       400
     );
   }
@@ -1337,7 +1343,7 @@ async function handleGalleryThumbnailUpload(
     .from(GALLERY_BUCKET)
     .upload(path, file, {
       upsert: true,
-      contentType: "image/webp",
+      contentType: file.type || "image/webp",
       cacheControl: GALLERY_CACHE_CONTROL,
     });
   if (uploadError) throw uploadError;

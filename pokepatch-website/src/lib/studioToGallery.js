@@ -10,7 +10,7 @@ import {
 } from "@/lib/galleryAdminWrites";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 
-async function sourceToFile(source, label) {
+function assertUploadSource(source, label) {
   if (!source) {
     throw new Error(`Missing ${label} image.`);
   }
@@ -21,20 +21,7 @@ async function sourceToFile(source, label) {
     typeof HTMLCanvasElement !== "undefined" &&
     source instanceof HTMLCanvasElement
   ) {
-    const blob = await new Promise((resolve, reject) => {
-      source.toBlob(
-        (result) => {
-          if (result) resolve(result);
-          else reject(new Error(`Couldn't export ${label} image.`));
-        },
-        "image/webp",
-        0.92,
-      );
-    });
-    return new File([blob], `${label}.webp`, {
-      type: "image/webp",
-      lastModified: Date.now(),
-    });
+    return source;
   }
   throw new Error(`Unsupported ${label} image source.`);
 }
@@ -68,28 +55,19 @@ export async function publishStudioPairsToGallery({
       throw new Error(`Pair ${index + 1} is missing a photo.`);
     }
 
-    const beforeSource = await resolveStudioImageSource(
-      beforeItem,
-      previewUrls[beforeItem.id],
-    );
-    const afterSource = await resolveStudioImageSource(
-      afterItem,
-      previewUrls[afterItem.id],
-    );
-
-    const beforeFile = await sourceToFile(
-      beforeSource,
+    const beforeSource = assertUploadSource(
+      await resolveStudioImageSource(beforeItem, previewUrls[beforeItem.id]),
       `pair-${index + 1}-before`,
     );
-    const afterFile = await sourceToFile(
-      afterSource,
+    const afterSource = assertUploadSource(
+      await resolveStudioImageSource(afterItem, previewUrls[afterItem.id]),
       `pair-${index + 1}-after`,
     );
 
     try {
       item = await createGalleryPairWithSides(item.id, {
-        beforeFile,
-        afterFile,
+        beforeFile: beforeSource,
+        afterFile: afterSource,
         mediaKind: "image",
       });
     } catch (err) {

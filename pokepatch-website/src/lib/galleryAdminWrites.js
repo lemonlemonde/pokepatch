@@ -53,6 +53,7 @@ export async function saveGalleryItem(id, fields) {
 /**
  * Compress an image (or capture a video poster) the same way Gallery admin does
  * before calling the gallery pair-side upload endpoint.
+ * `file` may be a File/Blob or an HTMLCanvasElement (Studio crop/annotation).
  */
 async function prepareGalleryPairSideUpload(file) {
   if (!file) {
@@ -94,6 +95,7 @@ export async function uploadGalleryPairSide(pairId, side, file) {
 /**
  * Create an empty pair on an item, then upload before + after with the same
  * compression/thumb pipeline Gallery admin uses.
+ * Side inputs may be File/Blob or HTMLCanvasElement.
  */
 export async function createGalleryPairWithSides(
   itemId,
