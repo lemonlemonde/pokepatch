@@ -7,17 +7,19 @@ import {
   adminClearGalleryPairSide,
   adminApplyGalleryTcgThumbnail,
   adminClearGalleryThumbnail,
-  adminCreateGalleryItem,
   adminCreateGalleryPair,
   adminDeleteGalleryItem,
   adminDeleteGalleryPair,
   adminListGallery,
   adminReorderGalleryPairs,
-  adminSaveGalleryItem,
   adminSaveGalleryPairCaption,
-  adminUploadGalleryPairSide,
-  adminUploadGalleryThumbnail,
 } from "@/lib/adminApi";
+import {
+  createGalleryItem,
+  saveGalleryItem,
+  uploadGalleryPairSide,
+  uploadGalleryThumbnail,
+} from "@/lib/galleryAdminWrites";
 import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
@@ -27,13 +29,6 @@ import {
   galleryPosterPublicUrl,
   galleryThumbPublicUrl,
 } from "@/lib/gallery";
-import {
-  CARD_THUMB_MAX_DIMENSION,
-  compressImageForUpload,
-  makeThumbForUpload,
-  makeVideoPosterForUpload,
-  GALLERY_THUMB_MAX_DIMENSION,
-} from "@/lib/imageCompression";
 
 function fieldClassName() {
   return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
@@ -451,7 +446,7 @@ export default function GalleryManager() {
     try {
       let item = selected;
       if (!item) {
-        item = await adminCreateGalleryItem({
+        item = await createGalleryItem({
           title: (card.name ?? "").trim(),
           set_name: (card.set_name ?? "").trim(),
           card_number: (card.number ?? "").trim(),
@@ -525,7 +520,7 @@ export default function GalleryManager() {
     try {
       let item = selected;
       if (!item) {
-        item = await adminCreateGalleryItem({
+        item = await createGalleryItem({
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
           card_number: draft.card_number.trim(),
@@ -536,7 +531,7 @@ export default function GalleryManager() {
           published: draft.published,
         });
       } else {
-        item = await adminSaveGalleryItem(item.id, {
+        item = await saveGalleryItem(item.id, {
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
           card_number: draft.card_number.trim(),
@@ -550,14 +545,7 @@ export default function GalleryManager() {
 
       // Card icon: one small WebP only (≤320px) — no raw PNG, no oversized main file.
       if (stagedThumbnail) {
-        const { file: uploadFile, error: compressError } =
-          await compressImageForUpload(stagedThumbnail, {
-            maxDimension: CARD_THUMB_MAX_DIMENSION,
-          });
-        if (compressError || !uploadFile) {
-          throw new Error(compressError || "Couldn't process this image.");
-        }
-        item = await adminUploadGalleryThumbnail(item.id, uploadFile);
+        item = await uploadGalleryThumbnail(item.id, stagedThumbnail);
       }
 
       // Apply official card art when a card is selected (unless manual upload staged).
@@ -572,31 +560,7 @@ export default function GalleryManager() {
         if (!file) continue;
         const [pairId, side] = key.split(":");
         if (!pairId || (side !== "before" && side !== "after")) continue;
-
-        if (file.type?.startsWith("video/")) {
-          const { file: poster, error: posterError } =
-            await makeVideoPosterForUpload(file);
-          if (posterError || !poster) {
-            throw new Error(
-              posterError || "Couldn't capture a poster from this video."
-            );
-          }
-          item = await adminUploadGalleryPairSide(pairId, side, file, {
-            poster,
-          });
-        } else {
-          const { file: uploadFile, error: compressError } =
-            await compressImageForUpload(file);
-          if (compressError || !uploadFile) {
-            throw new Error(compressError || "Couldn't process this image.");
-          }
-          const { file: thumb } = await makeThumbForUpload(uploadFile, {
-            maxDimension: GALLERY_THUMB_MAX_DIMENSION,
-          });
-          item = await adminUploadGalleryPairSide(pairId, side, uploadFile, {
-            thumb,
-          });
-        }
+        item = await uploadGalleryPairSide(pairId, side, file);
       }
 
       // Persist any edited pair captions for still-existing pairs.

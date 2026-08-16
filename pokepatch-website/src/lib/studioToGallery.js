@@ -1,18 +1,13 @@
 /**
  * Publish Studio before/after slot images as a new gallery item.
  * Uses raw slot sources (crops/annotations), never Instagram stitch canvases.
+ * Writes go through galleryAdminWrites (same path as Gallery admin).
  */
 
 import {
-  adminCreateGalleryItem,
-  adminCreateGalleryPair,
-  adminUploadGalleryPairSide,
-} from "@/lib/adminApi";
-import {
-  compressImageForUpload,
-  GALLERY_THUMB_MAX_DIMENSION,
-  makeThumbForUpload,
-} from "@/lib/imageCompression";
+  createGalleryItem,
+  createGalleryPairWithSides,
+} from "@/lib/galleryAdminWrites";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 
 async function sourceToFile(source, label) {
@@ -44,18 +39,6 @@ async function sourceToFile(source, label) {
   throw new Error(`Unsupported ${label} image source.`);
 }
 
-async function compressSideForGallery(file) {
-  const { file: uploadFile, error: compressError } =
-    await compressImageForUpload(file);
-  if (compressError || !uploadFile) {
-    throw new Error(compressError || "Couldn't process this image.");
-  }
-  const { file: thumb } = await makeThumbForUpload(uploadFile, {
-    maxDimension: GALLERY_THUMB_MAX_DIMENSION,
-  });
-  return { uploadFile, thumb };
-}
-
 /** Create a gallery item and upload each complete Studio pair as before/after. */
 export async function publishStudioPairsToGallery({
   pairs,
@@ -74,12 +57,8 @@ export async function publishStudioPairsToGallery({
     throw new Error("Fill at least one complete before & after pair.");
   }
 
-  let item = await adminCreateGalleryItem({
-    title,
-    set_name: (meta?.set_name ?? "").trim(),
-    published: true,
-    damage_tags: [],
-  });
+  // Same field shape / defaults as Gallery admin create.
+  let item = await createGalleryItem({ ...meta, title });
 
   for (let index = 0; index < completePairs.length; index += 1) {
     const pair = completePairs[index];
@@ -107,30 +86,17 @@ export async function publishStudioPairsToGallery({
       `pair-${index + 1}-after`,
     );
 
-    const beforeUpload = await compressSideForGallery(beforeFile);
-    const afterUpload = await compressSideForGallery(afterFile);
-
-    item = await adminCreateGalleryPair(item.id, "image");
-    const createdPair =
-      (item.pairs ?? []).find(
-        (entry) => !entry.urls?.before && !entry.urls?.after,
-      ) ?? (item.pairs ?? []).at(-1);
-    if (!createdPair?.id) {
-      throw new Error(`Could not create gallery pair ${index + 1}.`);
+    try {
+      item = await createGalleryPairWithSides(item.id, {
+        beforeFile,
+        afterFile,
+        mediaKind: "image",
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Could not create gallery pair.";
+      throw new Error(`Pair ${index + 1}: ${message}`);
     }
-
-    item = await adminUploadGalleryPairSide(
-      createdPair.id,
-      "before",
-      beforeUpload.uploadFile,
-      { thumb: beforeUpload.thumb },
-    );
-    item = await adminUploadGalleryPairSide(
-      createdPair.id,
-      "after",
-      afterUpload.uploadFile,
-      { thumb: afterUpload.thumb },
-    );
   }
 
   return item;
