@@ -706,18 +706,21 @@ export default function GalleryManager() {
     }
   }
 
-  async function handleDelete() {
-    if (!selected) return;
-    if (!window.confirm(`Delete “${selected.title}” from the gallery?`)) return;
+  async function handleDelete(item) {
+    if (!item) return;
+    if (!window.confirm(`Delete “${item.title}” from the gallery?`)) return;
 
     setSaving(true);
     setEditorError("");
+    setListError("");
     try {
-      await adminDeleteGalleryItem(selected.id);
-      closeEditor();
+      await adminDeleteGalleryItem(item.id);
+      if (selectedId === item.id) closeEditor();
       await refresh();
     } catch (err) {
-      setEditorError(err.message || "Delete failed.");
+      const message = err.message || "Delete failed.";
+      if (selectedId === item.id) setEditorError(message);
+      else setListError(message);
     } finally {
       setSaving(false);
     }
@@ -1042,7 +1045,7 @@ export default function GalleryManager() {
             <button
               type="button"
               disabled={saving}
-              onClick={handleDelete}
+              onClick={() => handleDelete(selected)}
               className={dangerButtonClassName()}
             >
               Delete
@@ -1160,6 +1163,16 @@ export default function GalleryManager() {
                         className="h-12 w-9 rounded object-cover"
                       />
                     ) : null}
+
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => handleDelete(item)}
+                      className={dangerButtonClassName()}
+                      aria-label={`Delete ${item.title}`}
+                    >
+                      Delete
+                    </button>
                   </div>
 
                   {isOpen && (

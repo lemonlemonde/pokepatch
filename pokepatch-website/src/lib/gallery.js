@@ -55,6 +55,18 @@ export function formatPostedRelative(value) {
   return years === 1 ? "1 year ago" : `${years} years ago`;
 }
 
+/** Absolute post date, e.g. "August 16, 2026". */
+export function formatPostedDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function publicUrlForPath(path) {
   if (!path || !supabase) return null;
   const { data } = supabase.storage.from("gallery").getPublicUrl(path);
