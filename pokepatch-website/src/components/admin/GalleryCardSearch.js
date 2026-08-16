@@ -10,7 +10,7 @@ const MIN_SET_LENGTH = 2;
 const MIN_NAME_ONLY_LENGTH = 3;
 
 function fieldClassName() {
-  return "w-full rounded-xl border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
+  return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
 }
 
 function normalizeSearchInput(value) {
@@ -47,10 +47,10 @@ function CardResultButton({ card, selected, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(card)}
-      className={`flex flex-col overflow-hidden rounded-lg border text-left transition hover:border-ink/30 ${
+      className={`flex flex-col overflow-hidden rounded-lg border text-left transition ${
         isSelected
-          ? "border-blush bg-blush/10 ring-2 ring-blush/40"
-          : "border-ink/10 bg-ink/[0.04]"
+          ? "border-blush/45 bg-blush/15 ring-1 ring-blush/25"
+          : "border-ink/10 bg-ink/[0.03] hover:border-ink/25 hover:bg-ink/[0.05]"
       }`}
     >
       <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
@@ -176,11 +176,13 @@ export default function GalleryCardSearch({
   const hasMore = results.length < totalCount;
 
   return (
-    <div className="rounded-xl border border-ink/10 bg-night/10 p-4">
-      <p className="text-sm font-semibold text-ink">Find card</p>
+    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-4">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+        Find card
+      </p>
 
       {selectedCard?.id && (
-        <div className="mt-4 flex items-center gap-3 rounded-lg border border-blush/40 bg-cream/90 p-3">
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-ink/15 bg-ink/[0.03] p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={tcgCardImageUrl(selectedCard)}
@@ -188,7 +190,7 @@ export default function GalleryCardSearch({
             className={`w-12 shrink-0 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/20`}
           />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-ink">{selectedCard.name}</p>
+            <p className="text-sm font-semibold text-ink">{selectedCard.name}</p>
             <p className="text-xs text-ink/55">
               {selectedCard.set_name || "Unknown set"} · #{selectedCard.number}
             </p>
@@ -202,16 +204,16 @@ export default function GalleryCardSearch({
                 type="button"
                 disabled={disabled || confirming}
                 onClick={() => onConfirm(selectedCard)}
-                className="rounded-lg bg-blush px-3 py-1.5 text-xs font-bold text-cream hover:bg-blush/90 disabled:opacity-50"
+                className="rounded-lg bg-ink px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50"
               >
-                {confirming ? "Applying…" : "Use this card"}
+                {confirming ? "Applying…" : "Use card"}
               </button>
             )}
             <button
               type="button"
               disabled={disabled || confirming}
               onClick={onClear}
-              className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
+              className="rounded-lg px-2 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50"
             >
               Clear
             </button>
@@ -231,7 +233,7 @@ export default function GalleryCardSearch({
         className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 sm:gap-4"
       >
         <label className="block space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
             Card name
           </span>
           <input
@@ -246,7 +248,7 @@ export default function GalleryCardSearch({
           />
         </label>
         <label className="block space-y-1">
-          <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
+          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
             Set
           </span>
           <input
@@ -262,7 +264,7 @@ export default function GalleryCardSearch({
         </label>
         <div className="space-y-1">
           <span
-            className="block text-xs font-bold uppercase tracking-wide text-ink/60 opacity-0 select-none"
+            className="block font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 opacity-0 select-none"
             aria-hidden="true"
           >
             Search
@@ -271,7 +273,7 @@ export default function GalleryCardSearch({
             type="button"
             onClick={submitSearch}
             disabled={disabled || loading}
-            className="w-full rounded-xl border border-transparent bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
+            className="w-full rounded-lg bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
           >
             {loading ? "Searching…" : "Search"}
           </button>
@@ -308,7 +310,7 @@ export default function GalleryCardSearch({
               onClick={() =>
                 runSearch(lastQuery.cardName, lastQuery.setName, page + 1, true)
               }
-              className="mt-3 rounded-lg border border-ink/20 bg-cream px-4 py-2 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
+              className="mt-3 rounded-lg border border-ink/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/70 transition hover:border-ink/35 hover:text-ink disabled:opacity-50"
             >
               {loadingMore ? "Loading…" : "Load more"}
             </button>

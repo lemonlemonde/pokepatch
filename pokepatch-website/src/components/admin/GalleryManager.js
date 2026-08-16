@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
@@ -36,7 +36,19 @@ import {
 } from "@/lib/imageCompression";
 
 function fieldClassName() {
-  return "w-full rounded-xl border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
+  return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
+}
+
+function secondaryButtonClassName() {
+  return "rounded-lg border border-ink/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/70 transition hover:border-ink/35 hover:text-ink disabled:opacity-50";
+}
+
+function primaryButtonClassName() {
+  return "rounded-lg bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50";
+}
+
+function dangerButtonClassName() {
+  return "rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-berry disabled:opacity-50";
 }
 
 function LoadingIndicator({ label = "Loading…", className = "" }) {
@@ -140,15 +152,14 @@ function SideUpload({
   }
 
   return (
-    <div className="rounded-xl border border-ink/10 bg-night/20 p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/60">{label}</p>
+    <div className="flex items-start gap-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-2.5">
       <div
-        className={`mt-2 aspect-[3/4] overflow-hidden rounded-lg border border-dashed transition ${
+        className={`relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-md border border-dashed transition ${
           uploading
             ? "opacity-60"
             : dragging
-              ? "border-berry bg-berry/10"
-              : "border-ink/15 bg-night/30"
+              ? "border-ink/40 bg-ink/[0.06]"
+              : "border-ink/15 bg-ink/[0.03]"
         }`}
         onDragOver={(event) => {
           event.preventDefault();
@@ -178,8 +189,8 @@ function SideUpload({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-night/40 text-xs text-ink/50">
-                Video (poster pending)
+              <div className="flex h-full w-full items-center justify-center bg-night/40 px-1 text-center text-[10px] leading-tight text-ink/50">
+                Video
               </div>
             )
           ) : (
@@ -191,9 +202,9 @@ function SideUpload({
             />
           )
         ) : (
-          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-night/40 hover:text-ink/55">
-            <span>Drop image or video here</span>
-            <span className="text-ink/30">or click to browse</span>
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center text-[10px] leading-tight text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
+            <span>Drop</span>
+            <span className="text-ink/30">or browse</span>
             <input
               type="file"
               accept="image/*,video/*"
@@ -204,27 +215,32 @@ function SideUpload({
           </label>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-ink/30">
-          {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
-          <input
-            type="file"
-            accept="image/*,video/*"
-            className="hidden"
-            disabled={uploading}
-            onChange={handleFileInput}
-          />
-        </label>
-        {hasSomething && (
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={onClear}
-            className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
-          >
-            Remove
-          </button>
-        )}
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          {label}
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
+            {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
+            <input
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
+          {hasSomething && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={onClear}
+              className={dangerButtonClassName()}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -255,17 +271,14 @@ function ThumbnailUpload({
   }
 
   return (
-    <div className="rounded-xl border border-ink/10 bg-night/20 p-3">
-      <p className="text-xs font-bold uppercase tracking-wide text-ink/60">
-        Card thumbnail
-      </p>
+    <div className="flex items-start gap-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-2.5">
       <div
-        className={`mt-2 ${CARD_THUMB_ASPECT_CLASS} max-w-[200px] overflow-hidden rounded-lg border border-dashed transition ${
+        className={`relative h-24 w-[4.5rem] shrink-0 overflow-hidden rounded-md border border-dashed transition ${
           uploading
             ? "opacity-60"
             : dragging
-              ? "border-berry bg-berry/10"
-              : "border-ink/15 bg-night/30"
+              ? "border-ink/40 bg-ink/[0.06]"
+              : "border-ink/15 bg-ink/[0.03]"
         }`}
         onDragOver={(event) => {
           event.preventDefault();
@@ -294,9 +307,9 @@ function ThumbnailUpload({
             className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
         ) : (
-          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-1 px-3 text-center text-xs text-ink/40 transition hover:bg-night/40 hover:text-ink/55">
-            <span>Drop image here</span>
-            <span className="text-ink/30">or click to browse</span>
+          <label className="flex h-full cursor-pointer flex-col items-center justify-center gap-0.5 px-1 text-center text-[10px] leading-tight text-ink/40 transition hover:bg-ink/[0.04] hover:text-ink/55">
+            <span>Drop</span>
+            <span className="text-ink/30">or browse</span>
             <input
               type="file"
               accept="image/*"
@@ -307,27 +320,32 @@ function ThumbnailUpload({
           </label>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <label className="cursor-pointer rounded-lg border border-ink/20 bg-cream px-2 py-1 text-xs font-semibold text-ink hover:border-ink/30">
-          {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={uploading}
-            onChange={handleFileInput}
-          />
-        </label>
-        {hasSomething && (
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={onClear}
-            className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
-          >
-            Remove
-          </button>
-        )}
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          Card thumbnail
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          <label className={`cursor-pointer ${secondaryButtonClassName()}`}>
+            {uploading ? "Uploading…" : stagedFile ? "Change" : "Choose"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={handleFileInput}
+            />
+          </label>
+          {hasSomething && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={onClear}
+              className={dangerButtonClassName()}
+            >
+              Remove
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -344,7 +362,7 @@ function cardFromItem(item) {
   };
 }
 
-export default function GalleryManager() {
+export default function GalleryManager({ initialEditId = null }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -358,6 +376,7 @@ export default function GalleryManager() {
   const [reordering, setReordering] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [applyingCard, setApplyingCard] = useState(false);
+  const openedEditIdRef = useRef(null);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -410,6 +429,20 @@ export default function GalleryManager() {
   function openItem(item) {
     syncEditorFromItem(item, { resetStaged: true });
   }
+
+  useEffect(() => {
+    if (!initialEditId) {
+      openedEditIdRef.current = null;
+      return;
+    }
+    if (loading) return;
+    if (openedEditIdRef.current === initialEditId) return;
+    openedEditIdRef.current = initialEditId;
+    const match = items.find((item) => item.id === initialEditId);
+    if (match) {
+      syncEditorFromItem(match, { resetStaged: true });
+    }
+  }, [initialEditId, loading, items]);
 
   function startCreate() {
     setSelectedId(null);
@@ -749,15 +782,20 @@ export default function GalleryManager() {
       : fieldClassName();
 
     return (
-      <section className="marketing-panel p-5">
+      <section className="rounded-lg border border-ink/10 bg-ink/[0.02] p-5">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <h2 className="text-xl font-bold text-ink">
-            {selected ? `Edit — ${selected.title}` : "New gallery item"}
-          </h2>
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/40">
+              {selected ? "Edit item" : "New item"}
+            </p>
+            <h2 className="mt-1 text-xl font-medium tracking-tight text-ink">
+              {selected ? selected.title : "New gallery item"}
+            </h2>
+          </div>
           <button
             type="button"
             onClick={closeEditor}
-            className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink hover:border-ink/30"
+            className={secondaryButtonClassName()}
           >
             Close
           </button>
@@ -817,29 +855,31 @@ export default function GalleryManager() {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block space-y-1 sm:col-span-2">
             <span className="text-sm font-semibold text-ink">Damage tags</span>
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {DAMAGE_TAGS.map((tag) => {
                 const checked = draft.damage_tags.includes(tag.id);
                 return (
-                  <label
+                  <button
                     key={tag.id}
-                    className="flex items-center gap-2 text-sm font-semibold text-ink"
+                    type="button"
+                    aria-pressed={checked}
+                    onClick={() => {
+                      const next = checked
+                        ? draft.damage_tags.filter((id) => id !== tag.id)
+                        : [...draft.damage_tags, tag.id];
+                      setDraft({
+                        ...draft,
+                        damage_tags: normalizeDamageTags(next),
+                      });
+                    }}
+                    className={`rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors duration-150 ${
+                      checked
+                        ? "border-blush/45 bg-blush/20 text-ink ring-1 ring-blush/25"
+                        : "border-ink/10 bg-ink/[0.03] text-ink hover:border-blush/35 hover:bg-blush/10"
+                    }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => {
-                        const next = event.target.checked
-                          ? [...draft.damage_tags, tag.id]
-                          : draft.damage_tags.filter((id) => id !== tag.id);
-                        setDraft({
-                          ...draft,
-                          damage_tags: normalizeDamageTags(next),
-                        });
-                      }}
-                    />
                     {tag.label}
-                  </label>
+                  </button>
                 );
               })}
             </div>
@@ -886,9 +926,9 @@ export default function GalleryManager() {
         )}
 
         {selected && (
-          <div className="mt-6 space-y-4">
+          <div className="mt-5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-lg font-bold text-ink">
+              <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
                 Before / after pairs
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -896,7 +936,7 @@ export default function GalleryManager() {
                   type="button"
                   disabled={saving}
                   onClick={() => handleAddPair("image")}
-                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
+                  className={secondaryButtonClassName()}
                 >
                   + Image pair
                 </button>
@@ -904,7 +944,7 @@ export default function GalleryManager() {
                   type="button"
                   disabled={saving}
                   onClick={() => handleAddPair("video")}
-                  className="rounded-lg border border-ink/20 bg-cream px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
+                  className={secondaryButtonClassName()}
                 >
                   + Video pair
                 </button>
@@ -912,19 +952,19 @@ export default function GalleryManager() {
             </div>
 
             {(selected.pairs ?? []).length === 0 ? (
-              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-6 text-center text-sm text-ink/50">
+              <p className="rounded-lg border border-dashed border-ink/15 px-3 py-4 text-center text-sm text-ink/50">
                 No pairs yet. Add an image or video pair.
               </p>
             ) : (
               (selected.pairs ?? []).map((pair, index) => (
                 <div
                   key={pair.id}
-                  className="rounded-xl border border-ink/10 bg-night/15 p-4"
+                  className="rounded-lg border border-ink/10 bg-ink/[0.02] p-3"
                 >
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-ink">
                       Pair {index + 1}
-                      <span className="ml-2 text-xs font-normal uppercase tracking-wide text-ink/50">
+                      <span className="ml-2 font-mono text-[10px] font-normal uppercase tracking-[0.14em] text-ink/45">
                         {pair.media_kind || "image"}
                         {index === 0 ? " · featured" : ""}
                       </span>
@@ -934,7 +974,7 @@ export default function GalleryManager() {
                         type="button"
                         disabled={reordering || index === 0}
                         onClick={() => handleMovePair(index, -1)}
-                        className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
+                        className={secondaryButtonClassName()}
                         aria-label="Move pair up"
                       >
                         ↑
@@ -946,7 +986,7 @@ export default function GalleryManager() {
                           index === (selected.pairs ?? []).length - 1
                         }
                         onClick={() => handleMovePair(index, 1)}
-                        className="rounded-lg border border-ink/15 px-2 py-1 text-xs font-bold disabled:opacity-30"
+                        className={secondaryButtonClassName()}
                         aria-label="Move pair down"
                       >
                         ↓
@@ -955,15 +995,15 @@ export default function GalleryManager() {
                         type="button"
                         disabled={saving}
                         onClick={() => handleDeletePair(pair.id)}
-                        className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry disabled:opacity-50"
+                        className={dangerButtonClassName()}
                       >
                         Delete
                       </button>
                     </div>
                   </div>
-                  <label className="mb-3 block space-y-1">
-                    <span className="text-xs font-bold uppercase tracking-wide text-ink/60">
-                      Caption <span className="font-normal normal-case">(optional)</span>
+                  <label className="mb-2 block">
+                    <span className="sr-only">
+                      Caption (optional)
                     </span>
                     <input
                       value={captionDrafts[pair.id] ?? pair.caption ?? ""}
@@ -974,10 +1014,10 @@ export default function GalleryManager() {
                         }))
                       }
                       className={fieldClassName()}
-                      placeholder="e.g. Front, Corner close-up"
+                      placeholder="Caption (optional)"
                     />
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <SideUpload
                       label="Before"
                       previewUrl={pair.urls?.before}
@@ -1034,7 +1074,7 @@ export default function GalleryManager() {
         )}
 
         {!selected && (
-          <p className="mt-4 rounded-lg border border-ink/10 bg-night/20 px-3 py-2 text-sm text-ink/65">
+          <p className="mt-4 rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2 text-sm text-ink/65">
             Create the item first — then add before/after pairs.
           </p>
         )}
@@ -1050,7 +1090,7 @@ export default function GalleryManager() {
             type="button"
             disabled={saving}
             onClick={handleSaveMeta}
-            className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night transition hover:brightness-110 disabled:opacity-60 ${
+            className={`${primaryButtonClassName()} ${
               saving ? "animate-soft-bounce" : ""
             }`}
           >
@@ -1061,7 +1101,7 @@ export default function GalleryManager() {
               type="button"
               disabled={saving}
               onClick={handleDelete}
-              className="rounded-xl border border-berry/40 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
+              className={dangerButtonClassName()}
             >
               Delete
             </button>
@@ -1082,14 +1122,14 @@ export default function GalleryManager() {
               !items.some((item) => !item.urls?.thumbnail && item.tcg_card_id)
             }
             onClick={handleGenerateAllMissingThumbnails}
-            className="rounded-xl border border-ink/20 bg-cream px-4 py-2 text-sm font-semibold text-ink hover:border-ink/30 disabled:opacity-50"
+            className={secondaryButtonClassName()}
           >
             Generate missing thumbnails
           </button>
           <button
             type="button"
             onClick={startCreate}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+            className={primaryButtonClassName()}
           >
             New gallery item
           </button>
@@ -1104,87 +1144,88 @@ export default function GalleryManager() {
 
       {draft && !selected && renderEditor()}
 
-      <div className="order-last space-y-2">
+      <div className="order-last">
         {loading ? (
           <LoadingIndicator label="Loading gallery…" />
         ) : items.length === 0 && !draft ? (
-          <p className="rounded-xl border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
+          <p className="rounded-lg border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
             No gallery items yet. Click “New gallery item” to add your first restoration.
           </p>
         ) : (
-          <ul className="space-y-2">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className={`rounded-xl border px-3 py-3 ${
-                  selectedId === item.id
-                    ? "border-berry bg-blush/20"
-                    : "border-ink/10 bg-cream"
-                }`}
-              >
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      selectedId === item.id ? closeEditor() : openItem(item)
-                    }
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <span className="text-base font-bold text-ink">
-                      {item.title}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-ink/55">
-                      {item.created_at
-                        ? `${formatPostedRelative(item.created_at)} · `
-                        : ""}
-                      {item.set_name ? `${item.set_name} · ` : ""}
-                      {item.card_number ? `#${item.card_number} · ` : ""}
-                      {(item.pairs ?? []).length} pair
-                      {(item.pairs ?? []).length === 1 ? "" : "s"}
-                      {(item.damage_tags ?? []).length
-                        ? ` · ${(item.damage_tags ?? []).length} tag${
-                            (item.damage_tags ?? []).length === 1 ? "" : "s"
-                          }`
-                        : ""}
-                      {!item.published ? " · unpublished" : ""}
-                    </span>
-                  </button>
-
-                  {item.urls?.thumbnail ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={
-                        galleryThumbPublicUrl(item.urls.thumbnail) ||
-                        item.urls.thumbnail
+          <ul className="divide-y divide-ink/10 rounded-lg border border-ink/10">
+            {items.map((item) => {
+              const isOpen = selectedId === item.id;
+              return (
+                <li
+                  key={item.id}
+                  className={`px-3 py-3 transition ${
+                    isOpen ? "bg-ink/[0.04]" : "hover:bg-ink/[0.02]"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        isOpen ? closeEditor() : openItem(item)
                       }
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className={`w-9 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/10`}
-                    />
-                  ) : item.pairs?.[0]?.urls?.before ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={
-                        (item.pairs[0].media_kind === "video" ||
-                        item.pairs[0].mediaKind === "video"
-                          ? galleryPosterPublicUrl(item.pairs[0].urls.before)
-                          : galleryThumbPublicUrl(item.pairs[0].urls.before)) ||
-                        item.pairs[0].urls.before
-                      }
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="h-12 w-9 rounded object-cover"
-                    />
-                  ) : null}
-                </div>
+                      className="min-w-0 flex-1 text-left"
+                    >
+                      <span className="text-base font-semibold text-ink">
+                        {item.title}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-ink/55">
+                        {item.created_at
+                          ? `${formatPostedRelative(item.created_at)} · `
+                          : ""}
+                        {item.set_name ? `${item.set_name} · ` : ""}
+                        {item.card_number ? `#${item.card_number} · ` : ""}
+                        {(item.pairs ?? []).length} pair
+                        {(item.pairs ?? []).length === 1 ? "" : "s"}
+                        {(item.damage_tags ?? []).length
+                          ? ` · ${(item.damage_tags ?? []).length} tag${
+                              (item.damage_tags ?? []).length === 1 ? "" : "s"
+                            }`
+                          : ""}
+                        {!item.published ? " · unpublished" : ""}
+                      </span>
+                    </button>
 
-                {selectedId === item.id && (
-                  <div className="mt-4">{renderEditor()}</div>
-                )}
-              </li>
-            ))}
+                    {item.urls?.thumbnail ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={
+                          galleryThumbPublicUrl(item.urls.thumbnail) ||
+                          item.urls.thumbnail
+                        }
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className={`w-9 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/10`}
+                      />
+                    ) : item.pairs?.[0]?.urls?.before ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={
+                          (item.pairs[0].media_kind === "video" ||
+                          item.pairs[0].mediaKind === "video"
+                            ? galleryPosterPublicUrl(item.pairs[0].urls.before)
+                            : galleryThumbPublicUrl(item.pairs[0].urls.before)) ||
+                          item.pairs[0].urls.before
+                        }
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="h-12 w-9 rounded object-cover"
+                      />
+                    ) : null}
+                  </div>
+
+                  {isOpen && (
+                    <div className="mt-4">{renderEditor()}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

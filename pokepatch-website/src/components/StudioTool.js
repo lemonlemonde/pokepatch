@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import StudioFolderBoard, {
   createPair,
   readDragItem as readPairBankDragItem,
@@ -16,6 +17,7 @@ import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
+import { publishStudioPairsToGallery } from "@/lib/studioToGallery";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
 import useDebouncedValue from "@/lib/useDebouncedValue";
@@ -587,11 +589,13 @@ function BeforeAfterPairPhotoFormatter({
   cardMeta,
   onChangeCardMeta,
 }) {
+  const router = useRouter();
   const [beforeItems, setBeforeItems] = useState([]);
   const [afterItems, setAfterItems] = useState([]);
   const [pairs, setPairs] = useState(() => [createPair()]);
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [sendingToGallery, setSendingToGallery] = useState(false);
   const [error, setError] = useState("");
   const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
   const [altTextByKey, setAltTextByKey] = useState({});
@@ -755,6 +759,49 @@ function BeforeAfterPairPhotoFormatter({
     }
   }
 
+  async function handleSendToGallery() {
+    setError("");
+
+    const partial = pairs.some(
+      (pair) => Boolean(pair.before) !== Boolean(pair.after),
+    );
+    if (partial) {
+      setError("Each pair needs both a before and an after (or remove it).");
+      return;
+    }
+
+    if (!cardMeta.card.trim()) {
+      setError("Add a card name before sending to gallery.");
+      return;
+    }
+
+    if (completePairCount === 0) {
+      setError("Fill at least one complete before & after pair.");
+      return;
+    }
+
+    setSendingToGallery(true);
+    try {
+      const item = await publishStudioPairsToGallery({
+        pairs,
+        beforeItems,
+        afterItems,
+        previewUrls,
+        meta: {
+          title: cardMeta.card.trim(),
+          set_name: cardMeta.set.trim(),
+        },
+      });
+      router.push(`/admin/gallery/?edit=${encodeURIComponent(item.id)}`);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not send to gallery.",
+      );
+    } finally {
+      setSendingToGallery(false);
+    }
+  }
+
   async function handleDownloadAllImages() {
     if (!outputs?.length) return;
     setDownloadingImages(true);
@@ -840,19 +887,33 @@ function BeforeAfterPairPhotoFormatter({
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={busy || completePairCount === 0}
-            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {busy
-              ? "Generating…"
-              : completePairCount === 0
-                ? "Fill a before & after pair to generate"
-                : completePairCount === 1
-                  ? "Generate post"
-                  : `Generate ${completePairCount} posts`}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="submit"
+              disabled={busy || sendingToGallery || completePairCount === 0}
+              className="w-full flex-1 rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy
+                ? "Generating…"
+                : completePairCount === 0
+                  ? "Fill a before & after pair to generate"
+                  : completePairCount === 1
+                    ? "Generate post"
+                    : `Generate ${completePairCount} posts`}
+            </button>
+            <button
+              type="button"
+              onClick={handleSendToGallery}
+              disabled={busy || sendingToGallery || completePairCount === 0}
+              className="w-full flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {sendingToGallery
+                ? "Sending to gallery…"
+                : completePairCount <= 1
+                  ? "Send to gallery"
+                  : `Send ${completePairCount} pairs to gallery`}
+            </button>
+          </div>
         </StudioFolderBoard>
       </form>
 
