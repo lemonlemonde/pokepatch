@@ -116,8 +116,13 @@ const REEL_CARD_INFO_PAD_RIGHT_EXTRA = 16;
 const REEL_CARD_INFO_GAP_BELOW_CONTENT = 60;
 /** Gap between BEFORE/AFTER labels and the card chip on 4:5. */
 const CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT = 28;
+/**
+ * Drop the top-right brand chip on 4:5 so Instagram's carousel page
+ * counter (1/2, 2/2, …) does not cover it.
+ */
+const CAROUSEL_BRANDING_TOP_NUDGE = 36;
 /** Clear the top-right branding badge before the cards start on 4:5. */
-const CAROUSEL_CONTENT_TOP = 96;
+const CAROUSEL_CONTENT_TOP = 96 + CAROUSEL_BRANDING_TOP_NUDGE;
 /** Nudge caption+images (and the chip below them) above true vertical center on 9:16. */
 const REEL_CENTER_NUDGE_UP = 135;
 /** Scale fonts + branding logo on 9:16 only. */
@@ -164,7 +169,7 @@ function carouselMetrics() {
   return {
     edge: 28,
     columnGap: 24,
-    contentTop: 108,
+    contentTop: 108 + CAROUSEL_BRANDING_TOP_NUDGE,
     labelFont: 28,
     labelGap: 18,
     labelTracking: 10,
@@ -665,9 +670,10 @@ export function drawBranding(ctx, logoImg) {
     padding -
     blockW -
     (reel ? REEL_BRANDING_RIGHT_EXTRA : 0);
-  // Reels need a deep top inset to clear Instagram UI; carousel keeps the
-  // chip in the true top-right like the classic feed posts.
-  const blockY = padding + (reel ? REEL_BRANDING_TOP_NUDGE : 0);
+  // Reels need a deep top inset to clear Instagram UI; carousel drops
+  // slightly so the 1/N page counter does not cover the chip.
+  const blockY =
+    padding + (reel ? REEL_BRANDING_TOP_NUDGE : CAROUSEL_BRANDING_TOP_NUDGE);
 
   drawBadgeBackground(ctx, blockX, blockY, blockW, blockH);
 
