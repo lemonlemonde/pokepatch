@@ -24,7 +24,6 @@ import useDebouncedValue from "@/lib/useDebouncedValue";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
-import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import {
   OUTPUT_EXT,
   canvasToBlob,
@@ -622,7 +621,6 @@ function BeforeAfterPairPhotoFormatter({
     beforeItems.length > 0 ||
     afterItems.length > 0 ||
     hasCardMetaContent(cardMeta);
-  const { dialog } = useUnsavedChangesGuard(hasContent);
 
   const [draftCaption, flushDraftCaption] = useDebouncedValue(
     caption,
@@ -986,7 +984,6 @@ function BeforeAfterPairPhotoFormatter({
           </div>
         </div>
       )}
-      {dialog}
     </div>
   );
 }
