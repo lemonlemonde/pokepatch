@@ -2113,22 +2113,12 @@ Deno.serve(async (req) => {
 
       const { data: existingRow, error: existingError } = await supabase
         .from("gallery_items")
-        .select("tcg_card_id")
+        .select("id")
         .eq("id", id)
         .maybeSingle();
       if (existingError) throw existingError;
       if (!existingRow) {
         return jsonResponse(req, { ok: false, error: "not found" }, 404);
-      }
-
-      const pinnedCardId = String(existingRow.tcg_card_id ?? "").trim();
-      if (pinnedCardId) {
-        delete patch.title;
-        delete patch.set_name;
-        delete patch.card_number;
-        delete patch.tcg_lookup_title;
-        delete patch.tcg_lookup_set_name;
-        delete patch.tcg_card_id;
       }
 
       const mutableKeys = Object.keys(patch).filter((key) => key !== "updated_at");
