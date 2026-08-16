@@ -709,6 +709,8 @@ export function drawBranding(ctx, logoImg, placement = null, measured = null) {
     m.logoH,
   );
 
+  // Must re-apply after measureBrandingChip — labels/card-info change ctx.font.
+  ctx.font = `500 ${m.fontSize}px ${LABEL_FONT_FAMILY}`;
   ctx.fillStyle = "rgba(255, 255, 255, 0.92)";
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
