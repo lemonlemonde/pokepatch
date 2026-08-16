@@ -93,6 +93,7 @@ export function normalizeCardStatus(statusId) {
  * manually changed order status on the same save):
  * - every card completed → ready
  * - else any card in_progress → in_progress
+ * The reverse (order → ready marks cards completed) is a DB trigger.
  * Returns null when no auto change applies.
  */
 export function orderStatusFromCardStatuses(orderStatus, cards) {
@@ -112,6 +113,15 @@ export function orderStatusFromCardStatuses(orderStatus, cards) {
     return "in_progress";
   }
   return null;
+}
+
+/** Active cards → completed; canceled unchanged. Mirrors orders_complete_cards_when_ready. */
+export function markActiveCardsCompleted(cards) {
+  return (cards ?? []).map((card) =>
+    normalizeCardStatus(card.status) === "canceled"
+      ? card
+      : { ...card, status: "completed" }
+  );
 }
 
 export function orderStatusManuallyChanged(beforeDraft, afterDraft) {
