@@ -3,6 +3,7 @@
 import {
   EDITOR_STATUS_OPTIONS,
   editorStatusValue,
+  markActiveCardsCompleted,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
@@ -153,9 +154,16 @@ export function OrderPanel() {
                   type="button"
                   disabled={saving}
                   onClick={() =>
-                    updateDraft({
-                      status: option.status,
-                      pending_kind: option.pendingKind,
+                    updateDraft((current) => {
+                      const next = {
+                        ...current,
+                        status: option.status,
+                        pending_kind: option.pendingKind,
+                      };
+                      if (option.status === "ready") {
+                        next.cards = markActiveCardsCompleted(current.cards);
+                      }
+                      return next;
                     })
                   }
                   aria-pressed={selected}

@@ -5,12 +5,14 @@ import {
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
+import { notifyDueCardTimers } from "../_shared/notifyCardTimers.ts";
 import {
   fetchPokemonTcgCard,
   normalizeSearchText,
   searchPokemonTcgCatalog,
   tcgCardImageSmallUrl,
 } from "../_shared/pokemonTcg.ts";
+import { sanitizeDamageTags } from "../_shared/damageTags.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -73,29 +75,6 @@ const ADMIN_IMAGE_TYPES = new Set([
 
 const GALLERY_SIDES = new Set(["before", "after"]);
 const GALLERY_MEDIA_KINDS = new Set(["image", "video"]);
-const GALLERY_DAMAGE_TAGS = new Set([
-  "crease",
-  "scratching",
-  "dent",
-  "edge_lift",
-  "edge_peeling",
-  "dirt",
-  "water_damage",
-  "warping",
-]);
-
-function sanitizeDamageTags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  const seen = new Set<string>();
-  const tags: string[] = [];
-  for (const value of raw) {
-    const id = String(value ?? "").trim();
-    if (!GALLERY_DAMAGE_TAGS.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    tags.push(id);
-  }
-  return tags;
-}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
@@ -332,6 +311,133 @@ async function signPathsThumbsOnly(
     }
   }
   return result;
+}
+
+const MAX_TIMER_MINUTES = 30 * 24 * 60;
+
+type TimerOrderJoin =
+  | { display_id: number | string | null; customer_name: string | null }
+  | { display_id: number | string | null; customer_name: string | null }[]
+  | null;
+
+function unwrapTimerOrder(orders: TimerOrderJoin) {
+  const row = Array.isArray(orders) ? orders[0] : orders;
+  return {
+    display_id: row?.display_id ?? null,
+    customer_name: row?.customer_name ?? null,
+  };
+}
+
+async function fetchInProgressTimers(
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const { data, error } = await supabase
+    .from("cards")
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at, sort_order, orders!inner(display_id, customer_name)"
+    )
+    .eq("status", "in_progress")
+    .order("timer_ends_at", { ascending: true, nullsFirst: false })
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const order = unwrapTimerOrder(row.orders as TimerOrderJoin);
+    return {
+      id: row.id,
+      order_id: row.order_id,
+      card_name: row.card_name ?? null,
+      set_name: row.set_name ?? null,
+      status: row.status ?? null,
+      timer_ends_at: row.timer_ends_at ?? null,
+      timer_notified_at: row.timer_notified_at ?? null,
+      order_display_id: order.display_id,
+      customer_name: order.customer_name,
+    };
+  });
+}
+
+async function addCardTimer(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string,
+  durationMinutes: number
+) {
+  if (!cardId) throw new Error("card_id required");
+  if (
+    !Number.isFinite(durationMinutes) ||
+    durationMinutes <= 0 ||
+    durationMinutes > MAX_TIMER_MINUTES
+  ) {
+    throw new Error(
+      `duration_minutes must be between 1 and ${MAX_TIMER_MINUTES}`
+    );
+  }
+
+  const { data: card, error: fetchError } = await supabase
+    .from("cards")
+    .select("id, status, timer_ends_at")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!card) throw new Error("card not found");
+  if (card.status !== "in_progress") {
+    throw new Error("timer only allowed on in_progress cards");
+  }
+
+  const nowMs = Date.now();
+  const existingEndsMs = card.timer_ends_at
+    ? new Date(card.timer_ends_at as string).getTime()
+    : NaN;
+  const baseMs =
+    Number.isFinite(existingEndsMs) && existingEndsMs > nowMs
+      ? existingEndsMs
+      : nowMs;
+  const endsAt = new Date(
+    baseMs + durationMinutes * 60 * 1000
+  ).toISOString();
+
+  const maxEndsAt = new Date(nowMs + MAX_TIMER_MINUTES * 60 * 1000).getTime();
+  if (new Date(endsAt).getTime() > maxEndsAt) {
+    throw new Error("timer cannot extend more than 30 days from now");
+  }
+
+  const { data: updated, error } = await supabase
+    .from("cards")
+    .update({
+      timer_ends_at: endsAt,
+      timer_notified_at: null,
+    })
+    .eq("id", cardId)
+    .eq("status", "in_progress")
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at"
+    )
+    .maybeSingle();
+  if (error) throw error;
+  if (!updated) throw new Error("failed to update timer");
+  return updated;
+}
+
+async function clearCardTimer(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string
+) {
+  if (!cardId) throw new Error("card_id required");
+  const { data: updated, error } = await supabase
+    .from("cards")
+    .update({
+      timer_ends_at: null,
+      timer_notified_at: null,
+    })
+    .eq("id", cardId)
+    .select(
+      "id, order_id, card_name, set_name, status, timer_ends_at, timer_notified_at"
+    )
+    .maybeSingle();
+  if (error) throw error;
+  if (!updated) throw new Error("card not found");
+  return updated;
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
@@ -1198,10 +1304,16 @@ async function handleGalleryThumbnailUpload(
   if (!file.type.startsWith("image/")) {
     return jsonResponse(req, { ok: false, error: "image required" }, 400);
   }
-  if (file.type !== "image/webp") {
+  // Client prefers WebP; Safari falls back to JPEG (or PNG). Accept those.
+  const allowedThumbTypes = new Set([
+    "image/webp",
+    "image/jpeg",
+    "image/png",
+  ]);
+  if (!allowedThumbTypes.has(file.type)) {
     return jsonResponse(
       req,
-      { ok: false, error: "thumbnail must be compressed WebP" },
+      { ok: false, error: "thumbnail must be compressed WebP, JPEG, or PNG" },
       400
     );
   }
@@ -1231,7 +1343,7 @@ async function handleGalleryThumbnailUpload(
     .from(GALLERY_BUCKET)
     .upload(path, file, {
       upsert: true,
-      contentType: "image/webp",
+      contentType: file.type || "image/webp",
       cacheControl: GALLERY_CACHE_CONTROL,
     });
   if (uploadError) throw uploadError;
@@ -1613,6 +1725,87 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, order });
     }
 
+    // Guest shell order — no auth user / prior orders required.
+    // user_id stays null; claim_my_orders links by email on signup.
+    if (action === "create") {
+      const firstName = String(body.first_name ?? "").trim();
+      const lastName = String(body.last_name ?? "").trim();
+      const customerEmail = String(body.customer_email ?? "").trim();
+      const deliveryMethod = String(body.delivery_method ?? "").trim();
+
+      if (!firstName) {
+        return jsonResponse(req, { ok: false, error: "first_name required" }, 400);
+      }
+      if (!lastName) {
+        return jsonResponse(req, { ok: false, error: "last_name required" }, 400);
+      }
+      if (!customerEmail || !isValidEmail(normalizeEmail(customerEmail))) {
+        return jsonResponse(req, { ok: false, error: "valid customer_email required" }, 400);
+      }
+      if (
+        deliveryMethod !== "local_dropoff" &&
+        deliveryMethod !== "shipping"
+      ) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "delivery_method must be local_dropoff or shipping" },
+          400
+        );
+      }
+
+      const orderId = crypto.randomUUID();
+      const customerName = `${firstName} ${lastName}`.trim();
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("orders")
+        .insert({
+          id: orderId,
+          user_id: null,
+          first_name: firstName,
+          last_name: lastName,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          delivery_method: deliveryMethod,
+          preferred_contact_type: "email",
+          preferred_contact_value: customerEmail,
+          status: "pending",
+          pending_kind: "quote",
+          is_priority: false,
+        })
+        .select(
+          "id, display_id, created_at, first_name, last_name, customer_name, delivery_method, general_notes"
+        )
+        .single();
+      if (insertError) throw insertError;
+
+      const { error: originalError } = await supabase
+        .from("orders_original")
+        .insert({
+          id: inserted.id,
+          display_id: inserted.display_id,
+          created_at: inserted.created_at,
+          first_name: inserted.first_name,
+          last_name: inserted.last_name,
+          customer_name: inserted.customer_name,
+          delivery_method: inserted.delivery_method,
+          general_notes: inserted.general_notes,
+        });
+      if (originalError) {
+        await supabase.from("orders").delete().eq("id", orderId);
+        throw originalError;
+      }
+
+      const order = await fetchOrderGraph(supabase, orderId);
+      if (!order) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order not found after create" },
+          404
+        );
+      }
+      return jsonResponse(req, { ok: true, order, full: order });
+    }
+
     if (action === "set_status") {
       const orderId = String(body.order_id ?? "");
       const status = normalizeOrderStatusForApi(String(body.status ?? ""));
@@ -1926,22 +2119,12 @@ Deno.serve(async (req) => {
 
       const { data: existingRow, error: existingError } = await supabase
         .from("gallery_items")
-        .select("tcg_card_id")
+        .select("id")
         .eq("id", id)
         .maybeSingle();
       if (existingError) throw existingError;
       if (!existingRow) {
         return jsonResponse(req, { ok: false, error: "not found" }, 404);
-      }
-
-      const pinnedCardId = String(existingRow.tcg_card_id ?? "").trim();
-      if (pinnedCardId) {
-        delete patch.title;
-        delete patch.set_name;
-        delete patch.card_number;
-        delete patch.tcg_lookup_title;
-        delete patch.tcg_lookup_set_name;
-        delete patch.tcg_card_id;
       }
 
       const mutableKeys = Object.keys(patch).filter((key) => key !== "updated_at");
@@ -2355,22 +2538,37 @@ Deno.serve(async (req) => {
         ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
         : 100;
 
-      let query = supabase
-        .from("customer_messages")
-        .select(
-          "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)"
-        )
-        .order("sent_at", { ascending: false })
-        .limit(limit);
+      const messageColumnsWithSender =
+        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, sender, orders(display_id)";
+      const messageColumnsLegacy =
+        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)";
 
-      if (emailFilter) {
-        query = query.eq("recipient_email", emailFilter);
-      }
-      if (orderIdFilter) {
-        query = query.eq("order_id", orderIdFilter);
+      async function runMessagesQuery(columns: string) {
+        let query = supabase
+          .from("customer_messages")
+          .select(columns)
+          .order("sent_at", { ascending: false })
+          .limit(limit);
+
+        if (emailFilter) {
+          query = query.eq("recipient_email", emailFilter);
+        }
+        if (orderIdFilter) {
+          query = query.eq("order_id", orderIdFilter);
+        }
+
+        return query;
       }
 
-      const { data, error } = await query;
+      let { data, error } = await runMessagesQuery(messageColumnsWithSender);
+      if (
+        error &&
+        (/sender/i.test(error.message || "") ||
+          /sender/i.test(error.details || "") ||
+          error.code === "42703")
+      ) {
+        ({ data, error } = await runMessagesQuery(messageColumnsLegacy));
+      }
       if (error) throw error;
 
       const messages = (data ?? []).map((row) => {
@@ -2383,7 +2581,13 @@ Deno.serve(async (req) => {
           ? orderRel[0]?.display_id ?? null
           : orderRel?.display_id ?? null;
         const { orders: _orders, ...rest } = row as Record<string, unknown>;
-        return { ...rest, order_display_id: displayId };
+        return {
+          ...rest,
+          sender: (rest as { sender?: string }).sender === "customer"
+            ? "customer"
+            : "admin",
+          order_display_id: displayId,
+        };
       });
 
       return jsonResponse(req, { ok: true, messages });
@@ -2483,6 +2687,8 @@ Deno.serve(async (req) => {
           (await resolveUserIdByEmail(supabase, email, authUsers));
         const storedBody = buildStoredMessageBody(messageBody, orderDisplayId);
 
+        // sender defaults to 'admin' once the customer_update_my_order migration
+        // is applied; omit the column so pre-migration deploys keep working.
         const { data: inserted, error: insertError } = await supabase
           .from("customer_messages")
           .insert({
@@ -2562,6 +2768,56 @@ Deno.serve(async (req) => {
         failed,
         results,
       });
+    }
+
+    if (action === "timers_list") {
+      const cards = await fetchInProgressTimers(supabase);
+      return jsonResponse(req, { ok: true, cards });
+    }
+
+    if (action === "timers_notify_due") {
+      const result = await notifyDueCardTimers(
+        supabase,
+        Deno.env.get("CARD_TIMER_DISCORD_WEBHOOK_URL")
+      );
+      return jsonResponse(req, result);
+    }
+
+    if (action === "timer_add") {
+      const cardId = String(body.card_id ?? "");
+      const durationMinutes = Number(body.duration_minutes);
+      try {
+        const card = await addCardTimer(supabase, cardId, durationMinutes);
+        return jsonResponse(req, { ok: true, card });
+      } catch (err) {
+        const message = rpcErrorMessage(err);
+        const status =
+          message.includes("required") ||
+          message.includes("must be") ||
+          message.includes("only allowed") ||
+          message.includes("cannot extend")
+            ? 400
+            : message.includes("not found")
+              ? 404
+              : 500;
+        return jsonResponse(req, { ok: false, error: message }, status);
+      }
+    }
+
+    if (action === "timer_clear") {
+      const cardId = String(body.card_id ?? "");
+      try {
+        const card = await clearCardTimer(supabase, cardId);
+        return jsonResponse(req, { ok: true, card });
+      } catch (err) {
+        const message = rpcErrorMessage(err);
+        const status = message.includes("required")
+          ? 400
+          : message.includes("not found")
+            ? 404
+            : 500;
+        return jsonResponse(req, { ok: false, error: message }, status);
+      }
     }
 
     return jsonResponse(req, { ok: false, error: `unknown action: ${action || "(missing)"}` }, 400);

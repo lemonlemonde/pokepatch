@@ -16,7 +16,7 @@ import { capture } from "@/lib/posthog";
 import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
-import { priorityServicePricingHint } from "@/lib/servicePricing";
+import { priorityServicePricingHint, CARD_WHITENING_WARNING } from "@/lib/servicePricing";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
@@ -1196,6 +1196,15 @@ export default function QuoteForm() {
                     );
                   })}
                 </div>
+                {(card.damageTags ?? []).includes("whitening") ? (
+                  <p
+                    className="mt-3 rounded-lg border border-ink/25 bg-ink/10 px-3 py-2.5 text-sm leading-relaxed text-ink/75"
+                    role="note"
+                  >
+                    <span className="font-semibold text-ink">Note. </span>
+                    {CARD_WHITENING_WARNING}
+                  </p>
+                ) : null}
               </div>
 
               <div>

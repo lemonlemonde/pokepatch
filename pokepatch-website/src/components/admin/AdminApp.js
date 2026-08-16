@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import {
+  adminCreateOrder,
   adminDeleteOrders,
   adminGetOrder,
   adminListOrders,
@@ -24,6 +25,8 @@ import { thumbPath } from "@/lib/imageCompression";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
+import CardTimers from "@/components/admin/CardTimers";
+import CreateOrderDialog from "@/components/admin/CreateOrderDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
@@ -49,6 +52,7 @@ import {
   normalizeCardStatus,
   normalizePendingKind,
   DEFAULT_PENDING_KIND,
+  markActiveCardsCompleted,
   orderStatusHeadingClass,
   orderStatusLabel,
   orderDisplayLabel,
@@ -69,7 +73,15 @@ const ADMIN_TABS = [
     path: "/admin/orders/",
     title: "Orders admin",
     subtitle:
-     "Search cards by name or set (scope with status chips). Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+     "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+  },
+  {
+    id: "timers",
+    label: "Timers",
+    path: "/admin/timers/",
+    title: "Card timers",
+    subtitle:
+     "Every in-progress card. Tap +1m / +1h / +1d to add time; Discord pings when it hits zero. Completed cards leave this list automatically.",
   },
   {
     id: "gallery",
@@ -85,7 +97,7 @@ const ADMIN_TABS = [
     path: "/admin/studio/",
     title: "Studio",
     subtitle:
-     "Format 1×2 before & after Instagram posts.",
+      "Upload before & after folders, drag into pairs, then generate Instagram posts.",
   },
   {
     id: "guide",
@@ -101,7 +113,7 @@ const ORDERS_ALL_META = {
   id: "orders-all",
   title: "All orders",
   subtitle:
-   "Spreadsheet view of every order. Click a row to open it.",
+   "Spreadsheet view of every order. Search cards by name or set and filter by status. Click a row to open it.",
 };
 
 const ORDERS_EDIT_META = {
@@ -951,7 +963,6 @@ function truncateText(value, max = 140) {
   return `${text.slice(0, max - 1)}…`;
 }
 
-const DEFAULT_SEARCH_STATUSES = ACTIVE_ORDER_STATUSES.map((status) => status.id);
 const ALL_SEARCH_STATUSES = ORDER_STATUSES.map((status) => status.id);
 
 function orderMatchesLocalQuery(order, query) {
@@ -985,13 +996,9 @@ function filterOrdersForAllList(orders, { query, statuses, searchOrderIds }) {
   return list;
 }
 
-function OrderCardSearch({
-  onOpenOrder,
-  defaultStatuses = DEFAULT_SEARCH_STATUSES,
-  onFilterChange,
-}) {
+function OrderCardSearch({ onOpenOrder, onFilterChange }) {
   const [query, setQuery] = useState("");
-  const [statuses, setStatuses] = useState(defaultStatuses);
+  const [statuses, setStatuses] = useState(ALL_SEARCH_STATUSES);
   const [results, setResults] = useState([]);
   const [truncated, setTruncated] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1384,7 +1391,6 @@ function OrdersAllSection({ orders, onOpenOrder, onBackToBoard }) {
         </button>
       </div>
       <OrderCardSearch
-        defaultStatuses={ALL_SEARCH_STATUSES}
         onFilterChange={setListFilter}
         onOpenOrder={(orderId, options) =>
           onOpenOrder(orderId, { from: "all", ...options })
@@ -1413,6 +1419,7 @@ function KanbanBoard({
   onSetPendingKind,
   onRequestDelete,
   onViewAllOrders,
+  onCreateOrder,
   suppressInspect = false,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
@@ -1735,13 +1742,22 @@ function KanbanBoard({
           completedTotal={revenue.completed}
           pipelineTotal={revenue.pipeline}
         />
-        <button
-          type="button"
-          onClick={onViewAllOrders}
-          className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
-        >
-          View all orders
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onCreateOrder}
+            className="rounded-xl bg-mint px-3 py-1.5 text-sm font-semibold text-night transition hover:brightness-105"
+          >
+            New order
+          </button>
+          <button
+            type="button"
+            onClick={onViewAllOrders}
+            className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
+          >
+            View all orders
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
@@ -1837,7 +1853,10 @@ export default function AdminApp() {
   // Static export can no-op same-path query clears via router.push. Dismiss the
   // editor in React state first so "Back to board" never lands on a blank page.
   const [editorDismissed, setEditorDismissed] = useState(false);
-  const routeOrderId = editorDismissed ? null : searchEditId;
+  // ?edit= opens the order editor only on order routes.
+  const ordersPath = pathTab === "orders" || pathTab === "orders-all";
+  const routeOrderId =
+    editorDismissed || !ordersPath ? null : searchEditId;
   const tab = routeOrderId ? "orders-edit" : pathTab;
   const editReturnPath =
     searchParams.get("from") === "all" ? "/admin/orders/all/" : "/admin/orders/";
@@ -1858,6 +1877,8 @@ export default function AdminApp() {
   const [movePrompt, setMovePrompt] = useState(null);
   const [moveSaving, setMoveSaving] = useState(false);
   const [noteOnlySending, setNoteOnlySending] = useState(false);
+  const [createOrderOpen, setCreateOrderOpen] = useState(false);
+  const [creatingOrder, setCreatingOrder] = useState(false);
 
   const unsavedOrderEdit = editorDirty && tab === "orders-edit";
   const { requestLeave, dialog: unsavedChangesDialog } =
@@ -2183,6 +2204,20 @@ export default function AdminApp() {
     setOrders((current) => {
       const wasClosed = isClosedOrderStatus(moving.status);
       const nextClosed = isClosedOrderStatus(nextStatus);
+      let cardsCompleted = moving.cards_completed;
+      if (nextStatus === "ready") {
+        const detailCards =
+          selectedOrderId === orderId && Array.isArray(orderDetail?.cards)
+            ? orderDetail.cards
+            : null;
+        if (detailCards) {
+          cardsCompleted = markActiveCardsCompleted(detailCards).filter(
+            (card) => normalizeCardStatus(card.status) === "completed"
+          ).length;
+        } else if (moving.card_count != null) {
+          cardsCompleted = Number(moving.card_count);
+        }
+      }
       return current.map((order) =>
         order.id === orderId
           ? {
@@ -2195,6 +2230,7 @@ export default function AdminApp() {
                   ? moving.completed_at
                   : new Date().toISOString()
                 : null,
+              cards_completed: cardsCompleted,
             }
           : order
       );
@@ -2212,6 +2248,10 @@ export default function AdminApp() {
             ...current,
             status: nextStatus,
             pending_kind: pendingKind,
+            cards:
+              nextStatus === "ready"
+                ? markActiveCardsCompleted(current.cards)
+                : current.cards,
           };
         });
       }
@@ -2279,6 +2319,23 @@ export default function AdminApp() {
     if (from === "all") params.set("from", "all");
     if (cardId) params.set("card", String(cardId));
     router.push(`/admin/orders/?${params.toString()}`);
+  }
+
+  async function handleCreateOrder(fields) {
+    setCreatingOrder(true);
+    setListError("");
+    try {
+      const created = await adminCreateOrder(fields);
+      const summary = orderToKanbanSummary(created);
+      setOrders((current) => [
+        summary,
+        ...current.filter((row) => row.id !== summary.id),
+      ]);
+      setCreateOrderOpen(false);
+      openOrder(created.id);
+    } finally {
+      setCreatingOrder(false);
+    }
   }
 
   async function leaveEditor({ skipConfirm = false } = {}) {
@@ -2459,6 +2516,14 @@ export default function AdminApp() {
         })}
       </div>
 
+      {tab === "timers" && (
+        <CardTimers
+          onOpenOrder={(orderId) => {
+            if (!orderId) return;
+            router.push(`/admin/orders/?edit=${encodeURIComponent(orderId)}`);
+          }}
+        />
+      )}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}
@@ -2550,9 +2615,6 @@ export default function AdminApp() {
             />
           ) : (
             <>
-              <div className="mb-4">
-                <OrderCardSearch onOpenOrder={openOrder} />
-              </div>
               <KanbanBoard
                 orders={orders}
                 onOpenOrder={openOrder}
@@ -2560,7 +2622,19 @@ export default function AdminApp() {
                 onSetPendingKind={handleSetPendingKind}
                 onRequestDelete={handleRequestDelete}
                 onViewAllOrders={() => router.push("/admin/orders/all/")}
+                onCreateOrder={() => {
+                  setListError("");
+                  setCreateOrderOpen(true);
+                }}
                 suppressInspect={Boolean(movePrompt || deleteTargets?.length)}
+              />
+              <CreateOrderDialog
+                open={createOrderOpen}
+                creating={creatingOrder}
+                onCancel={() => {
+                  if (!creatingOrder) setCreateOrderOpen(false);
+                }}
+                onCreate={handleCreateOrder}
               />
               <DeleteOrderDialog
                 orders={deleteTargets}

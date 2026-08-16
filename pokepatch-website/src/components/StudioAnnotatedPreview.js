@@ -6,18 +6,23 @@ import MediaLightbox, {
 } from "@/components/MediaLightbox";
 import { canvasToBlob } from "@/lib/instagramStitch";
 import { INSTAGRAM_HEIGHT, INSTAGRAM_WIDTH } from "@/lib/studioLayout";
-import { downloadBlob } from "@/lib/downloadFile";
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   SHAPE_STROKE,
   SHAPE_STROKE_WIDTH,
+  MIN_STROKE_WIDTH,
+  MAX_STROKE_WIDTH,
+  STROKE_WIDTH_STEP,
   STROKE_REFERENCE_WIDTH,
   HANDLE_SIZE,
   HANDLES,
   clamp,
+  clampStrokeWidth,
   shapeRotation,
+  shapeStrokeWidth,
   createShape,
   drawShapesOnCanvas,
+  applyStrokeWidth,
   handlePosition,
   rotateHandlePosition,
   getImageContentMetrics,
@@ -48,20 +53,24 @@ export async function compositeImageWithShapes(imageUrl, shapes) {
   return canvasToBlob(canvas);
 }
 
-export function ShapeToolbar({ selectedId, onAdd, onDelete }) {
+export function ShapeToolbar({
+  selectedId,
+  onAdd,
+  onDelete,
+  strokeWidth = SHAPE_STROKE_WIDTH,
+  onStrokeWidthChange,
+  className = "",
+}) {
+  const width = clampStrokeWidth(strokeWidth);
+  const canThin = width > MIN_STROKE_WIDTH;
+  const canThick = width < MAX_STROKE_WIDTH;
+
   return (
     <div
-      className="mb-3 flex max-w-full flex-wrap items-center justify-center gap-2"
+      className={`flex max-w-full flex-wrap items-center justify-center gap-2 ${className}`}
       role="toolbar"
       aria-label="Shape tools"
     >
-      <button
-        type="button"
-        onClick={() => onAdd("rect")}
-        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20"
-      >
-        Add rectangle
-      </button>
       <button
         type="button"
         onClick={() => onAdd("circle")}
@@ -77,6 +86,35 @@ export function ShapeToolbar({ selectedId, onAdd, onDelete }) {
       >
         Delete selected
       </button>
+      {onStrokeWidthChange ? (
+        <div
+          className="inline-flex items-center gap-1 rounded-lg border border-ink/20 bg-ink/10 p-0.5"
+          role="group"
+          aria-label="Circle thickness"
+        >
+          <button
+            type="button"
+            aria-label="Thinner circles"
+            disabled={!canThin}
+            onClick={() => onStrokeWidthChange(width - STROKE_WIDTH_STEP)}
+            className="rounded-md px-2.5 py-1 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            −
+          </button>
+          <span className="min-w-[4.5rem] text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/60">
+            Thickness
+          </span>
+          <button
+            type="button"
+            aria-label="Thicker circles"
+            disabled={!canThick}
+            onClick={() => onStrokeWidthChange(width + STROKE_WIDTH_STEP)}
+            className="rounded-md px-2.5 py-1 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/15 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            +
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -98,7 +136,7 @@ export function ShapesLayer({ shapes, selectedId, viewW, viewH }) {
         const cy = y + h / 2;
         const rotation = shapeRotation(shape);
         const strokeW =
-          SHAPE_STROKE_WIDTH + (shape.id === selectedId ? 0.5 : 0);
+          shapeStrokeWidth(shape) + (shape.id === selectedId ? 0.5 : 0);
         const transform = rotation
           ? `rotate(${rotation} ${cx} ${cy})`
           : undefined;
@@ -304,27 +342,27 @@ export function ShapeSurface({
 /**
  * Studio output preview: click to enlarge in MediaLightbox and edit shapes there.
  *
- * `children` render between the image and the download row (the per-post alt
- * text field); `extraActions` render alongside the download button.
+ * `children` render below the image (e.g. per-post alt text). Downloads are
+ * handled by the parent (Download all finalized / package zip).
  */
-export default function StudioAnnotatedPreview({
+export default function StudioAnnotatedPreview(props) {
+  // Remount when the preview image changes so shapes/thickness reset without
+  // syncing state inside an effect.
+  return <AnnotatedPreviewSession key={props.url} {...props} />;
+}
+
+function AnnotatedPreviewSession({
   label,
   url,
   filename,
   onExporterChange,
-  extraActions = null,
   children = null,
 }) {
   const [shapes, setShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
+  const [strokeWidth, setStrokeWidth] = useState(SHAPE_STROKE_WIDTH);
   const [open, setOpen] = useState(false);
   const labelId = useId();
-
-  useEffect(() => {
-    setShapes([]);
-    setSelectedId(null);
-    setOpen(false);
-  }, [url]);
 
   useEffect(() => {
     if (!onExporterChange) return undefined;
@@ -353,7 +391,7 @@ export default function StudioAnnotatedPreview({
   }, [open, selectedId]);
 
   function addShape(type) {
-    const next = createShape(type, shapes.length);
+    const next = createShape(type, shapes.length, { strokeWidth });
     setShapes((prev) => [...prev, next]);
     setSelectedId(next.id);
   }
@@ -364,20 +402,21 @@ export default function StudioAnnotatedPreview({
     setSelectedId(null);
   }
 
+  function changeStrokeWidth(next) {
+    const width = clampStrokeWidth(next);
+    setStrokeWidth(width);
+    setShapes((prev) => applyStrokeWidth(prev, width));
+  }
+
   function closeLightbox() {
     setSelectedId(null);
     setOpen(false);
   }
 
-  async function handleDownload() {
-    const blob = await compositeImageWithShapes(url, shapes);
-    downloadBlob(blob, filename);
-  }
-
   return (
     <div className="space-y-3">
       <p id={labelId} className="sr-only">
-        Preview for {label}. Click to enlarge and edit rectangles or circles.
+        Preview for {label}. Click to enlarge and edit circles.
       </p>
 
       <button
@@ -396,22 +435,7 @@ export default function StudioAnnotatedPreview({
         />
       </button>
 
-      <p className="text-center text-xs text-ink/50">
-        Click image to enlarge and edit shapes
-      </p>
-
       {children}
-
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={handleDownload}
-          className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
-        >
-          Download {label.toLowerCase()}
-        </button>
-        {extraActions}
-      </div>
 
       {open ? (
         <MediaLightbox
@@ -432,6 +456,9 @@ export default function StudioAnnotatedPreview({
               selectedId={selectedId}
               onAdd={addShape}
               onDelete={deleteSelected}
+              strokeWidth={strokeWidth}
+              onStrokeWidthChange={changeStrokeWidth}
+              className="mb-3"
             />
             <ShapeSurface
               url={url}

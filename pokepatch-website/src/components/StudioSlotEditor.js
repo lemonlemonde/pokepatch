@@ -5,7 +5,6 @@ import MediaLightbox, {
   LIGHTBOX_MEDIA_CLASSNAME,
 } from "@/components/MediaLightbox";
 import {
-  ASPECT_OPTIONS,
   CROP_HANDLES,
   DEFAULT_CROP,
   clampCrop,
@@ -22,32 +21,47 @@ import {
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   STROKE_REFERENCE_WIDTH,
+  applyStrokeWidth,
   clamp,
+  clampStrokeWidth,
   createShape,
   getImageContentMetrics,
+  getSharedStrokeWidth,
 } from "@/lib/shapeAnnotations";
 
 const CROP_HANDLE_SIZE = 10;
 
+/** Survives Crop ↔ Annotate remounts so aspect never flashes to 1:1. */
+const naturalSizeCache = new Map();
+
 /** Natural pixel dimensions of an image URL, once it has loaded. */
 export function useNaturalSize(src) {
-  const [size, setSize] = useState(null);
+  const [version, setVersion] = useState(0);
+
   useEffect(() => {
-    setSize(null);
-    if (!src) return undefined;
+    if (!src || naturalSizeCache.has(src)) return undefined;
     let cancelled = false;
     const img = new Image();
-    img.onload = () => {
-      if (!cancelled) {
-        setSize({ width: img.naturalWidth, height: img.naturalHeight });
-      }
+    const commit = () => {
+      if (cancelled || !img.naturalWidth || naturalSizeCache.has(src)) return;
+      naturalSizeCache.set(src, {
+        width: img.naturalWidth,
+        height: img.naturalHeight,
+      });
+      setVersion((v) => v + 1);
     };
+    img.onload = commit;
     img.src = src;
+    // Cached decodes can be complete before onload is scheduled.
+    if (img.complete) queueMicrotask(commit);
     return () => {
       cancelled = true;
     };
   }, [src]);
-  return size;
+
+  void version; // re-render when cache fills after async decode
+  if (!src) return null;
+  return naturalSizeCache.get(src) ?? null;
 }
 
 /** Visual aspect (w/h) of the cropped region of an image. */
@@ -138,12 +152,21 @@ export function CroppedShapePreview({
   );
 }
 
-/** Step 1: position the crop box over the full image. */
-function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
+/** Step 1: position the crop box over the full image.
+ * Annotations stay visible inside the crop frame (same coords as Annotate).
+ * Crop aspect is always locked to the source image so every crop is a
+ * same-ratio zoom/pan of the original photo. */
+function CropStepSurface({
+  src,
+  alt,
+  crop,
+  onCropChange,
+  annotations = [],
+}) {
   const surfaceRef = useRef(null);
   const imageRef = useRef(null);
+  const naturalSize = useNaturalSize(src);
   const [drag, setDrag] = useState(null);
-  const [imageAspect, setImageAspect] = useState(null);
   const [contentBox, setContentBox] = useState({
     offsetLeft: 0,
     offsetTop: 0,
@@ -154,10 +177,15 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
   // Buffer the drag locally; the parent (and the slot grid it re-renders)
   // only hears about it on release.
   const liveCrop = drag?.value ?? crop;
+  const imageAspect = naturalSize
+    ? naturalSize.width / naturalSize.height
+    : null;
+  const cropAspect = cropAspectRatio(liveCrop, naturalSize);
+  const shapeViewW = STROKE_REFERENCE_WIDTH;
+  const shapeViewH = STROKE_REFERENCE_WIDTH / cropAspect;
 
   const updateContentBox = useCallback(() => {
-    const img = imageRef.current;
-    const metrics = getImageContentMetrics(img);
+    const metrics = getImageContentMetrics(imageRef.current);
     if (!metrics) return;
     setContentBox({
       offsetLeft: metrics.offsetLeft,
@@ -165,9 +193,6 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
       width: metrics.width,
       height: metrics.height,
     });
-    if (img?.naturalWidth && img?.naturalHeight) {
-      setImageAspect(img.naturalWidth / img.naturalHeight);
-    }
   }, []);
 
   useEffect(() => {
@@ -184,11 +209,11 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
   }, [src, updateContentBox]);
 
   useEffect(() => {
-    if (!aspectRatio || !imageAspect) return;
-    onCropChange(fitCropToAspect(crop, aspectRatio, imageAspect));
-    // Only re-fit when the aspect preset or natural image ratio changes.
+    if (!imageAspect) return;
+    onCropChange(fitCropToAspect(crop, imageAspect, imageAspect));
+    // Re-fit whenever the natural image ratio is known / changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-  }, [aspectRatio, imageAspect]);
+  }, [imageAspect]);
 
   const clientToNormalized = useCallback((clientX, clientY) => {
     const metrics = getImageContentMetrics(imageRef.current);
@@ -246,8 +271,7 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
         prev.handleId,
         point.x,
         point.y,
-        // Shift locks to the original image aspect (overrides Free / presets).
-        event.shiftKey ? imageAspect : aspectRatio,
+        imageAspect,
         imageAspect,
       ),
     }));
@@ -286,7 +310,9 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
         src={src}
         alt={alt}
         draggable={false}
-        className={LIGHTBOX_MEDIA_CLASSNAME}
+        // Stay laid out (so we can measure) but invisible until the dim
+        // overlay is ready — otherwise Crop mode blinks a full bright photo.
+        className={`${LIGHTBOX_MEDIA_CLASSNAME}${contentBox.width > 0 ? "" : " opacity-0"}`}
       />
       {contentBox.width > 0 ? (
         <div className="absolute" style={overlayStyle}>
@@ -312,6 +338,27 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
               vectorEffect="non-scaling-stroke"
             />
           </svg>
+          {annotations.length > 0 ? (
+            <svg
+              className="pointer-events-none absolute overflow-visible"
+              style={{
+                left: `${liveCrop.x * 100}%`,
+                top: `${liveCrop.y * 100}%`,
+                width: `${liveCrop.w * 100}%`,
+                height: `${liveCrop.h * 100}%`,
+              }}
+              viewBox={`0 0 ${shapeViewW} ${shapeViewH}`}
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <ShapesLayer
+                shapes={annotations}
+                selectedId={null}
+                viewW={shapeViewW}
+                viewH={shapeViewH}
+              />
+            </svg>
+          ) : null}
           <button
             type="button"
             aria-label="Move crop"
@@ -422,18 +469,48 @@ function AnnotateStepSurface({
   );
 }
 
+const EDITOR_STEPS = [
+  { id: "crop", label: "Crop" },
+  { id: "annotate", label: "Annotate" },
+];
+
+function EditModeToggle({ step, onStepChange }) {
+  return (
+    <div
+      className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
+      role="group"
+      aria-label="Edit mode"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {EDITOR_STEPS.map((option) => {
+        const active = step === option.id;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onStepChange(option.id)}
+            className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
+              active ? "bg-ink text-night" : "text-ink/70 hover:text-ink"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * One independently-editable photo: its own Crop/Annotate mode, aspect
- * controls, and drag surface. `draftCrop` / `draftAnnotations` / `selectedId`
- * are controlled from the parent (StudioSlotEditor needs both photos' current
- * values at once to commit them together), but `step` and `aspectId` stay
- * local here — that's what makes two panels' modes independent of each
- * other for free, no cross-panel plumbing required.
+ * One photo's crop/annotate surface. Mode (`step`) is owned by the parent so
+ * paired before/after panels stay in lockstep behind a single toggle.
  */
 function EditorPanel({
   previewUrl,
   alt,
   label,
+  step,
   draftCrop,
   draftAnnotations,
   selectedId,
@@ -441,12 +518,13 @@ function EditorPanel({
   onDraftAnnotationsChange,
   onSelectedIdChange,
 }) {
-  const [step, setStep] = useState("crop");
-  const [aspectId, setAspectId] = useState("free");
+  // Shared across every circle on this photo; survives deleting down to zero
+  // so the next Add circle keeps the last thickness the user picked.
+  const [strokeWidth, setStrokeWidth] = useState(() =>
+    getSharedStrokeWidth(draftAnnotations),
+  );
 
   const hasCrop = !isDefaultCrop(draftCrop);
-  const aspectRatio =
-    ASPECT_OPTIONS.find((option) => option.id === aspectId)?.ratio ?? null;
 
   useEffect(() => {
     if (step !== "annotate" || !selectedId) return undefined;
@@ -467,7 +545,7 @@ function EditorPanel({
   }, [step, selectedId, onDraftAnnotationsChange, onSelectedIdChange]);
 
   function addShape(type) {
-    const next = createShape(type, draftAnnotations.length);
+    const next = createShape(type, draftAnnotations.length, { strokeWidth });
     onDraftAnnotationsChange([...draftAnnotations, next]);
     onSelectedIdChange(next.id);
   }
@@ -480,10 +558,11 @@ function EditorPanel({
     onSelectedIdChange(null);
   }
 
-  const steps = [
-    { id: "crop", label: "Crop" },
-    { id: "annotate", label: "Annotate" },
-  ];
+  function changeStrokeWidth(next) {
+    const width = clampStrokeWidth(next);
+    setStrokeWidth(width);
+    onDraftAnnotationsChange((prev) => applyStrokeWidth(prev, width));
+  }
 
   return (
     <div className="flex flex-col items-center gap-3">
@@ -492,128 +571,74 @@ function EditorPanel({
       </p>
 
       <div
-        className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1"
+        className="flex max-w-full flex-wrap items-center justify-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
-        {steps.map((option) => {
-          const active = step === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                setStep(option.id);
-                onSelectedIdChange(null);
-              }}
-              className={`rounded-lg px-4 py-1.5 font-secondary text-sm font-semibold transition ${
-                active
-                  ? "bg-ink text-night "
-                  : "text-ink/70 hover:text-ink"
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
+        {step === "crop" ? (
+          <button
+            type="button"
+            onClick={() => onDraftCropChange(DEFAULT_CROP)}
+            disabled={!hasCrop}
+            className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Reset crop
+          </button>
+        ) : (
+          <ShapeToolbar
+            selectedId={selectedId}
+            onAdd={addShape}
+            onDelete={deleteSelected}
+            strokeWidth={strokeWidth}
+            onStrokeWidthChange={changeStrokeWidth}
+          />
+        )}
       </div>
 
-      {step === "crop" ? (
-        <>
-          <div
-            className="flex flex-wrap items-center justify-center gap-2"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <p className="font-secondary text-sm text-ink/60">Aspect</p>
-            <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
-              {ASPECT_OPTIONS.map((option) => {
-                const active = aspectId === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setAspectId(option.id)}
-                    className={`rounded-lg px-3 py-1.5 font-secondary text-sm font-semibold transition ${
-                      active
-                        ? "bg-ink text-night "
-                        : "text-ink/70 hover:text-ink"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() => onDraftCropChange(DEFAULT_CROP)}
-              disabled={!hasCrop}
-              className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Reset crop
-            </button>
-          </div>
+      {/*
+        Keep both surfaces mounted and toggle with `hidden` instead of
+        unmounting. Remounting reloaded the <img>, reset naturalSize to null
+        (square aspect flash), and dropped the crop overlay until ResizeObserver
+        re-measured — the blink when flipping Crop ↔ Annotate.
+      */}
+      <div
+        className={step === "crop" ? "contents" : "hidden"}
+        aria-hidden={step !== "crop"}
+      >
+        <CropStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          onCropChange={onDraftCropChange}
+          annotations={draftAnnotations}
+        />
+      </div>
 
-          <CropStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            onCropChange={onDraftCropChange}
-            aspectRatio={aspectRatio}
-          />
-
-          <p className="text-center text-xs text-ink/50">
-            Drag the box to move · drag handles to resize · hold Shift for
-            original aspect
-          </p>
-        </>
-      ) : (
-        <>
-          {/* display:contents keeps this out of layout entirely, so it
-              can't itself become a too-wide dead-click wrapper. */}
-          <div
-            style={{ display: "contents" }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <ShapeToolbar
-              selectedId={selectedId}
-              onAdd={addShape}
-              onDelete={deleteSelected}
-            />
-          </div>
-
-          <AnnotateStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            shapes={draftAnnotations}
-            selectedId={selectedId}
-            onSelectShape={onSelectedIdChange}
-            onShapesChange={onDraftAnnotationsChange}
-          />
-
-          <p className="text-center text-xs text-ink/50">
-            This is the cropped image as it will appear in the output ·
-            drag a shape to move it · Delete removes the selected shape
-          </p>
-        </>
-      )}
+      <div
+        className={step === "annotate" ? "contents" : "hidden"}
+        aria-hidden={step !== "annotate"}
+      >
+        <AnnotateStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          shapes={draftAnnotations}
+          selectedId={selectedId}
+          onSelectShape={onSelectedIdChange}
+          onShapesChange={onDraftAnnotationsChange}
+        />
+      </div>
     </div>
   );
 }
 
 /**
  * Crop → Annotate editor for a studio slot image and — when the slot is
- * paired (before/after, front/back) — its sibling too, open and editable
- * side by side at once. Each photo's Crop/Annotate mode is fully
- * independent (see `EditorPanel`).
+ * paired (before/after) — its sibling too, open and editable side by side.
+ * Crop/Annotate mode is shared across both photos (one toggle).
  *
  * Edits apply to a local draft as you go; the slot(s) only see them once the
- * session ends. Any way of dismissing the editor *except* the explicit
- * Cancel button commits the draft(s) — clicking the shaded backdrop, the
- * lightbox's own Close button, and Escape (with nothing selected in either
- * photo) all save. Cancel discards both photos' edits at once.
+ * session ends. Done, backdrop click, the lightbox Close button, and Escape
+ * (with nothing selected) all save. Cancel discards both photos' edits.
  *
  * Annotations are normalized against each photo's own *cropped* frame, so
  * re-cropping later keeps them fixed in the frame while the image content
@@ -632,6 +657,7 @@ export default function StudioSlotEditor({
   // Initialized once per mount (StudioCroppableThumb mounts a fresh editor
   // each time it opens), so these don't need to resync if the underlying
   // items change underneath the editor.
+  const [step, setStep] = useState("crop");
   const [draftCropA, setDraftCropA] = useState(() =>
     clampCrop(item?.crop ?? DEFAULT_CROP),
   );
@@ -651,6 +677,12 @@ export default function StudioSlotEditor({
     () => sibling?.item?.annotations ?? [],
   );
   const [selectedIdB, setSelectedIdB] = useState(null);
+
+  function changeStep(next) {
+    setStep(next);
+    setSelectedIdA(null);
+    setSelectedIdB(null);
+  }
 
   /** Any dismissal except the explicit Cancel button keeps the edits. */
   function commitAndClose() {
@@ -673,6 +705,7 @@ export default function StudioSlotEditor({
       previewUrl={previewUrl}
       alt={alt || label || ""}
       label={label || alt || "Photo"}
+      step={step}
       draftCrop={draftCropA}
       draftAnnotations={draftAnnotationsA}
       selectedId={selectedIdA}
@@ -688,6 +721,7 @@ export default function StudioSlotEditor({
       previewUrl={sibling.src}
       alt={sibling.alt || sibling.label || "Photo"}
       label={sibling.label || "Paired photo"}
+      step={step}
       draftCrop={draftCropB}
       draftAnnotations={draftAnnotationsB}
       selectedId={selectedIdB}
@@ -726,24 +760,38 @@ export default function StudioSlotEditor({
         Without this, clicking that leftover space read as "inside" and
         didn't close. So this whole block closes on click by default, and
         only the specific, tightly-sized interactive pieces (each control
-        group, the crop/annotate surface itself, Cancel) opt back out via
+        group, the crop/annotate surface itself, Done/Cancel) opt back out via
         their own stopPropagation.
       */}
       <div className="flex flex-col items-center gap-6" onClick={commitAndClose}>
+        <EditModeToggle step={step} onStepChange={changeStep} />
+
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center">
           {orderedPanels}
         </div>
 
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            cancelAndClose();
-          }}
-          className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
-        >
-          Cancel
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              commitAndClose();
+            }}
+            className="rounded-xl bg-ink px-5 py-2.5 font-semibold text-night transition hover:brightness-110"
+          >
+            Done
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              cancelAndClose();
+            }}
+            className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </MediaLightbox>
   );

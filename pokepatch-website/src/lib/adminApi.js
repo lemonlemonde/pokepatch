@@ -219,6 +219,45 @@ export async function adminListOrders() {
   return (payload.orders ?? []).map(stabilizeOrderSummary);
 }
 
+/** In-progress cards for the admin Timers board. */
+export async function adminListTimers() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "timers_list" },
+  });
+  return payload.cards ?? [];
+}
+
+/** Discord-notify any due card timers (idempotent). */
+export async function adminNotifyDueTimers() {
+  return adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "timers_notify_due" },
+  });
+}
+
+/** Add time to an in-progress card timer (or start from now if none/expired). */
+export async function adminAddCardTimer(cardId, durationMinutes) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "timer_add",
+      card_id: cardId,
+      duration_minutes: durationMinutes,
+    },
+  });
+  return payload.card;
+}
+
+/** Clear the countdown on a card without changing status. */
+export async function adminClearCardTimer(cardId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "timer_clear", card_id: cardId },
+  });
+  return payload.card;
+}
+
 /** Search cards by name/set/description; optionally scope to order statuses. */
 export async function adminSearchOrders(query, { statuses } = {}) {
   const payload = await adminRequest(apiUrl(), {
@@ -256,6 +295,26 @@ export async function adminGetOrder(orderId) {
     body: { action: "get", order_id: orderId },
   });
   return stabilizeOrderDetail(payload.order);
+}
+
+/** Create a guest order shell (no signup / prior orders required). */
+export async function adminCreateOrder({
+  first_name,
+  last_name,
+  customer_email,
+  delivery_method,
+} = {}) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "create",
+      first_name,
+      last_name,
+      customer_email,
+      delivery_method,
+    },
+  });
+  return stabilizeOrderDetail(payload.full ?? payload.order);
 }
 
 export async function adminSaveOrder(

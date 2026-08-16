@@ -1,7 +1,6 @@
 import {
   STUDIO_EXPORT_SCALE,
   drawComparisonFrame,
-  drawPairedSidesFrame,
   enableHighQuality,
   ensureLabelFont,
   ensureLogo,
@@ -57,28 +56,24 @@ export function loadImage(file) {
  * Resolve Studio overlay options into canvas overlay payload.
  * @param {{
  *   showCardInfo?: boolean,
- *   showCaption?: boolean,
  *   frontFile?: File | null,
  *   card?: string,
  *   set?: string,
- *   restoration?: string,
  * } | null} options
  */
 export async function resolveOverlay(options) {
   if (!options) return null;
 
-  const overlay = {};
   if (options.showCardInfo && options.frontFile) {
-    overlay.cardInfo = {
-      frontImg: await loadImage(options.frontFile),
-      card: options.card ?? "",
-      set: options.set ?? "",
+    return {
+      cardInfo: {
+        frontImg: await loadImage(options.frontFile),
+        card: options.card ?? "",
+        set: options.set ?? "",
+      },
     };
   }
-  if (options.showCaption && options.restoration) {
-    overlay.caption = options.restoration;
-  }
-  return overlay.cardInfo || overlay.caption ? overlay : null;
+  return null;
 }
 
 async function stitchComparison(
@@ -87,7 +82,7 @@ async function stitchComparison(
   leftLabel,
   rightLabel,
   overlay = null,
-  format = "square",
+  format = "reel",
 ) {
   const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
 
@@ -117,7 +112,7 @@ async function stitchComparison(
 export async function stitchBeforeAfterPairRows(
   files,
   overlayOptions = null,
-  format = "square",
+  format = "reel",
 ) {
   const overlay = await resolveOverlay(overlayOptions);
   const complete = [];
@@ -142,100 +137,12 @@ export async function stitchBeforeAfterPairRows(
       );
       const n = rowIndex + 1;
       return {
-        key: solo ? "any" : `pair-${n}`,
-        label: solo ? "Any" : `Pair ${n}`,
+        key: `pair-${n}`,
+        label: solo ? "Post" : `Pair ${n}`,
         canvas,
       };
     }),
   );
-}
-
-/** Front + Back before/after posts for the 1×2 Front-Back Pair mode. */
-export async function stitchBothPosts(
-  files,
-  overlayOptions = null,
-  format = "square",
-) {
-  const [beforeFront, beforeBack, afterFront, afterBack] = files;
-  const overlay = await resolveOverlay(overlayOptions);
-  const tasks = [];
-  if (beforeFront && afterFront) {
-    tasks.push(
-      stitchComparison(
-        beforeFront,
-        afterFront,
-        "before",
-        "after",
-        overlay,
-        format,
-      ).then((canvas) => ["front", canvas]),
-    );
-  }
-  if (beforeBack && afterBack) {
-    tasks.push(
-      stitchComparison(
-        beforeBack,
-        afterBack,
-        "before",
-        "after",
-        overlay,
-        format,
-      ).then((canvas) => ["back", canvas]),
-    );
-  }
-  const entries = await Promise.all(tasks);
-  return Object.fromEntries(entries);
-}
-
-async function stitchPairedSides(
-  leftFile,
-  rightFile,
-  label,
-  overlay = null,
-  format = "square",
-) {
-  const [, logoImg] = await Promise.all([ensureLabelFont(), ensureLogo()]);
-
-  const [leftImg, rightImg] = await Promise.all([
-    loadImage(leftFile),
-    loadImage(rightFile),
-  ]);
-
-  const { canvas, ctx } = createOutputCanvas(format);
-  drawPairedSidesFrame(ctx, leftImg, rightImg, label, logoImg, overlay);
-
-  return canvas;
-}
-
-/** Front-Back Pair posts. Only stitches pairs that have both images. */
-export async function stitchBeforeAfterPosts(
-  files,
-  overlayOptions = null,
-  format = "square",
-) {
-  const [beforeFront, beforeBack, afterFront, afterBack] = files;
-  const overlay = await resolveOverlay(overlayOptions);
-  const tasks = [];
-  if (beforeFront && beforeBack) {
-    tasks.push(
-      stitchPairedSides(
-        beforeFront,
-        beforeBack,
-        "before",
-        overlay,
-        format,
-      ).then((canvas) => ["before", canvas]),
-    );
-  }
-  if (afterFront && afterBack) {
-    tasks.push(
-      stitchPairedSides(afterFront, afterBack, "after", overlay, format).then(
-        (canvas) => ["after", canvas],
-      ),
-    );
-  }
-  const entries = await Promise.all(tasks);
-  return Object.fromEntries(entries);
 }
 
 /**

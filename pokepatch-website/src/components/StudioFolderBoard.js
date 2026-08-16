@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
-import { downloadSlotImages } from "@/lib/studioSlotImage";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -227,8 +226,8 @@ export function SideBank({
           ) : (
             <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
               {totalCount > 0
-                ? "All placed — drag one back here to remove from slot"
-                : `Upload the ${role} folder`}
+                ? "All placed — drag one back here to free it"
+                : `Drop a ${role} folder or browse`}
             </p>
           )}
         </div>
@@ -238,7 +237,6 @@ export function SideBank({
 }
 
 function PairSlot({
-  role,
   label,
   item,
   previewUrl,
@@ -289,36 +287,21 @@ function PairSlot({
           />
           <div className="mt-2 flex items-center justify-between gap-2">
             <p className="truncate text-xs text-ink/50">{item.file.name}</p>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  downloadSlotImages([{ item, previewUrl, label }]);
-                }}
-                className="text-xs font-semibold text-ink/90 hover:text-ink"
-              >
-                Download
-              </button>
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onClear();
-                }}
-                className="text-xs font-semibold text-ink/90 hover:text-ink"
-              >
-                Remove
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onClear();
+              }}
+              className="shrink-0 text-xs font-semibold text-ink/90 hover:text-ink"
+            >
+              Remove
+            </button>
           </div>
-          <p className="mt-1 text-[10px] text-ink/35">
-            Click to crop or annotate
-          </p>
         </div>
       ) : (
-        <p className="px-3 py-10 text-center text-xs text-ink/30">
-          Drop {role} here
+        <p className="px-3 py-10 text-center text-xs text-ink/35">
+          Drop from {label.toLowerCase()} photos
         </p>
       )}
     </div>
@@ -454,26 +437,11 @@ export default function StudioFolderBoard({
     }
   }
 
-  /** Filled slots in pair order — the "Download all" payload. */
-  const filledSlots = pairs.flatMap((pair, index) =>
-    ROLES.map(({ key: role, label }) => {
-      const slotItem = findItem(role, pair[role]);
-      const url = slotItem ? previewUrls[slotItem.id] : null;
-      return slotItem && url
-        ? {
-            item: slotItem,
-            previewUrl: url,
-            label: `pair-${index + 1}-${label}`,
-          }
-        : null;
-    }).filter(Boolean),
-  );
-
   return (
     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
       <SideBank
         role="before"
-        title="Before bank"
+        title="Before photos"
         totalCount={beforeItems.length}
         availableItems={availableItems("before")}
         previewUrls={previewUrls}
@@ -484,25 +452,46 @@ export default function StudioFolderBoard({
       />
 
       <div className="min-w-0 flex-1 space-y-4">
-        <p className="font-secondary text-sm font-semibold text-ink/90">
-          Pair before &amp; after
-        </p>
+        <div>
+          <p className="font-secondary text-sm font-semibold text-ink/90">
+            Pairs
+          </p>
+          <p className="mt-1 text-xs text-ink/45">
+            Upload folders on each side, then drag photos into Before / After
+            slots. Each complete pair becomes one post.
+          </p>
+        </div>
 
         <div className="space-y-4">
-          {pairs.map((pair, index) => (
+          {pairs.map((pair, index) => {
+            const pairReady = Boolean(pair.before && pair.after);
+            return (
               <div key={pair.id} className="space-y-2">
-                <div className="rounded-xl border border-ink/10 bg-night/40 p-3">
-                  <div className="mb-2 flex items-center justify-between">
+                <div
+                  className={`rounded-xl border p-3 transition ${
+                    pairReady
+                      ? "border-ink/15 bg-night/40"
+                      : "border-ink/10 bg-night/30"
+                  }`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
                     <p className="font-secondary text-xs font-semibold text-ink/80">
                       Pair {index + 1}
+                      {pairReady ? (
+                        <span className="ml-2 font-normal text-ink/40">
+                          ready
+                        </span>
+                      ) : null}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => removePair(pair.id)}
-                      className="text-xs font-semibold text-ink/90 hover:text-ink"
-                    >
-                      Remove pair
-                    </button>
+                    {pairs.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => removePair(pair.id)}
+                        className="text-xs font-semibold text-ink/90 hover:text-ink"
+                      >
+                        Remove pair
+                      </button>
+                    ) : null}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {ROLES.map(({ key: role, label }, roleIndex) => {
@@ -538,7 +527,6 @@ export default function StudioFolderBoard({
                       return (
                         <PairSlot
                           key={role}
-                          role={role}
                           label={label}
                           item={item}
                           previewUrl={item ? previewUrls[item.id] : null}
@@ -549,7 +537,9 @@ export default function StudioFolderBoard({
                               prev === slotKey ? null : prev,
                             )
                           }
-                          onDrop={(event) => handleSlotDrop(event, pair.id, role)}
+                          onDrop={(event) =>
+                            handleSlotDrop(event, pair.id, role)
+                          }
                           onDragStartFilled={(event) =>
                             item && setDragItem(event, role, item.id)
                           }
@@ -568,7 +558,8 @@ export default function StudioFolderBoard({
                   </div>
                 </div>
               </div>
-          ))}
+            );
+          })}
         </div>
 
         <button
@@ -576,25 +567,15 @@ export default function StudioFolderBoard({
           onClick={addPair}
           className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
         >
-          + Add pair
+          + Add another pair
         </button>
-
-        {filledSlots.length > 1 ? (
-          <button
-            type="button"
-            onClick={() => downloadSlotImages(filledSlots)}
-            className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-2.5 font-secondary text-sm font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
-          >
-            Download all slot images ({filledSlots.length})
-          </button>
-        ) : null}
 
         {children}
       </div>
 
       <SideBank
         role="after"
-        title="After bank"
+        title="After photos"
         totalCount={afterItems.length}
         availableItems={availableItems("after")}
         previewUrls={previewUrls}

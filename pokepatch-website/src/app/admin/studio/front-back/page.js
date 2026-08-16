@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 export default function AdminStudioFrontBackPage() {
-  return null;
+  redirect("/admin/studio/");
 }

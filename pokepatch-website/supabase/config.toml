@@ -403,7 +403,16 @@ verify_jwt = false
 [functions.admin-auth]
 verify_jwt = false
 
+[functions.notify]
+verify_jwt = false
+
+[functions.account-signup-notice]
+verify_jwt = false
+
 [functions.cancel-stale-quotes]
+verify_jwt = true
+
+[functions.notify-card-timers]
 verify_jwt = true
 
 [analytics]

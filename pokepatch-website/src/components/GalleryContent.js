@@ -11,7 +11,7 @@ import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
   DAMAGE_TAGS,
-  formatPostedRelative,
+  formatPostedDate,
   galleryPosterPublicUrl,
 } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
@@ -173,9 +173,9 @@ function BeforeAfterPair({ pair, onOpen, priority = false }) {
   if (!caption) return grid;
 
   return (
-    <figure className="overflow-hidden rounded-2xl border border-ink/10 bg-cream/50 shadow-sm">
+    <figure className="overflow-hidden rounded-lg border border-ink/10 bg-ink/[0.02]">
       <div className="p-3 pb-2.5">{grid}</div>
-      <figcaption className="flex items-center justify-center gap-2 border-t border-ink/10 bg-night/[0.04] px-4 py-2.5 text-center text-sm font-semibold text-ink/75">
+      <figcaption className="flex items-center justify-center gap-2 border-t border-ink/10 px-4 py-2.5 text-center text-sm font-semibold text-ink/70">
         <svg
           viewBox="0 0 24 24"
           fill="none"
@@ -183,7 +183,7 @@ function BeforeAfterPair({ pair, onOpen, priority = false }) {
           strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="h-3.5 w-3.5 shrink-0 text-ink"
+          className="h-3.5 w-3.5 shrink-0 text-ink/40"
           aria-hidden="true"
         >
           <path d="M4 7h16M4 12h10M4 17h7" />
@@ -304,7 +304,7 @@ function GalleryExtras({ extra, itemTitle, onOpen }) {
               </span>
             </span>
           </span>
-          <span className="flex w-24 shrink-0 justify-end text-ink">
+          <span className="flex w-24 shrink-0 justify-end text-ink/45">
             <ExpandChevron open={open} />
           </span>
         </span>
@@ -333,7 +333,7 @@ function GalleryItemCard({ item, index, onOpen }) {
   // Scope lightbox navigation to this card's media only.
   const openMedia = (media) => onOpen(itemKeyOf(item), media);
   const postedLabel = item.createdAt
-    ? formatPostedRelative(item.createdAt)
+    ? formatPostedDate(item.createdAt)
     : "";
   const damageTags = DAMAGE_TAGS.filter((tag) =>
     (item.damageTags ?? []).includes(tag.id),
@@ -372,9 +372,7 @@ function GalleryItemCard({ item, index, onOpen }) {
                   ) : null}
                   {item.cardNumber ? (
                     <span className="font-semibold normal-case tracking-wide text-ink/45">
-                      {item.cardNumber.startsWith("#")
-                        ? item.cardNumber
-                        : `#${item.cardNumber}`}
+                      {item.cardNumber.replace(/^#\s*/, "")}
                     </span>
                   ) : null}
                 </p>
@@ -398,7 +396,7 @@ function GalleryItemCard({ item, index, onOpen }) {
               {damageTags.map((tag) => (
                 <li
                   key={tag.id}
-                  className="rounded-full border border-ink/15 bg-night/30 px-2.5 py-1 text-xs font-semibold text-ink/80"
+                  className="rounded-lg border border-ink/10 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70"
                 >
                   {tag.label}
                 </li>
@@ -490,21 +488,21 @@ function FilterButton({ active, disabled, count, onClick, children }) {
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-bold transition ${
+      className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition-colors duration-150 ${
         active
-          ? "border-ink bg-ink text-night shadow-cozy-sm"
-          : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
+          ? "border-ink/45 bg-ink/20 text-ink ring-1 ring-ink/25"
+          : "border-ink/10 bg-ink/[0.03] text-ink hover:border-ink/35 hover:bg-ink/10"
       } ${
         disabled
-          ? "cursor-not-allowed opacity-30 hover:border-ink/15 hover:bg-night/10"
+          ? "cursor-not-allowed opacity-30 hover:border-ink/10 hover:bg-ink/[0.03]"
           : ""
       }`}
     >
       <span>{children}</span>
       {typeof count === "number" && (
         <span
-          className={`rounded-full px-1.5 py-0.5 text-[0.65rem] font-bold leading-none ${
-            active ? "bg-night/20 text-night" : "bg-ink/10 text-ink/60"
+          className={`rounded-md bg-ink/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold leading-none tracking-wide ${
+            active ? "text-ink/70" : "text-ink/50"
           }`}
         >
           {count}
@@ -516,8 +514,8 @@ function FilterButton({ active, disabled, count, onClick, children }) {
 
 function GalleryFilters({ activeFilter, counts, totalCount, onSelect }) {
   return (
-    <div className="rounded-2xl border border-ink/10 bg-cream/40 p-4 sm:p-5">
-      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-ink/50">
+    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-4 sm:p-5">
+      <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40">
         Filter by damage
       </p>
       <div className="flex flex-wrap gap-2">
@@ -549,7 +547,7 @@ function Pagination({ currentPage, totalPages, onChange }) {
 
   const pageList = getPageList(currentPage, totalPages);
   const arrowClass =
-    "flex h-9 items-center rounded-xl border border-ink/15 bg-night/10 px-3 text-sm font-bold text-ink/80 transition hover:border-ink/30 hover:bg-night/20 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-ink/15 disabled:hover:bg-night/10";
+    "flex h-9 items-center rounded-lg border border-ink/15 px-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/70 transition hover:border-ink/35 hover:text-ink disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-ink/15 disabled:hover:text-ink/70";
 
   return (
     <nav
@@ -573,10 +571,10 @@ function Pagination({ currentPage, totalPages, onChange }) {
             type="button"
             onClick={() => onChange(entry)}
             aria-current={entry === currentPage ? "page" : undefined}
-            className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold transition ${
+            className={`flex h-9 w-9 items-center justify-center rounded-lg font-mono text-[11px] tracking-wide transition ${
               entry === currentPage
-                ? "border-ink bg-ink text-night shadow-cozy-sm"
-                : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
+                ? "bg-ink text-night"
+                : "border border-ink/15 text-ink/55 hover:border-ink/30 hover:text-ink"
             }`}
           >
             {entry}
@@ -584,7 +582,7 @@ function Pagination({ currentPage, totalPages, onChange }) {
         ) : (
           <span
             key={entry}
-            className="flex h-9 w-6 items-center justify-center text-sm font-bold text-ink/40"
+            className="flex h-9 w-6 items-center justify-center font-mono text-[11px] text-ink/35"
             aria-hidden="true"
           >
             …
@@ -722,7 +720,7 @@ export default function GalleryContent({ items }) {
 
         {filteredItems.length > 0 ? (
           <>
-            <p className="text-sm font-semibold text-ink/60">
+            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45">
               Showing {rangeStart}–{rangeEnd} of {filteredItems.length}{" "}
               {filteredItems.length === 1 ? "restoration" : "restorations"}
             </p>
@@ -758,8 +756,8 @@ export default function GalleryContent({ items }) {
             />
           </>
         ) : (
-          <div className="rounded-2xl border border-ink/10 bg-cream/40 py-16 text-center">
-            <p className="text-sm font-semibold text-ink/70">
+          <div className="rounded-lg border border-ink/10 bg-ink/[0.02] py-16 text-center">
+            <p className="text-sm font-semibold text-ink/60">
               No restorations match this filter yet.
             </p>
           </div>

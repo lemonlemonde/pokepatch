@@ -10,11 +10,19 @@ export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
   PRESSING: "precision_pressing",
   ADVANCED: "advanced_restoration",
+  WHITENING: "card_whitening",
   SLAB: "slab_cracking",
   CUSTOM: "custom",
 };
 
 const SERVICE_UNIT = "/ card";
+
+/**
+ * Shared risk copy for Card Whitening (homepage, quote form, admin).
+ * Keep in sync with FAQ wording on the homepage.
+ */
+export const CARD_WHITENING_WARNING =
+  "Only for very small whitening dots on edges and corners. Grading companies like PSA may potentially detect added ink and mark the card as altered.";
 
 /** Services that can appear on a quote line (excludes marketing-only cards). */
 export const QUOTE_SERVICES = [
@@ -39,6 +47,17 @@ export const QUOTE_SERVICES = [
     priceSuffix: "+",
     features: ["Creases", "Dents", "Edge peeling", "Water damage"],
     accent: "peach",
+  },
+  {
+    key: SERVICE_KEYS.WHITENING,
+    title: "Card Whitening",
+    listPrice: 25,
+    features: [
+      "Tiny edge & corner dots only",
+      "Not for heavy or widespread whitening",
+    ],
+    warning: CARD_WHITENING_WARNING,
+    accent: "ink",
   },
   {
     key: SERVICE_KEYS.SLAB,
@@ -265,6 +284,7 @@ export function marketingServices() {
     unit: SERVICE_UNIT,
     features: service.features,
     featuresLabel: "Includes",
+    warning: service.warning ?? null,
   }));
 }
 

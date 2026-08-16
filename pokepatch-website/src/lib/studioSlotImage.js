@@ -1,15 +1,7 @@
-import { OUTPUT_QUALITY, canvasToBlob } from "@/lib/instagramStitch";
-import { downloadBlob } from "@/lib/downloadFile";
 import { drawShapesOnCanvas } from "@/lib/shapeAnnotations";
 
 const MIN_NORM = 0.05;
 export const DEFAULT_CROP = { x: 0, y: 0, w: 1, h: 1 };
-
-export const ASPECT_OPTIONS = [
-  { id: "free", label: "Free", ratio: null },
-  { id: "3:4", label: "3:4", ratio: 3 / 4 },
-  { id: "1:1", label: "1:1", ratio: 1 },
-];
 
 export const CROP_HANDLES = [
   { id: "nw", cursor: "nwse-resize" },
@@ -137,26 +129,6 @@ export function resizeCrop(origin, handleId, nx, ny, aspectRatio, imageAspect) {
   return clampCrop({ x, y, w, h });
 }
 
-/** File extension matching an exported image blob's mime type. */
-export function imageExtForBlob(blob) {
-  if (blob?.type === "image/png") return "png";
-  if (blob?.type === "image/webp") return "webp";
-  return "jpg";
-}
-
-/** Drop the extension from an upload's filename, for renaming an export. */
-export function imageBaseName(originalName) {
-  return (originalName || "image").replace(/\.[^.]+$/, "");
-}
-
-async function blobFromCanvas(canvas, mimeType) {
-  const type = mimeType?.startsWith("image/") ? mimeType : "image/jpeg";
-  if (type === "image/png") {
-    return canvasToBlob(canvas, "image/png");
-  }
-  return canvasToBlob(canvas, type, OUTPUT_QUALITY);
-}
-
 function loadImageElement(imageUrl) {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -198,13 +170,6 @@ export async function renderStudioSlotCanvas(item, imageUrl) {
   return canvas;
 }
 
-/** Blob for the exact image (crop + annotations) this slot contributes to
- * the generated formatted output — also what the download buttons export. */
-export async function renderStudioSlotBlob(item, imageUrl) {
-  const canvas = await renderStudioSlotCanvas(item, imageUrl);
-  return blobFromCanvas(canvas, item.file?.type || "image/jpeg");
-}
-
 /**
  * What the formatter should draw for this slot. An untouched slot hands back
  * its original File; a cropped or annotated one hands back the rendered canvas
@@ -227,43 +192,9 @@ export function slugify(value) {
     .replace(/^-+|-+$/g, "");
 }
 
-/**
- * Export name for one slot image. An `exportName` on the entry replaces the
- * whole name — a generated post's sources use `before-pair-1` so the file says
- * which pair it belongs to instead of repeating the upload's filename. Without
- * one it falls back to `<slot-label>-<original name>`, which is what the
- * editor's own per-slot download wants.
- *
- * Shared so a slot downloaded on its own and the same slot inside a zip
- * package always land on the same filename.
- *
- * @param entry { item, label, exportName }
- */
-export function slotImageFileName(entry, blob) {
-  const ext = imageExtForBlob(blob);
-  if (entry?.exportName) return `${slugify(entry.exportName)}.${ext}`;
-  const prefix = slugify(entry?.label);
-  const baseName = imageBaseName(entry?.item?.file?.name);
-  return `${prefix ? `${prefix}-` : ""}${baseName}.${ext}`;
-}
-
-/**
- * Export each slot's cropped + annotated image. Staggered because browsers
- * drop rapid-fire programmatic downloads (same cadence as the existing
- * "Download all" for generated outputs).
- *
- * @param entries [{ item, previewUrl, label, exportName }]
- */
-export async function downloadSlotImages(entries) {
-  const usable = entries.filter((entry) => entry?.item?.file && entry.previewUrl);
-  for (let index = 0; index < usable.length; index += 1) {
-    const entry = usable[index];
-    const blob = await renderStudioSlotBlob(entry.item, entry.previewUrl);
-    downloadBlob(blob, slotImageFileName(entry, blob));
-    if (index < usable.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 150));
-    }
-  }
+/** Drop the extension from an upload's filename, for renaming an export. */
+export function imageBaseName(originalName) {
+  return (originalName || "image").replace(/\.[^.]+$/, "") || "image";
 }
 
 // All slot UI (the editor, its thumbnail, and the read-only cropped
