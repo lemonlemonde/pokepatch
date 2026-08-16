@@ -52,6 +52,7 @@ import {
   normalizeCardStatus,
   normalizePendingKind,
   DEFAULT_PENDING_KIND,
+  markActiveCardsCompleted,
   orderStatusHeadingClass,
   orderStatusLabel,
   orderDisplayLabel,
@@ -2203,6 +2204,20 @@ export default function AdminApp() {
     setOrders((current) => {
       const wasClosed = isClosedOrderStatus(moving.status);
       const nextClosed = isClosedOrderStatus(nextStatus);
+      let cardsCompleted = moving.cards_completed;
+      if (nextStatus === "ready") {
+        const detailCards =
+          selectedOrderId === orderId && Array.isArray(orderDetail?.cards)
+            ? orderDetail.cards
+            : null;
+        if (detailCards) {
+          cardsCompleted = markActiveCardsCompleted(detailCards).filter(
+            (card) => normalizeCardStatus(card.status) === "completed"
+          ).length;
+        } else if (moving.card_count != null) {
+          cardsCompleted = Number(moving.card_count);
+        }
+      }
       return current.map((order) =>
         order.id === orderId
           ? {
@@ -2215,6 +2230,7 @@ export default function AdminApp() {
                   ? moving.completed_at
                   : new Date().toISOString()
                 : null,
+              cards_completed: cardsCompleted,
             }
           : order
       );
@@ -2232,6 +2248,10 @@ export default function AdminApp() {
             ...current,
             status: nextStatus,
             pending_kind: pendingKind,
+            cards:
+              nextStatus === "ready"
+                ? markActiveCardsCompleted(current.cards)
+                : current.cards,
           };
         });
       }
