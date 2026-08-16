@@ -59,7 +59,7 @@ const svg = `
     text-anchor="middle"
     font-family="Verdana, DejaVu Sans, sans-serif"
     font-size="34" font-weight="bold"
-    fill="#E0518A"
+    fill="#D4C5F9"
   >Trading Card Restorations</text>
   <text
     x="50%" y="570"

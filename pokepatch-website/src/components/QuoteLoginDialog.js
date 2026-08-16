@@ -127,7 +127,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
                 type="button"
                 onClick={handleForgotPassword}
                 disabled={busy}
-                className="font-semibold text-blush hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                className="font-semibold text-ink hover:underline disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Forgot password?
               </button>
@@ -152,14 +152,14 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
             type="button"
             onClick={() => fadeThen(onGuest)}
             disabled={busy}
-            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-blush disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl border-2 border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink disabled:cursor-not-allowed disabled:opacity-60"
           >
             Continue as guest
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Logging in…" : "Log in"}
           </button>

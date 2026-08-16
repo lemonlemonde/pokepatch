@@ -105,7 +105,7 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-          checked ? "bg-berry" : "bg-ink/25"
+          checked ? "bg-ink" : "bg-ink/25"
         }`}
       >
         <span
@@ -245,7 +245,7 @@ function StudioCardMetaControls({
                 onDragLeave={() => setUploadDragging(false)}
                 onDrop={handleUploadDrop}
                 className={`rounded-xl transition ${
-                  uploadDragging ? "ring-2 ring-berry/60" : ""
+                  uploadDragging ? "ring-2 ring-ink/60" : ""
                 }`}
               >
                 {value.frontPreviewUrl ? (
@@ -266,14 +266,14 @@ function StudioCardMetaControls({
                     <div className="flex w-24 flex-col gap-1">
                       <label
                         htmlFor={frontInputId}
-                        className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                        className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                       >
                         Replace
                       </label>
                       <button
                         type="button"
                         onClick={clearFront}
-                        className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+                        className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                       >
                         Clear
                       </button>
@@ -284,8 +284,8 @@ function StudioCardMetaControls({
                     htmlFor={frontInputId}
                     className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-6 text-center transition ${
                       uploadDragging
-                        ? "border-berry bg-berry/10"
-                        : "border-ink/25 bg-night/40 hover:border-berry/40 hover:bg-night/60"
+                        ? "border-ink bg-ink/10"
+                        : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
                     }`}
                   >
                     <p className="text-xs text-ink/70">
@@ -343,7 +343,7 @@ function StudioCardMetaControls({
               type="button"
               onClick={() => setSearchOpen((open) => !open)}
               aria-expanded={searchOpen}
-              className="rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink"
+              className="rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
             >
               {searchOpen ? "Hide card search" : "Search TCG catalog"}
             </button>
@@ -368,7 +368,7 @@ function StudioCardMetaControls({
                   </p>
                 ) : null}
                 {pickError ? (
-                  <p className="font-secondary text-xs font-semibold text-berry">
+                  <p className="font-secondary text-xs font-semibold text-ink">
                     {pickError}
                   </p>
                 ) : null}
@@ -475,7 +475,7 @@ function StudioSelector({ onSelect }) {
             key={option.id}
             type="button"
             onClick={() => onSelect(option.id)}
-            className="rounded-xl border border-ink/20 bg-night/50 px-6 py-10 text-left transition hover:border-berry/40 hover:bg-night/70"
+            className="rounded-xl border border-ink/20 bg-night/50 px-6 py-10 text-left transition hover:border-ink/40 hover:bg-night/70"
           >
             <p className="text-xl font-bold text-ink">{option.title}</p>
             <p className="mt-2 text-sm text-ink/60">{option.description}</p>
@@ -491,7 +491,7 @@ function BackButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
+      className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
     >
       ← Back to studio
     </button>
@@ -503,7 +503,7 @@ function ClearAllButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-blush/90 transition hover:border-berry/40 hover:bg-night/60 hover:text-ink"
+      className="mb-6 inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
     >
       Clear all
     </button>
@@ -594,7 +594,7 @@ function OutputGrid({
             onClick={() =>
               annotated ? downloadAllAnnotated() : downloadAllFromUrls(outputs)
             }
-            className="rounded-xl bg-berry px-6 py-3 font-semibold text-night transition hover:brightness-110"
+            className="rounded-xl bg-ink px-6 py-3 font-semibold text-night transition hover:brightness-110"
           >
             Download all ({outputs.length})
           </button>
@@ -608,7 +608,7 @@ function OutputGrid({
               <button
                 type="button"
                 onClick={() => downloadSlotImages(sources)}
-                className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
               >
                 Download source imgs
               </button>
@@ -655,7 +655,7 @@ function OutputGrid({
                     <a
                       href={output.url}
                       download={output.filename}
-                      className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                      className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
                     >
                       Download {output.label.toLowerCase()}
                     </a>
@@ -797,7 +797,7 @@ function GroupModeToggle({ value, onChange }) {
               onClick={() => onChange(mode.id)}
               className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night "
+                  ? "bg-ink text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -829,7 +829,7 @@ function OutputFormatToggle({ value, onChange }) {
               onClick={() => onChange(format.id)}
               className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night "
+                  ? "bg-ink text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -1148,7 +1148,7 @@ function BeforeAfterPairPhotoFormatter({
           />
 
           {error && (
-            <p className="text-center text-sm text-berry" role="alert">
+            <p className="text-center text-sm text-error" role="alert">
               {error}
             </p>
           )}
@@ -1156,7 +1156,7 @@ function BeforeAfterPairPhotoFormatter({
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-xl bg-ink px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Generating…" : "Generate images"}
           </button>
@@ -1190,7 +1190,7 @@ function BeforeAfterPairPhotoFormatter({
                   type="button"
                   onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
                   disabled={caption === DEFAULT_PACKAGE_CAPTION}
-                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-berry/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Restore default
                 </button>
@@ -1207,7 +1207,7 @@ function BeforeAfterPairPhotoFormatter({
               type="button"
               onClick={handleDownloadPackage}
               disabled={packaging || busy}
-              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {packaging ? "Building package…" : "Download package (.zip)"}
             </button>
@@ -1643,13 +1643,13 @@ function FrontBackPairPhotoFormatter({
                           }}
                           className={`overflow-hidden rounded-xl border bg-night/50 transition ${
                             isActive
-                              ? "border-berry bg-berry/10"
+                              ? "border-ink bg-ink/10"
                               : item
                                 ? "border-ink/15"
                                 : "border-dashed border-ink/10"
                           }`}
                         >
-                          <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-blush/80">
+                          <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-ink/80">
                             {label}
                           </p>
                           {item && preview ? (
@@ -1695,7 +1695,7 @@ function FrontBackPairPhotoFormatter({
                                         },
                                       ]);
                                     }}
-                                    className="text-xs font-semibold text-blush/90 hover:text-blush"
+                                    className="text-xs font-semibold text-ink/90 hover:text-ink"
                                   >
                                     Download
                                   </button>
@@ -1705,7 +1705,7 @@ function FrontBackPairPhotoFormatter({
                                       event.stopPropagation();
                                       clearSlot(key);
                                     }}
-                                    className="text-xs font-semibold text-berry/90 hover:text-berry"
+                                    className="text-xs font-semibold text-ink/90 hover:text-ink"
                                   >
                                     Remove
                                   </button>
@@ -1732,7 +1732,7 @@ function FrontBackPairPhotoFormatter({
               <button
                 type="button"
                 onClick={() => downloadSlotImages(filledSlots)}
-                className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-2.5 font-secondary text-sm font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+                className="w-full rounded-xl border border-ink/20 bg-night/50 px-4 py-2.5 font-secondary text-sm font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
               >
                 Download all slot images ({filledSlots.length})
               </button>
@@ -1745,7 +1745,7 @@ function FrontBackPairPhotoFormatter({
             />
 
             {error && (
-              <p className="text-center text-sm text-berry" role="alert">
+              <p className="text-center text-sm text-error" role="alert">
                 {error}
               </p>
             )}
@@ -1753,7 +1753,7 @@ function FrontBackPairPhotoFormatter({
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-xl bg-berry px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-xl bg-ink px-4 py-3 font-semibold text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Generating…" : "Generate images"}
             </button>

@@ -275,7 +275,7 @@ export default function OrderSaveChangesDialog({
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           {error ? (
-            <p className="rounded-xl border border-berry/30 bg-berry/10 px-3 py-2 text-sm text-berry">
+            <p className="rounded-xl border border-error/30 bg-error/10 px-3 py-2 text-sm text-error">
               {error}
             </p>
           ) : null}
@@ -394,7 +394,7 @@ export default function OrderSaveChangesDialog({
             type="button"
             onClick={handleConfirm}
             disabled={saving}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {primaryBusy}
           </button>

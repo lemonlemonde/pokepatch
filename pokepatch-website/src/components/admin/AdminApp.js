@@ -147,7 +147,7 @@ function LoadingIndicator({ label = "Loading…", compact = false, className = "
   const spinner = (
     <div
       aria-hidden="true"
-      className={`animate-spin rounded-full border-ink/15 border-t-berry border-r-blush ${
+      className={`animate-spin rounded-full border-ink/15 border-t-ink border-r-ink ${
         compact ? "h-4 w-4 border-2" : "h-10 w-10 border-4"
       }`}
     />
@@ -499,7 +499,7 @@ function PendingKindChip({
 function PriorityServiceBadge({ compact = false }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-berry/35 bg-berry/15 font-bold uppercase tracking-[0.08em] text-blush ${
+      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-ink/35 bg-ink/15 font-bold uppercase tracking-[0.08em] text-ink ${
         compact
           ? "h-[18px] min-w-[18px] px-1 text-[9px] leading-none"
           : "px-2.5 py-1 text-[11px] leading-none"
@@ -638,13 +638,13 @@ function KanbanCard({
       onMouseLeave={scheduleClose}
       className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition hover:border-ink/40 active:cursor-grabbing ${
         order.is_priority
-          ? "border-berry/30 bg-berry/[0.08]"
+          ? "border-ink/30 bg-ink/[0.08]"
           : "border-ink/10 bg-ink/[0.03]"
       } ${dragging ? "opacity-50" : ""}`}
     >
       {order.is_priority ? (
         <span
-          className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-berry/70"
+          className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-ink/70"
           aria-hidden="true"
         />
       ) : null}
@@ -886,7 +886,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-berry/15 text-berry">
+          <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-error/15 text-error">
             <TrashIcon className="h-5 w-5" />
           </span>
           <div className="min-w-0">
@@ -920,7 +920,7 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
             type="button"
             onClick={onConfirm}
             disabled={deleting}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
+            className="rounded-xl bg-error px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-40"
           >
             {deleting ? "Deleting…" : confirmLabel}
           </button>
@@ -1161,7 +1161,7 @@ function OrderCardSearch({
       {showPanel && (
         <div className="absolute left-0 right-0 top-[calc(100%-0.5rem)] z-30 mt-2 max-h-[min(28rem,60vh)] overflow-y-auto rounded-2xl border border-ink/15 bg-cream ">
           {error ? (
-            <p className="px-4 py-3 text-sm text-berry">{error}</p>
+            <p className="px-4 py-3 text-sm text-error">{error}</p>
           ) : searching && results.length === 0 ? (
             <p className="px-4 py-3 text-sm text-ink/50">Searching…</p>
           ) : results.length === 0 ? (
@@ -1185,7 +1185,7 @@ function OrderCardSearch({
                         setOpen(false);
                         onOpenOrder(hit.order_id, { cardId: card.id });
                       }}
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-blush/15"
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-ink/15"
                     >
                       <div className="relative aspect-[3/4] w-11 shrink-0 overflow-hidden rounded-md bg-night/50">
                         {previewUrl ? (
@@ -1303,7 +1303,7 @@ function OrdersAllList({ orders, onOpenOrder, emptyMessage = "No orders yet." })
               <tr
                 key={order.id}
                 onClick={() => onOpenOrder(order.id)}
-                className="cursor-pointer border-b border-ink/10 odd:bg-night/15 transition hover:bg-blush/20"
+                className="cursor-pointer border-b border-ink/10 odd:bg-night/15 transition hover:bg-ink/20"
               >
                 <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-ink">
                   {order.display_id}
@@ -1642,7 +1642,7 @@ function KanbanBoard({
         key={status.id}
         className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border bg-ink/[0.02] p-3 transition ${
           columnDropHighlight
-            ? "border-berry/50 bg-berry/10"
+            ? "border-ink/50 bg-ink/10"
             : "border-ink/10"
         } ${dock ? "" : "h-full"}`}
         onDragOver={(event) => {
@@ -1777,7 +1777,7 @@ function KanbanBoard({
           onDrop={handleTrashDrop}
           className={`flex items-center justify-center gap-3 rounded-2xl border border-dashed px-4 py-4 transition ${
             trashArmed
-              ? "border-berry bg-berry/20 text-berry "
+              ? "border-error bg-error/20 text-error "
               : "border-ink/15 bg-night/30 text-ink/45"
           }`}
         >
@@ -1811,7 +1811,7 @@ function KanbanBoard({
           <button
             type="button"
             role="menuitem"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-berry transition hover:bg-berry/10"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-error/10"
             onClick={() => {
               const order = contextMenu.order;
               setContextMenu(null);
@@ -2395,13 +2395,13 @@ export default function AdminApp() {
           label={authError ? "Couldn't open admin" : "Loading admin…"}
         />
         {authError ? (
-          <p className="rounded-lg border border-berry/40 bg-berry/10 px-4 py-3 text-sm text-berry">
+          <p className="rounded-lg border border-error/40 bg-error/10 px-4 py-3 text-sm text-error">
             {authError}
           </p>
         ) : null}
         {!user ? (
           <p className="text-sm text-ink/60">
-            <a href="/login/?redirect=/admin/orders/" className="font-semibold text-blush hover:underline">
+            <a href="/login/?redirect=/admin/orders/" className="font-semibold text-ink hover:underline">
               Log in
             </a>{" "}
             with an allowlisted admin account to continue.
@@ -2465,7 +2465,7 @@ export default function AdminApp() {
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (
-            <p className="mb-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+            <p className="mb-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
               {listError}
             </p>
           )}
@@ -2473,7 +2473,7 @@ export default function AdminApp() {
           {tab === "orders-edit" ? (
             <div className="space-y-4">
               {!routeOrderId && (
-                <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+                <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
                   Missing order id. Go back and open an order again.
                 </p>
               )}
@@ -2484,7 +2484,7 @@ export default function AdminApp() {
 
               {routeOrderId && editorError && !orderDetail && (
                 <div className="space-y-3">
-                  <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+                  <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
                     {editorError}
                   </p>
                   <button

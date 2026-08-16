@@ -190,7 +190,7 @@ export function OrderPanel() {
         <label
           className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
             draft.is_priority
-              ? "border-berry/30 bg-berry/[0.08]"
+              ? "border-ink/30 bg-ink/[0.08]"
               : "border-ink/10 bg-night/20"
           }`}
         >
@@ -210,13 +210,13 @@ export function OrderPanel() {
                 ),
               }));
             }}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-berry"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
           />
           <span className="min-w-0 text-sm leading-relaxed text-ink/75">
             <span className="flex flex-wrap items-center gap-2 font-semibold text-ink">
               <span>Priority service</span>
               {draft.is_priority ? (
-                <span className="rounded-full border border-berry/25 bg-berry/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-blush">
+                <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
                   Active
                 </span>
               ) : null}
@@ -235,7 +235,7 @@ export function OrderPanel() {
                 href={driveUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold text-berry transition hover:text-blush"
+                className="text-xs font-semibold text-ink transition hover:text-ink"
               >
                 Open ↗
               </a>

@@ -48,7 +48,7 @@ function LoadingIndicator({ label = "Loading…", className = "" }) {
     >
       <div
         aria-hidden="true"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-berry border-r-blush"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-ink border-r-ink"
       />
       <p className="animate-soft-bounce text-sm font-semibold text-ink/70">{label}</p>
     </div>
@@ -147,7 +147,7 @@ function SideUpload({
           uploading
             ? "opacity-60"
             : dragging
-              ? "border-berry bg-berry/10"
+              ? "border-ink bg-ink/10"
               : "border-ink/15 bg-night/30"
         }`}
         onDragOver={(event) => {
@@ -220,7 +220,7 @@ function SideUpload({
             type="button"
             disabled={uploading}
             onClick={onClear}
-            className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
+            className="rounded-lg border border-error/40 px-2 py-1 text-xs font-semibold text-error hover:bg-error/10 disabled:opacity-50"
           >
             Remove
           </button>
@@ -264,7 +264,7 @@ function ThumbnailUpload({
           uploading
             ? "opacity-60"
             : dragging
-              ? "border-berry bg-berry/10"
+              ? "border-ink bg-ink/10"
               : "border-ink/15 bg-night/30"
         }`}
         onDragOver={(event) => {
@@ -323,7 +323,7 @@ function ThumbnailUpload({
             type="button"
             disabled={uploading}
             onClick={onClear}
-            className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
+            className="rounded-lg border border-error/40 px-2 py-1 text-xs font-semibold text-error hover:bg-error/10 disabled:opacity-50"
           >
             Remove
           </button>
@@ -955,7 +955,7 @@ export default function GalleryManager() {
                         type="button"
                         disabled={saving}
                         onClick={() => handleDeletePair(pair.id)}
-                        className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry disabled:opacity-50"
+                        className="rounded-lg border border-error/40 px-2 py-1 text-xs font-semibold text-error disabled:opacity-50"
                       >
                         Delete
                       </button>
@@ -1040,7 +1040,7 @@ export default function GalleryManager() {
         )}
 
         {editorError && (
-          <p className="mt-4 rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+          <p className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
             {editorError}
           </p>
         )}
@@ -1050,7 +1050,7 @@ export default function GalleryManager() {
             type="button"
             disabled={saving}
             onClick={handleSaveMeta}
-            className={`rounded-xl bg-berry px-5 py-2.5 font-semibold text-night transition hover:brightness-110 disabled:opacity-60 ${
+            className={`rounded-xl bg-ink px-5 py-2.5 font-semibold text-night transition hover:brightness-110 disabled:opacity-60 ${
               saving ? "animate-soft-bounce" : ""
             }`}
           >
@@ -1061,7 +1061,7 @@ export default function GalleryManager() {
               type="button"
               disabled={saving}
               onClick={handleDelete}
-              className="rounded-xl border border-berry/40 px-4 py-2.5 text-sm font-semibold text-berry hover:bg-berry/10 disabled:opacity-60"
+              className="rounded-xl border border-error/40 px-4 py-2.5 text-sm font-semibold text-error hover:bg-error/10 disabled:opacity-60"
             >
               Delete
             </button>
@@ -1089,7 +1089,7 @@ export default function GalleryManager() {
           <button
             type="button"
             onClick={startCreate}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
           >
             New gallery item
           </button>
@@ -1097,7 +1097,7 @@ export default function GalleryManager() {
       </div>
 
       {listError && (
-        <p className="rounded-lg border border-berry/40 bg-berry/10 px-3 py-2 text-sm text-berry">
+        <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {listError}
         </p>
       )}
@@ -1118,7 +1118,7 @@ export default function GalleryManager() {
                 key={item.id}
                 className={`rounded-xl border px-3 py-3 ${
                   selectedId === item.id
-                    ? "border-berry bg-blush/20"
+                    ? "border-ink bg-ink/20"
                     : "border-ink/10 bg-cream"
                 }`}
               >

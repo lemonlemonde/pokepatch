@@ -385,8 +385,8 @@ const SECTION_STYLES = {
     badge: "bg-mint/15 text-mint",
   },
   damage: {
-    accent: "border-l-blush/50",
-    badge: "bg-blush/10 text-blush",
+    accent: "border-l-ink/50",
+    badge: "bg-ink/10 text-ink",
   },
   wrap_up: {
     accent: "border-l-amber-400/60",
@@ -436,7 +436,7 @@ function GuideStepContent({ step, onNavigateToNode }) {
           key={`${part.nodeId}-${index}`}
           type="button"
           onClick={() => onNavigateToNode(part.nodeId)}
-          className="font-medium text-blush underline decoration-blush/40 underline-offset-2 transition hover:text-berry hover:decoration-berry/50"
+          className="font-medium text-ink underline decoration-ink/40 underline-offset-2 transition hover:text-ink hover:decoration-ink/50"
         >
           {part.label}
         </button>
@@ -522,11 +522,11 @@ function TreeNodeButton({
         if (suppressClickRef.current) return;
         onSelect(nodeId, event);
       }}
-      className={`absolute z-20 flex items-center gap-2 rounded-xl border border-l-[3px] px-2.5 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-berry/40 ${
+      className={`absolute z-20 flex items-center gap-2 rounded-xl border border-l-[3px] px-2.5 py-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/40 ${
         spaceHeld ? "pointer-events-none" : ""
       } ${
         selected
-          ? `border-berry/70 bg-cream text-ink shadow-[0_0_0_1px_rgba(224,81,138,0.3)] ${styles.accent}`
+          ? `border-ink/70 bg-cream text-ink shadow-[0_0_0_1px_rgba(243, 233, 242,0.3)] ${styles.accent}`
           : `border-ink/10 bg-cream/85 text-ink/90 hover:border-ink/20 hover:bg-cream ${styles.accent}`
       }`}
       style={{ left: x, top: y, width, height }}
@@ -776,7 +776,7 @@ function GuideTreeCanvas({ layout }) {
                   key={key}
                   d={path}
                   fill="none"
-                  stroke={highlighted ? "rgba(224, 81, 138, 0.55)" : "rgba(100, 116, 139, 0.28)"}
+                  stroke={highlighted ? "rgba(243, 233, 242, 0.55)" : "rgba(100, 116, 139, 0.28)"}
                   strokeWidth={highlighted ? 2.25 : 1.5}
                 />
               );

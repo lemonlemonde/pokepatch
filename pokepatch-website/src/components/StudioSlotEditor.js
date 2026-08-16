@@ -331,7 +331,7 @@ function CropStepSurface({ src, alt, crop, onCropChange, aspectRatio }) {
                 key={handle.id}
                 type="button"
                 aria-label={`Resize ${handle.id}`}
-                className="absolute rounded-sm border-2 border-cream bg-berry shadow-sm"
+                className="absolute rounded-sm border-2 border-cream bg-ink shadow-sm"
                 style={{
                   width: CROP_HANDLE_SIZE,
                   height: CROP_HANDLE_SIZE,
@@ -508,7 +508,7 @@ function EditorPanel({
               }}
               className={`rounded-lg px-4 py-1.5 font-secondary text-sm font-semibold transition ${
                 active
-                  ? "bg-berry text-night "
+                  ? "bg-ink text-night "
                   : "text-ink/70 hover:text-ink"
               }`}
             >
@@ -536,7 +536,7 @@ function EditorPanel({
                     onClick={() => setAspectId(option.id)}
                     className={`rounded-lg px-3 py-1.5 font-secondary text-sm font-semibold transition ${
                       active
-                        ? "bg-berry text-night "
+                        ? "bg-ink text-night "
                         : "text-ink/70 hover:text-ink"
                     }`}
                   >
@@ -740,7 +740,7 @@ export default function StudioSlotEditor({
             event.stopPropagation();
             cancelAndClose();
           }}
-          className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+          className="rounded-xl border border-ink/20 bg-night/50 px-5 py-2.5 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
         >
           Cancel
         </button>

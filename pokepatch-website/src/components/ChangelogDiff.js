@@ -128,7 +128,7 @@ export function ChangelogDiff({
               <button
                 type="button"
                 onClick={clearQuoteSummary}
-                className="shrink-0 text-[11px] font-semibold text-ink/40 transition hover:text-berry"
+                className="shrink-0 text-[11px] font-semibold text-ink/40 transition hover:text-error"
               >
                 Remove
               </button>
@@ -147,7 +147,7 @@ export function ChangelogDiff({
                 <button
                   type="button"
                   onClick={clearQuoteSummary}
-                  className="text-[11px] font-semibold text-ink/40 transition hover:text-berry"
+                  className="text-[11px] font-semibold text-ink/40 transition hover:text-error"
                 >
                   Remove quote total
                 </button>
@@ -204,7 +204,7 @@ function CardChangelogBox({
         isAdded
           ? "border-mint/35 bg-mint/10"
           : isRemoved
-            ? "border-berry/30 bg-berry/10"
+            ? "border-error/30 bg-error/10"
             : "border-sky/30 bg-sky/10"
       }`}
     >
@@ -215,7 +215,7 @@ function CardChangelogBox({
           </span>
         ) : null}
         {isRemoved ? (
-          <span className="text-[10px] font-bold uppercase tracking-wide text-berry">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-error">
             Removed
           </span>
         ) : null}
@@ -243,7 +243,7 @@ function CardChangelogBox({
           <button
             type="button"
             onClick={onRemoveGroup}
-            className="shrink-0 text-[11px] font-semibold text-ink/40 transition hover:text-berry"
+            className="shrink-0 text-[11px] font-semibold text-ink/40 transition hover:text-error"
           >
             Remove
           </button>
@@ -292,7 +292,7 @@ function DiffLine({ text, editable, onChange, onRemove }) {
         <button
           type="button"
           onClick={onRemove}
-          className="mt-0.5 shrink-0 text-[11px] font-semibold text-ink/35 transition hover:text-berry"
+          className="mt-0.5 shrink-0 text-[11px] font-semibold text-ink/35 transition hover:text-error"
           aria-label="Remove line"
         >
           ×
@@ -311,14 +311,14 @@ function DiffLine({ text, editable, onChange, onRemove }) {
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="text-[11px] font-semibold text-ink/35 transition hover:text-ink/70"
+            className="text-[11px] font-semibold text-ink/35 transition hover:text-error/70"
           >
             Edit
           </button>
           <button
             type="button"
             onClick={onRemove}
-            className="text-[11px] font-semibold text-ink/35 transition hover:text-berry"
+            className="text-[11px] font-semibold text-ink/35 transition hover:text-error"
             aria-label="Remove line"
           >
             ×
@@ -349,7 +349,7 @@ function DiffText({ text }) {
     return (
       <span className="inline-flex flex-wrap items-center gap-1">
         {label ? <span className="text-ink/45">{label}</span> : null}
-        <span className="font-semibold text-berry/85 line-through decoration-berry/45">
+        <span className="font-semibold text-error/85 line-through decoration-error/45">
           {arrow.from}
         </span>
         <span className="text-ink/35">→</span>
@@ -367,10 +367,10 @@ function DiffText({ text }) {
     const removed = /^removed/i.test(verb);
     const label = `${verb}:`;
     const nameClass = removed
-      ? "font-semibold text-berry/80"
+      ? "font-semibold text-error/80"
       : "font-semibold text-mint";
     const amountClass = removed
-      ? "font-bold text-berry"
+      ? "font-bold text-error"
       : "font-bold text-mint";
     // "Surface Cleaning: $12" / custom names (greedy name so colons in names work)
     const amountMatch = value.match(/^(.+):\s+(\$?-?[\d,.]+%?)$/);

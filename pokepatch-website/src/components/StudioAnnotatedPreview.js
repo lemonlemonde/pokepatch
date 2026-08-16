@@ -383,7 +383,7 @@ export default function StudioAnnotatedPreview({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mx-auto block cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-berry/50"
+        className="mx-auto block cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ink/50"
         aria-labelledby={labelId}
       >
         <ShapeSurface
@@ -406,7 +406,7 @@ export default function StudioAnnotatedPreview({
         <button
           type="button"
           onClick={handleDownload}
-          className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-berry/40 hover:bg-night/70"
+          className="inline-block rounded-xl border border-ink/20 bg-night/50 px-6 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70"
         >
           Download {label.toLowerCase()}
         </button>

@@ -49,7 +49,7 @@ function CardResultButton({ card, selected, onSelect }) {
       onClick={() => onSelect(card)}
       className={`flex flex-col overflow-hidden rounded-lg border text-left transition hover:border-ink/30 ${
         isSelected
-          ? "border-blush bg-blush/10 ring-2 ring-blush/40"
+          ? "border-ink bg-ink/10 ring-2 ring-ink/40"
           : "border-ink/10 bg-ink/[0.04]"
       }`}
     >
@@ -180,7 +180,7 @@ export default function GalleryCardSearch({
       <p className="text-sm font-semibold text-ink">Find card</p>
 
       {selectedCard?.id && (
-        <div className="mt-4 flex items-center gap-3 rounded-lg border border-blush/40 bg-cream/90 p-3">
+        <div className="mt-4 flex items-center gap-3 rounded-lg border border-ink/40 bg-cream/90 p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={tcgCardImageUrl(selectedCard)}
@@ -202,7 +202,7 @@ export default function GalleryCardSearch({
                 type="button"
                 disabled={disabled || confirming}
                 onClick={() => onConfirm(selectedCard)}
-                className="rounded-lg bg-blush px-3 py-1.5 text-xs font-bold text-cream hover:bg-blush/90 disabled:opacity-50"
+                className="rounded-lg bg-ink px-3 py-1.5 text-xs font-bold text-cream hover:bg-ink/90 disabled:opacity-50"
               >
                 {confirming ? "Applying…" : "Use this card"}
               </button>
@@ -211,7 +211,7 @@ export default function GalleryCardSearch({
               type="button"
               disabled={disabled || confirming}
               onClick={onClear}
-              className="rounded-lg border border-berry/40 px-2 py-1 text-xs font-semibold text-berry hover:bg-berry/10 disabled:opacity-50"
+              className="rounded-lg border border-ink/40 px-2 py-1 text-xs font-semibold text-ink hover:bg-ink/10 disabled:opacity-50"
             >
               Clear
             </button>
@@ -271,7 +271,7 @@ export default function GalleryCardSearch({
             type="button"
             onClick={submitSearch}
             disabled={disabled || loading}
-            className="w-full rounded-xl border border-transparent bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
+            className="w-full rounded-xl border border-transparent bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
           >
             {loading ? "Searching…" : "Search"}
           </button>
@@ -279,7 +279,7 @@ export default function GalleryCardSearch({
       </div>
 
       {error && !loading && (
-        <p className="mt-3 text-xs font-semibold text-berry">{error}</p>
+        <p className="mt-3 text-xs font-semibold text-error">{error}</p>
       )}
 
       {!loading && results.length > 0 && (

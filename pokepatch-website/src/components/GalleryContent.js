@@ -183,7 +183,7 @@ function BeforeAfterPair({ pair, onOpen, priority = false }) {
           strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="h-3.5 w-3.5 shrink-0 text-berry"
+          className="h-3.5 w-3.5 shrink-0 text-ink"
           aria-hidden="true"
         >
           <path d="M4 7h16M4 12h10M4 17h7" />
@@ -304,7 +304,7 @@ function GalleryExtras({ extra, itemTitle, onOpen }) {
               </span>
             </span>
           </span>
-          <span className="flex w-24 shrink-0 justify-end text-blush">
+          <span className="flex w-24 shrink-0 justify-end text-ink">
             <ExpandChevron open={open} />
           </span>
         </span>
@@ -492,7 +492,7 @@ function FilterButton({ active, disabled, count, onClick, children }) {
       aria-pressed={active}
       className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-bold transition ${
         active
-          ? "border-berry bg-berry text-night shadow-cozy-sm"
+          ? "border-ink bg-ink text-night shadow-cozy-sm"
           : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
       } ${
         disabled
@@ -575,7 +575,7 @@ function Pagination({ currentPage, totalPages, onChange }) {
             aria-current={entry === currentPage ? "page" : undefined}
             className={`flex h-9 w-9 items-center justify-center rounded-xl border text-sm font-bold transition ${
               entry === currentPage
-                ? "border-berry bg-berry text-night shadow-cozy-sm"
+                ? "border-ink bg-ink text-night shadow-cozy-sm"
                 : "border-ink/15 bg-night/10 text-ink/80 hover:border-ink/30 hover:bg-night/20"
             }`}
           >

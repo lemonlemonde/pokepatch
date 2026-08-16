@@ -169,9 +169,9 @@ function OrderEditorContent({
             {orderDisplayLabel(draft.status, draft.pending_kind)}
           </span>
           {dirty ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-berry/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-berry">
+            <span className="inline-flex items-center gap-1 rounded-full bg-ink/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
               <span
-                className="h-1 w-1 rounded-full bg-berry"
+                className="h-1 w-1 rounded-full bg-ink"
                 aria-hidden="true"
               />
               Unsaved
@@ -209,7 +209,7 @@ function OrderEditorContent({
               type="button"
               onClick={requestSave}
               disabled={saving || !dirty}
-              className="rounded-lg bg-berry px-4 py-2 text-sm font-bold text-night transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
+              className="rounded-lg bg-ink px-4 py-2 text-sm font-bold text-night transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -217,7 +217,7 @@ function OrderEditorContent({
         </div>
 
         {errorMessage ? (
-          <p className="mt-2.5 rounded-lg border border-berry/35 bg-berry/10 px-3 py-2 text-sm text-berry">
+          <p className="mt-2.5 rounded-lg border border-error/35 bg-error/10 px-3 py-2 text-sm text-error">
             {errorMessage}
           </p>
         ) : null}
@@ -234,7 +234,7 @@ function OrderEditorContent({
                 type="button"
                 onClick={handleAddCard}
                 disabled={saving}
-                className="rounded-lg border border-berry/25 px-3 py-1.5 text-xs font-semibold text-berry transition hover:bg-berry/10 disabled:opacity-40"
+                className="rounded-lg border border-ink/25 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/10 disabled:opacity-40"
               >
                 + Add card
               </button>
@@ -247,7 +247,7 @@ function OrderEditorContent({
                   type="button"
                   onClick={handleAddCard}
                   disabled={saving}
-                  className="mt-3 text-sm font-semibold text-berry transition hover:text-blush disabled:opacity-40"
+                  className="mt-3 text-sm font-semibold text-ink transition hover:text-ink disabled:opacity-40"
                 >
                   Add the first card
                 </button>

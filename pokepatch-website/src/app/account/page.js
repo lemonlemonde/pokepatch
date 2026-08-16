@@ -200,7 +200,7 @@ export default function AccountPage() {
                 htmlFor="first_name"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                First name <span className="text-berry">*</span>
+                First name <span className="text-error">*</span>
               </label>
               <input
                 id="first_name"
@@ -218,7 +218,7 @@ export default function AccountPage() {
                 htmlFor="last_name"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                Last name <span className="text-berry">*</span>
+                Last name <span className="text-error">*</span>
               </label>
               <input
                 id="last_name"
@@ -261,7 +261,7 @@ export default function AccountPage() {
             <button
               type="button"
               onClick={handleSignOut}
-              className="w-full rounded-full border-2 border-berry px-6 py-3 font-bold text-berry transition-colors duration-150 sm:hover:bg-berry sm:hover:text-cream"
+              className="w-full rounded-full border-2 border-ink px-6 py-3 font-bold text-ink transition-colors duration-150 sm:hover:bg-ink sm:hover:text-cream"
             >
               Sign out
             </button>

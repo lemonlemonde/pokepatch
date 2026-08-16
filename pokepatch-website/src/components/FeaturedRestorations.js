@@ -60,7 +60,7 @@ function GalleryCard({ item, pair, index, variant = "cozy" }) {
       className={`block transition duration-200 ease-out sm:hover:-translate-y-0.5 ${
         isMarketing
           ? "w-[min(78vw,20rem)] shrink-0 snap-start sm:w-auto"
-          : "pixel-border rounded-2xl border-blush/10 bg-cream/60 p-4 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
+          : "pixel-border rounded-2xl border-ink/10 bg-cream/60 p-4 sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)]"
       } ${!isMarketing && index === 2 ? "hidden sm:block" : ""}`}
     >
       <div className={`grid grid-cols-2 ${isMarketing ? "gap-2.5" : "gap-2"}`}>
@@ -145,7 +145,7 @@ export default function FeaturedRestorations({ variant = "cozy" }) {
           className={
             isMarketing
               ? "font-mono text-[11px] uppercase tracking-[0.22em] text-ink/50 underline-offset-4 transition hover:text-ink hover:underline"
-              : "text-sm font-semibold text-blush transition hover:text-ink hover:underline"
+              : "text-sm font-semibold text-ink transition hover:text-ink hover:underline"
           }
         >
           View the full gallery →

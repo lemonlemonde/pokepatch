@@ -442,7 +442,7 @@ export default function CardDetailSection({
     <section
       className={`overflow-hidden rounded-2xl border transition ${
         expanded
-          ? "border-blush/30 bg-ink/[0.03]"
+          ? "border-ink/30 bg-ink/[0.03]"
           : "border-ink/10 bg-cream/40 hover:border-ink/25"
       }`}
     >
@@ -536,8 +536,8 @@ export default function CardDetailSection({
                     onClick={() => toggleDamageTag(tag.id)}
                     className={
                       selected
-                        ? "rounded-md border border-blush/45 bg-blush/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-blush/25 transition"
-                        : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-blush/35 hover:bg-blush/10 hover:text-ink"
+                        ? "rounded-md border border-ink/45 bg-ink/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-ink/25 transition"
+                        : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/35 hover:bg-ink/10 hover:text-ink"
                     }
                   >
                     {tag.label}
@@ -629,7 +629,7 @@ export default function CardDetailSection({
               }
             />
             {photoError ? (
-              <p className="text-sm text-berry">{photoError}</p>
+              <p className="text-sm text-error">{photoError}</p>
             ) : null}
             <div>
               <input
@@ -649,7 +649,7 @@ export default function CardDetailSection({
                 className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${
                   saving
                     ? "cursor-not-allowed border-ink/10 text-ink/35"
-                    : "cursor-pointer border-berry/25 text-berry hover:bg-berry/10"
+                    : "cursor-pointer border-ink/25 text-ink hover:bg-ink/10"
                 }`}
               >
                 Add photos

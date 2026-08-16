@@ -8,7 +8,7 @@ export default function LoadingSpinner({ label = "Loading…", className = "" })
     >
       <div
         aria-hidden="true"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-berry border-r-blush"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-ink/15 border-t-ink border-r-ink"
       />
       <p className="text-sm font-semibold text-ink/70">{label}</p>
     </div>

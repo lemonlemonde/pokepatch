@@ -12,8 +12,7 @@ export default function ServiceCard({
   variant = "cozy",
 }) {
   const accents = {
-    blush: "bg-blush/30 border-blush/10",
-    berry: "bg-berry/20 border-berry/15",
+    ink: "bg-ink/20 border-ink/15",
     mint: "bg-mint/30 border-mint/10",
     lavender: "bg-lavender/30 border-lavender/10",
     peach: "bg-peach/30 border-peach/10",
@@ -23,7 +22,7 @@ export default function ServiceCard({
   const isMarketing = variant === "marketing";
   const shellClass = isMarketing
     ? "marketing-panel h-full p-4 sm:p-6"
-    : `pixel-border rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.blush}`;
+    : `pixel-border rounded-2xl p-6 transition-all duration-200 ease-out sm:hover:-translate-y-1 sm:hover:rotate-[-1deg] sm:hover:shadow-[0_10px_0_0_rgba(0,0,0,0.35)] ${accents[accent] ?? accents.ink}`;
 
   return (
     <div className={`flex h-full flex-col ${shellClass}`}>
@@ -53,7 +52,7 @@ export default function ServiceCard({
               className={
                 isMarketing
                   ? "font-mono text-xl leading-none text-ink"
-                  : "text-2xl font-bold leading-none text-berry"
+                  : "text-2xl font-bold leading-none text-ink"
               }
             >
               {price}
@@ -136,7 +135,7 @@ export default function ServiceCard({
                   className={
                     isMarketing
                       ? "font-mono tabular-nums text-ink"
-                      : "font-bold text-berry"
+                      : "font-bold text-ink"
                   }
                 >
                   {item.value}

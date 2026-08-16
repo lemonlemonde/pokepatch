@@ -48,7 +48,7 @@ function StatTile({ value, label, dotClass, pulse, variant = "cozy" }) {
   }
 
   return (
-    <div className="pixel-border flex flex-col items-center rounded-2xl border-blush/10 bg-cream/60 px-3 py-4 sm:py-5">
+    <div className="pixel-border flex flex-col items-center rounded-2xl border-ink/10 bg-cream/60 px-3 py-4 sm:py-5">
       <span className="font-secondary tabular-nums text-3xl font-bold text-ink sm:text-4xl">
         {value}
       </span>

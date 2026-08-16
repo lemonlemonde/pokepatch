@@ -104,7 +104,7 @@ function imageBadge(type) {
       return { label: "Progress", cls: "bg-lavender text-night" };
     case "final_front":
     case "final_back":
-      return { label: "Final", cls: "bg-blush text-night" };
+      return { label: "Final", cls: "bg-ink text-night" };
     default:
       return null;
   }
@@ -123,10 +123,10 @@ function UpdateChip({ className = "" }) {
 function CustomerPriorityBadge({ className = "" }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border border-berry/35 bg-berry/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-blush ${className}`.trim()}
+      className={`inline-flex items-center gap-1.5 rounded-full border border-ink/35 bg-ink/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink ${className}`.trim()}
     >
       <span
-        className="h-1.5 w-1.5 rounded-full bg-berry shadow-[0_0_10px_rgba(224,81,138,0.8)]"
+        className="h-1.5 w-1.5 rounded-full bg-ink shadow-[0_0_10px_rgba(243,233,242,0.8)]"
         aria-hidden="true"
       />
       Priority
@@ -140,7 +140,7 @@ function CustomerPriorityBanner({ queuePosition = null }) {
       ? `You're #${queuePosition} in the workshop queue.`
       : "Your order is marked for priority handling.";
   return (
-    <div className="rounded-xl border border-berry/25 bg-berry/[0.08] px-4 py-3">
+    <div className="rounded-xl border border-ink/25 bg-ink/[0.08] px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <CustomerPriorityBadge />
         <span className="font-display text-sm font-bold text-ink">
@@ -794,8 +794,8 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       className={`relative overflow-hidden rounded-xl border transition-colors duration-200 ${
         isPriority
           ? isExpanded
-            ? "border-berry/40 bg-berry/[0.08]"
-            : "border-berry/25 bg-berry/[0.05]"
+            ? "border-ink/40 bg-ink/[0.08]"
+            : "border-ink/25 bg-ink/[0.05]"
           : isExpanded
             ? "border-ink/20 bg-ink/[0.04]"
             : "border-ink/10 bg-ink/[0.02]"
@@ -803,7 +803,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
     >
       {isPriority ? (
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-blush via-berry to-berry/40"
+          className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-ink via-ink to-ink/40"
           aria-hidden="true"
         />
       ) : null}
@@ -811,7 +811,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
       <button
         onClick={onClick}
         className={`flex w-full items-center gap-4 p-4 text-left transition-colors duration-150 ${
-          isPriority ? "hover:bg-berry/[0.06]" : "hover:bg-ink/[0.04]"
+          isPriority ? "hover:bg-ink/[0.06]" : "hover:bg-ink/[0.04]"
         }`}
       >
         <div className="min-w-0 flex-1">
@@ -859,7 +859,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               {cardCountText}
             </span>
             {isPriority ? (
-              <span className="rounded-full border border-berry/20 bg-berry/10 px-2 py-0.5 font-semibold text-blush">
+              <span className="rounded-full border border-ink/20 bg-ink/10 px-2 py-0.5 font-semibold text-ink">
                 Priority service
               </span>
             ) : null}
@@ -876,7 +876,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
               return (
                 <div
                   className={`relative aspect-[3/4] w-9 shrink-0 overflow-hidden rounded-md bg-night/50 ${
-                    isPriority ? "ring-1 ring-berry/50" : ""
+                    isPriority ? "ring-1 ring-ink/50" : ""
                   }`}
                 >
                   {url ? (
@@ -990,7 +990,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
 
           {loading && (
             <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink/60">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-blush" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-ink" />
               Loading order details…
             </div>
           )}
@@ -1096,7 +1096,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                   cardCount={billableQuoteCards(orderDetails.cards).length}
                   className={
                     isPriority
-                      ? "border-berry/25 bg-berry/[0.07]"
+                      ? "border-ink/25 bg-ink/[0.07]"
                       : "border-peach/30 bg-peach/10"
                   }
                   collapsible
@@ -1123,7 +1123,7 @@ export default function OrderCard({ order, onClick, isExpanded = false }) {
                         key={card.id}
                         className={`overflow-hidden rounded-xl border transition-colors duration-200 ${
                           isCardOpen
-                            ? "border-blush/30 bg-night/35"
+                            ? "border-ink/30 bg-night/35"
                             : "border-ink/10 bg-night/20"
                         }`}
                       >

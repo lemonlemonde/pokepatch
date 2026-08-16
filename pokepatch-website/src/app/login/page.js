@@ -202,7 +202,7 @@ function LoginForm() {
             <>
               <div>
                 <label htmlFor="first_name" className="mb-1 block text-sm font-bold text-ink">
-                  First name <span className="text-berry">*</span>
+                  First name <span className="text-error">*</span>
                 </label>
                 <input
                   id="first_name"
@@ -221,7 +221,7 @@ function LoginForm() {
 
               <div>
                 <label htmlFor="last_name" className="mb-1 block text-sm font-bold text-ink">
-                  Last name <span className="text-berry">*</span>
+                  Last name <span className="text-error">*</span>
                 </label>
                 <input
                   id="last_name"
@@ -242,7 +242,7 @@ function LoginForm() {
 
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-bold text-ink">
-              Email <span className="text-berry">*</span>
+              Email <span className="text-error">*</span>
             </label>
             <input
               id="email"
@@ -267,7 +267,7 @@ function LoginForm() {
           {mode !== "forgot" && (
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-bold text-ink">
-              Password <span className="text-berry">*</span>
+              Password <span className="text-error">*</span>
             </label>
             <input
               id="password"
@@ -298,7 +298,7 @@ function LoginForm() {
                     setFieldErrors({});
                     setPassword("");
                   }}
-                  className="font-semibold text-blush hover:underline"
+                  className="font-semibold text-ink hover:underline"
                 >
                   Forgot password?
                 </button>
@@ -313,7 +313,7 @@ function LoginForm() {
                 htmlFor="confirm-password"
                 className="mb-1 block text-sm font-bold text-ink"
               >
-                Confirm Password <span className="text-berry">*</span>
+                Confirm Password <span className="text-error">*</span>
               </label>
               <input
                 id="confirm-password"
@@ -364,7 +364,7 @@ function LoginForm() {
                   setNotice("");
                   setFieldErrors({});
                 }}
-                className="font-semibold text-blush hover:underline"
+                className="font-semibold text-ink hover:underline"
               >
                 Back to log in
               </button>
@@ -379,7 +379,7 @@ function LoginForm() {
                   setNotice("");
                   setFieldErrors({});
                 }}
-                className="font-semibold text-blush hover:underline"
+                className="font-semibold text-ink hover:underline"
               >
                 Sign up
               </button>
@@ -395,7 +395,7 @@ function LoginForm() {
                   setFieldErrors({});
                   setConfirmPassword("");
                 }}
-                className="font-semibold text-blush hover:underline"
+                className="font-semibold text-ink hover:underline"
               >
                 Log in
               </button>

@@ -165,7 +165,7 @@ export default function QuoteSection() {
             cardCount={preview.cardCount}
             title="Receipt"
             className={
-              draft.is_priority ? "border-berry/25 bg-berry/[0.07]" : ""
+              draft.is_priority ? "border-ink/25 bg-ink/[0.07]" : ""
             }
           />
         ) : (

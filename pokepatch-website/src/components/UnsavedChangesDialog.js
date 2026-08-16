@@ -69,7 +69,7 @@ export default function UnsavedChangesDialog({
           <button
             type="button"
             onClick={onLeave}
-            className="rounded-xl bg-berry px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
           >
             {leaveLabel}
           </button>
