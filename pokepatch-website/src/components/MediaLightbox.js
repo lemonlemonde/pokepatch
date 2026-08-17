@@ -62,12 +62,12 @@ export const MutedVideo = forwardRef(function MutedVideo(
 export const LIGHTBOX_MEDIA_CLASSNAME =
   "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
 
-/** Height budget for studio crop/annotate surfaces (chrome above/below). */
+/** Height budget shared by Crop and Annotate (room for chrome above/below). */
 export const EDITOR_MEDIA_FIT_HEIGHT = "calc(100dvh - 18rem)";
 
-/** Crop step image: fill remaining editor space without covering Done/Cancel. */
-export const EDITOR_MEDIA_CLASSNAME =
-  "max-h-full w-auto max-w-[min(85vw,100%)] rounded-xl object-contain pixel-border md:max-w-[min(90vw,100%)]";
+/** Width cap shared by Crop and Annotate editor surfaces. */
+export const EDITOR_MEDIA_MAX_WIDTH_CLASSNAME =
+  "max-w-[min(85vw,100%)] md:max-w-[min(90vw,100%)]";
 
 /**
  * Fullscreen media viewer used by the public Gallery and Studio tools.
