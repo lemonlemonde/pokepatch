@@ -4,13 +4,11 @@
  * and the per-slot editor (StudioSlotEditor). No React here.
  */
 
-/** Single fixed stroke colour — annotations stay visually uniform. Stroke
- * width is shared across every shape in a set (edits always apply to all). */
+/** Single fixed stroke colour — annotations stay visually uniform. */
 export const SHAPE_STROKE = "#f87171";
-export const SHAPE_STROKE_WIDTH = 6;
+export const SHAPE_STROKE_WIDTH = 4;
 export const MIN_STROKE_WIDTH = 2;
 export const MAX_STROKE_WIDTH = 16;
-export const STROKE_WIDTH_STEP = 1;
 /** Reference width shapes are authored against, so stroke thickness reads the
  * same whether drawn on the small thumbnail, the zoomed editor, or exported
  * at full image resolution. */
@@ -106,22 +104,7 @@ export function shapeStrokeWidth(shape) {
     : SHAPE_STROKE_WIDTH;
 }
 
-/** Shared stroke width for a shape set — read from the first shape (they
- * stay in lockstep), else the default. */
-export function getSharedStrokeWidth(shapes) {
-  if (!shapes?.length) return SHAPE_STROKE_WIDTH;
-  return shapeStrokeWidth(shapes[0]);
-}
-
-/** Thickness is never per-circle — rewrite every shape to the same width. */
-export function applyStrokeWidth(shapes, strokeWidth) {
-  const next = clampStrokeWidth(strokeWidth);
-  return (shapes ?? []).map((shape) =>
-    shape.strokeWidth === next ? shape : { ...shape, strokeWidth: next },
-  );
-}
-
-export function createShape(type, index = 0, options = {}) {
+export function createShape(type, index = 0) {
   const offset = (index % 5) * 0.04;
   return {
     id: createId(),
@@ -131,9 +114,7 @@ export function createShape(type, index = 0, options = {}) {
     w: DEFAULT_SIZE,
     h: DEFAULT_SIZE,
     rotation: 0,
-    strokeWidth: clampStrokeWidth(
-      options.strokeWidth ?? SHAPE_STROKE_WIDTH,
-    ),
+    strokeWidth: SHAPE_STROKE_WIDTH,
   };
 }
 
