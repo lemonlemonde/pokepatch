@@ -62,6 +62,13 @@ export const MutedVideo = forwardRef(function MutedVideo(
 export const LIGHTBOX_MEDIA_CLASSNAME =
   "max-h-[60vh] w-auto max-w-[85vw] rounded-xl object-contain pixel-border sm:max-h-[72vh] md:max-h-[80vh] md:max-w-[90vw]";
 
+/** Height budget for studio crop/annotate surfaces (chrome above/below). */
+export const EDITOR_MEDIA_FIT_HEIGHT = "calc(100dvh - 18rem)";
+
+/** Crop step image: fill remaining editor space without covering Done/Cancel. */
+export const EDITOR_MEDIA_CLASSNAME =
+  "max-h-full w-auto max-w-[min(85vw,100%)] rounded-xl object-contain pixel-border md:max-w-[min(90vw,100%)]";
+
 /**
  * Fullscreen media viewer used by the public Gallery and Studio tools.
  * `media`: { type: "image"|"video", src, alt, label, sectionTitle? }
@@ -222,12 +229,18 @@ export default function MediaLightbox({
         </button>
       )}
 
-      <div className="flex-1" aria-hidden="true" />
-
-      <div className="flex w-full flex-shrink-0 items-center">
-        <div className="flex-1 self-stretch" aria-hidden="true" />
+      {/*
+        Fill the viewport (scroll if needed). Tall editor chrome used to
+        overflow and clip Done/Cancel. StopPropagation stays on content only
+        so padding/backdrop clicks still dismiss.
+      */}
+      <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center overflow-y-auto px-3 py-14">
         <div
-          className="flex flex-shrink-0 flex-col items-center"
+          className={
+            children
+              ? "flex h-full min-h-0 w-full max-h-full flex-col justify-center"
+              : "flex flex-col items-center"
+          }
           onClick={(event) => event.stopPropagation()}
         >
           {children ??
@@ -258,10 +271,7 @@ export default function MediaLightbox({
             </p>
           ) : null}
         </div>
-        <div className="flex-1 self-stretch" aria-hidden="true" />
       </div>
-
-      <div className="flex-1" aria-hidden="true" />
     </div>
   );
 
