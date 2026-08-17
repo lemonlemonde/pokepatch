@@ -1,5 +1,5 @@
 /**
- * Publish Studio before/after slot images as a new gallery item.
+ * Send Studio before/after slot images as a new gallery item (unpublished).
  * Uses raw slot sources (crops/annotations), never Instagram stitch canvases.
  * Writes go through galleryAdminWrites (same path as Gallery admin).
  */
@@ -44,8 +44,8 @@ export async function publishStudioPairsToGallery({
     throw new Error("Fill at least one complete before & after pair.");
   }
 
-  // Same field shape / defaults as Gallery admin create.
-  let item = await createGalleryItem({ ...meta, title });
+  // Match Gallery admin create fields, but keep off the public gallery until published.
+  let item = await createGalleryItem({ ...meta, title, published: false });
 
   for (let index = 0; index < completePairs.length; index += 1) {
     const pair = completePairs[index];
