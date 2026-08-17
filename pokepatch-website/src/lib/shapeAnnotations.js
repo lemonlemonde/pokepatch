@@ -1,7 +1,7 @@
 /**
  * Pure geometry/drawing logic for the studio's rectangle/circle annotation
- * tool, shared between the final-output annotator (StudioAnnotatedPreview)
- * and the per-slot editor (StudioSlotEditor). No React here.
+ * tool, shared by the per-slot crop/annotate editor (StudioSlotEditor).
+ * No React here.
  */
 
 /** Single fixed stroke colour — annotations stay visually uniform. */

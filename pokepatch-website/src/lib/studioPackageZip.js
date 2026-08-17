@@ -53,7 +53,7 @@ export function packageZipName({ card = "", set = "" } = {}) {
  *   .txt when those fields are filled
  *
  * @param outputs [{ key, label, url, filename }] — generated pair images
- * @param exporters Map<key, () => Promise<{blob, filename}>> — optional annotated-output exporters
+ * @param exporters Map<key, () => Promise<{blob, filename}>> — optional output exporters
  * @param altTextByKey { [outputKey]: string }
  * @param caption string
  * @param cardMeta { card, set } — names the zip file and its own .txt files; optional
