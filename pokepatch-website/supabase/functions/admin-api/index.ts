@@ -2468,14 +2468,13 @@ Deno.serve(async (req) => {
         });
       } catch (err) {
         console.error("gallery_tcg_search", err);
-        return jsonResponse(req, {
-          ok: true,
-          candidates: [],
-          total_count: 0,
-          page,
-          page_size: pageSize,
-          query_used: null,
-        });
+        const raw = err instanceof Error ? err.message : String(err);
+        const error = /timed out|abort/i.test(raw)
+          ? "Card lookup timed out. Try again."
+          : /429/.test(raw)
+            ? "Card lookup is rate limited. Wait a moment and try again."
+            : "Card lookup failed. Try again.";
+        return jsonResponse(req, { ok: false, error }, 502);
       }
     }
 
