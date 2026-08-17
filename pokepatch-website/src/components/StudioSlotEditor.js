@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import MediaLightbox, {
-  EDITOR_MEDIA_CLASSNAME,
   EDITOR_MEDIA_FIT_HEIGHT,
+  EDITOR_MEDIA_MAX_WIDTH_CLASSNAME,
 } from "@/components/MediaLightbox";
 import {
   CROP_HANDLES,
@@ -302,7 +302,7 @@ function CropStepSurface({
   return (
     <div
       ref={surfaceRef}
-      className="relative inline-block max-h-full max-w-full touch-none select-none"
+      className="relative inline-block max-w-full touch-none select-none"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
@@ -314,10 +314,10 @@ function CropStepSurface({
         src={src}
         alt={alt}
         draggable={false}
-        // Invisible until the dim overlay is ready — otherwise Crop blinks
-        // a full bright photo. Height budget matches Annotate.
-        className={`${EDITOR_MEDIA_CLASSNAME}${contentBox.width > 0 ? "" : " opacity-0"}`}
-        style={{ maxHeight: `min(100%, ${EDITOR_MEDIA_FIT_HEIGHT})` }}
+        // Same height/width budget as Annotate (intrinsic, aspect preserved).
+        // Do not use max-h-full / flex-fill — that stretched the photo.
+        className={`${EDITOR_MEDIA_MAX_WIDTH_CLASSNAME} w-auto rounded-xl object-contain pixel-border${contentBox.width > 0 ? "" : " opacity-0"}`}
+        style={{ maxHeight: EDITOR_MEDIA_FIT_HEIGHT }}
       />
       {contentBox.width > 0 ? (
         <div className="absolute" style={overlayStyle}>
@@ -437,8 +437,7 @@ function AnnotateStepSurface({
     onShapesChange,
   });
 
-  // Same height budget as Crop; intrinsic width so size does not collapse
-  // to the toolbar when Crop is `hidden`.
+  // Same height/width budget as Crop so a full-frame crop matches exactly.
   return (
     <CroppedShapePreview
       src={src}
@@ -447,7 +446,7 @@ function AnnotateStepSurface({
       annotations={drag.liveShapes}
       selectedId={selectedId}
       fitHeight={EDITOR_MEDIA_FIT_HEIGHT}
-      className="max-w-[min(85vw,100%)] touch-none select-none rounded-xl pixel-border md:max-w-[min(90vw,100%)]"
+      className={`${EDITOR_MEDIA_MAX_WIDTH_CLASSNAME} touch-none select-none rounded-xl pixel-border`}
       innerRef={surfaceRef}
       onPointerDown={drag.onPointerDownSurface}
       onPointerMove={drag.onPointerMove}
@@ -551,13 +550,13 @@ function EditorPanel({
   }
 
   return (
-    <div className="flex h-full min-h-0 max-h-full flex-col items-center gap-2">
-      <p className="shrink-0 text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
+    <div className="flex flex-col items-center gap-2">
+      <p className="text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
         {label}
       </p>
 
       <div
-        className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-2"
+        className="flex max-w-full flex-wrap items-center justify-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
         {step === "crop" ? (
@@ -584,34 +583,32 @@ function EditorPanel({
         (square aspect flash), and dropped the crop overlay until ResizeObserver
         re-measured — the blink when flipping Crop ↔ Annotate.
       */}
-      <div className="flex min-h-0 flex-1 items-center justify-center">
-        <div
-          className={step === "crop" ? "contents" : "hidden"}
-          aria-hidden={step !== "crop"}
-        >
-          <CropStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            onCropChange={onDraftCropChange}
-            annotations={draftAnnotations}
-          />
-        </div>
+      <div
+        className={step === "crop" ? "contents" : "hidden"}
+        aria-hidden={step !== "crop"}
+      >
+        <CropStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          onCropChange={onDraftCropChange}
+          annotations={draftAnnotations}
+        />
+      </div>
 
-        <div
-          className={step === "annotate" ? "contents" : "hidden"}
-          aria-hidden={step !== "annotate"}
-        >
-          <AnnotateStepSurface
-            src={previewUrl}
-            alt={alt}
-            crop={draftCrop}
-            shapes={draftAnnotations}
-            selectedId={selectedId}
-            onSelectShape={onSelectedIdChange}
-            onShapesChange={onDraftAnnotationsChange}
-          />
-        </div>
+      <div
+        className={step === "annotate" ? "contents" : "hidden"}
+        aria-hidden={step !== "annotate"}
+      >
+        <AnnotateStepSurface
+          src={previewUrl}
+          alt={alt}
+          crop={draftCrop}
+          shapes={draftAnnotations}
+          selectedId={selectedId}
+          onSelectShape={onSelectedIdChange}
+          onShapesChange={onDraftAnnotationsChange}
+        />
       </div>
     </div>
   );
@@ -740,24 +737,20 @@ export default function StudioSlotEditor({
       }}
     >
       {/*
-        Fill the lightbox so the photo uses remaining space and Done/Cancel
-        stay on-screen. MediaLightbox stops propagation on its content
-        wrapper (sized to the full viewport now); empty space here still
-        commits+closes, while controls/surfaces stopPropagation themselves.
+        Content-sized like Annotate (shared height budget). Empty space
+        commits+closes; controls/surfaces stopPropagation themselves.
       */}
       <div
-        className="flex h-full min-h-0 w-full max-h-full flex-col items-center gap-3"
+        className="flex flex-col items-center gap-3"
         onClick={commitAndClose}
       >
-        <div className="shrink-0">
-          <EditModeToggle step={step} onStepChange={changeStep} />
-        </div>
+        <EditModeToggle step={step} onStepChange={changeStep} />
 
-        <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-4 overflow-hidden sm:flex-row sm:items-stretch sm:justify-center">
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center">
           {orderedPanels}
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
           <button
             type="button"
             onClick={(event) => {
