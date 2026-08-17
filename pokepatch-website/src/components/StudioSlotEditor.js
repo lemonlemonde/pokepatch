@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import MediaLightbox, {
-  LIGHTBOX_MEDIA_CLASSNAME,
+  EDITOR_MEDIA_CLASSNAME,
+  EDITOR_MEDIA_FIT_HEIGHT,
 } from "@/components/MediaLightbox";
 import {
   CROP_HANDLES,
@@ -102,14 +103,20 @@ export function CroppedShapePreview({
   const viewW = STROKE_REFERENCE_WIDTH;
   const viewH = STROKE_REFERENCE_WIDTH / aspect;
 
-  // Height is always *derived* from width + aspect-ratio; a height cap is
-  // expressed as a max-width instead. Giving the box both a definite width
-  // and a definite height would override aspect-ratio and stretch the
-  // absolutely-positioned image.
+  // Height comes from width ÷ aspect-ratio. A height cap is turned into an
+  // *intrinsic* width (calc(fitHeight * aspect)) so the box does not depend
+  // on parent width — Annotate used to collapse to the toolbar width when
+  // Crop was `hidden` and the panel shrink-wrapped around the controls.
+  // Do not also set a definite height: that overrides aspect-ratio and
+  // stretches the absolutely-positioned image.
   const style = {
     aspectRatio: String(aspect),
-    width: "100%",
-    ...(fitHeight ? { maxWidth: `calc(${fitHeight} * ${aspect})` } : null),
+    ...(fitHeight
+      ? {
+          width: `calc(${fitHeight} * ${aspect})`,
+          maxWidth: "100%",
+        }
+      : { width: "100%" }),
   };
 
   return (
@@ -298,7 +305,7 @@ function CropStepSurface({
   return (
     <div
       ref={surfaceRef}
-      className="relative inline-block max-w-full touch-none select-none"
+      className="relative inline-block max-h-full max-w-full touch-none select-none"
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
@@ -310,9 +317,10 @@ function CropStepSurface({
         src={src}
         alt={alt}
         draggable={false}
-        // Stay laid out (so we can measure) but invisible until the dim
-        // overlay is ready — otherwise Crop mode blinks a full bright photo.
-        className={`${LIGHTBOX_MEDIA_CLASSNAME}${contentBox.width > 0 ? "" : " opacity-0"}`}
+        // Invisible until the dim overlay is ready — otherwise Crop blinks
+        // a full bright photo. Height budget matches Annotate.
+        className={`${EDITOR_MEDIA_CLASSNAME}${contentBox.width > 0 ? "" : " opacity-0"}`}
+        style={{ maxHeight: `min(100%, ${EDITOR_MEDIA_FIT_HEIGHT})` }}
       />
       {contentBox.width > 0 ? (
         <div className="absolute" style={overlayStyle}>
@@ -432,40 +440,33 @@ function AnnotateStepSurface({
     onShapesChange,
   });
 
-  // The preview box *is* the interaction surface, so pointer coords and the
-  // handle overlay can never drift out of alignment with the rendered crop.
+  // Same height budget as Crop; intrinsic width so size does not collapse
+  // to the toolbar when Crop is `hidden`.
   return (
-    // Same responsive height cap as LIGHTBOX_MEDIA_CLASSNAME (the Crop
-    // step's plain <img>), expressed as a custom property since fitHeight
-    // feeds an inline calc() rather than a Tailwind class — otherwise this
-    // surface stayed capped at 60vh on larger screens while Crop mode grew
-    // up to 80vh, making Annotate mode look smaller for no reason.
-    <div className="w-full max-w-[85vw] [--fit-h:60vh] sm:[--fit-h:72vh] md:max-w-[90vw] md:[--fit-h:80vh]">
-      <CroppedShapePreview
-        src={src}
-        alt={alt}
-        crop={crop}
-        annotations={drag.liveShapes}
-        selectedId={selectedId}
-        fitHeight="var(--fit-h)"
-        className="touch-none select-none rounded-xl pixel-border"
-        innerRef={surfaceRef}
-        onPointerDown={drag.onPointerDownSurface}
-        onPointerMove={drag.onPointerMove}
-        onPointerUp={drag.onPointerUp}
-        onPointerCancel={drag.onPointerUp}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="pointer-events-none absolute inset-0">
-          <ShapeHandles
-            selected={drag.selected}
-            aspect={aspect}
-            rotating={drag.isRotating}
-            onPointerDownHandle={drag.onPointerDownHandle}
-          />
-        </div>
-      </CroppedShapePreview>
-    </div>
+    <CroppedShapePreview
+      src={src}
+      alt={alt}
+      crop={crop}
+      annotations={drag.liveShapes}
+      selectedId={selectedId}
+      fitHeight={EDITOR_MEDIA_FIT_HEIGHT}
+      className="max-w-[min(85vw,100%)] touch-none select-none rounded-xl pixel-border md:max-w-[min(90vw,100%)]"
+      innerRef={surfaceRef}
+      onPointerDown={drag.onPointerDownSurface}
+      onPointerMove={drag.onPointerMove}
+      onPointerUp={drag.onPointerUp}
+      onPointerCancel={drag.onPointerUp}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="pointer-events-none absolute inset-0">
+        <ShapeHandles
+          selected={drag.selected}
+          aspect={aspect}
+          rotating={drag.isRotating}
+          onPointerDownHandle={drag.onPointerDownHandle}
+        />
+      </div>
+    </CroppedShapePreview>
   );
 }
 
@@ -565,13 +566,13 @@ function EditorPanel({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <p className="text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
+    <div className="flex h-full min-h-0 max-h-full flex-col items-center gap-2">
+      <p className="shrink-0 text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
         {label}
       </p>
 
       <div
-        className="flex max-w-full flex-wrap items-center justify-center gap-2"
+        className="flex max-w-full shrink-0 flex-wrap items-center justify-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
         {step === "crop" ? (
@@ -600,32 +601,34 @@ function EditorPanel({
         (square aspect flash), and dropped the crop overlay until ResizeObserver
         re-measured — the blink when flipping Crop ↔ Annotate.
       */}
-      <div
-        className={step === "crop" ? "contents" : "hidden"}
-        aria-hidden={step !== "crop"}
-      >
-        <CropStepSurface
-          src={previewUrl}
-          alt={alt}
-          crop={draftCrop}
-          onCropChange={onDraftCropChange}
-          annotations={draftAnnotations}
-        />
-      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div
+          className={step === "crop" ? "contents" : "hidden"}
+          aria-hidden={step !== "crop"}
+        >
+          <CropStepSurface
+            src={previewUrl}
+            alt={alt}
+            crop={draftCrop}
+            onCropChange={onDraftCropChange}
+            annotations={draftAnnotations}
+          />
+        </div>
 
-      <div
-        className={step === "annotate" ? "contents" : "hidden"}
-        aria-hidden={step !== "annotate"}
-      >
-        <AnnotateStepSurface
-          src={previewUrl}
-          alt={alt}
-          crop={draftCrop}
-          shapes={draftAnnotations}
-          selectedId={selectedId}
-          onSelectShape={onSelectedIdChange}
-          onShapesChange={onDraftAnnotationsChange}
-        />
+        <div
+          className={step === "annotate" ? "contents" : "hidden"}
+          aria-hidden={step !== "annotate"}
+        >
+          <AnnotateStepSurface
+            src={previewUrl}
+            alt={alt}
+            crop={draftCrop}
+            shapes={draftAnnotations}
+            selectedId={selectedId}
+            onSelectShape={onSelectedIdChange}
+            onShapesChange={onDraftAnnotationsChange}
+          />
+        </div>
       </div>
     </div>
   );
@@ -754,23 +757,24 @@ export default function StudioSlotEditor({
       }}
     >
       {/*
-        MediaLightbox stops propagation on its own content wrapper, but that
-        wrapper is sized to the *widest* row in this column (e.g. the aspect
-        controls or the toolbar), which can be wider than the actual photo.
-        Without this, clicking that leftover space read as "inside" and
-        didn't close. So this whole block closes on click by default, and
-        only the specific, tightly-sized interactive pieces (each control
-        group, the crop/annotate surface itself, Done/Cancel) opt back out via
-        their own stopPropagation.
+        Fill the lightbox so the photo uses remaining space and Done/Cancel
+        stay on-screen. MediaLightbox stops propagation on its content
+        wrapper (sized to the full viewport now); empty space here still
+        commits+closes, while controls/surfaces stopPropagation themselves.
       */}
-      <div className="flex flex-col items-center gap-6" onClick={commitAndClose}>
-        <EditModeToggle step={step} onStepChange={changeStep} />
+      <div
+        className="flex h-full min-h-0 w-full max-h-full flex-col items-center gap-3"
+        onClick={commitAndClose}
+      >
+        <div className="shrink-0">
+          <EditModeToggle step={step} onStepChange={changeStep} />
+        </div>
 
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:justify-center">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-4 overflow-hidden sm:flex-row sm:items-stretch sm:justify-center">
           {orderedPanels}
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-center gap-3">
           <button
             type="button"
             onClick={(event) => {
