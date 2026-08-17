@@ -446,19 +446,16 @@ export function getSharedTargetSize(leftMetrics, rightMetrics, maxSlotWidth) {
 }
 
 /**
- * Where the card actually lands inside the shared frame. Same width as the
- * taller card's frame, aspect preserved (no crop), shrunk to fit if that would
- * overflow the frame height.
+ * Where the card lands relative to the shared frame. Cover: scale so the image
+ * fills the entire frame (aspect preserved); overflow is clipped — never
+ * letterbox / pillarbox with white bars.
  */
 export function getCardDrawSize(metrics, targetSw, targetSh) {
-  let drawW = targetSw;
-  let drawH = Math.round(metrics.sh * (targetSw / metrics.sw));
-  if (drawH > targetSh) {
-    const fit = targetSh / drawH;
-    drawW = Math.round(drawW * fit);
-    drawH = targetSh;
-  }
-  return { drawW, drawH };
+  const scale = Math.max(targetSw / metrics.sw, targetSh / metrics.sh);
+  return {
+    drawW: Math.round(metrics.sw * scale),
+    drawH: Math.round(metrics.sh * scale),
+  };
 }
 
 /**
@@ -524,7 +521,7 @@ function prepareCardResized(ctx, source, metrics, targetSw, targetSh) {
 
 function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
   const { drawW, drawH } = getCardDrawSize(metrics, targetSw, targetSh);
-  // Equal white extension above and below when this card is shorter.
+  // Center in the shared frame; cover scale means overflow is clipped equally.
   const imageX = drawX + Math.floor((targetSw - drawW) / 2);
   const imageY = drawY + Math.floor((targetSh - drawH) / 2);
 
@@ -536,6 +533,8 @@ function drawCard(ctx, resized, metrics, drawX, drawY, targetSw, targetSh) {
   ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
   ctx.shadowBlur = 28 * shadowScale;
   ctx.shadowOffsetY = 10 * shadowScale;
+  // Opaque fill under the photo so the drop shadow has a solid caster; cover
+  // draw always hides it inside the rounded rect.
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.roundRect(drawX, drawY, targetSw, targetSh, CARD_RADIUS);
