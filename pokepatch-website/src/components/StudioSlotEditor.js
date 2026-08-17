@@ -21,12 +21,9 @@ import {
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   STROKE_REFERENCE_WIDTH,
-  applyStrokeWidth,
   clamp,
-  clampStrokeWidth,
   createShape,
   getImageContentMetrics,
-  getSharedStrokeWidth,
 } from "@/lib/shapeAnnotations";
 
 const CROP_HANDLE_SIZE = 10;
@@ -518,12 +515,6 @@ function EditorPanel({
   onDraftAnnotationsChange,
   onSelectedIdChange,
 }) {
-  // Shared across every circle on this photo; survives deleting down to zero
-  // so the next Add circle keeps the last thickness the user picked.
-  const [strokeWidth, setStrokeWidth] = useState(() =>
-    getSharedStrokeWidth(draftAnnotations),
-  );
-
   const hasCrop = !isDefaultCrop(draftCrop);
 
   useEffect(() => {
@@ -545,7 +536,7 @@ function EditorPanel({
   }, [step, selectedId, onDraftAnnotationsChange, onSelectedIdChange]);
 
   function addShape(type) {
-    const next = createShape(type, draftAnnotations.length, { strokeWidth });
+    const next = createShape(type, draftAnnotations.length);
     onDraftAnnotationsChange([...draftAnnotations, next]);
     onSelectedIdChange(next.id);
   }
@@ -556,12 +547,6 @@ function EditorPanel({
       draftAnnotations.filter((shape) => shape.id !== selectedId),
     );
     onSelectedIdChange(null);
-  }
-
-  function changeStrokeWidth(next) {
-    const width = clampStrokeWidth(next);
-    setStrokeWidth(width);
-    onDraftAnnotationsChange((prev) => applyStrokeWidth(prev, width));
   }
 
   return (
@@ -588,8 +573,6 @@ function EditorPanel({
             selectedId={selectedId}
             onAdd={addShape}
             onDelete={deleteSelected}
-            strokeWidth={strokeWidth}
-            onStrokeWidthChange={changeStrokeWidth}
           />
         )}
       </div>

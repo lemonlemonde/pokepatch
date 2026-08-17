@@ -9,20 +9,14 @@ import { INSTAGRAM_HEIGHT, INSTAGRAM_WIDTH } from "@/lib/studioLayout";
 import useShapeDrag from "@/lib/useShapeDrag";
 import {
   SHAPE_STROKE,
-  SHAPE_STROKE_WIDTH,
-  MIN_STROKE_WIDTH,
-  MAX_STROKE_WIDTH,
-  STROKE_WIDTH_STEP,
   STROKE_REFERENCE_WIDTH,
   HANDLE_SIZE,
   HANDLES,
   clamp,
-  clampStrokeWidth,
   shapeRotation,
   shapeStrokeWidth,
   createShape,
   drawShapesOnCanvas,
-  applyStrokeWidth,
   handlePosition,
   rotateHandlePosition,
   getImageContentMetrics,
@@ -53,18 +47,7 @@ export async function compositeImageWithShapes(imageUrl, shapes) {
   return canvasToBlob(canvas);
 }
 
-export function ShapeToolbar({
-  selectedId,
-  onAdd,
-  onDelete,
-  strokeWidth = SHAPE_STROKE_WIDTH,
-  onStrokeWidthChange,
-  className = "",
-}) {
-  const width = clampStrokeWidth(strokeWidth);
-  const canThin = width > MIN_STROKE_WIDTH;
-  const canThick = width < MAX_STROKE_WIDTH;
-
+export function ShapeToolbar({ selectedId, onAdd, onDelete, className = "" }) {
   return (
     <div
       className={`flex max-w-full flex-wrap items-center justify-center gap-2 ${className}`}
@@ -86,35 +69,6 @@ export function ShapeToolbar({
       >
         Delete selected
       </button>
-      {onStrokeWidthChange ? (
-        <div
-          className="inline-flex items-center gap-1 rounded-lg border border-ink/20 bg-ink/10 p-0.5"
-          role="group"
-          aria-label="Circle thickness"
-        >
-          <button
-            type="button"
-            aria-label="Thinner circles"
-            disabled={!canThin}
-            onClick={() => onStrokeWidthChange(width - STROKE_WIDTH_STEP)}
-            className="rounded-md px-2.5 py-1 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/15 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            −
-          </button>
-          <span className="min-w-[4.5rem] text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/60">
-            Thickness
-          </span>
-          <button
-            type="button"
-            aria-label="Thicker circles"
-            disabled={!canThick}
-            onClick={() => onStrokeWidthChange(width + STROKE_WIDTH_STEP)}
-            className="rounded-md px-2.5 py-1 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/15 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            +
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -346,7 +300,7 @@ export function ShapeSurface({
  * handled by the parent (Download all finalized / package zip).
  */
 export default function StudioAnnotatedPreview(props) {
-  // Remount when the preview image changes so shapes/thickness reset without
+  // Remount when the preview image changes so shapes reset without
   // syncing state inside an effect.
   return <AnnotatedPreviewSession key={props.url} {...props} />;
 }
@@ -360,7 +314,6 @@ function AnnotatedPreviewSession({
 }) {
   const [shapes, setShapes] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
-  const [strokeWidth, setStrokeWidth] = useState(SHAPE_STROKE_WIDTH);
   const [open, setOpen] = useState(false);
   const labelId = useId();
 
@@ -391,7 +344,7 @@ function AnnotatedPreviewSession({
   }, [open, selectedId]);
 
   function addShape(type) {
-    const next = createShape(type, shapes.length, { strokeWidth });
+    const next = createShape(type, shapes.length);
     setShapes((prev) => [...prev, next]);
     setSelectedId(next.id);
   }
@@ -400,12 +353,6 @@ function AnnotatedPreviewSession({
     if (!selectedId) return;
     setShapes((prev) => prev.filter((shape) => shape.id !== selectedId));
     setSelectedId(null);
-  }
-
-  function changeStrokeWidth(next) {
-    const width = clampStrokeWidth(next);
-    setStrokeWidth(width);
-    setShapes((prev) => applyStrokeWidth(prev, width));
   }
 
   function closeLightbox() {
@@ -456,8 +403,6 @@ function AnnotatedPreviewSession({
               selectedId={selectedId}
               onAdd={addShape}
               onDelete={deleteSelected}
-              strokeWidth={strokeWidth}
-              onStrokeWidthChange={changeStrokeWidth}
               className="mb-3"
             />
             <ShapeSurface
