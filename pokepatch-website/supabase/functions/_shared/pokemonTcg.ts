@@ -1,10 +1,13 @@
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2";
 const REQUEST_TIMEOUT_MS = 18_000;
-const CATALOG_SEARCH_TIMEOUT_MS = 8_000;
+/** Per-attempt fetch timeout for catalog search. */
+const CATALOG_SEARCH_TIMEOUT_MS = 5_000;
+/** Hard ceiling for the whole catalog search (all queries + retries). */
+const CATALOG_OVERALL_BUDGET_MS = 12_000;
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const CATALOG_CACHE_MAX = 80;
-const CATALOG_RETRY_ATTEMPTS = 3;
-const CATALOG_RETRY_DELAY_MS = 250;
+const CATALOG_RETRY_ATTEMPTS = 2;
+const CATALOG_RETRY_DELAY_MS = 200;
 
 type CatalogSearchResult = {
   candidates: TcgCardCandidate[];
@@ -73,6 +76,16 @@ function mapCard(row: TcgApiCard): TcgCardCandidate | null {
   };
 }
 
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const name = (err as { name?: string }).name;
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+function catalogTimeoutError(): Error {
+  return new Error("TCG catalog search timed out");
+}
+
 async function tcgFetch(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -81,6 +94,9 @@ async function tcgFetch(path: string, timeoutMs = REQUEST_TIMEOUT_MS): Promise<R
       headers: apiKeyHeader(),
       signal: controller.signal,
     });
+  } catch (err) {
+    if (isAbortError(err)) throw catalogTimeoutError();
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -174,7 +190,8 @@ function emptyCatalogResult(
 async function fetchCatalogPage(
   q: string,
   page: number,
-  pageSize: number
+  pageSize: number,
+  budgetMs: number
 ): Promise<CatalogSearchResult> {
   const params = new URLSearchParams({
     q,
@@ -183,16 +200,27 @@ async function fetchCatalogPage(
     select: "id,name,number,images,set",
   });
 
+  const started = Date.now();
   let lastError: Error | null = null;
+
   for (let attempt = 0; attempt < CATALOG_RETRY_ATTEMPTS; attempt++) {
+    const remaining = budgetMs - (Date.now() - started);
+    if (remaining < 400) {
+      throw lastError ?? catalogTimeoutError();
+    }
+
     try {
       const response = await tcgFetch(
         `/cards?${params}`,
-        CATALOG_SEARCH_TIMEOUT_MS
+        Math.min(CATALOG_SEARCH_TIMEOUT_MS, remaining)
       );
       if (!response.ok) {
         lastError = new Error(`TCG API ${response.status}`);
-        await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+        // Retry transient failures only.
+        if (response.status !== 429 && response.status < 500) {
+          throw lastError;
+        }
+        await sleep(Math.min(CATALOG_RETRY_DELAY_MS * (attempt + 1), remaining));
         continue;
       }
 
@@ -204,7 +232,7 @@ async function fetchCatalogPage(
       } | null;
       if (!payload) {
         lastError = new Error("TCG API invalid response");
-        await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+        await sleep(Math.min(CATALOG_RETRY_DELAY_MS * (attempt + 1), remaining));
         continue;
       }
 
@@ -221,7 +249,16 @@ async function fetchCatalogPage(
       };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
-      await sleep(CATALOG_RETRY_DELAY_MS * (attempt + 1));
+      // Non-transient client errors — don't burn the retry budget.
+      if (/TCG API 4\d\d/.test(lastError.message) && !/429/.test(lastError.message)) {
+        throw lastError;
+      }
+      await sleep(
+        Math.min(
+          CATALOG_RETRY_DELAY_MS * (attempt + 1),
+          Math.max(0, budgetMs - (Date.now() - started))
+        )
+      );
     }
   }
 
@@ -234,7 +271,10 @@ function firstTokenPrefix(normalizedValue: string): string {
   return token ? escapeLuceneWildcard(token) : "";
 }
 
-/** One Lucene query per set word the admin typed (prefix match, case-insensitive). */
+/**
+ * At most two Lucene queries: a tight AND of set tokens, then a looser
+ * first-token fallback. Avoids N sequential set-word round-trips.
+ */
 function buildCatalogSearchQueries(
   cardName: string,
   setName: string
@@ -251,18 +291,29 @@ function buildCatalogSearchQueries(
     ),
   ];
 
+  const queries: string[] = [];
+
   if (namePrefix.length >= 2 && setTokens.length > 0) {
-    return setTokens.map(
-      (setPrefix) => `name:${namePrefix}* set.name:${setPrefix}*`
+    queries.push(
+      `name:${namePrefix}* ${setTokens
+        .map((setPrefix) => `set.name:${setPrefix}*`)
+        .join(" ")}`
     );
+    if (setTokens.length > 1) {
+      queries.push(`name:${namePrefix}* set.name:${setTokens[0]}*`);
+    }
+  } else if (name.length >= 3 && namePrefix.length >= 2) {
+    queries.push(`name:${namePrefix}*`);
+  } else if (setTokens.length > 0) {
+    queries.push(
+      setTokens.map((setPrefix) => `set.name:${setPrefix}*`).join(" ")
+    );
+    if (setTokens.length > 1) {
+      queries.push(`set.name:${setTokens[0]}*`);
+    }
   }
-  if (name.length >= 3 && namePrefix.length >= 2) {
-    return [`name:${namePrefix}*`];
-  }
-  if (setTokens.length > 0) {
-    return setTokens.map((setPrefix) => `set.name:${setPrefix}*`);
-  }
-  return [];
+
+  return queries;
 }
 
 /** Paginated search across the full Pokémon TCG API catalog. */
@@ -282,21 +333,36 @@ export async function searchPokemonTcgCatalog(
     return emptyCatalogResult(safePage, safeSize);
   }
 
-  let lastResult = emptyCatalogResult(safePage, safeSize, queries[0]);
+  const deadline = Date.now() + CATALOG_OVERALL_BUDGET_MS;
+  let lastError: Error | null = null;
+  let lastEmpty: CatalogSearchResult | null = null;
+  let anySuccess = false;
 
   for (const query of queries) {
+    const remaining = deadline - Date.now();
+    if (remaining < 400) {
+      lastError = catalogTimeoutError();
+      break;
+    }
+
     try {
-      const result = await fetchCatalogPage(query, safePage, safeSize);
-      lastResult = result;
+      const result = await fetchCatalogPage(query, safePage, safeSize, remaining);
+      anySuccess = true;
+      lastEmpty = result;
       if (result.candidates.length > 0) {
         writeCatalogCache(cacheKey, result);
         return result;
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn("TCG catalog search attempt failed:", query, message);
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn("TCG catalog search attempt failed:", query, lastError.message);
     }
   }
 
-  return lastResult;
+  // Successful empty responses are real "no matches" — only throw when every attempt failed.
+  if (anySuccess && lastEmpty) {
+    return lastEmpty;
+  }
+
+  throw lastError ?? new Error("TCG catalog search failed");
 }
