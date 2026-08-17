@@ -15,9 +15,8 @@ import {
  * Shape select / move / resize / rotate state machine, shared by every
  * surface that edits annotation shapes.
  *
- * Shapes are normalized 0–1 against whatever frame the caller is drawing in
- * (the full image for the output annotator, the cropped region for the slot
- * editor) — this hook never needs to know which.
+ * Shapes are normalized 0–1 against the caller's frame (the cropped region
+ * in the slot editor) — this hook never needs to know which.
  *
  * The in-progress drag is buffered internally and exposed as `liveShapes`;
  * `onShapesChange` fires **once, on pointer release**. Committing on every

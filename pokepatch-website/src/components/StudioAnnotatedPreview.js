@@ -1,51 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import MediaLightbox, {
-  LIGHTBOX_MEDIA_CLASSNAME,
-} from "@/components/MediaLightbox";
-import { canvasToBlob } from "@/lib/instagramStitch";
-import { INSTAGRAM_HEIGHT, INSTAGRAM_WIDTH } from "@/lib/studioLayout";
-import useShapeDrag from "@/lib/useShapeDrag";
+import { useEffect, useId, useState } from "react";
+import MediaLightbox from "@/components/MediaLightbox";
 import {
   SHAPE_STROKE,
-  STROKE_REFERENCE_WIDTH,
   HANDLE_SIZE,
   HANDLES,
-  clamp,
   shapeRotation,
   shapeStrokeWidth,
-  createShape,
-  drawShapesOnCanvas,
   handlePosition,
   rotateHandlePosition,
-  getImageContentMetrics,
 } from "@/lib/shapeAnnotations";
-
-export async function compositeImageWithShapes(imageUrl, shapes) {
-  // Nothing to draw — hand back the generated image untouched rather than
-  // paying a full decode + re-encode on every package download.
-  if (shapes.length === 0) {
-    return fetch(imageUrl).then((res) => res.blob());
-  }
-
-  const img = await new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Failed to load preview image"));
-    image.src = imageUrl;
-  });
-
-  const canvas = document.createElement("canvas");
-  canvas.width = img.naturalWidth || INSTAGRAM_WIDTH;
-  canvas.height = img.naturalHeight || INSTAGRAM_HEIGHT;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  drawShapesOnCanvas(ctx, shapes, canvas.width, canvas.height);
-  return canvasToBlob(canvas);
-}
 
 export function ShapeToolbar({ selectedId, onAdd, onDelete, className = "" }) {
   return (
@@ -170,200 +135,36 @@ export function ShapeHandles({
   );
 }
 
-export function ShapeSurface({
-  url,
-  alt,
-  shapes,
-  selectedId,
-  interactive,
-  imageClassName,
-  onSelect,
-  onShapesChange,
-}) {
-  const surfaceRef = useRef(null);
-  const imageRef = useRef(null);
-  const [contentBox, setContentBox] = useState({
-    offsetLeft: 0,
-    offsetTop: 0,
-    width: 0,
-    height: 0,
-  });
-  const aspect =
-    contentBox.width > 0 && contentBox.height > 0
-      ? contentBox.width / contentBox.height
-      : 1;
-
-  const updateContentBox = useCallback(() => {
-    const metrics = getImageContentMetrics(imageRef.current);
-    if (!metrics) return;
-    setContentBox({
-      offsetLeft: metrics.offsetLeft,
-      offsetTop: metrics.offsetTop,
-      width: metrics.width,
-      height: metrics.height,
-    });
-  }, []);
-
-  useEffect(() => {
-    const img = imageRef.current;
-    if (!img) return undefined;
-    updateContentBox();
-    const observer = new ResizeObserver(() => updateContentBox());
-    observer.observe(img);
-    img.addEventListener("load", updateContentBox);
-    return () => {
-      observer.disconnect();
-      img.removeEventListener("load", updateContentBox);
-    };
-  }, [url, imageClassName, updateContentBox]);
-
-  const clientToNormalized = useCallback((clientX, clientY) => {
-    const metrics = getImageContentMetrics(imageRef.current);
-    if (!metrics) return null;
-    return {
-      x: clamp((clientX - metrics.left) / metrics.width, 0, 1),
-      y: clamp((clientY - metrics.top) / metrics.height, 0, 1),
-    };
-  }, []);
-
-  const drag = useShapeDrag({
-    shapes,
-    selectedId: interactive ? selectedId : null,
-    aspect,
-    clientToNormalized,
-    surfaceRef,
-    onSelect,
-    onShapesChange,
-  });
-
-  const overlayStyle = {
-    left: contentBox.offsetLeft,
-    top: contentBox.offsetTop,
-    width: contentBox.width,
-    height: contentBox.height,
-  };
-  const viewW = STROKE_REFERENCE_WIDTH;
-  const viewH = STROKE_REFERENCE_WIDTH / aspect;
-
-  return (
-    <div
-      ref={surfaceRef}
-      className={`relative inline-block max-w-full touch-none select-none ${
-        interactive ? "" : "pointer-events-none"
-      }`}
-      onPointerDown={interactive ? drag.onPointerDownSurface : undefined}
-      onPointerMove={interactive ? drag.onPointerMove : undefined}
-      onPointerUp={interactive ? drag.onPointerUp : undefined}
-      onPointerCancel={interactive ? drag.onPointerUp : undefined}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        ref={imageRef}
-        src={url}
-        alt={alt}
-        draggable={false}
-        className={imageClassName}
-      />
-      <svg
-        className="pointer-events-none absolute overflow-visible"
-        style={overlayStyle}
-        viewBox={`0 0 ${viewW} ${viewH}`}
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <ShapesLayer
-          shapes={drag.liveShapes}
-          selectedId={interactive ? selectedId : null}
-          viewW={viewW}
-          viewH={viewH}
-        />
-      </svg>
-
-      {interactive && drag.selected && contentBox.width > 0 ? (
-        <div className="pointer-events-none absolute" style={overlayStyle}>
-          <ShapeHandles
-            selected={drag.selected}
-            aspect={aspect}
-            rotating={drag.isRotating}
-            onPointerDownHandle={drag.onPointerDownHandle}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /**
- * Studio output preview: click to enlarge in MediaLightbox and edit shapes there.
+ * Studio output preview: click to enlarge in MediaLightbox (view-only).
+ * Slot crop/annotate editing lives in StudioSlotEditor — not here.
  *
  * `children` render below the image (e.g. per-post alt text). Downloads are
  * handled by the parent (Download all finalized / package zip).
  */
-export default function StudioAnnotatedPreview(props) {
-  // Remount when the preview image changes so shapes reset without
-  // syncing state inside an effect.
-  return <AnnotatedPreviewSession key={props.url} {...props} />;
-}
-
-function AnnotatedPreviewSession({
+export default function StudioAnnotatedPreview({
   label,
   url,
   filename,
   onExporterChange,
   children = null,
 }) {
-  const [shapes, setShapes] = useState([]);
-  const [selectedId, setSelectedId] = useState(null);
   const [open, setOpen] = useState(false);
   const labelId = useId();
 
   useEffect(() => {
     if (!onExporterChange) return undefined;
     onExporterChange(async () => {
-      const blob = await compositeImageWithShapes(url, shapes);
+      const blob = await fetch(url).then((res) => res.blob());
       return { blob, filename };
     });
     return () => onExporterChange(null);
-  }, [onExporterChange, url, shapes, filename]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    function onKeyDown(event) {
-      if (
-        (event.key === "Backspace" || event.key === "Delete") &&
-        selectedId &&
-        !event.target.matches("input, textarea, select")
-      ) {
-        event.preventDefault();
-        setShapes((prev) => prev.filter((shape) => shape.id !== selectedId));
-        setSelectedId(null);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, selectedId]);
-
-  function addShape(type) {
-    const next = createShape(type, shapes.length);
-    setShapes((prev) => [...prev, next]);
-    setSelectedId(next.id);
-  }
-
-  function deleteSelected() {
-    if (!selectedId) return;
-    setShapes((prev) => prev.filter((shape) => shape.id !== selectedId));
-    setSelectedId(null);
-  }
-
-  function closeLightbox() {
-    setSelectedId(null);
-    setOpen(false);
-  }
+  }, [onExporterChange, url, filename]);
 
   return (
     <div className="space-y-3">
       <p id={labelId} className="sr-only">
-        Preview for {label}. Click to enlarge and edit circles.
+        Preview for {label}. Click to enlarge.
       </p>
 
       <button
@@ -372,13 +173,11 @@ function AnnotatedPreviewSession({
         className="mx-auto block cursor-zoom-in rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ink/50"
         aria-labelledby={labelId}
       >
-        <ShapeSurface
-          url={url}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
           alt={`${label} preview`}
-          shapes={shapes}
-          selectedId={null}
-          interactive={false}
-          imageClassName="block max-w-full rounded-xl border border-ink/15 "
+          className="block max-w-full rounded-xl border border-ink/15"
         />
       </button>
 
@@ -392,31 +191,8 @@ function AnnotatedPreviewSession({
             alt: `${label} preview`,
             label,
           }}
-          onClose={closeLightbox}
-          onEscape={() => {
-            if (selectedId) setSelectedId(null);
-            else closeLightbox();
-          }}
-        >
-          <div className="flex flex-col items-center">
-            <ShapeToolbar
-              selectedId={selectedId}
-              onAdd={addShape}
-              onDelete={deleteSelected}
-              className="mb-3"
-            />
-            <ShapeSurface
-              url={url}
-              alt={`${label} preview`}
-              shapes={shapes}
-              selectedId={selectedId}
-              interactive
-              imageClassName={LIGHTBOX_MEDIA_CLASSNAME}
-              onSelect={setSelectedId}
-              onShapesChange={setShapes}
-            />
-          </div>
-        </MediaLightbox>
+          onClose={() => setOpen(false)}
+        />
       ) : null}
     </div>
   );
