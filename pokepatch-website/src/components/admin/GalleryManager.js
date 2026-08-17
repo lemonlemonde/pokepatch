@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
@@ -357,7 +358,16 @@ function cardFromItem(item) {
   };
 }
 
+function itemHasStudioImagePairs(item) {
+  return (item?.pairs ?? []).some((pair) => {
+    const kind = pair.media_kind || pair.mediaKind || "image";
+    if (kind === "video") return false;
+    return Boolean(pair.urls?.before && pair.urls?.after);
+  });
+}
+
 export default function GalleryManager() {
+  const router = useRouter();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -726,6 +736,27 @@ export default function GalleryManager() {
     }
   }
 
+  function handleOpenInStudio(item) {
+    if (!item?.id) return;
+    if (!itemHasStudioImagePairs(item)) {
+      const message =
+        "Add at least one complete before/after image pair before opening in Studio.";
+      if (selectedId === item.id) setEditorError(message);
+      else setListError(message);
+      return;
+    }
+    if (
+      !window.confirm(
+        "Open this item in Studio? It will replace any photos currently loaded there.",
+      )
+    ) {
+      return;
+    }
+    router.push(
+      `/admin/studio/?fromGallery=${encodeURIComponent(item.id)}`,
+    );
+  }
+
   function renderEditor() {
     if (!draft) return null;
 
@@ -1041,6 +1072,16 @@ export default function GalleryManager() {
           >
             {saving ? "Saving…" : selected ? "Save changes" : "Create item"}
           </button>
+          {selected && itemHasStudioImagePairs(selected) && (
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => handleOpenInStudio(selected)}
+              className={secondaryButtonClassName()}
+            >
+              Open in Studio
+            </button>
+          )}
           {selected && (
             <button
               type="button"
@@ -1163,6 +1204,16 @@ export default function GalleryManager() {
                         className="h-12 w-9 rounded object-cover"
                       />
                     ) : null}
+
+                    <button
+                      type="button"
+                      disabled={saving || !itemHasStudioImagePairs(item)}
+                      onClick={() => handleOpenInStudio(item)}
+                      className={secondaryButtonClassName()}
+                      aria-label={`Open ${item.title} in Studio`}
+                    >
+                      Open in Studio
+                    </button>
 
                     <button
                       type="button"

@@ -419,6 +419,14 @@ export async function adminListGallery() {
   return payload.items ?? [];
 }
 
+export async function adminGetGalleryItem(id) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "gallery_get", id },
+  });
+  return payload.item ?? null;
+}
+
 export async function adminCreateGalleryItem({
   title,
   set_name = "",

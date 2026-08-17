@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import StudioFolderBoard, {
   createPair,
   readDragItem as readPairBankDragItem,
@@ -18,6 +18,7 @@ import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 import { publishStudioPairsToGallery } from "@/lib/studioToGallery";
+import { buildStudioSeedFromGalleryItem } from "@/lib/galleryToStudio";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
 import useDebouncedValue from "@/lib/useDebouncedValue";
@@ -587,6 +588,7 @@ function BeforeAfterPairPhotoFormatter({
   onChangeOutputFormat,
   cardMeta,
   onChangeCardMeta,
+  gallerySeed = null,
 }) {
   const router = useRouter();
   const [beforeItems, setBeforeItems] = useState([]);
@@ -602,6 +604,7 @@ function BeforeAfterPairPhotoFormatter({
   const [downloadingImages, setDownloadingImages] = useState(false);
   const exportersRef = useRef(new Map());
   const resultsRef = useRef(null);
+  const gallerySeedAppliedRef = useRef(null);
   const activeFormat =
     PHOTO_OUTPUT_FORMATS.find((format) => format.id === outputFormat) ??
     PHOTO_OUTPUT_FORMATS[0];
@@ -655,6 +658,27 @@ function BeforeAfterPairPhotoFormatter({
     hasContent,
   );
   useEffect(() => {
+    if (gallerySeed) {
+      if (gallerySeedAppliedRef.current === gallerySeed) return;
+      gallerySeedAppliedRef.current = gallerySeed;
+
+      setOutputs((prev) => {
+        prev?.forEach(({ url }) => URL.revokeObjectURL(url));
+        return null;
+      });
+      setBeforeItems(gallerySeed.beforeItems ?? []);
+      setAfterItems(gallerySeed.afterItems ?? []);
+      setPairs(
+        gallerySeed.pairs?.length ? gallerySeed.pairs : [createPair()],
+      );
+      setCaption(DEFAULT_PACKAGE_CAPTION);
+      flushDraftCaption(DEFAULT_PACKAGE_CAPTION);
+      setAltTextByKey({});
+      flushDraftAltText({});
+      setError("");
+      return;
+    }
+
     if (!restored) return;
     setBeforeItems(restored.beforeItems ?? []);
     setAfterItems(restored.afterItems ?? []);
@@ -667,7 +691,7 @@ function BeforeAfterPairPhotoFormatter({
     flushDraftAltText(restoredAltText);
     const restoredOutputs = outputsFromDraft(restored.outputs);
     setOutputs(restoredOutputs.length ? restoredOutputs : null);
-  }, [restored, flushDraftCaption, flushDraftAltText]);
+  }, [restored, gallerySeed, flushDraftCaption, flushDraftAltText]);
 
   function clearAll() {
     if (!window.confirm("Clear all photos and card info loaded here?")) {
@@ -989,8 +1013,15 @@ function BeforeAfterPairPhotoFormatter({
 }
 
 export default function StudioTool() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromGalleryParam = searchParams.get("fromGallery");
   const [outputFormat, setOutputFormat] = useState("reel");
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
+  const [gallerySeed, setGallerySeed] = useState(null);
+  const [galleryImporting, setGalleryImporting] = useState(Boolean(fromGalleryParam));
+  const [galleryImportError, setGalleryImportError] = useState("");
+  const galleryImportStartedRef = useRef(null);
 
   const draftPayload = useMemo(
     () => ({ outputFormat, cardMeta }),
@@ -1002,6 +1033,7 @@ export default function StudioTool() {
     hasCardMetaContent(cardMeta),
   );
   useEffect(() => {
+    if (gallerySeed || galleryImporting) return;
     if (!restored) return;
     if (restored.outputFormat) {
       setOutputFormat(normalizeOutputFormat(restored.outputFormat));
@@ -1016,14 +1048,83 @@ export default function StudioTool() {
         frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
       });
     }
-  }, [restored]);
+  }, [restored, gallerySeed, galleryImporting]);
+
+  useEffect(() => {
+    const itemId = (fromGalleryParam ?? "").trim();
+    if (!itemId) return undefined;
+    if (galleryImportStartedRef.current === itemId) return undefined;
+    galleryImportStartedRef.current = itemId;
+
+    let cancelled = false;
+    setGalleryImporting(true);
+    setGalleryImportError("");
+
+    (async () => {
+      try {
+        const seed = await buildStudioSeedFromGalleryItem(itemId);
+        if (cancelled) return;
+
+        await Promise.all([
+          deleteDraft(BEFORE_AFTER_PAIR_DRAFT_KEY),
+          deleteDraft(PHOTO_SHARED_DRAFT_KEY),
+        ]);
+        if (cancelled) return;
+
+        const frontFile = seed.cardMeta.frontFile ?? null;
+        setCardMeta({
+          showCardInfo: seed.cardMeta.showCardInfo ?? true,
+          card: seed.cardMeta.card ?? "",
+          set: seed.cardMeta.set ?? "",
+          frontFile,
+          frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
+        });
+        setGallerySeed(seed);
+      } catch (err) {
+        if (!cancelled) {
+          setGalleryImportError(
+            err instanceof Error
+              ? err.message
+              : "Could not load that gallery item into Studio.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setGalleryImporting(false);
+          router.replace("/admin/studio/");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fromGalleryParam, router]);
+
+  if (galleryImporting) {
+    return (
+      <div className="py-16 text-center">
+        <p className="animate-soft-bounce text-sm font-semibold text-ink/70">
+          Loading gallery images into Studio…
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <BeforeAfterPairPhotoFormatter
-      outputFormat={outputFormat}
-      onChangeOutputFormat={setOutputFormat}
-      cardMeta={cardMeta}
-      onChangeCardMeta={setCardMeta}
-    />
+    <>
+      {galleryImportError ? (
+        <p className="mb-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
+          {galleryImportError}
+        </p>
+      ) : null}
+      <BeforeAfterPairPhotoFormatter
+        outputFormat={outputFormat}
+        onChangeOutputFormat={setOutputFormat}
+        cardMeta={cardMeta}
+        onChangeCardMeta={setCardMeta}
+        gallerySeed={gallerySeed}
+      />
+    </>
   );
 }
