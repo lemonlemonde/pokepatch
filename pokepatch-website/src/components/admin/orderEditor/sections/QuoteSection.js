@@ -2,12 +2,12 @@
 
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
-  ADJUSTMENT_KIND_OPTIONS,
   billableQuoteCards,
   bulkDiscountPercentForCardCount,
   BULK_TIER_RANGES_LABEL,
   cardsWithQuoteHv,
   emptyQuoteAdjustment,
+  isPriorityAdjustmentRow,
 } from "@/lib/servicePricing";
 import { moneyFieldToPayload, quoteItemIsReady } from "@/lib/adminOrderDraft";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
@@ -50,6 +50,9 @@ export function buildQuotePreview(draft) {
 export default function QuoteSection() {
   const { draft, updateDraft, saving } = useOrderEditor();
   const adjustments = draft.quote_adjustments ?? [];
+  const editableAdjustments = adjustments.filter(
+    (row) => !isPriorityAdjustmentRow(row)
+  );
   const preview = buildQuotePreview(draft);
   const bulkPercent = bulkDiscountPercentForCardCount(preview.cardCount);
   const hasReceipt =
@@ -57,75 +60,63 @@ export default function QuoteSection() {
     preview.cards.some((card) => card.hv_amount) ||
     adjustments.length > 0;
 
+  /** Keep auto-synced priority surcharge rows intact when editing manual ones. */
+  function mapEditableAdjustments(mapper) {
+    updateDraft((current) => {
+      const all = current.quote_adjustments ?? [];
+      const editable = all.filter((row) => !isPriorityAdjustmentRow(row));
+      const priorityRows = all.filter(isPriorityAdjustmentRow);
+      return {
+        ...current,
+        quote_adjustments: [...mapper(editable), ...priorityRows],
+      };
+    });
+  }
+
   function updateAdjustment(index, patch) {
-    updateDraft((current) => ({
-      ...current,
-      quote_adjustments: current.quote_adjustments.map((row, i) =>
-        i === index ? { ...row, ...patch } : row
-      ),
-    }));
+    mapEditableAdjustments((editable) =>
+      editable.map((row, i) =>
+        i === index ? { ...row, ...patch, kind: "adjustment" } : row
+      )
+    );
   }
 
   function addAdjustment() {
-    updateDraft((current) => ({
-      ...current,
-      quote_adjustments: [
-        ...current.quote_adjustments,
-        emptyQuoteAdjustment("discount"),
-      ],
-    }));
+    mapEditableAdjustments((editable) => [
+      ...editable,
+      emptyQuoteAdjustment("adjustment"),
+    ]);
   }
 
   function removeAdjustment(index) {
-    updateDraft((current) => ({
-      ...current,
-      quote_adjustments: current.quote_adjustments.filter((_, i) => i !== index),
-    }));
+    mapEditableAdjustments((editable) =>
+      editable.filter((_, i) => i !== index)
+    );
   }
 
   return (
-    <Panel
-      title="Quote"
-      action={
-        <GhostButton onClick={addAdjustment} disabled={saving} className="text-xs">
-          Add adjustment
-        </GhostButton>
-      }
-    >
-      <div className="space-y-4">
-        {bulkPercent > 0 ? (
-          <p className="rounded-lg border border-mint/25 bg-mint/10 px-3 py-2 text-xs leading-relaxed text-ink/70">
-            {preview.cardCount} cards qualify for a {bulkPercent}% bulk discount
-            ({BULK_TIER_RANGES_LABEL}).
-          </p>
-        ) : null}
-
-        {adjustments.length > 0 ? (
+    <>
+      <Panel
+        title="Adjustments"
+        action={
+          <GhostButton
+            onClick={addAdjustment}
+            disabled={saving}
+            className="text-xs"
+          >
+            Add adjustment
+          </GhostButton>
+        }
+      >
+        {editableAdjustments.length > 0 ? (
           <div className="space-y-2">
-            {adjustments.map((row, index) => (
+            {editableAdjustments.map((row, index) => (
               <div
                 key={row.id ?? `adj-${index}`}
                 className="flex flex-wrap items-center gap-2"
               >
-                <select
-                  className={`${editorFieldClass({ fullWidth: false })} w-28 shrink-0 px-2`}
-                  value={row.kind || "discount"}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateAdjustment(index, { kind: event.target.value })
-                  }
-                >
-                  {ADJUSTMENT_KIND_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                  {row.kind === "surcharge" ? (
-                    <option value="surcharge">Surcharge</option>
-                  ) : null}
-                </select>
                 <input
-                  className={`${editorFieldClass({ fullWidth: false })} w-24 shrink-0`}
+                  className={`${editorFieldClass({ fullWidth: false })} w-28 shrink-0`}
                   inputMode="decimal"
                   value={row.amount_dollars ?? ""}
                   disabled={saving}
@@ -135,14 +126,16 @@ export default function QuoteSection() {
                       amount_percent: "",
                     })
                   }
-                  placeholder="$"
+                  placeholder="+/− $"
                 />
                 <input
                   className={`${editorFieldClass({ fullWidth: false })} min-w-[9rem] flex-1`}
                   value={row.description ?? ""}
                   disabled={saving}
                   onChange={(event) =>
-                    updateAdjustment(index, { description: event.target.value })
+                    updateAdjustment(index, {
+                      description: event.target.value,
+                    })
                   }
                   placeholder="Description (shown on receipt)"
                 />
@@ -154,26 +147,42 @@ export default function QuoteSection() {
               </div>
             ))}
           </div>
-        ) : null}
-
-        {hasReceipt || draft.is_priority ? (
-          <QuoteReceipt
-            items={preview.items}
-            cards={preview.cards}
-            adjustments={adjustments}
-            isPriority={Boolean(draft.is_priority)}
-            cardCount={preview.cardCount}
-            title="Receipt"
-            className={
-              draft.is_priority ? "border-ink/25 bg-ink/[0.07]" : ""
-            }
-          />
         ) : (
           <p className="text-sm text-ink/40">
-            Add services on cards or an adjustment to build the quote.
+            Optional credits or fees. Use a negative amount to reduce the
+            total.
           </p>
         )}
-      </div>
-    </Panel>
+      </Panel>
+
+      <Panel title="Quote">
+        <div className="space-y-4">
+          {bulkPercent > 0 ? (
+            <p className="rounded-lg border border-mint/25 bg-mint/10 px-3 py-2 text-xs leading-relaxed text-ink/70">
+              {preview.cardCount} cards qualify for a {bulkPercent}% bulk
+              discount ({BULK_TIER_RANGES_LABEL}).
+            </p>
+          ) : null}
+
+          {hasReceipt || draft.is_priority ? (
+            <QuoteReceipt
+              items={preview.items}
+              cards={preview.cards}
+              adjustments={adjustments}
+              isPriority={Boolean(draft.is_priority)}
+              cardCount={preview.cardCount}
+              title="Receipt"
+              className={
+                draft.is_priority ? "border-ink/25 bg-ink/[0.07]" : ""
+              }
+            />
+          ) : (
+            <p className="text-sm text-ink/40">
+              Add services on cards to build the quote.
+            </p>
+          )}
+        </div>
+      </Panel>
+    </>
   );
 }

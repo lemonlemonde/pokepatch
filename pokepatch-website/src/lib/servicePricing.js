@@ -497,21 +497,17 @@ export function normalizeCardHvEntry(row) {
 }
 
 const ADJUSTMENT_KINDS = new Set([
+  // Generic signed adjustment (admin UI).
+  "adjustment",
+  // Legacy kinds — still read from stored rows.
   "discount",
   "delivery",
   "shipping",
-  // Legacy kind kept for stored rows; not offered in the admin UI.
   "surcharge",
 ]);
 
-/** Admin type dropdown options (excludes legacy surcharge). */
-export const ADJUSTMENT_KIND_OPTIONS = [
-  { value: "discount", label: "Discount" },
-  { value: "delivery", label: "Delivery" },
-  { value: "shipping", label: "Shipping" },
-];
-
 const ADJUSTMENT_KIND_LABELS = {
+  adjustment: "Adjustment",
   discount: "Discount",
   delivery: "Delivery",
   shipping: "Shipping",
@@ -519,7 +515,7 @@ const ADJUSTMENT_KIND_LABELS = {
 };
 
 export function adjustmentKindLabel(kind) {
-  return ADJUSTMENT_KIND_LABELS[kind] ?? "Discount";
+  return ADJUSTMENT_KIND_LABELS[kind] ?? "Adjustment";
 }
 
 function newAdjustmentId() {
@@ -529,10 +525,10 @@ function newAdjustmentId() {
   return `adj-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function emptyQuoteAdjustment(kind = "discount") {
+export function emptyQuoteAdjustment(kind = "adjustment") {
   return {
     id: newAdjustmentId(),
-    kind: ADJUSTMENT_KINDS.has(kind) ? kind : "discount",
+    kind: ADJUSTMENT_KINDS.has(kind) ? kind : "adjustment",
     description: "",
     amount_dollars: "",
     amount_percent: "",
@@ -548,20 +544,28 @@ export function percentToDollars(percent, subtotal) {
   return Math.round(base * (pct / 100) * 100) / 100;
 }
 
-/** Normalize one editor/storage adjustment row. */
+/**
+ * Normalize one editor/storage adjustment row.
+ * amount_dollars is signed (negative = credit/discount). Legacy rows stored
+ * absolute $ with kind "discount"; those are converted to a negative amount.
+ */
 export function normalizeQuoteAdjustment(row) {
   if (!row || typeof row !== "object") return null;
-  const kind = ADJUSTMENT_KINDS.has(row.kind) ? row.kind : "discount";
+  const kind = ADJUSTMENT_KINDS.has(row.kind) ? row.kind : "adjustment";
   const description =
     row.description != null ? String(row.description).trim() : "";
   const dollarsRaw = row.amount_dollars;
   const percentRaw = row.amount_percent;
-  const dollars =
+  let dollars =
     dollarsRaw === "" || dollarsRaw == null
       ? null
       : Number.isFinite(Number(dollarsRaw))
-        ? Math.abs(Number(dollarsRaw))
+        ? Number(dollarsRaw)
         : null;
+  if (dollars != null && dollars !== 0 && dollars > 0 && kind === "discount") {
+    // Legacy abs storage + discount kind → signed negative.
+    dollars = -dollars;
+  }
   const percent =
     percentRaw === "" || percentRaw == null
       ? null
@@ -581,7 +585,7 @@ export function quoteAdjustmentHasContent(row) {
   const normalized = normalizeQuoteAdjustment(row);
   if (!normalized) return false;
   if (normalized.description) return true;
-  if (normalized.amount_dollars != null && normalized.amount_dollars > 0) {
+  if (normalized.amount_dollars != null && normalized.amount_dollars !== 0) {
     return true;
   }
   if (normalized.amount_percent != null && normalized.amount_percent > 0) {
@@ -590,7 +594,7 @@ export function quoteAdjustmentHasContent(row) {
   return false;
 }
 
-/** Signed $ applied to the total (discount negative; all other kinds positive). */
+/** Signed $ applied to the total (negative reduces the quote). */
 export function quoteAdjustmentSignedAmount(row, subtotal = null) {
   const normalized = normalizeQuoteAdjustment(row);
   if (!normalized) return 0;
@@ -600,11 +604,14 @@ export function quoteAdjustmentSignedAmount(row, subtotal = null) {
     normalized.amount_percent != null &&
     subtotal != null
   ) {
-    dollars = percentToDollars(normalized.amount_percent, subtotal) ?? 0;
+    const fromPercent =
+      percentToDollars(normalized.amount_percent, subtotal) ?? 0;
+    // Legacy percent rows used kind to encode sign.
+    dollars =
+      normalized.kind === "discount" ? -fromPercent : fromPercent;
   }
   if (dollars == null || !Number.isFinite(dollars) || dollars === 0) return 0;
-  const signed = normalized.kind === "discount" ? -dollars : dollars;
-  return Math.round(signed * 100) / 100;
+  return Math.round(dollars * 100) / 100;
 }
 
 export function quoteAdjustmentsTotal(adjustments, items = []) {
@@ -651,7 +658,7 @@ export function packQuoteAdjustments(adjustments, cardHv = null) {
     .filter((row) => row && quoteAdjustmentHasContent(row))
     .map((row) => ({
       id: row.id,
-      kind: row.kind,
+      kind: isPriorityAdjustmentRow(row) ? "surcharge" : "adjustment",
       description: row.description,
       amount_dollars: row.amount_dollars,
       amount_percent: row.amount_percent,
