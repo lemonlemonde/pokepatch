@@ -1,5 +1,4 @@
 import SectionHeading from "@/components/SectionHeading";
-import SocialLinks from "@/components/SocialLinks";
 import QuoteForm from "@/components/QuoteForm";
 
 export const metadata = {
@@ -20,8 +19,6 @@ export default function ContactPage() {
       </SectionHeading>
 
       <QuoteForm />
-
-      <SocialLinks className="mt-10" />
     </div>
   );
 }
