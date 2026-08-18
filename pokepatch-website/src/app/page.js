@@ -22,7 +22,7 @@ const steps = [
   },
   {
     title: "Get your quote",
-    text: "We look over the photos and reply — usually within 2 hours — with options and pricing.",
+    text: "We look over the photos and reply — usually within 1 day — with options and pricing.",
   },
   {
     title: "Send your cards",
@@ -51,7 +51,7 @@ const faqs = [
   },
   {
     question: "How soon can I get a quote?",
-    answer: "Turnaround time is less than 2 hours.",
+    answer: "We usually reply within 1 day.",
   },
   {
     question: "How long does restoration take?",
@@ -200,7 +200,7 @@ export default function Home() {
                 Ready to revive your cards?
               </h2>
               <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-ink/60 md:text-base">
-                Send a few photos — we&apos;ll get back to you within 2 hours.
+                Send a few photos — we&apos;ll get back to you within 1 day.
               </p>
               <div className="mt-8 sm:mt-10">
                 <Button

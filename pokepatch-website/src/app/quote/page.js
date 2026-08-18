@@ -4,7 +4,7 @@ import QuoteForm from "@/components/QuoteForm";
 export const metadata = {
   title: "Get Free Quote",
   description:
-    "Send photos of your damaged trading cards and get a restoration quote within 2 hours. Local Bay Area drop-off or nationwide mail-in.",
+    "Send photos of your damaged trading cards and get a restoration quote within 1 day. Local Bay Area drop-off or nationwide mail-in.",
 };
 
 export default function QuotePage() {
@@ -13,7 +13,7 @@ export default function QuotePage() {
       <SectionHeading
         as="h1"
         note="Quote"
-        subtitle="Send photos of your cards and tell us what you'd like fixed. We usually reply within 2 hours."
+        subtitle="Send photos of your cards and tell us what you'd like fixed. We usually reply within 1 day."
       >
         Get a free quote
       </SectionHeading>

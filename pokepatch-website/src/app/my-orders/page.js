@@ -151,8 +151,15 @@ export default function MyOrdersPage() {
     }
 
     loadOrders();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") loadOrders();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [user]);
 

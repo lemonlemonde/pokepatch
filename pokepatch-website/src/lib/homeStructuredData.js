@@ -1,7 +1,7 @@
 const SITE_URL = "https://pokepatch.cards";
 const SITE_NAME = "PokePatch Card Restorations";
 const SITE_DESCRIPTION =
-  "Gentle, careful trading card restorations with a cozy touch. Surface cleaning, edge repair, crease flattening, and full restorations.";
+  "Careful trading card restorations. Surface cleaning, edge repair, crease flattening, and full restorations. Bay Area drop-off or US mail-in.";
 
 /** FAQ titles on the page include emoji — schema.org names should be plain text. */
 function faqQuestionForSchema(question) {

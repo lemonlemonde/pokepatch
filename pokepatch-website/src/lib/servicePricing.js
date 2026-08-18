@@ -24,7 +24,10 @@ const SERVICE_UNIT = "/ card";
 export const CARD_WHITENING_WARNING =
   "Only for very small whitening dots on edges and corners. Grading companies like PSA may potentially detect added ink and mark the card as altered.";
 
-/** Services that can appear on a quote line (excludes marketing-only cards). */
+/**
+ * Customer-facing service names. PRESSING / ADVANCED must stay
+ * "Minor Damage" / "Major Damage" in titles — keys stay for DB compatibility.
+ */
 export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.SURFACE,
@@ -74,6 +77,21 @@ export const QUOTE_SERVICES = [
     accent: "mint",
   },
 ];
+
+/** Old stored labels → current customer-facing titles. */
+const LEGACY_SERVICE_DISPLAY_TITLES = {
+  "Precision Pressing": "Minor Damage",
+  Flattening: "Minor Damage",
+  "Advanced Restoration": "Major Damage",
+  "Heavy Damage": "Major Damage",
+};
+
+/** Normalize a quote line label for display (receipts, changelog). */
+export function normalizeServiceDisplayTitle(title) {
+  const trimmed = (title || "").trim();
+  if (!trimmed) return trimmed;
+  return LEGACY_SERVICE_DISPLAY_TITLES[trimmed] ?? trimmed;
+}
 
 /** Format a list rate for display (homepage cards, admin labels). */
 export function formatListPrice(listPrice, priceSuffix = "") {
