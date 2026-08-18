@@ -147,12 +147,7 @@ export default function QuoteSection() {
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-sm text-ink/40">
-            Optional credits or fees. Use a negative amount to reduce the
-            total.
-          </p>
-        )}
+        ) : null}
       </Panel>
 
       <Panel title="Quote">
