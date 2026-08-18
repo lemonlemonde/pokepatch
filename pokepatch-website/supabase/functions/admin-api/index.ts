@@ -1592,6 +1592,89 @@ function resolveOrderAccountUserId(
   return (email && emailToUserId.get(email)) || null;
 }
 
+/** customer_profiles first/last name, keyed by user_id (includes blank names). */
+async function fetchProfileNamesByUserIds(
+  supabase: ReturnType<typeof getServiceClient>,
+  userIds: string[]
+): Promise<Map<string, ProfileNameRow>> {
+  const map = new Map<string, ProfileNameRow>();
+  if (userIds.length === 0) return map;
+
+  const chunkSize = 200;
+  for (let i = 0; i < userIds.length; i += chunkSize) {
+    const chunk = userIds.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from("customer_profiles")
+      .select("user_id, first_name, last_name")
+      .in("user_id", chunk);
+    if (error) throw error;
+    for (const row of (data ?? []) as ProfileNameRow[]) {
+      map.set(row.user_id, row);
+    }
+  }
+  return map;
+}
+
+type AccountSearchHit = {
+  user_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+};
+
+const ACCOUNT_SEARCH_LIMIT = 20;
+
+/** Match Auth users by name or email substring for admin new-order prefill. */
+async function searchCustomerAccounts(
+  supabase: ReturnType<typeof getServiceClient>,
+  rawQuery: string
+): Promise<{
+  accounts: AccountSearchHit[];
+  query: string;
+  truncated: boolean;
+}> {
+  const trimmed = rawQuery.trim();
+  const query = trimmed.toLowerCase();
+  if (query.length < 2) {
+    return { accounts: [], query: trimmed, truncated: false };
+  }
+
+  const authUsers = await listAllAuthUsers(supabase);
+  const namesByUserId = await fetchProfileNamesByUserIds(
+    supabase,
+    authUsers.map((user) => user.id)
+  );
+
+  const matched: AccountSearchHit[] = [];
+  for (const user of authUsers) {
+    const profile = namesByUserId.get(user.id);
+    const firstName = (profile?.first_name ?? "").trim();
+    const lastName = (profile?.last_name ?? "").trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+    const haystack = `${firstName} ${lastName} ${fullName} ${user.email}`.toLowerCase();
+    if (!haystack.includes(query)) continue;
+    matched.push({
+      user_id: user.id,
+      email: user.email,
+      first_name: firstName,
+      last_name: lastName,
+    });
+  }
+
+  matched.sort((a, b) => {
+    const nameA = `${a.first_name} ${a.last_name}`.trim() || a.email;
+    const nameB = `${b.first_name} ${b.last_name}`.trim() || b.email;
+    return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+  });
+
+  const truncated = matched.length > ACCOUNT_SEARCH_LIMIT;
+  return {
+    accounts: matched.slice(0, ACCOUNT_SEARCH_LIMIT),
+    query: trimmed,
+    truncated,
+  };
+}
+
 /** customer_profiles first/last name, keyed by user_id, for every account behind these orders. */
 async function fetchAccountNamesForOrders(
   supabase: ReturnType<typeof getServiceClient>,
@@ -1725,8 +1808,17 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, order });
     }
 
-    // Guest shell order — no auth user / prior orders required.
-    // user_id stays null; claim_my_orders links by email on signup.
+    // Type-to-search Auth accounts (name / email) for admin new-order prefill.
+    if (action === "search_accounts") {
+      const payload = await searchCustomerAccounts(
+        supabase,
+        String(body.q ?? body.query ?? "")
+      );
+      return jsonResponse(req, { ok: true, ...payload });
+    }
+
+    // Shell order — guests stay unlinked (claim_my_orders on signup).
+    // If the email already belongs to an account, attach that user_id.
     if (action === "create") {
       const firstName = String(body.first_name ?? "").trim();
       const lastName = String(body.last_name ?? "").trim();
@@ -1755,12 +1847,16 @@ Deno.serve(async (req) => {
 
       const orderId = crypto.randomUUID();
       const customerName = `${firstName} ${lastName}`.trim();
+      const linkedUserId = await resolveUserIdByEmail(
+        supabase,
+        normalizeEmail(customerEmail)
+      );
 
       const { data: inserted, error: insertError } = await supabase
         .from("orders")
         .insert({
           id: orderId,
-          user_id: null,
+          user_id: linkedUserId,
           first_name: firstName,
           last_name: lastName,
           customer_name: customerName,

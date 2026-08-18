@@ -297,7 +297,26 @@ export async function adminGetOrder(orderId) {
   return stabilizeOrderDetail(payload.order);
 }
 
-/** Create a guest order shell (no signup / prior orders required). */
+/**
+ * Search Auth accounts by name or email (min 2 chars). Used to prefill
+ * admin "new order" for an existing customer.
+ */
+export async function adminSearchAccounts(query) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "search_accounts", q: query },
+  });
+  return {
+    accounts: payload.accounts ?? [],
+    query: payload.query ?? String(query ?? ""),
+    truncated: Boolean(payload.truncated),
+  };
+}
+
+/**
+ * Create an order shell. Guests need no prior account; if the email matches
+ * an existing Auth user, the API attaches that user_id.
+ */
 export async function adminCreateOrder({
   first_name,
   last_name,

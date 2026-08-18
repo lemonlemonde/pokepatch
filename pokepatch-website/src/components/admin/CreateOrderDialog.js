@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   overlayFadeClassName,
   useOverlayPresence,
 } from "@/components/ExpandReveal";
+import { adminSearchAccounts } from "@/lib/adminApi";
 
 function fieldClassName() {
   return "w-full rounded-xl border border-ink/15 bg-cream px-3.5 py-2.5 text-sm text-ink outline-none transition focus:border-mint focus:ring-2 focus:ring-mint/20";
@@ -17,8 +18,19 @@ const EMPTY_FORM = {
   delivery_method: "local_dropoff",
 };
 
+const MIN_ACCOUNT_QUERY = 2;
+const ACCOUNT_SEARCH_DEBOUNCE_MS = 280;
+
+function accountLabel(account) {
+  const name = [account.first_name, account.last_name]
+    .map((part) => (part ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return name || account.email || "Account";
+}
+
 /**
- * Create a pending quote order for a customer who may not have an account yet.
+ * Create a pending quote order for a guest or an existing account holder.
  * Cards and the rest of the draft are filled in the order editor afterward.
  */
 export default function CreateOrderDialog({
@@ -29,12 +41,34 @@ export default function CreateOrderDialog({
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
+  const [accountQuery, setAccountQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const searchRequestIdRef = useRef(0);
   const { mounted, visible } = useOverlayPresence(open);
+
+  function invalidateSearch() {
+    searchRequestIdRef.current += 1;
+    setSearchResults([]);
+    setSearching(false);
+    setSearchError("");
+    setSearchTruncated(false);
+  }
 
   useEffect(() => {
     if (!open) return;
     setForm(EMPTY_FORM);
     setError("");
+    setAccountQuery("");
+    setSelectedAccount(null);
+    searchRequestIdRef.current += 1;
+    setSearchResults([]);
+    setSearching(false);
+    setSearchError("");
+    setSearchTruncated(false);
   }, [open]);
 
   useEffect(() => {
@@ -46,10 +80,68 @@ export default function CreateOrderDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, creating, onCancel]);
 
+  useEffect(() => {
+    if (!open || selectedAccount) return undefined;
+
+    const q = accountQuery.trim();
+    if (q.length < MIN_ACCOUNT_QUERY) {
+      searchRequestIdRef.current += 1;
+      setSearchResults([]);
+      setSearching(false);
+      setSearchError("");
+      setSearchTruncated(false);
+      return undefined;
+    }
+
+    const requestId = ++searchRequestIdRef.current;
+    setSearching(true);
+    setSearchError("");
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const payload = await adminSearchAccounts(q);
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchResults(payload.accounts ?? []);
+          setSearchTruncated(Boolean(payload.truncated));
+        } catch (err) {
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchResults([]);
+          setSearchTruncated(false);
+          setSearchError(err?.message || "Account search failed.");
+        } finally {
+          if (requestId === searchRequestIdRef.current) {
+            setSearching(false);
+          }
+        }
+      })();
+    }, ACCOUNT_SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [open, accountQuery, selectedAccount]);
+
   if (!mounted) return null;
 
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectAccount(account) {
+    setSelectedAccount(account);
+    setAccountQuery("");
+    invalidateSearch();
+    setForm((current) => ({
+      ...current,
+      first_name: (account.first_name ?? "").trim(),
+      last_name: (account.last_name ?? "").trim(),
+      customer_email: (account.email ?? "").trim(),
+    }));
+  }
+
+  function clearSelectedAccount() {
+    setSelectedAccount(null);
+    setAccountQuery("");
+    invalidateSearch();
+    setForm(EMPTY_FORM);
   }
 
   async function handleSubmit(event) {
@@ -82,6 +174,9 @@ export default function CreateOrderDialog({
     }
   }
 
+  const showSearchPanel =
+    !selectedAccount && accountQuery.trim().length >= MIN_ACCOUNT_QUERY;
+
   return (
     <div
       className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
@@ -103,7 +198,8 @@ export default function CreateOrderDialog({
             New order
           </h2>
           <p className="mt-1 text-xs text-ink/50">
-            Works for guests who have not signed up. Add cards after create.
+            Search for an existing account to prefill, or enter a guest by hand.
+            Add cards after create.
           </p>
         </div>
         <div className="space-y-4 px-5 py-4">
@@ -112,6 +208,91 @@ export default function CreateOrderDialog({
               {error}
             </p>
           ) : null}
+
+          <div className="block">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="block text-sm font-semibold text-ink">
+                Find account
+              </span>
+              {selectedAccount ? (
+                <button
+                  type="button"
+                  onClick={clearSelectedAccount}
+                  disabled={creating}
+                  className="text-xs font-semibold text-ink/50 transition hover:text-ink disabled:opacity-50"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+
+            {selectedAccount ? (
+              <div className="rounded-xl border border-mint/40 bg-mint/10 px-3.5 py-2.5">
+                <p className="text-sm font-semibold text-ink">
+                  {accountLabel(selectedAccount)}
+                </p>
+                <p className="mt-0.5 text-xs text-ink/60">
+                  {selectedAccount.email}
+                </p>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="search"
+                  value={accountQuery}
+                  onChange={(event) => setAccountQuery(event.target.value)}
+                  disabled={creating}
+                  placeholder="Search by name or email…"
+                  autoComplete="off"
+                  autoFocus
+                  className={fieldClassName()}
+                />
+                <p className="mt-1.5 text-xs text-ink/40">
+                  Type at least {MIN_ACCOUNT_QUERY} characters. Optional — leave
+                  blank for a guest order.
+                </p>
+              </>
+            )}
+
+            {showSearchPanel ? (
+              <div className="mt-2 max-h-52 overflow-auto rounded-xl border border-ink/15 bg-cream">
+                {searching ? (
+                  <p className="px-3.5 py-2.5 text-sm text-ink/50">Searching…</p>
+                ) : searchError ? (
+                  <p className="px-3.5 py-2.5 text-sm text-error">{searchError}</p>
+                ) : searchResults.length === 0 ? (
+                  <p className="px-3.5 py-2.5 text-sm text-ink/50">
+                    No matching accounts.
+                  </p>
+                ) : (
+                  <>
+                    {searchResults.map((account) => (
+                      <button
+                        key={account.user_id}
+                        type="button"
+                        disabled={creating}
+                        onClick={() => selectAccount(account)}
+                        className="flex w-full flex-col items-start gap-0.5 border-b border-ink/5 px-3.5 py-2.5 text-left text-sm text-ink transition last:border-b-0 hover:bg-ink/5"
+                      >
+                        <span className="font-semibold">
+                          {accountLabel(account)}
+                        </span>
+                        <span className="text-xs text-ink/50">
+                          {account.email}
+                        </span>
+                      </button>
+                    ))}
+                    {searchTruncated ? (
+                      <p className="px-3.5 py-2 text-xs text-ink/40">
+                        More matches — refine your search.
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1.5 block text-sm font-semibold text-ink">
@@ -123,7 +304,6 @@ export default function CreateOrderDialog({
                   updateField("first_name", event.target.value)
                 }
                 disabled={creating}
-                autoFocus
                 className={fieldClassName()}
               />
             </label>
