@@ -123,7 +123,7 @@ function VerifyEmailContent() {
       <div className="marketing-panel animate-fade-up space-y-6 p-6 text-center [animation-delay:150ms]">
         {status === "invalid" ? (
           <>
-            <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+            <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
               That confirmation link is invalid or has expired.
             </p>
             <p className="text-ink/80">
@@ -151,13 +151,13 @@ function VerifyEmailContent() {
         )}
 
         {status === "sent" && (
-          <p className="rounded-2xl border-2 border-mint bg-mint/40 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-lg border border-mint/30 bg-mint/15 px-4 py-3 text-sm text-ink">
             Confirmation email sent. Please check your inbox.
           </p>
         )}
 
         {status === "error" && (
-          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
             {error}
           </p>
         )}

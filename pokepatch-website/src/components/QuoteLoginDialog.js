@@ -159,7 +159,7 @@ export default function QuoteLoginDialog({ email, onLoggedIn, onGuest }) {
           <button
             type="submit"
             disabled={busy}
-            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night shadow-cozy transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-night transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {busy ? "Logging in…" : "Log in"}
           </button>

@@ -124,7 +124,7 @@ export default function OrderCard({ order }) {
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-display text-base font-bold text-ink">
+          <p className="font-medium tracking-tight text-ink">
             Order #{order.display_id}
           </p>
           <span

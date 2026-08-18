@@ -357,7 +357,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
           >
             ← All orders
           </Link>
-          <h1 className="mt-2 font-display text-2xl font-bold text-ink">
+          <h1 className="mt-2 text-2xl font-medium tracking-tight text-ink">
             Order #{order.display_id}
           </h1>
           <p className="mt-1 text-sm text-ink/60">

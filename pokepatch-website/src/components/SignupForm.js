@@ -107,13 +107,13 @@ export default function SignupForm({
   return (
     <div className="space-y-4">
       {error ? (
-        <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+        <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
           {error}
         </p>
       ) : null}
 
       {notice ? (
-        <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+        <p className="rounded-lg border border-lavender/30 bg-lavender/10 px-4 py-3 text-sm text-ink">
           {notice}
           {showLoginLinkInNotice ? (
             <>

@@ -76,7 +76,7 @@ function MyOrderDetailInner() {
 
         {displayError ? (
           <div className="space-y-4">
-            <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+            <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
               {displayError}
             </p>
             <Link

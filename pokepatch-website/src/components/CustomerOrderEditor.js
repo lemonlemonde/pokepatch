@@ -459,7 +459,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   return (
     <form onSubmit={handleSave} noValidate className="space-y-10">
       {errorMessage ? (
-        <p className="rounded-2xl border-2 border-error bg-error/20 px-4 py-3 text-sm font-semibold text-error">
+        <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
           {errorMessage}
         </p>
       ) : null}
@@ -629,7 +629,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           <p
             className={
               fieldErrors?.noCards
-                ? "scroll-mt-24 rounded-xl border-2 border-error bg-error/10 px-4 py-3 text-sm text-ink"
+                ? "scroll-mt-24 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink"
                 : "scroll-mt-24 text-sm text-ink/60"
             }
           >
@@ -957,7 +957,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       <div className="space-y-3 border-t border-ink/10 pt-6">
         {showValidationError ? (
           <p
-            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-error"
+            className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
             role="alert"
           >
             Please fill out all required fields
@@ -981,7 +981,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       {confirmCancel ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-ink/15 bg-cream p-5 shadow-xl">
-            <h3 className="font-display text-lg font-bold text-ink">
+            <h3 className="text-lg font-medium tracking-tight text-ink">
               Cancel this order?
             </h3>
             <p className="mt-2 text-sm text-ink/70">
