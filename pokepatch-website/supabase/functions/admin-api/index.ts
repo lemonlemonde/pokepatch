@@ -2018,19 +2018,12 @@ Deno.serve(async (req) => {
 
       const { data: image, error: imageError } = await supabase
         .from("card_images")
-        .select("id, card_id, image_type, storage_path")
+        .select("id, card_id, storage_path")
         .eq("id", imageId)
         .maybeSingle();
       if (imageError) throw imageError;
       if (!image) {
         return jsonResponse(req, { ok: false, error: "photo not found" }, 404);
-      }
-      if (image.image_type === "customer") {
-        return jsonResponse(
-          req,
-          { ok: false, error: "customer photos cannot be deleted" },
-          400
-        );
       }
 
       const { data: card, error: cardError } = await supabase
@@ -2055,7 +2048,7 @@ Deno.serve(async (req) => {
           .from(BUCKET)
           .remove(pathsWithSiblings([image.storage_path as string]));
         if (storageError) {
-          console.error("admin photo storage cleanup failed", storageError);
+          console.error("card photo storage cleanup failed", storageError);
         }
       }
 
