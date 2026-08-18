@@ -129,6 +129,28 @@ export default function Home() {
           </ol>
         </section>
 
+        <section className="marketing-section !py-6 sm:!py-8 md:!py-10">
+          <ScrollReveal>
+            <div className="flex flex-col items-center justify-between gap-5 border-y border-ink/10 py-8 sm:flex-row sm:py-10">
+              <div className="max-w-xl text-center sm:text-left">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40 sm:text-[11px]">
+                  Start a quote
+                </p>
+                <p className="mt-2 text-lg font-medium tracking-tight text-ink sm:text-xl">
+                  Ready to send your cards in?
+                </p>
+              </div>
+              <Button
+                href="/contact"
+                variant="marketing"
+                className="w-full min-h-12 shrink-0 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
+              >
+                Get Free Quote
+              </Button>
+            </div>
+          </ScrollReveal>
+        </section>
+
         <section className="marketing-section">
           <MarketingSectionHeading note="Pricing">
             What we fix

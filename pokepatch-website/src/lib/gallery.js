@@ -204,9 +204,39 @@ export function mapGalleryRowToItem(row) {
   };
 }
 
+/** Stable key for deep-links (`/gallery/?item=…`) and DOM ids. */
+export function galleryItemParam(item) {
+  if (!item) return "";
+  if (item.id != null && String(item.id).trim() !== "") {
+    return String(item.id);
+  }
+  return String(item.title ?? "").trim();
+}
+
+export function galleryItemHref(item) {
+  const param = galleryItemParam(item);
+  if (!param) return "/gallery/";
+  return `/gallery/?item=${encodeURIComponent(param)}`;
+}
+
+export function galleryItemMatchesParam(item, param) {
+  if (!param) return false;
+  const key = galleryItemParam(item);
+  if (key && key === param) return true;
+  return String(item?.title ?? "") === param;
+}
+
+/** DOM id for scrolling to a gallery card from a deep-link. */
+export function galleryItemDomId(item) {
+  const param = galleryItemParam(item);
+  if (!param) return "gallery-item";
+  return `gallery-item-${param.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
+}
+
 /** Hardcoded gallery used until Supabase has published rows (newest first). */
 export const FALLBACK_GALLERY_ITEMS = [
   {
+    id: "team-japans-pikachu",
     title: "Team Japan's Pikachu",
     set_name: "XY Promos",
     damage_tags: ["dent"],
@@ -238,6 +268,7 @@ export const FALLBACK_GALLERY_ITEMS = [
     ],
   },
   {
+    id: "rayquaza",
     title: "Rayquaza",
     set_name: "Delta Species",
     damage_tags: ["crease"],
@@ -269,6 +300,7 @@ export const FALLBACK_GALLERY_ITEMS = [
     ],
   },
   {
+    id: "reshiram-full-art",
     title: "Reshiram Full Art",
     set_name: "Black and White",
     damage_tags: ["edge_lift", "dirt"],
@@ -288,6 +320,7 @@ export const FALLBACK_GALLERY_ITEMS = [
     ],
   },
   {
+    id: "scizor-ex",
     title: "Scizor ex",
     set_name: "Unseen Forces",
     damage_tags: ["edge_lift", "crease"],
@@ -319,6 +352,7 @@ export const FALLBACK_GALLERY_ITEMS = [
     ],
   },
   {
+    id: "rockets-mewtwo",
     title: "Rocket's Mewtwo",
     set_name: "Gym Challenge",
     damage_tags: ["crease", "scratching"],

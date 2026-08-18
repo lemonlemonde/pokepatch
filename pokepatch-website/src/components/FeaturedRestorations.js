@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   FALLBACK_GALLERY_ITEMS,
   fetchPublishedGalleryItems,
+  galleryItemHref,
 } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
 
@@ -56,7 +57,7 @@ function GalleryCard({ item, pair, index, variant = "cozy" }) {
 
   return (
     <Link
-      href="/gallery"
+      href={galleryItemHref(item)}
       className={`block transition duration-200 ease-out sm:hover:-translate-y-0.5 ${
         isMarketing
           ? "w-[min(78vw,20rem)] shrink-0 snap-start sm:w-auto"

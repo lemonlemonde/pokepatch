@@ -1,5 +1,4 @@
 import SectionHeading from "@/components/SectionHeading";
-import SocialLinks from "@/components/SocialLinks";
 import QuoteForm from "@/components/QuoteForm";
 
 export const metadata = {
@@ -18,8 +17,6 @@ export default function ContactPage() {
       >
         Get a free quote
       </SectionHeading>
-
-      <SocialLinks className="mb-8" />
 
       <QuoteForm />
     </div>

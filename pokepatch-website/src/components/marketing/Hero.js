@@ -9,9 +9,36 @@ const STATS = [
   { label: "Mail-in", value: "US-wide" },
 ];
 
+const HERO_PAIR = {
+  title: "Giovanni's Nidoking",
+  before: "/gallery/nidoking-before-front.webp",
+  after: "/gallery/nidoking-after-front.webp",
+};
+
+function HeroPairSide({ src, label, title }) {
+  return (
+    <figure className="min-w-0">
+      <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-night/30 ring-1 ring-ink/10">
+        <Image
+          src={src}
+          alt={`${title} ${label.toLowerCase()} restoration`}
+          fill
+          priority
+          sizes="(max-width: 1024px) 45vw, 280px"
+          className="object-cover"
+        />
+      </div>
+      <figcaption className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.2em] text-ink/45 sm:text-[10px]">
+        {label}
+      </figcaption>
+    </figure>
+  );
+}
+
 /**
  * Brand-first hero in the dark editorial system.
  * Copy stays shop-plain; type stays Instrument / professional.
+ * Right column shows a real before/after so the first viewport proves the product.
  */
 export default function Hero() {
   return (
@@ -25,7 +52,7 @@ export default function Hero() {
           </div>
         </ScrollReveal>
 
-        <div className="mt-12 grid items-end gap-12 sm:mt-16 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
+        <div className="mt-12 grid items-end gap-12 sm:mt-16 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16">
           <ScrollReveal variant="dramatic">
             <div className="mb-7 sm:mb-9">
               <Image
@@ -67,20 +94,38 @@ export default function Hero() {
           </ScrollReveal>
 
           <ScrollReveal>
-            <dl className="grid grid-cols-3 gap-3 border-t border-ink/10 pt-5 sm:gap-4 lg:grid-cols-1 lg:gap-8 lg:border-t-0 lg:border-l lg:border-ink/15 lg:pl-10 lg:pt-0">
-              {STATS.map((stat) => (
-                <div key={stat.label} className="min-w-0">
-                  <dt className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink/45 sm:text-[10px] sm:tracking-[0.25em]">
-                    {stat.label}
-                  </dt>
-                  <dd className="mt-1 text-sm font-medium tracking-tight text-ink sm:mt-2 sm:text-lg md:text-xl">
-                    {stat.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <HeroPairSide
+                src={HERO_PAIR.before}
+                label="Before"
+                title={HERO_PAIR.title}
+              />
+              <HeroPairSide
+                src={HERO_PAIR.after}
+                label="After"
+                title={HERO_PAIR.title}
+              />
+            </div>
+            <p className="mt-3 truncate text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
+              {HERO_PAIR.title}
+            </p>
           </ScrollReveal>
         </div>
+
+        <ScrollReveal>
+          <dl className="mt-12 grid grid-cols-3 gap-3 border-t border-ink/10 pt-6 sm:mt-14 sm:gap-8 md:mt-16">
+            {STATS.map((stat) => (
+              <div key={stat.label} className="min-w-0">
+                <dt className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink/45 sm:text-[10px] sm:tracking-[0.25em]">
+                  {stat.label}
+                </dt>
+                <dd className="mt-1 text-sm font-medium tracking-tight text-ink sm:mt-2 sm:text-lg md:text-xl">
+                  {stat.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </ScrollReveal>
       </div>
     </section>
   );
