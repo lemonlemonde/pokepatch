@@ -442,7 +442,7 @@ async function clearCardTimer(
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, admin_tips, restoration_costs";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
   const listSelectNoQuote =
     "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, is_priority";
   const listSelectLegacy =
@@ -642,7 +642,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, admin_tips, restoration_costs";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
 const ORDER_SELECT_BASE =
   "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority";
 
@@ -1981,19 +1981,21 @@ Deno.serve(async (req) => {
       }
 
       // Admin-only ledger — not handled by update_order; write after RPC.
-      const hasAdminTips = Object.prototype.hasOwnProperty.call(
+      const hasAfterCompletion = Object.prototype.hasOwnProperty.call(
         orderPatch,
-        "admin_tips"
+        "after_completion_amounts"
       );
       const hasRestorationCosts = Object.prototype.hasOwnProperty.call(
         orderPatch,
         "restoration_costs"
       );
-      const adminTips = hasAdminTips ? orderPatch.admin_tips : undefined;
+      const afterCompletionAmounts = hasAfterCompletion
+        ? orderPatch.after_completion_amounts
+        : undefined;
       const restorationCosts = hasRestorationCosts
         ? orderPatch.restoration_costs
         : undefined;
-      delete orderPatch.admin_tips;
+      delete orderPatch.after_completion_amounts;
       delete orderPatch.restoration_costs;
 
       let omittedPhotoPaths: string[] = [];
@@ -2033,10 +2035,14 @@ Deno.serve(async (req) => {
       });
       if (rpcError) throw rpcError;
 
-      if (hasAdminTips || hasRestorationCosts) {
+      if (hasAfterCompletion || hasRestorationCosts) {
         const ledgerPatch: Record<string, unknown> = {};
-        if (hasAdminTips) {
-          ledgerPatch.admin_tips = Array.isArray(adminTips) ? adminTips : [];
+        if (hasAfterCompletion) {
+          ledgerPatch.after_completion_amounts = Array.isArray(
+            afterCompletionAmounts
+          )
+            ? afterCompletionAmounts
+            : [];
         }
         if (hasRestorationCosts) {
           ledgerPatch.restoration_costs = Array.isArray(restorationCosts)
