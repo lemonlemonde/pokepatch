@@ -93,11 +93,11 @@ function OrderEditorContent({
     isPriority: Boolean(draft.is_priority),
     cardCount: (draft.cards ?? []).length,
   });
-  const tipsTotal = adminLedgerTotal(draft.admin_tips);
+  const afterCompletionTotal = adminLedgerTotal(draft.after_completion_amounts);
   const costsTotal = adminLedgerTotal(draft.restoration_costs);
   const earnedTotal =
-    Math.round((total + tipsTotal - costsTotal) * 100) / 100;
-  const showEarned = tipsTotal !== 0 || costsTotal !== 0;
+    Math.round((total + afterCompletionTotal - costsTotal) * 100) / 100;
+  const showEarned = afterCompletionTotal !== 0 || costsTotal !== 0;
 
   useEffect(() => {
     if (scrollCardId) scrollToCard(scrollCardId);

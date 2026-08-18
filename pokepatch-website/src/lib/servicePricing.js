@@ -895,7 +895,7 @@ function newAdminLedgerId() {
   return `ledger-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-/** Empty tip / restoration-cost row for the admin order editor. */
+/** Empty after-completion / restoration-cost row for the admin order editor. */
 export function emptyAdminLedgerEntry() {
   return {
     id: newAdminLedgerId(),
@@ -904,7 +904,7 @@ export function emptyAdminLedgerEntry() {
   };
 }
 
-/** Normalize one admin ledger row (tips or restoration costs). */
+/** Normalize one admin ledger row (after-completion or restoration costs). */
 export function normalizeAdminLedgerEntry(row) {
   if (!row || typeof row !== "object") return null;
   const description =
@@ -929,7 +929,7 @@ function adminLedgerEntryHasContent(row) {
   return row.amount_dollars != null && row.amount_dollars !== 0;
 }
 
-/** Persist tips / restoration costs as a jsonb array. */
+/** Persist after-completion / restoration costs as a jsonb array. */
 export function packAdminLedger(rows) {
   return (rows ?? [])
     .map((row) => normalizeAdminLedgerEntry(row))
@@ -941,7 +941,7 @@ export function packAdminLedger(rows) {
     }));
 }
 
-/** Load tips / restoration costs into editor string fields. */
+/** Load after-completion / restoration costs into editor string fields. */
 export function unpackAdminLedger(stored) {
   if (!Array.isArray(stored)) return [];
   return stored
@@ -968,14 +968,14 @@ export function adminLedgerTotal(rows) {
 }
 
 /**
- * Money earned for admin totals: quote + tips − restoration spend.
- * Tips / spend never affect the customer quote.
+ * Money earned for admin totals: quote + after-completion − restoration spend.
+ * After-completion / spend never affect the customer quote.
  */
 export function orderEarnedTotalFromStored(order) {
   const quote = orderQuoteTotalFromStored(order);
-  const tips = adminLedgerTotal(order?.admin_tips);
+  const afterCompletion = adminLedgerTotal(order?.after_completion_amounts);
   const costs = adminLedgerTotal(order?.restoration_costs);
-  return Math.round((quote + tips - costs) * 100) / 100;
+  return Math.round((quote + afterCompletion - costs) * 100) / 100;
 }
 
 export function hasQuoteData({

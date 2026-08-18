@@ -228,7 +228,7 @@ export function orderToDraft(order) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
-  const admin_tips = unpackAdminLedger(order.admin_tips);
+  const after_completion_amounts = unpackAdminLedger(order.after_completion_amounts);
   const restoration_costs = unpackAdminLedger(order.restoration_costs);
   const cards = orderCards.map((card) => ({
     id: card.id,
@@ -278,7 +278,7 @@ export function orderToDraft(order) {
     quote_items: ensuredQuoteItems,
     quote_adjustments,
     quote_card_hv,
-    admin_tips,
+    after_completion_amounts,
     restoration_costs,
   };
 }
@@ -301,7 +301,7 @@ export function draftPayload(draft) {
       ),
       quote_override_label: "",
       quote_override_amount: null,
-      admin_tips: packAdminLedger(draft.admin_tips),
+      after_completion_amounts: packAdminLedger(draft.after_completion_amounts),
       restoration_costs: packAdminLedger(draft.restoration_costs),
     },
     contacts: draft.contacts
@@ -418,8 +418,11 @@ export function validateDraftForSave(draft) {
       return `Adjustment ${index + 1} needs a $ amount.`;
     }
   }
-  const tipError = validateAdminLedgerDraft(draft.admin_tips, "Tip");
-  if (tipError) return tipError;
+  const afterCompletionError = validateAdminLedgerDraft(
+    draft.after_completion_amounts,
+    "After-completion"
+  );
+  if (afterCompletionError) return afterCompletionError;
   const spendError = validateAdminLedgerDraft(
     draft.restoration_costs,
     "Restoration spend"

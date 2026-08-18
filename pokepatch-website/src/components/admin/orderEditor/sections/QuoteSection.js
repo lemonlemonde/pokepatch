@@ -103,7 +103,7 @@ export default function QuoteSection() {
   const editableAdjustments = adjustments.filter(
     (row) => !isPriorityAdjustmentRow(row)
   );
-  const adminTips = draft.admin_tips ?? [];
+  const afterCompletionRows = draft.after_completion_amounts ?? [];
   const restorationCosts = draft.restoration_costs ?? [];
   const preview = buildQuotePreview(draft);
   const bulkPercent = bulkDiscountPercentForCardCount(preview.cardCount);
@@ -111,7 +111,7 @@ export default function QuoteSection() {
     preview.items.length > 0 ||
     preview.cards.some((card) => card.hv_amount) ||
     adjustments.length > 0;
-  const tipsTotal = adminLedgerTotal(adminTips);
+  const afterCompletionTotal = adminLedgerTotal(afterCompletionRows);
   const costsTotal = adminLedgerTotal(restorationCosts);
 
   /** Keep auto-synced priority surcharge rows intact when editing manual ones. */
@@ -155,18 +155,23 @@ export default function QuoteSection() {
     }));
   }
 
-  function updateTip(index, patch) {
-    mapLedger("admin_tips", (rows) =>
+  function updateAfterCompletion(index, patch) {
+    mapLedger("after_completion_amounts", (rows) =>
       rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
     );
   }
 
-  function addTip() {
-    mapLedger("admin_tips", (rows) => [...rows, emptyAdminLedgerEntry()]);
+  function addAfterCompletion() {
+    mapLedger("after_completion_amounts", (rows) => [
+      ...rows,
+      emptyAdminLedgerEntry(),
+    ]);
   }
 
-  function removeTip(index) {
-    mapLedger("admin_tips", (rows) => rows.filter((_, i) => i !== index));
+  function removeAfterCompletion(index) {
+    mapLedger("after_completion_amounts", (rows) =>
+      rows.filter((_, i) => i !== index)
+    );
   }
 
   function updateCost(index, patch) {
@@ -245,29 +250,33 @@ export default function QuoteSection() {
       </Panel>
 
       <Panel
-        title="Tips"
+        title="After completion"
         action={
-          <GhostButton onClick={addTip} disabled={saving} className="text-xs">
-            Add tip
+          <GhostButton
+            onClick={addAfterCompletion}
+            disabled={saving}
+            className="text-xs"
+          >
+            Add change
           </GhostButton>
         }
       >
         <p className="mb-2 text-xs text-ink/45">
-          Admin only — after restoration. Does not change the quote; adds to
-          earned.
+          Admin only — price changes after the order is done (tip, rounded to
+          the nearest dollar, etc.). Does not change the quote; adds to earned.
         </p>
         <LedgerRowsEditor
-          rows={adminTips}
-          onChange={updateTip}
-          onRemove={removeTip}
+          rows={afterCompletionRows}
+          onChange={updateAfterCompletion}
+          onRemove={removeAfterCompletion}
           saving={saving}
           amountPlaceholder="$"
           descriptionPlaceholder="Description (admin only)"
-          removeLabel="Remove tip"
+          removeLabel="Remove change"
         />
-        {adminTips.length > 0 && tipsTotal !== 0 ? (
+        {afterCompletionRows.length > 0 && afterCompletionTotal !== 0 ? (
           <p className="mt-2 text-xs tabular-nums text-ink/55">
-            Tips total {formatMoney(tipsTotal)}
+            After-completion total {formatMoney(afterCompletionTotal)}
           </p>
         ) : null}
       </Panel>
