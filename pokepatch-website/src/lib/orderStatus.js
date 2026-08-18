@@ -359,12 +359,26 @@ function timeMs(value, fallback) {
 }
 
 /**
- * Column sort for every status: paid priority first, then earliest
- * status_changed_at (when the order entered this column). created_at / id
- * are tiebreakers only.
+ * Column sort:
+ * - completed: most recently completed first (completed_at, then
+ *   status_changed_at / created_at)
+ * - other statuses: paid priority first, then earliest status_changed_at
+ *   (when the order entered this column). created_at / id are tiebreakers.
  */
-export function sortOrdersForStatusColumn(orders) {
+export function sortOrdersForStatusColumn(orders, statusId) {
+  const completedColumn = normalizeOrderStatus(statusId) === "completed";
+
   return [...(orders ?? [])].sort((a, b) => {
+    if (completedColumn) {
+      const byCompleted =
+        timeMs(b.completed_at, b.status_changed_at) -
+        timeMs(a.completed_at, a.status_changed_at);
+      if (byCompleted !== 0) return byCompleted;
+      const byCreated = timeMs(b.created_at) - timeMs(a.created_at);
+      if (byCreated !== 0) return byCreated;
+      return String(b.id ?? "").localeCompare(String(a.id ?? ""));
+    }
+
     const aPriority = Boolean(a.is_priority);
     const bPriority = Boolean(b.is_priority);
     if (aPriority !== bPriority) return aPriority ? -1 : 1;
@@ -389,7 +403,10 @@ export function groupOrdersByStatus(orders) {
     grouped[status].push(order);
   }
   for (const status of ORDER_STATUSES) {
-    grouped[status.id] = sortOrdersForStatusColumn(grouped[status.id]);
+    grouped[status.id] = sortOrdersForStatusColumn(
+      grouped[status.id],
+      status.id,
+    );
   }
   return grouped;
 }
