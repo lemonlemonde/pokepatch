@@ -250,6 +250,7 @@ export default function QuoteSection() {
       </Panel>
 
       <Panel
+        tone="internal"
         title="After completion"
         action={
           <GhostButton
@@ -261,9 +262,9 @@ export default function QuoteSection() {
           </GhostButton>
         }
       >
-        <p className="mb-2 text-xs text-ink/45">
-          Admin only — price changes after the order is done (tip, rounded to
-          the nearest dollar, etc.). Does not change the quote; adds to earned.
+        <p className="mb-2 text-xs text-ink/50">
+          Price changes after the order is done (tip, rounded to the nearest
+          dollar, etc.). Does not change the quote; adds to earned.
         </p>
         <LedgerRowsEditor
           rows={afterCompletionRows}
@@ -271,7 +272,7 @@ export default function QuoteSection() {
           onRemove={removeAfterCompletion}
           saving={saving}
           amountPlaceholder="$"
-          descriptionPlaceholder="Description (admin only)"
+          descriptionPlaceholder="Description"
           removeLabel="Remove change"
         />
         {afterCompletionRows.length > 0 && afterCompletionTotal !== 0 ? (
@@ -282,6 +283,7 @@ export default function QuoteSection() {
       </Panel>
 
       <Panel
+        tone="internal"
         title="Restoration spend"
         action={
           <GhostButton onClick={addCost} disabled={saving} className="text-xs">
@@ -289,9 +291,9 @@ export default function QuoteSection() {
           </GhostButton>
         }
       >
-        <p className="mb-2 text-xs text-ink/45">
-          Admin only — materials or costs during restoration. Does not change
-          the quote; subtracts from earned.
+        <p className="mb-2 text-xs text-ink/50">
+          Materials or costs during restoration. Does not change the quote;
+          subtracts from earned.
         </p>
         <LedgerRowsEditor
           rows={restorationCosts}
@@ -299,7 +301,7 @@ export default function QuoteSection() {
           onRemove={removeCost}
           saving={saving}
           amountPlaceholder="$"
-          descriptionPlaceholder="Description (admin only)"
+          descriptionPlaceholder="Description"
           removeLabel="Remove spend"
         />
         {restorationCosts.length > 0 && costsTotal !== 0 ? (
