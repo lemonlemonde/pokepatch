@@ -135,7 +135,7 @@ function LoginForm() {
 
       <div className="marketing-panel animate-fade-up space-y-6 p-6 [animation-delay:150ms]">
         {!isSupabaseConfigured && (
-          <p className="rounded-2xl border-2 border-peach bg-peach/30 px-4 py-3 text-sm text-ink/80">
+          <p className="rounded-lg border border-peach/30 bg-peach/15 px-4 py-3 text-sm text-ink/80">
             Authentication is not configured. Please add{" "}
             <code className="rounded bg-night/50 px-1">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
             and{" "}
@@ -172,13 +172,13 @@ function LoginForm() {
         ) : (
           <>
             {error && (
-              <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+              <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
                 {error}
               </p>
             )}
 
             {notice && (
-              <p className="rounded-2xl border-2 border-lavender bg-lavender/20 px-4 py-3 text-sm font-semibold text-ink">
+              <p className="rounded-lg border border-lavender/30 bg-lavender/10 px-4 py-3 text-sm text-ink">
                 {notice}
               </p>
             )}

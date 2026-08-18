@@ -223,13 +223,13 @@ export default function AccountPage() {
             type="button"
             onClick={editing ? () => handleSave() : handleEdit}
             disabled={editing && saving}
-            className="absolute right-6 top-6 z-10 rounded-full border-2 border-lavender bg-lavender px-3 py-1 text-xs font-bold text-night transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 sm:hover:bg-lavender/80"
+            className="absolute right-6 top-6 z-10 rounded-full border border-lavender/40 bg-lavender px-3 py-1 text-xs font-medium text-night transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 sm:hover:bg-lavender/80"
           >
             {editing ? (saving ? "Saving..." : "Save") : "Edit"}
           </button>
         )}
         {error && (
-          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
             {error}
           </p>
         )}
@@ -328,7 +328,7 @@ export default function AccountPage() {
             <button
               type="button"
               onClick={handleSignOut}
-              className="w-full rounded-full border-2 border-ink px-6 py-3 font-bold text-ink transition-colors duration-150 sm:hover:bg-ink sm:hover:text-cream"
+              className="w-full rounded-full border border-ink/25 px-6 py-3 font-medium text-ink transition-colors duration-150 sm:hover:bg-ink sm:hover:text-cream"
             >
               Sign out
             </button>
@@ -343,7 +343,7 @@ export default function AccountPage() {
         </p>
 
         {passwordError ? (
-          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
             {passwordError}
           </p>
         ) : null}
@@ -421,7 +421,7 @@ export default function AccountPage() {
 
       {(success || passwordSuccess) && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
-          <div className="animate-fade-up flex items-center gap-2 rounded-full border-2 border-mint bg-mint px-5 py-2.5 text-sm font-bold text-night shadow-cozy">
+          <div className="animate-fade-up flex items-center gap-2 rounded-full border border-mint/40 bg-mint px-5 py-2.5 text-sm font-medium text-night">
             <span aria-hidden="true">✓</span>
             {success || passwordSuccess}
           </div>

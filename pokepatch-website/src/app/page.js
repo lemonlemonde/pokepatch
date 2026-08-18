@@ -13,6 +13,10 @@ import {
   marketingExtras,
   marketingHighValue,
   marketingServices,
+  CARD_WHITENING_WARNING,
+  QUOTE_SERVICES,
+  SERVICE_KEYS,
+  servicePriceDisplay,
 } from "@/lib/servicePricing";
 
 const steps = [
@@ -37,17 +41,21 @@ const steps = [
 const services = marketingServices();
 const extras = marketingExtras();
 const highValue = marketingHighValue();
+const whiteningService = QUOTE_SERVICES.find(
+  (service) => service.key === SERVICE_KEYS.WHITENING
+);
+const whiteningPrice = servicePriceDisplay(whiteningService);
 
 const faqs = [
   {
     question: "How do I send in my cards?",
     answer:
-      "Fill out the quote form with details about your card, and what you'd like fixed for each one. You can opt for local drop-off (North San Jose) or shipping. We'll get in contact with you with a quote and discuss options on how to best restore your cards!",
+      "Request a quote with photos, then drop off in North San Jose or mail them in from anywhere in the US. We'll reply with options and next steps.",
   },
   {
     question: "What kinds of cards do you restore?",
     answer:
-      "Trading cards of all kinds — Pokémon, One Piece, Sports, Magic, Yugioh, and more. If you're unsure, send a photo through the contact form and we'll let you know!",
+      "Trading cards of all kinds — Pokémon, One Piece, Sports, Magic, Yugioh, and more. If you're unsure, send a photo through the quote form and we'll let you know!",
   },
   {
     question: "How soon can I get a quote?",
@@ -60,8 +68,7 @@ const faqs = [
   },
   {
     question: "Can whitening on cards be fixed?",
-    answer:
-      "Only very small whitening dots on edges and corners. Whitening repair adds ink, and grading companies like PSA may potentially detect that and mark the card as altered. Card Whitening is $25 per card.",
+    answer: `${CARD_WHITENING_WARNING} Card Whitening is ${whiteningPrice} per card.`,
   },
   {
     question: "Is shipping covered?",
@@ -88,7 +95,7 @@ export default function Home() {
 
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         <section className="marketing-section">
-          <QueueCount variant="marketing" />
+          <QueueCount />
         </section>
 
         <section className="marketing-section">
@@ -96,7 +103,7 @@ export default function Home() {
             Lately on the bench
           </MarketingSectionHeading>
           <ScrollReveal>
-            <FeaturedRestorations variant="marketing" />
+            <FeaturedRestorations />
           </ScrollReveal>
         </section>
 
@@ -158,12 +165,12 @@ export default function Home() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 sm:auto-rows-fr">
             {services.map((service) => (
               <ScrollReveal key={service.title} className="h-full">
-                <ServiceCard {...service} variant="marketing" />
+                <ServiceCard {...service} />
               </ScrollReveal>
             ))}
           </div>
           <ScrollReveal className="mt-4">
-            <ServiceModifiersCard panels={[highValue]} variant="marketing" />
+            <ServiceModifiersCard panels={[highValue]} />
           </ScrollReveal>
           <ScrollReveal className="mt-10 sm:mt-12" variant="dramatic">
             <div className="mb-4 flex items-center gap-4 sm:mb-5">
@@ -172,7 +179,7 @@ export default function Home() {
               </p>
               <div className="h-px min-w-0 flex-1 bg-ink/10" aria-hidden="true" />
             </div>
-            <ServiceModifiersCard panels={extras} variant="marketing" />
+            <ServiceModifiersCard panels={extras} />
           </ScrollReveal>
         </section>
 
@@ -183,7 +190,7 @@ export default function Home() {
           <div>
             {faqs.map((faq) => (
               <ScrollReveal key={faq.question}>
-                <FaqItem {...faq} variant="marketing" />
+                <FaqItem {...faq} />
               </ScrollReveal>
             ))}
             <hr className="border-t border-ink/10" />

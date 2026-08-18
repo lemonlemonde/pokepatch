@@ -250,7 +250,7 @@ export default function MyOrdersPage() {
         {loading && <LoadingSpinner label="Loading your orders…" />}
 
         {error && (
-          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+          <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-ink">
             {error}
           </p>
         )}
@@ -279,7 +279,7 @@ export default function MyOrdersPage() {
               <section key={section.id} className="space-y-3">
                 <div className="flex items-baseline justify-between gap-3">
                   <h2
-                    className={`font-display text-lg font-bold ${orderStatusHeadingClass(
+                    className={`text-lg font-medium tracking-tight ${orderStatusHeadingClass(
                       section.statusId
                     )}`}
                   >
