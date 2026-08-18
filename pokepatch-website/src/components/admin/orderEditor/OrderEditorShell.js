@@ -12,7 +12,7 @@ import {
   ensureQuoteItemsForCards,
   quoteItemBelongsToCard,
 } from "@/lib/adminOrderDraft";
-import { computeQuoteTotal, formatMoney } from "@/lib/servicePricing";
+import { computeQuoteTotal, formatMoney, adminLedgerTotal } from "@/lib/servicePricing";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import { buildCardThumbById } from "@/lib/orderChangelog";
@@ -93,6 +93,11 @@ function OrderEditorContent({
     isPriority: Boolean(draft.is_priority),
     cardCount: (draft.cards ?? []).length,
   });
+  const tipsTotal = adminLedgerTotal(draft.admin_tips);
+  const costsTotal = adminLedgerTotal(draft.restoration_costs);
+  const earnedTotal =
+    Math.round((total + tipsTotal - costsTotal) * 100) / 100;
+  const showEarned = tipsTotal !== 0 || costsTotal !== 0;
 
   useEffect(() => {
     if (scrollCardId) scrollToCard(scrollCardId);
@@ -183,11 +188,21 @@ function OrderEditorContent({
           <div className="ml-auto flex items-center gap-2">
             <div className="mr-1 hidden text-right leading-tight sm:block">
               <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
-                Total
+                Quote
               </p>
               <p className="text-sm font-bold tabular-nums text-ink">
                 {formatMoney(total)}
               </p>
+              {showEarned ? (
+                <>
+                  <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
+                    Earned
+                  </p>
+                  <p className="text-sm font-bold tabular-nums text-status-green">
+                    {formatMoney(earnedTotal)}
+                  </p>
+                </>
+              ) : null}
             </div>
             <button
               type="button"

@@ -13,8 +13,10 @@ import {
   SERVICE_KEYS,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
+  packAdminLedger,
   packQuoteAdjustments,
   parseMoneyInput,
+  unpackAdminLedger,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 import { normalizeDamageTags } from "@/lib/gallery";
@@ -226,6 +228,8 @@ export function orderToDraft(order) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
+  const admin_tips = unpackAdminLedger(order.admin_tips);
+  const restoration_costs = unpackAdminLedger(order.restoration_costs);
   const cards = orderCards.map((card) => ({
     id: card.id,
     card_name: card.card_name ?? "",
@@ -274,6 +278,8 @@ export function orderToDraft(order) {
     quote_items: ensuredQuoteItems,
     quote_adjustments,
     quote_card_hv,
+    admin_tips,
+    restoration_costs,
   };
 }
 
@@ -295,6 +301,8 @@ export function draftPayload(draft) {
       ),
       quote_override_label: "",
       quote_override_amount: null,
+      admin_tips: packAdminLedger(draft.admin_tips),
+      restoration_costs: packAdminLedger(draft.restoration_costs),
     },
     contacts: draft.contacts
       .filter((contact) => contact.value.trim() !== "")
@@ -408,6 +416,27 @@ export function validateDraftForSave(draft) {
     if (!hasDescription && !hasAmount) continue;
     if (!hasAmount) {
       return `Adjustment ${index + 1} needs a $ amount.`;
+    }
+  }
+  const tipError = validateAdminLedgerDraft(draft.admin_tips, "Tip");
+  if (tipError) return tipError;
+  const spendError = validateAdminLedgerDraft(
+    draft.restoration_costs,
+    "Restoration spend"
+  );
+  if (spendError) return spendError;
+  return null;
+}
+
+function validateAdminLedgerDraft(rows, label) {
+  for (let index = 0; index < (rows ?? []).length; index += 1) {
+    const row = rows[index];
+    const hasDescription = Boolean((row.description ?? "").trim());
+    const dollars = moneyFieldToPayload(row.amount_dollars);
+    const hasAmount = dollars != null && dollars !== 0;
+    if (!hasDescription && !hasAmount) continue;
+    if (!hasAmount) {
+      return `${label} ${index + 1} needs a $ amount.`;
     }
   }
   return null;

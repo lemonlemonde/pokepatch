@@ -64,7 +64,7 @@ import {
   pendingKindShortLabel,
   pendingKindBadgeClass,
 } from "@/lib/orderStatus";
-import { formatMoney, orderQuoteTotalFromStored } from "@/lib/servicePricing";
+import { formatMoney, orderEarnedTotalFromStored } from "@/lib/servicePricing";
 
 const ADMIN_TABS = [
   {
@@ -211,7 +211,7 @@ function orderAmount(order) {
   if (order?.quote_total != null && Number.isFinite(Number(order.quote_total))) {
     return Math.round(Number(order.quote_total) * 100) / 100;
   }
-  return orderQuoteTotalFromStored(order);
+  return orderEarnedTotalFromStored(order);
 }
 
 function sumOrderAmounts(orders) {
@@ -1940,7 +1940,7 @@ export default function AdminApp() {
         rows.map((order) =>
           orderToKanbanSummary({
             ...order,
-            quote_total: orderQuoteTotalFromStored(order),
+            quote_total: orderEarnedTotalFromStored(order),
           })
         )
       );

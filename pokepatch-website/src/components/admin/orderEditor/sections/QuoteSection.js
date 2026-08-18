@@ -2,11 +2,14 @@
 
 import QuoteReceipt from "@/components/QuoteReceipt";
 import {
+  adminLedgerTotal,
   billableQuoteCards,
   bulkDiscountPercentForCardCount,
   BULK_TIER_RANGES_LABEL,
   cardsWithQuoteHv,
+  emptyAdminLedgerEntry,
   emptyQuoteAdjustment,
+  formatMoney,
   isPriorityAdjustmentRow,
 } from "@/lib/servicePricing";
 import { moneyFieldToPayload, quoteItemIsReady } from "@/lib/adminOrderDraft";
@@ -47,18 +50,69 @@ export function buildQuotePreview(draft) {
   };
 }
 
+function LedgerRowsEditor({
+  rows,
+  onChange,
+  onRemove,
+  saving,
+  amountPlaceholder,
+  descriptionPlaceholder,
+  removeLabel,
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      {rows.map((row, index) => (
+        <div
+          key={row.id ?? `ledger-${index}`}
+          className="flex flex-wrap items-center gap-2"
+        >
+          <input
+            className={`${editorFieldClass({ fullWidth: false })} w-28 shrink-0`}
+            inputMode="decimal"
+            value={row.amount_dollars ?? ""}
+            disabled={saving}
+            onChange={(event) =>
+              onChange(index, { amount_dollars: event.target.value })
+            }
+            placeholder={amountPlaceholder}
+          />
+          <input
+            className={`${editorFieldClass({ fullWidth: false })} min-w-[9rem] flex-1`}
+            value={row.description ?? ""}
+            disabled={saving}
+            onChange={(event) =>
+              onChange(index, { description: event.target.value })
+            }
+            placeholder={descriptionPlaceholder}
+          />
+          <RemoveButton
+            label={removeLabel}
+            disabled={saving}
+            onClick={() => onRemove(index)}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function QuoteSection() {
   const { draft, updateDraft, saving } = useOrderEditor();
   const adjustments = draft.quote_adjustments ?? [];
   const editableAdjustments = adjustments.filter(
     (row) => !isPriorityAdjustmentRow(row)
   );
+  const adminTips = draft.admin_tips ?? [];
+  const restorationCosts = draft.restoration_costs ?? [];
   const preview = buildQuotePreview(draft);
   const bulkPercent = bulkDiscountPercentForCardCount(preview.cardCount);
   const hasReceipt =
     preview.items.length > 0 ||
     preview.cards.some((card) => card.hv_amount) ||
     adjustments.length > 0;
+  const tipsTotal = adminLedgerTotal(adminTips);
+  const costsTotal = adminLedgerTotal(restorationCosts);
 
   /** Keep auto-synced priority surcharge rows intact when editing manual ones. */
   function mapEditableAdjustments(mapper) {
@@ -91,6 +145,46 @@ export default function QuoteSection() {
   function removeAdjustment(index) {
     mapEditableAdjustments((editable) =>
       editable.filter((_, i) => i !== index)
+    );
+  }
+
+  function mapLedger(field, mapper) {
+    updateDraft((current) => ({
+      ...current,
+      [field]: mapper(current[field] ?? []),
+    }));
+  }
+
+  function updateTip(index, patch) {
+    mapLedger("admin_tips", (rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    );
+  }
+
+  function addTip() {
+    mapLedger("admin_tips", (rows) => [...rows, emptyAdminLedgerEntry()]);
+  }
+
+  function removeTip(index) {
+    mapLedger("admin_tips", (rows) => rows.filter((_, i) => i !== index));
+  }
+
+  function updateCost(index, patch) {
+    mapLedger("restoration_costs", (rows) =>
+      rows.map((row, i) => (i === index ? { ...row, ...patch } : row))
+    );
+  }
+
+  function addCost() {
+    mapLedger("restoration_costs", (rows) => [
+      ...rows,
+      emptyAdminLedgerEntry(),
+    ]);
+  }
+
+  function removeCost(index) {
+    mapLedger("restoration_costs", (rows) =>
+      rows.filter((_, i) => i !== index)
     );
   }
 
@@ -147,6 +241,62 @@ export default function QuoteSection() {
               </div>
             ))}
           </div>
+        ) : null}
+      </Panel>
+
+      <Panel
+        title="Tips"
+        action={
+          <GhostButton onClick={addTip} disabled={saving} className="text-xs">
+            Add tip
+          </GhostButton>
+        }
+      >
+        <p className="mb-2 text-xs text-ink/45">
+          Admin only — after restoration. Does not change the quote; adds to
+          earned.
+        </p>
+        <LedgerRowsEditor
+          rows={adminTips}
+          onChange={updateTip}
+          onRemove={removeTip}
+          saving={saving}
+          amountPlaceholder="$"
+          descriptionPlaceholder="Description (admin only)"
+          removeLabel="Remove tip"
+        />
+        {adminTips.length > 0 && tipsTotal !== 0 ? (
+          <p className="mt-2 text-xs tabular-nums text-ink/55">
+            Tips total {formatMoney(tipsTotal)}
+          </p>
+        ) : null}
+      </Panel>
+
+      <Panel
+        title="Restoration spend"
+        action={
+          <GhostButton onClick={addCost} disabled={saving} className="text-xs">
+            Add spend
+          </GhostButton>
+        }
+      >
+        <p className="mb-2 text-xs text-ink/45">
+          Admin only — materials or costs during restoration. Does not change
+          the quote; subtracts from earned.
+        </p>
+        <LedgerRowsEditor
+          rows={restorationCosts}
+          onChange={updateCost}
+          onRemove={removeCost}
+          saving={saving}
+          amountPlaceholder="$"
+          descriptionPlaceholder="Description (admin only)"
+          removeLabel="Remove spend"
+        />
+        {restorationCosts.length > 0 && costsTotal !== 0 ? (
+          <p className="mt-2 text-xs tabular-nums text-ink/55">
+            Spend total {formatMoney(costsTotal)}
+          </p>
         ) : null}
       </Panel>
 
