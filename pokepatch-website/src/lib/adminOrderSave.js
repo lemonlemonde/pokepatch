@@ -32,7 +32,7 @@ export async function saveAdminOrderDraft(orderId, draft, { notify = false, subj
         throw new Error(compressError || "Couldn't process this image.");
       }
       const { file: thumb } = await makeThumbForUpload(uploadFile);
-      await adminUploadPhoto(orderId, cardId, "admin", uploadFile, { thumb });
+      await adminUploadPhoto(orderId, cardId, "customer", uploadFile, { thumb });
     }
   }
 

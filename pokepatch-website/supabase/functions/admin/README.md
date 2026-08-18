@@ -9,7 +9,7 @@ token after login.
 | Function | Path | Role |
 |----------|------|------|
 | `admin-auth` | `/functions/v1/admin-auth` | Login, logout, validate session |
-| `admin-api` | `/functions/v1/admin-api` | List/get/save/delete orders, set status, upload admin photos, gallery CMS, broadcast messages |
+| `admin-api` | `/functions/v1/admin-api` | List/get/save/delete orders, set status, upload card photos, gallery CMS, broadcast messages |
 
 Both are deployed with `--no-verify-jwt` (same pattern as `notify`). Requests still send the Supabase anon `apikey` header; admin actions also send `X-Admin-Token`.
 
@@ -35,7 +35,7 @@ deploying admin functions (they do on production):
 **Admin orders**
 - `orders.status` (`pending`, `new`, `in_progress`, `ready`, `completed`, `canceled`)
 - `orders.pending_kind` (`quote` | `drop_off`, only when status is `pending`) — chip/customer label under the Pending column
-- Expanded `card_images.image_type` values for admin uploads
+- `card_images.image_type` for order card photos (`customer` is the shared pool)
 - `admin_sessions` table
 - `update_order` status support
 
@@ -119,7 +119,7 @@ JSON POST (requires `X-Admin-Token`):
 | `get` | `order_id` |
 | `set_status` | `order_id`, `status` |
 | `delete` | `order_id` or `order_ids` (array) |
-| `delete_photo` | `order_id`, `image_id` — removes an admin-uploaded card photo (not `customer`) |
+| `delete_photo` | `order_id`, `image_id` — removes a card photo from the order |
 | `save` | `order_id`, `order`, `contacts`, `cards` — cards list is authoritative; omitted cards (and their photos) are deleted |
 | `gallery_list` | — |
 | `gallery_get` | `id` |
@@ -138,7 +138,7 @@ Multipart POST (requires `X-Admin-Token`):
 
 Order photos:
 
-- `kind=order` (default), `order_id`, `card_id`, `image_type` (`customer`, `progress_front`, `progress_back`, `final_front`, `final_back`, `admin`), `file`
+- `kind=order` (default), `order_id`, `card_id`, `image_type` (`customer` preferred; legacy `progress_*` / `final_*` / `admin` still accepted), `file`
 - Path: `order-{orderId}/card-{cardId}/{image_type}-{n}-{filename}`
 
 Gallery media:

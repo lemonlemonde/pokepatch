@@ -147,12 +147,6 @@ export default function CardDetailSection({
   if (!card) return null;
 
   const cardIdStr = String(card.id);
-  const customerImages = (card.images ?? []).filter(
-    (image) => image.image_type === "customer"
-  );
-  const adminImages = (card.images ?? []).filter(
-    (image) => image.image_type !== "customer"
-  );
   const pendingFiles = card.pending_files ?? [];
   const photoInputId = `admin-card-photos-${card.id}`;
 
@@ -247,7 +241,7 @@ export default function CardDetailSection({
     setExpandedQuoteLineId(quoteItems[index]?.id ?? null);
   }
 
-  async function removeAdminPhoto(imageId) {
+  async function removePhoto(imageId) {
     if (!orderId || removingPhotoId != null) return;
     setRemovingPhotoId(imageId);
     setPhotoError("");
@@ -619,13 +613,10 @@ export default function CardDetailSection({
           <EditorDivider label="Photos" />
           <div className="space-y-3">
             <AdminOrderCardPhotoGroups
-              customerItems={savedPhotoItems(customerImages)}
-              updateItems={savedPhotoItems(adminImages)}
+              items={savedPhotoItems(card.images ?? [])}
               pendingFiles={pendingFiles}
-              onRemoveUpdate={
-                removingPhotoId != null || saving
-                  ? undefined
-                  : (imageId) => removeAdminPhoto(imageId)
+              onRemove={
+                removingPhotoId != null || saving ? undefined : removePhoto
               }
               onRemovePending={
                 saving

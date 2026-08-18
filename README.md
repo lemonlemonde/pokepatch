@@ -326,7 +326,7 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 **`cards` / `card_images`**
 
 - Card IDs are client-generated UUIDs (storage paths exist before insert)
-- `card_images.image_type`: `customer` (form), plus admin types `progress_front`, `progress_back`, `final_front`, `final_back`
+- `card_images.image_type`: primarily `customer` (customer + admin uploads share this pool). DB/API still allow legacy `progress_*`, `final_*`, and `admin`.
 - Storage files are not duplicated; working and original image rows share the same paths
 
 **`admin_sessions`**
@@ -396,8 +396,7 @@ Every row should show the **same version** in both Local and Remote. Any version
 ## Storage
 
 - **Bucket:** `card-photos` (private order photos)
-- **New order paths:** `order-{orderUuid}/card-{cardUuid}/customer-{n}-{filename}`
-- **Admin photo paths:** `order-{orderUuid}/card-{cardUuid}/{image_type}-{n}-{filename}`
+- **Card photo paths:** `order-{orderUuid}/card-{cardUuid}/customer-{n}-{filename}` (admin adds use the same pattern)
 - **Legacy paths:** `{uuid}/...` (old `quote_requests` photos; left in place)
 - **Bucket:** `gallery` (public marketing media for `/gallery`)
 - **Gallery paths:** `item-{uuid}/pair-{uuid}/{before|after}-{filename}`
@@ -488,7 +487,7 @@ Browser (/admin)
   → admin-auth (password → session token in sessionStorage)
   → admin-api (X-Admin-Token + service role)
       → read/write working order tables
-      → Storage uploads for admin photo types
+      → Storage uploads for card photos (same pool as customer uploads)
       → gallery_items CRUD + gallery bucket uploads
   → no notify / Discord / Sheets
 ```
@@ -498,7 +497,7 @@ Browser (/admin)
 - **Kanban** columns: New → In progress → Completed → Delivered
 - Drag between columns updates `status` immediately
 - Click a card to open the editor; field changes require **Save**
-- Staged admin photos upload on Save
+- Staged card photos upload on Save
 - Kanban list loads summaries only; full order detail (with signed photo URLs) loads when a card is opened
 - **Gallery** tab lists restorations; Save uploads chosen before/after images and videos to the public `gallery` bucket
 

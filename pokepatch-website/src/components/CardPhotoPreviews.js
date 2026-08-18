@@ -110,9 +110,6 @@ const ADMIN_THUMB_PX = 56;
 const ADMIN_THUMB_GAP_PX = 6;
 const ADMIN_MORE_BTN_PX = 56;
 const ADMIN_MORE_GAP_PX = 8;
-const ADMIN_SECTION_GAP_PX = 16;
-const ADMIN_DIVIDER_PX = 1;
-const ADMIN_EMPTY_LABEL_PX = 36;
 const ADMIN_ROW_PAD_X_PX = 24; // px-3 each side
 
 function thumbsRowWidth(count) {
@@ -120,85 +117,19 @@ function thumbsRowWidth(count) {
   return count * ADMIN_THUMB_PX + (count - 1) * ADMIN_THUMB_GAP_PX;
 }
 
-/** Width of collapsed clusters row for given visible counts (no +more button). */
-function collapsedClustersWidth(customerVisible, updateVisible, customerTotal) {
-  let width = 0;
-  if (customerVisible > 0) {
-    width += thumbsRowWidth(customerVisible);
-  } else if (customerTotal === 0) {
-    width += ADMIN_EMPTY_LABEL_PX;
-  }
-  if (updateVisible > 0) {
-    if (width > 0) {
-      width += ADMIN_SECTION_GAP_PX + ADMIN_DIVIDER_PX + ADMIN_SECTION_GAP_PX;
-    }
-    width += thumbsRowWidth(updateVisible);
-  }
-  return width;
-}
-
-function fitCollapsedVisible(availablePx, customerTotal, updateTotal) {
-  const full = collapsedClustersWidth(
-    customerTotal,
-    updateTotal,
-    customerTotal
-  );
-  if (full <= availablePx) {
-    return { customer: customerTotal, update: updateTotal, hidden: 0 };
-  }
+/** How many thumbs fit in the collapsed row (reserves space for +more when needed). */
+function fitCollapsedVisible(availablePx, total) {
+  if (total <= 0) return 0;
+  if (thumbsRowWidth(total) <= availablePx) return total;
 
   const budget = Math.max(
     0,
     availablePx - ADMIN_MORE_BTN_PX - ADMIN_MORE_GAP_PX
   );
-  let best = { customer: 0, update: 0, total: -1 };
-
-  for (let c = 0; c <= customerTotal; c += 1) {
-    for (let u = 0; u <= updateTotal; u += 1) {
-      if (c === 0 && u === 0 && (customerTotal > 0 || updateTotal > 0)) {
-        // Keep at least one thumb when possible.
-        continue;
-      }
-      const width = collapsedClustersWidth(c, u, customerTotal);
-      if (width > budget) continue;
-      const total = c + u;
-      const prefersBoth =
-        (customerTotal === 0 || c > 0) && (updateTotal === 0 || u > 0);
-      const bestPrefersBoth =
-        (customerTotal === 0 || best.customer > 0) &&
-        (updateTotal === 0 || best.update > 0);
-      if (
-        total > best.total ||
-        (total === best.total && prefersBoth && !bestPrefersBoth)
-      ) {
-        best = { customer: c, update: u, total };
-      }
-    }
+  for (let n = total; n >= 1; n -= 1) {
+    if (thumbsRowWidth(n) <= budget) return n;
   }
-
-  if (best.total < 0) {
-    // Extremely narrow: show one thumb from the first non-empty group.
-    if (customerTotal > 0) {
-      return {
-        customer: 1,
-        update: 0,
-        hidden: customerTotal + updateTotal - 1,
-      };
-    }
-    if (updateTotal > 0) {
-      return {
-        customer: 0,
-        update: 1,
-        hidden: updateTotal - 1,
-      };
-    }
-  }
-
-  return {
-    customer: best.customer,
-    update: best.update,
-    hidden: customerTotal + updateTotal - best.customer - best.update,
-  };
+  return 1;
 }
 
 function toLightboxMedia(item, sectionTitle) {
@@ -323,24 +254,18 @@ function AdminPhotoCluster({
   );
 }
 
-/** Customer + Update photo groups: one row when collapsed, stacked when expanded.
- *  Includes unsaved staged files in Update photos so truncation applies before save. */
+/** Single photo strip: saved images + unsaved staged files. Truncates when collapsed. */
 export function AdminOrderCardPhotoGroups({
-  customerItems = [],
-  updateItems = [],
+  items = [],
   pendingFiles = [],
-  onRemoveUpdate,
+  onRemove,
   onRemovePending,
   className = "",
 }) {
   const [expanded, setExpanded] = useState(false);
   const [pendingPreviews, setPendingPreviews] = useState([]);
   const [lightbox, setLightbox] = useState(null);
-  const [visible, setVisible] = useState({
-    customer: Number.POSITIVE_INFINITY,
-    update: Number.POSITIVE_INFINITY,
-    hidden: 0,
-  });
+  const [visibleCount, setVisibleCount] = useState(Number.POSITIVE_INFINITY);
   const collapsedRef = useRef(null);
 
   useEffect(() => {
@@ -362,9 +287,8 @@ export function AdminOrderCardPhotoGroups({
     pending: true,
   }));
 
-  const allUpdateItems = [...updateItems, ...pendingItems];
-  const customerCount = customerItems.length;
-  const updateCount = allUpdateItems.length;
+  const allItems = [...items, ...pendingItems];
+  const totalCount = allItems.length;
   const pendingIdSet = new Set(pendingItems.map((item) => String(item.id)));
 
   useLayoutEffect(() => {
@@ -374,67 +298,51 @@ export function AdminOrderCardPhotoGroups({
 
     function measure() {
       const available = Math.max(0, node.clientWidth - ADMIN_ROW_PAD_X_PX);
-      setVisible(fitCollapsedVisible(available, customerCount, updateCount));
+      setVisibleCount(fitCollapsedVisible(available, totalCount));
     }
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [expanded, customerCount, updateCount]);
+  }, [expanded, totalCount]);
 
-  function handleRemoveUpdate(itemId) {
+  function handleRemove(itemId) {
     if (pendingIdSet.has(String(itemId))) {
       onRemovePending?.(itemId);
       return;
     }
-    onRemoveUpdate?.(itemId);
+    onRemove?.(itemId);
   }
 
-  function openLightbox(group, itemId) {
-    const list = group === "customer" ? customerItems : allUpdateItems;
-    const index = list.findIndex((item) => String(item.id) === String(itemId));
-    if (index < 0 || !list[index]?.src) return;
-    setLightbox({ group, index });
+  function openLightbox(itemId) {
+    const index = allItems.findIndex(
+      (item) => String(item.id) === String(itemId)
+    );
+    if (index < 0 || !allItems[index]?.src) return;
+    setLightbox({ index });
   }
 
   const canRemove =
-    typeof onRemoveUpdate === "function" ||
-    typeof onRemovePending === "function";
+    typeof onRemove === "function" || typeof onRemovePending === "function";
 
-  const lightboxList =
-    lightbox?.group === "customer"
-      ? customerItems
-      : lightbox?.group === "update"
-        ? allUpdateItems
-        : [];
   const lightboxItem =
-    lightbox != null ? lightboxList[lightbox.index] ?? null : null;
+    lightbox != null ? allItems[lightbox.index] ?? null : null;
   const lightboxMedia = lightboxItem
-    ? toLightboxMedia(
-        lightboxItem,
-        lightbox.group === "customer" ? "Customer photos" : "Update photos"
-      )
+    ? toLightboxMedia(lightboxItem, "Photos")
     : null;
 
-  if (customerCount === 0 && updateCount === 0) {
+  if (totalCount === 0) {
     return (
       <p className={`text-xs text-ink/50 ${className}`.trim()}>No photos yet.</p>
     );
   }
 
-  const customerVisible = Math.min(
-    customerCount,
-    Number.isFinite(visible.customer) ? visible.customer : customerCount
+  const shownCount = Math.min(
+    totalCount,
+    Number.isFinite(visibleCount) ? visibleCount : totalCount
   );
-  const updateVisible = Math.min(
-    updateCount,
-    Number.isFinite(visible.update) ? visible.update : updateCount
-  );
-  const hiddenCount = Math.max(
-    0,
-    customerCount + updateCount - customerVisible - updateVisible
-  );
+  const hiddenCount = Math.max(0, totalCount - shownCount);
   const needsMore = hiddenCount > 0;
 
   const photoPanel = (
@@ -444,33 +352,14 @@ export function AdminOrderCardPhotoGroups({
           ref={collapsedRef}
           className="flex items-end gap-2 rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10"
         >
-          <div className="flex min-w-0 flex-1 items-end gap-4 overflow-hidden">
-            {customerVisible > 0 || customerCount === 0 ? (
-              <AdminPhotoCluster
-                title="Customer photos"
-                items={customerItems.slice(0, customerVisible)}
-                emptyText={customerCount === 0 ? "None" : undefined}
-                onOpenItem={(itemId) => openLightbox("customer", itemId)}
-                nowrap
-              />
-            ) : null}
-            {updateVisible > 0 ? (
-              <>
-                {customerVisible > 0 || customerCount === 0 ? (
-                  <div
-                    className="h-16 w-px shrink-0 bg-ink/10"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                <AdminPhotoCluster
-                  title="Update photos"
-                  items={allUpdateItems.slice(0, updateVisible)}
-                  onRemove={canRemove ? handleRemoveUpdate : undefined}
-                  onOpenItem={(itemId) => openLightbox("update", itemId)}
-                  nowrap
-                />
-              </>
-            ) : null}
+          <div className="flex min-w-0 flex-1 items-end overflow-hidden">
+            <AdminPhotoCluster
+              title="Photos"
+              items={allItems.slice(0, shownCount)}
+              onRemove={canRemove ? handleRemove : undefined}
+              onOpenItem={openLightbox}
+              nowrap
+            />
           </div>
           {needsMore ? (
             <button
@@ -490,27 +379,17 @@ export function AdminOrderCardPhotoGroups({
       </ExpandPanel>
       <ExpandPanel open={expanded}>
         <div className="rounded-xl bg-night/25 ring-1 ring-ink/10">
-          <div className="space-y-4 px-3 py-3">
+          <div className="space-y-2 px-3 py-3">
             <AdminPhotoCluster
-              title="Customer photos"
-              items={customerItems}
-              emptyText="No customer photos."
-              onOpenItem={(itemId) => openLightbox("customer", itemId)}
+              title="Photos"
+              items={allItems}
+              onRemove={canRemove ? handleRemove : undefined}
+              onOpenItem={openLightbox}
             />
-            {updateCount > 0 ? (
-              <div className="border-t border-ink/10 pt-3">
-                <AdminPhotoCluster
-                  title="Update photos"
-                  items={allUpdateItems}
-                  onRemove={canRemove ? handleRemoveUpdate : undefined}
-                  onOpenItem={(itemId) => openLightbox("update", itemId)}
-                />
-                {pendingItems.length > 0 ? (
-                  <p className="mt-2 text-[11px] text-ink/45">
-                    Unsaved photos upload when you save.
-                  </p>
-                ) : null}
-              </div>
+            {pendingItems.length > 0 ? (
+              <p className="text-[11px] text-ink/45">
+                Unsaved photos upload when you save.
+              </p>
             ) : null}
           </div>
           <button
@@ -542,17 +421,15 @@ export function AdminOrderCardPhotoGroups({
           onNext={() =>
             setLightbox((current) => {
               if (!current) return current;
-              const list =
-                current.group === "customer" ? customerItems : allUpdateItems;
-              return current.index >= list.length - 1
+              return current.index >= allItems.length - 1
                 ? current
                 : { ...current, index: current.index + 1 };
             })
           }
           hasPrevious={lightbox.index > 0}
-          hasNext={lightbox.index < lightboxList.length - 1}
+          hasNext={lightbox.index < allItems.length - 1}
           position={lightbox.index + 1}
-          total={lightboxList.length}
+          total={allItems.length}
         />
       ) : null}
     </>
