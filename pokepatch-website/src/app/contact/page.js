@@ -19,9 +19,9 @@ export default function ContactPage() {
         Get a free quote
       </SectionHeading>
 
-      <SocialLinks className="mb-8" />
-
       <QuoteForm />
+
+      <SocialLinks className="mt-10" />
     </div>
   );
 }

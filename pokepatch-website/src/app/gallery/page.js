@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import SectionHeading from "@/components/SectionHeading";
 import GalleryContent from "@/components/GalleryContent";
+import LoadingSpinner from "@/components/LoadingSpinner";
 import {
   FALLBACK_GALLERY_ITEMS,
   fetchPublishedGalleryItems,
@@ -39,7 +40,15 @@ export default function GalleryPage() {
         Restored work
       </SectionHeading>
 
-      <GalleryContent items={items} />
+      <Suspense
+        fallback={
+          <div className="flex justify-center py-16">
+            <LoadingSpinner label="Loading gallery…" />
+          </div>
+        }
+      >
+        <GalleryContent items={items} />
+      </Suspense>
     </div>
   );
 }

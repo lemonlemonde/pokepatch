@@ -2,16 +2,21 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CARD_THUMB_ASPECT_CLASS,
   CARD_THUMB_IMAGE_CLASS,
   DAMAGE_TAGS,
   formatPostedDate,
+  galleryItemDomId,
+  galleryItemMatchesParam,
+  galleryItemParam,
   galleryPosterPublicUrl,
 } from "@/lib/gallery";
 import GalleryImage from "@/components/GalleryImage";
@@ -325,7 +330,7 @@ function GalleryExtras({ extra, itemTitle, onOpen }) {
   );
 }
 
-function GalleryItemCard({ item, index, onOpen }) {
+function GalleryItemCard({ item, index, onOpen, highlighted = false }) {
   const pairs = (item.pairs ?? []).filter((pair) => pair.before || pair.after);
   const featured = pairs[0] ?? null;
   const extra = pairs.slice(1);
@@ -341,7 +346,10 @@ function GalleryItemCard({ item, index, onOpen }) {
 
   return (
     <div
-      className="marketing-panel animate-fade-up overflow-hidden"
+      id={galleryItemDomId(item)}
+      className={`marketing-panel animate-fade-up scroll-mt-28 overflow-hidden ${
+        highlighted ? "ring-2 ring-ink/40" : ""
+      }`}
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
       <div className="flex flex-col space-y-4 p-5">
@@ -442,13 +450,16 @@ function useLgUp() {
   return useSyncExternalStore(subscribeLgUp, getLgUpSnapshot, () => false);
 }
 
-function GalleryItemCardList({ items, onOpen }) {
+function GalleryItemCardList({ items, onOpen, highlightKey = null }) {
   return items.map(({ item, index }) => (
     <GalleryItemCard
       key={item.id ?? item.title}
       item={item}
       index={index}
       onOpen={onOpen}
+      highlighted={
+        highlightKey != null && galleryItemParam(item) === highlightKey
+      }
     />
   ));
 }
@@ -604,12 +615,29 @@ function Pagination({ currentPage, totalPages, onChange }) {
 }
 
 export default function GalleryContent({ items }) {
-  const [activeFilter, setActiveFilter] = useState("all");
-  const [page, setPage] = useState(1);
+  const searchParams = useSearchParams();
+  const focusParam = searchParams.get("item");
+  const [filterOverride, setFilterOverride] = useState(null);
+  const [pageOverride, setPageOverride] = useState(null);
+  const [highlightCleared, setHighlightCleared] = useState(false);
   // Lightbox target: { itemKey, index } into that card's own media list.
   const [active, setActive] = useState(null);
   const topRef = useRef(null);
   const lgUp = useLgUp();
+
+  const focusIndex = useMemo(() => {
+    if (!focusParam) return -1;
+    return items.findIndex((item) =>
+      galleryItemMatchesParam(item, focusParam),
+    );
+  }, [focusParam, items]);
+
+  const highlightKey =
+    !highlightCleared && focusIndex >= 0
+      ? galleryItemParam(items[focusIndex])
+      : null;
+
+  const activeFilter = filterOverride ?? "all";
 
   const damageCounts = useMemo(() => {
     const counts = {};
@@ -629,8 +657,13 @@ export default function GalleryContent({ items }) {
     );
   }, [items, activeFilter]);
 
+  const deepLinkPage =
+    focusIndex >= 0 && filterOverride == null && pageOverride == null
+      ? Math.floor(focusIndex / PAGE_SIZE) + 1
+      : null;
+
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
+  const currentPage = Math.min(pageOverride ?? deepLinkPage ?? 1, totalPages);
 
   const pageItems = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
@@ -645,6 +678,20 @@ export default function GalleryContent({ items }) {
       rightColumnItems: entries.filter(({ index }) => index % 2 === 1),
     };
   }, [pageItems]);
+
+  useEffect(() => {
+    if (!highlightKey) return undefined;
+    const target = items.find(
+      (item) => galleryItemParam(item) === highlightKey,
+    );
+    if (!target) return undefined;
+    const frame = requestAnimationFrame(() => {
+      document
+        .getElementById(galleryItemDomId(target))
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [highlightKey, currentPage, items]);
 
   // Lightbox navigation is scoped to the clicked card: Prev/Next only move
   // through that card's own before/after media, never across cards.
@@ -691,14 +738,16 @@ export default function GalleryContent({ items }) {
   }, [mediaByItem]);
 
   const selectFilter = useCallback((filterId) => {
-    setActiveFilter(filterId);
-    setPage(1);
+    setFilterOverride(filterId);
+    setPageOverride(1);
     setActive(null);
+    setHighlightCleared(true);
   }, []);
 
   const changePage = useCallback((next) => {
-    setPage(next);
+    setPageOverride(next);
     setActive(null);
+    setHighlightCleared(true);
     if (topRef.current) {
       topRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -731,12 +780,14 @@ export default function GalleryContent({ items }) {
                   <GalleryItemCardList
                     items={leftColumnItems}
                     onOpen={openMedia}
+                    highlightKey={highlightKey}
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-6">
                   <GalleryItemCardList
                     items={rightColumnItems}
                     onOpen={openMedia}
+                    highlightKey={highlightKey}
                   />
                 </div>
               </div>
@@ -745,6 +796,7 @@ export default function GalleryContent({ items }) {
                 <GalleryItemCardList
                   items={pageItemEntries}
                   onOpen={openMedia}
+                  highlightKey={highlightKey}
                 />
               </div>
             )}
