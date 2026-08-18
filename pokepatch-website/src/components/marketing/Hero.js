@@ -10,9 +10,9 @@ const STATS = [
 ];
 
 const HERO_PAIR = {
-  title: "Team Japan's Pikachu",
-  before: "/gallery/pikachu-before-front.webp",
-  after: "/gallery/pikachu-after-front.webp",
+  title: "Giovanni's Nidoking",
+  before: "/gallery/nidoking-before-front.webp",
+  after: "/gallery/nidoking-after-front.webp",
 };
 
 function HeroPairSide({ src, label, title }) {
