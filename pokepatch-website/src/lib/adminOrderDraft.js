@@ -409,9 +409,6 @@ export function validateDraftForSave(draft) {
     if (!hasAmount) {
       return `Adjustment ${index + 1} needs a $ amount.`;
     }
-    if (dollars < 0) {
-      return `Adjustment ${index + 1}: use Discount type instead of a negative $.`;
-    }
   }
   return null;
 }

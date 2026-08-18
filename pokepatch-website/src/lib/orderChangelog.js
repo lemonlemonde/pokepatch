@@ -1,5 +1,4 @@
 import {
-  adjustmentKindLabel,
   billableQuoteItems,
   computeQuoteTotal,
   defaultServiceLabel,
@@ -110,7 +109,7 @@ function quoteServiceChangeLine(before, after) {
 function formatAdjustmentAmount(row, subtotal = null) {
   const signed = quoteAdjustmentSignedAmount(row, subtotal);
   if (signed !== 0) return formatMoney(signed);
-  const kind = row?.kind ?? "discount";
+  const kind = row?.kind ?? "adjustment";
   const percent = row?.amount_percent;
   if (percent != null && percent !== "" && Number(percent) !== 0) {
     const n = Number(percent);
@@ -122,19 +121,14 @@ function formatAdjustmentAmount(row, subtotal = null) {
 
 function adjustmentChangeCause(before, after, action, subtotal) {
   const row = after ?? before;
-  const kind = row?.kind ?? "discount";
   const amount = formatAdjustmentAmount(row, subtotal);
+  const label =
+    (row?.description != null ? String(row.description).trim() : "") ||
+    "adjustment";
 
-  if (kind === "discount") {
-    if (action === "added") return `Applied: discount: ${amount}`;
-    if (action === "removed") return `Removed: discount: ${amount}`;
-    return `Discount: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
-  }
-
-  const label = adjustmentKindLabel(kind).toLowerCase();
   if (action === "added") return `Added: ${label}: ${amount}`;
   if (action === "removed") return `Removed: ${label}: ${amount}`;
-  return `${adjustmentKindLabel(kind)}: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
+  return `${label}: ${formatAdjustmentAmount(before, subtotal)} → ${formatAdjustmentAmount(after, subtotal)}`;
 }
 
 function quoteFingerprint(payload) {
