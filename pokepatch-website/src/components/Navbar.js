@@ -14,7 +14,7 @@ import { REVEAL_EASE } from "@/components/ExpandReveal";
 const BASE_LINKS = [
   { href: "/", label: "Home" },
   { href: "/gallery", label: "Gallery" },
-  { href: "/contact", label: "Get Free Quote" },
+  { href: "/quote", label: "Get Free Quote" },
 ];
 
 function normalizePath(path) {

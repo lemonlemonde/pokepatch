@@ -1,24 +1,20 @@
-import SectionHeading from "@/components/SectionHeading";
-import QuoteForm from "@/components/QuoteForm";
+"use client";
 
-export const metadata = {
-  title: "Get Free Quote",
-  description:
-    "Send photos of your damaged trading cards and get a restoration quote within 2 hours. Local Bay Area drop-off or nationwide mail-in.",
-};
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import LoadingSpinner from "@/components/LoadingSpinner";
 
-export default function ContactPage() {
+/** Old /contact URL — keep for bookmarks and external links. */
+export default function ContactRedirectPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/quote/");
+  }, [router]);
+
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-12 md:py-16">
-      <SectionHeading
-        as="h1"
-        note="Quote"
-        subtitle="Send photos of your cards and tell us what you'd like fixed. We usually reply within 2 hours."
-      >
-        Get a free quote
-      </SectionHeading>
-
-      <QuoteForm />
+    <div className="flex min-h-[50vh] items-center justify-center">
+      <LoadingSpinner label="Redirecting to quote…" />
     </div>
   );
 }

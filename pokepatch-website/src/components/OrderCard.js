@@ -103,7 +103,11 @@ export default function OrderCard({ order }) {
       ? isPriority
         ? `Priority · #${order.queue_position} in queue`
         : `#${order.queue_position} in queue`
-      : customerOrderStatusLabel(order.status, order.pending_kind);
+      : customerOrderStatusLabel(
+          order.status,
+          order.pending_kind,
+          order.delivery_method,
+        );
   const hasUnreadMessages = Boolean(order.has_unread_messages);
   const lastUpdatedAt = hasUnreadMessages
     ? order.latest_unread_message_at ?? order.latest_message_at

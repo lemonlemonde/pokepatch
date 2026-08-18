@@ -25,7 +25,7 @@ export default function NotFound() {
       </div>
       <p className="mt-6 text-sm text-ink/60">
         Need a quote?{" "}
-        <Link href="/contact" className="font-semibold text-ink hover:underline">
+        <Link href="/quote" className="font-semibold text-ink hover:underline">
           Get in touch
         </Link>
         .
