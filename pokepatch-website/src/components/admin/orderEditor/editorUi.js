@@ -92,13 +92,40 @@ export function RemoveButton({ label = "Remove", className = "", ...props }) {
   );
 }
 
-/** Standard panel: small-caps title row + body. */
-export function Panel({ title, action, children, className = "" }) {
+/**
+ * Standard panel: small-caps title row + body.
+ * tone="internal" — lavender tint for admin-only ledger / internal controls
+ * (mint is reserved for customer-visible notes).
+ */
+export function Panel({
+  title,
+  action,
+  children,
+  className = "",
+  tone = "default",
+}) {
+  const isInternal = tone === "internal";
   return (
-    <section className={`marketing-panel rounded-2xl ${className}`}>
+    <section
+      className={`rounded-2xl ${
+        isInternal
+          ? "border border-lavender/35 bg-lavender/[0.07] transition-colors duration-200 ease-out hover:border-lavender/50 hover:bg-lavender/[0.1]"
+          : "marketing-panel"
+      } ${className}`}
+    >
       {title ? (
         <div className="flex items-center justify-between gap-3 px-4 pt-4 sm:px-5">
-          <h3 className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          <h3
+            className={`inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] ${
+              isInternal ? "text-lavender" : "text-ink/45"
+            }`}
+          >
+            {isInternal ? (
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-lavender"
+                aria-hidden="true"
+              />
+            ) : null}
             {title}
           </h3>
           {action ?? null}
