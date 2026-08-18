@@ -27,7 +27,7 @@ That starts Supabase (if needed), syncs edge secrets from `.env.local.prod` into
 
 Open [http://localhost:3000](http://localhost:3000). Studio is usually at [http://127.0.0.1:54323](http://127.0.0.1:54323).
 
-Submit a quote on `/contact/` → local DB → local `notify` → Discord (if `DISCORD_WEBHOOK_URL` is in `.env.local.prod`).
+Submit a quote on `/quote/` → local DB → local `notify` → Discord (if `DISCORD_WEBHOOK_URL` is in `.env.local.prod`).
 
 New schema on a branch: `supabase migration new <name>`, edit the file, then `supabase db reset` and `npm run local` again. Remote apply happens when the PR merges (CI `db push`).
 
@@ -174,12 +174,12 @@ No PII is sent in event properties.
 
 Create a funnel under **Product analytics → Funnels**:
 
-1. Pageview where `$current_url` contains `/contact/`
+1. Pageview where `$current_url` contains `/quote/`
 2. `quote_form_started`
 3. `quote_form_submit_attempted`
 4. `quote_form_submitted`
 
-Optional: **Trends** chart for `quote_form_error` by `error_type`; **Paths** from `/contact/`.
+Optional: **Trends** chart for `quote_form_error` by `error_type`; **Paths** from `/quote/`.
 
 ---
 
@@ -189,7 +189,7 @@ The site is a **static frontend** on GitHub Pages. All backend logic runs in **S
 
 | Surface | Route | Backend |
 |---------|-------|---------|
-| Public quote form | `/contact/` | `create_order` RPC + Storage + `notify` |
+| Public quote form | `/quote/` | `create_order` RPC + Storage + `notify` |
 | Public gallery | `/gallery/` | `gallery_items` SELECT (anon) + public `gallery` bucket |
 | Admin orders + gallery + studio | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
 | Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
@@ -284,7 +284,7 @@ There is no intermediate save. The public form only calls `create_order` (never 
 
 | Piece | Path |
 |-------|------|
-| Contact page | `pokepatch-website/src/app/contact/page.js` |
+| Quote page | `pokepatch-website/src/app/quote/page.js` |
 | Quote form | `pokepatch-website/src/components/QuoteForm.js` |
 | Card photo previews | `pokepatch-website/src/components/CardPhotoPreviews.js` |
 | Supabase client | `pokepatch-website/src/lib/supabaseClient.js` |
@@ -539,7 +539,7 @@ Admin edits use `update_order` on **working** tables only. Original backups and 
 ```
 pokepatch-website/
   src/
-    app/contact/                 # Public quote page
+    app/quote/                 # Public quote page
     app/gallery/                 # Public gallery (loads from Supabase)
     app/admin/                   # Admin page (noindex)
     components/

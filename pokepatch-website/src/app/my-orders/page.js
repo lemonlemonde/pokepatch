@@ -17,7 +17,6 @@ import {
   orderStatusHeadingClass,
   customerOrderStatusLabel,
   normalizePendingKind,
-  filterOrdersByCompletedVisibility,
 } from "@/lib/orderStatus";
 
 export default function MyOrdersPage() {
@@ -184,13 +183,9 @@ export default function MyOrdersPage() {
       window.removeEventListener("pokepatch:messages-read", onMessagesRead);
   }, []);
 
-  const visibleOrders = useMemo(
-    () => filterOrdersByCompletedVisibility(orders),
-    [orders]
-  );
   const ordersByStatus = useMemo(
-    () => groupOrdersByStatus(visibleOrders),
-    [visibleOrders]
+    () => groupOrdersByStatus(orders),
+    [orders]
   );
   const statusSections = useMemo(
     () =>
@@ -262,7 +257,7 @@ export default function MyOrdersPage() {
               Orders you submit will automatically be linked to your account if
               you use the same email address.
             </p>
-            <Button href="/contact">Submit a restoration request</Button>
+            <Button href="/quote">Get Free Quote</Button>
           </div>
         )}
 
@@ -273,35 +268,29 @@ export default function MyOrdersPage() {
               until drop-off.
             </p>
 
-            {visibleOrders.length === 0 ? (
-              <p className="rounded-xl border border-ink/10 bg-night/20 px-4 py-6 text-center text-sm text-ink/60">
-                No recent orders to show.
-              </p>
-            ) : (
-              statusSections.map((section) => (
-                <section key={section.id} className="space-y-3">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h2
-                      className={`font-display text-lg font-bold ${orderStatusHeadingClass(
-                        section.statusId
-                      )}`}
-                    >
-                      {section.label ??
-                        customerOrderStatusLabel(section.statusId)}
-                    </h2>
-                    <span className="text-xs text-ink/60">
-                      {section.orders.length}{" "}
-                      {section.orders.length === 1 ? "order" : "orders"}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {section.orders.map((order) => (
-                      <OrderCard key={order.id} order={order} />
-                    ))}
-                  </div>
-                </section>
-              ))
-            )}
+            {statusSections.map((section) => (
+              <section key={section.id} className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2
+                    className={`font-display text-lg font-bold ${orderStatusHeadingClass(
+                      section.statusId
+                    )}`}
+                  >
+                    {section.label ??
+                      customerOrderStatusLabel(section.statusId)}
+                  </h2>
+                  <span className="text-xs text-ink/60">
+                    {section.orders.length}{" "}
+                    {section.orders.length === 1 ? "order" : "orders"}
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {section.orders.map((order) => (
+                    <OrderCard key={order.id} order={order} />
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )}
 

@@ -7,7 +7,7 @@ export const metadata = {
     "Send photos of your damaged trading cards and get a restoration quote within 2 hours. Local Bay Area drop-off or nationwide mail-in.",
 };
 
-export default function ContactPage() {
+export default function QuotePage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-12 md:py-16">
       <SectionHeading

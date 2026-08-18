@@ -77,7 +77,7 @@ export default function Hero() {
 
             <div className="mt-8 flex w-full flex-col gap-3 sm:mt-10 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
               <Button
-                href="/contact"
+                href="/quote"
                 variant="marketing"
                 className="w-full min-h-12 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
               >

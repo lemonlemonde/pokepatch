@@ -371,7 +371,11 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               order.pending_kind
             )}`}
           >
-            {customerOrderStatusLabel(order.status, order.pending_kind)}
+            {customerOrderStatusLabel(
+              order.status,
+              order.pending_kind,
+              order.delivery_method,
+            )}
           </span>
           {isPriority ? <CustomerPriorityBadge /> : null}
           {canEdit ? (
@@ -490,18 +494,6 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               setLightbox={setLightbox}
             />
           </section>
-
-          {canEdit ? (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="rounded-lg border border-ink/30 px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink/10"
-              >
-                Edit delivery, contacts, or cards
-              </button>
-            </div>
-          ) : null}
         </>
       )}
     </div>

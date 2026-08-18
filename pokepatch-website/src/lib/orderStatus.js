@@ -183,7 +183,7 @@ export const CANCELED_ORDER_STATUS = ORDER_STATUSES.find(
 /** Fallback for unknown status ids (not the new-order default). */
 export const DEFAULT_ORDER_STATUS = "new";
 
-/** Closed orders older than this are hidden on My Orders and the admin kanban. */
+/** Closed orders older than this are hidden on the admin kanban only. */
 export const COMPLETED_VISIBLE_DAYS = 7;
 
 const LABEL_BY_ID = Object.fromEntries(
@@ -252,9 +252,18 @@ export function orderDisplayLabel(statusId, pendingKind = null) {
 }
 
 /** Customer-facing label (e.g. "In queue" instead of admin "To do"). */
-export function customerOrderStatusLabel(statusId, pendingKind = null) {
+export function customerOrderStatusLabel(
+  statusId,
+  pendingKind = null,
+  deliveryMethod = null,
+) {
   const status = normalizeOrderStatus(statusId);
   if (status === "pending") return pendingKindLabel(pendingKind);
+  if (status === "ready") {
+    return deliveryMethod === "shipping"
+      ? "Ready to ship"
+      : "Ready for pickup";
+  }
   return (
     CUSTOMER_LABEL_BY_ID[status] ??
     LABEL_BY_ID[status] ??
@@ -328,7 +337,7 @@ export function orderStatusHeadingClass(statusId) {
   }
 }
 
-/** True when a closed order is older than the My Orders visibility window. */
+/** True when a closed order is older than the admin kanban visibility window. */
 export function isOlderCompletedOrder(order) {
   if (!isClosedOrderStatus(order?.status)) return false;
   // Without a timestamp we cannot age the order — keep it visible.

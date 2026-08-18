@@ -141,7 +141,7 @@ export default function Home() {
                 </p>
               </div>
               <Button
-                href="/contact"
+                href="/quote"
                 variant="marketing"
                 className="w-full min-h-12 shrink-0 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
               >
@@ -204,7 +204,7 @@ export default function Home() {
               </p>
               <div className="mt-8 sm:mt-10">
                 <Button
-                  href="/contact"
+                  href="/quote"
                   variant="marketing"
                   className="w-full min-h-12 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
                 >

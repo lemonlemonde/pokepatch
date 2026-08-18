@@ -117,7 +117,7 @@ Legacy [`scripts/google-sheets-webhook.gs`](../../../scripts/google-sheets-webho
 
 ## 5. Test
 
-Submit a quote on `/contact/`, then confirm:
+Submit a quote on `/quote/`, then confirm:
 
 - Rows in `orders`, `contacts`, `cards`, `card_images`
 - Matching rows in `*_original` tables

@@ -8,7 +8,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SectionHeading from "@/components/SectionHeading";
+import Button from "@/components/Button";
 import { fieldClassName } from "@/lib/formStyles";
+
+const MIN_PASSWORD_LENGTH = 6;
 
 function emptyContactValues() {
   return CONTACT_TYPES.reduce((acc, type) => ({ ...acc, [type.value]: "" }), {});
@@ -17,7 +20,7 @@ function emptyContactValues() {
 export default function AccountPage() {
   const router = useRouter();
   const customerAuthEnabled = isCustomerAuthEnabled();
-  const { user, loading: authLoading, signOut } = useAuth();
+  const { user, loading: authLoading, signOut, updatePassword } = useAuth();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -27,6 +30,13 @@ export default function AccountPage() {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState({});
 
   useEffect(() => {
     if (!customerAuthEnabled) {
@@ -39,35 +49,46 @@ export default function AccountPage() {
   }, [customerAuthEnabled, user, authLoading, router]);
 
   useEffect(() => {
-    if (!user || !supabase) return;
-    setLoading(true);
-    supabase
-      .from("customer_profiles")
-      .select("first_name, last_name, contacts")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data, error: loadError }) => {
-        if (loadError) throw loadError;
-        if (data) {
-          setFirstName(data.first_name ?? "");
-          setLastName(data.last_name ?? "");
-          if (Array.isArray(data.contacts)) {
-            const values = emptyContactValues();
-            for (const c of data.contacts) {
-              if (c && c.contact_type in values) {
-                values[c.contact_type] = c.value ?? "";
+    if (!user || !supabase) return undefined;
+    let cancelled = false;
+    const frame = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setLoading(true);
+      supabase
+        .from("customer_profiles")
+        .select("first_name, last_name, contacts")
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then(({ data, error: loadError }) => {
+          if (cancelled) return;
+          if (loadError) throw loadError;
+          if (data) {
+            setFirstName(data.first_name ?? "");
+            setLastName(data.last_name ?? "");
+            if (Array.isArray(data.contacts)) {
+              const values = emptyContactValues();
+              for (const c of data.contacts) {
+                if (c && c.contact_type in values) {
+                  values[c.contact_type] = c.value ?? "";
+                }
               }
+              setContactValues(values);
             }
-            setContactValues(values);
           }
-        }
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to load your profile");
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+        })
+        .catch((err) => {
+          if (!cancelled) {
+            setError(err.message || "Failed to load your profile");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [user]);
 
   useEffect(() => {
@@ -75,6 +96,12 @@ export default function AccountPage() {
     const timeout = setTimeout(() => setSuccess(""), 2500);
     return () => clearTimeout(timeout);
   }, [success]);
+
+  useEffect(() => {
+    if (!passwordSuccess) return;
+    const timeout = setTimeout(() => setPasswordSuccess(""), 2500);
+    return () => clearTimeout(timeout);
+  }, [passwordSuccess]);
 
   function updateContactValue(type, value) {
     setContactValues((prev) => ({ ...prev, [type]: value }));
@@ -139,6 +166,38 @@ export default function AccountPage() {
     }
   }
 
+  async function handlePasswordSave(e) {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    const errors = {};
+    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+      errors.newPassword = true;
+    }
+    if (newPassword !== confirmPassword) {
+      errors.confirmPassword = true;
+    }
+    setPasswordFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setPasswordError("Please check the password fields.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await updatePassword(newPassword);
+      setPasswordSuccess("Your password has been updated.");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordFieldErrors({});
+    } catch (err) {
+      setPasswordError(err.message || "Failed to update password.");
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
   if (!customerAuthEnabled || authLoading || !user) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
@@ -148,7 +207,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 sm:py-16">
+    <div className="mx-auto max-w-2xl space-y-8 px-4 py-10 sm:px-6 sm:py-16">
       <div className="animate-fade-up">
         <SectionHeading
           note="Account"
@@ -191,7 +250,15 @@ export default function AccountPage() {
                 className={`${fieldClassName()} opacity-70`}
               />
               <p className="mt-1 text-xs text-ink/60">
-                Your account email can&apos;t be changed here.
+                This is your login email and can&apos;t be changed here. Need a
+                different address? Email{" "}
+                <a
+                  href="mailto:pokepatch.cards@gmail.com"
+                  className="font-semibold text-ink hover:underline"
+                >
+                  pokepatch.cards@gmail.com
+                </a>
+                .
               </p>
             </div>
 
@@ -269,11 +336,94 @@ export default function AccountPage() {
         )}
       </div>
 
-      {success && (
+      <div className="marketing-panel animate-fade-up space-y-4 p-6 [animation-delay:200ms]">
+        <h2 className="text-lg font-bold text-ink">Change password</h2>
+        <p className="text-sm text-ink/60">
+          Set a new password for this account. You&apos;ll stay signed in.
+        </p>
+
+        {passwordError ? (
+          <p className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink">
+            {passwordError}
+          </p>
+        ) : null}
+
+        <form onSubmit={handlePasswordSave} className="space-y-4">
+          <div>
+            <label
+              htmlFor="new_password"
+              className="mb-1 block text-sm font-bold text-ink"
+            >
+              New password <span className="text-error">*</span>
+            </label>
+            <input
+              id="new_password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                setPasswordFieldErrors((prev) => ({
+                  ...prev,
+                  newPassword: false,
+                }));
+              }}
+              placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+              className={fieldClassName(passwordFieldErrors.newPassword)}
+              disabled={passwordSaving}
+              required
+            />
+            {passwordFieldErrors.newPassword ? (
+              <p className="mt-1 text-sm text-error">
+                Password must be at least {MIN_PASSWORD_LENGTH} characters
+              </p>
+            ) : null}
+          </div>
+
+          <div>
+            <label
+              htmlFor="confirm_new_password"
+              className="mb-1 block text-sm font-bold text-ink"
+            >
+              Confirm new password <span className="text-error">*</span>
+            </label>
+            <input
+              id="confirm_new_password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setPasswordFieldErrors((prev) => ({
+                  ...prev,
+                  confirmPassword: false,
+                }));
+              }}
+              placeholder="Confirm your new password"
+              className={fieldClassName(passwordFieldErrors.confirmPassword)}
+              disabled={passwordSaving}
+              required
+            />
+            {passwordFieldErrors.confirmPassword ? (
+              <p className="mt-1 text-sm text-error">Passwords do not match</p>
+            ) : null}
+          </div>
+
+          <Button type="submit" fullWidth disabled={passwordSaving}>
+            {passwordSaving ? (
+              <span className="inline-block animate-soft-bounce">
+                Updating password...
+              </span>
+            ) : (
+              "Update password"
+            )}
+          </Button>
+        </form>
+      </div>
+
+      {(success || passwordSuccess) && (
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
           <div className="animate-fade-up flex items-center gap-2 rounded-full border-2 border-mint bg-mint px-5 py-2.5 text-sm font-bold text-night shadow-cozy">
             <span aria-hidden="true">✓</span>
-            {success}
+            {success || passwordSuccess}
           </div>
         </div>
       )}

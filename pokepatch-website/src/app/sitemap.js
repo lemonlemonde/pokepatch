@@ -4,7 +4,7 @@ export const dynamic = "force-static";
 const PUBLIC_PATHS = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
   { path: "/gallery/", changeFrequency: "weekly", priority: 0.9 },
-  { path: "/contact/", changeFrequency: "monthly", priority: 0.8 },
+  { path: "/quote/", changeFrequency: "monthly", priority: 0.8 },
 ];
 
 /** @see https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap */
