@@ -888,6 +888,96 @@ export function orderQuoteTotalFromStored(order) {
   });
 }
 
+function newAdminLedgerId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `ledger-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** Empty tip / restoration-cost row for the admin order editor. */
+export function emptyAdminLedgerEntry() {
+  return {
+    id: newAdminLedgerId(),
+    description: "",
+    amount_dollars: "",
+  };
+}
+
+/** Normalize one admin ledger row (tips or restoration costs). */
+export function normalizeAdminLedgerEntry(row) {
+  if (!row || typeof row !== "object") return null;
+  const description =
+    row.description != null ? String(row.description).trim() : "";
+  const dollarsRaw = row.amount_dollars;
+  const dollars =
+    dollarsRaw === "" || dollarsRaw == null
+      ? null
+      : Number.isFinite(Number(dollarsRaw))
+        ? Number(dollarsRaw)
+        : null;
+  return {
+    id: row.id != null ? String(row.id) : newAdminLedgerId(),
+    description,
+    amount_dollars: dollars,
+  };
+}
+
+function adminLedgerEntryHasContent(row) {
+  if (!row) return false;
+  if ((row.description ?? "").trim()) return true;
+  return row.amount_dollars != null && row.amount_dollars !== 0;
+}
+
+/** Persist tips / restoration costs as a jsonb array. */
+export function packAdminLedger(rows) {
+  return (rows ?? [])
+    .map((row) => normalizeAdminLedgerEntry(row))
+    .filter((row) => row && adminLedgerEntryHasContent(row))
+    .map((row) => ({
+      id: row.id,
+      description: row.description,
+      amount_dollars: row.amount_dollars,
+    }));
+}
+
+/** Load tips / restoration costs into editor string fields. */
+export function unpackAdminLedger(stored) {
+  if (!Array.isArray(stored)) return [];
+  return stored
+    .map((row) => normalizeAdminLedgerEntry(row))
+    .filter(Boolean)
+    .map((row) => ({
+      id: row.id,
+      description: row.description,
+      amount_dollars:
+        row.amount_dollars != null ? String(row.amount_dollars) : "",
+    }));
+}
+
+export function adminLedgerTotal(rows) {
+  return (
+    Math.round(
+      (rows ?? []).reduce((sum, row) => {
+        const normalized = normalizeAdminLedgerEntry(row);
+        const amount = normalized?.amount_dollars;
+        return sum + (Number.isFinite(amount) ? amount : 0);
+      }, 0) * 100
+    ) / 100
+  );
+}
+
+/**
+ * Money earned for admin totals: quote + tips − restoration spend.
+ * Tips / spend never affect the customer quote.
+ */
+export function orderEarnedTotalFromStored(order) {
+  const quote = orderQuoteTotalFromStored(order);
+  const tips = adminLedgerTotal(order?.admin_tips);
+  const costs = adminLedgerTotal(order?.restoration_costs);
+  return Math.round((quote + tips - costs) * 100) / 100;
+}
+
 export function hasQuoteData({
   items,
   cards = null,
