@@ -86,13 +86,24 @@ export default function Navbar() {
 
     const onFocus = () => refreshUnread();
     const onRead = () => refreshUnread();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshUnread();
+    };
     window.addEventListener("focus", onFocus);
     window.addEventListener("pokepatch:messages-read", onRead);
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const onOrdersPath = normalizePath(pathname).startsWith("/my-orders");
+    const pollId = onOrdersPath
+      ? window.setInterval(refreshUnread, 15000)
+      : null;
 
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("pokepatch:messages-read", onRead);
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (pollId != null) window.clearInterval(pollId);
     };
   }, [customerAuthEnabled, user, pathname]);
 

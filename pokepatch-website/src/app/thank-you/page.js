@@ -83,7 +83,7 @@ function ThankYouContent() {
         <p className="text-ink/80">
           We&apos;ve received your restoration request and will review your cards
           shortly. A confirmation email is on its way — we&apos;ll reach out to you
-          soon with a quote, usually within about 2 hours.
+          soon with a quote, usually within 1 day.
         </p>
 
         {showGuestAccountPrompt && pendingProfile && (

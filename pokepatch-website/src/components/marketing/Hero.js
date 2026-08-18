@@ -4,7 +4,7 @@ import ScrollReveal from "@/components/marketing/ScrollReveal";
 import logo from "@/app/pokepatch_icon.png";
 
 const STATS = [
-  { label: "Quote time", value: "< 2 hrs" },
+  { label: "Quote time", value: "≤ 1 day" },
   { label: "Drop-off", value: "N. San Jose" },
   { label: "Mail-in", value: "US-wide" },
 ];

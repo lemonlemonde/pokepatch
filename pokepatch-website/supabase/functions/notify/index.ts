@@ -174,7 +174,7 @@ function buildQuoteConfirmationBody(customerName: string): string {
   return (
     `${greeting}Thanks for submitting your restoration quote request to PokePatch! ` +
     `We've received your form successfully and will review your cards shortly.\n\n` +
-    `We'll reach out to you soon with a quote, usually within about 2 hours.\n\n` +
+    `We'll reach out to you soon with a quote, usually within 1 day.\n\n` +
     `Track your order online — create a free account or log in with this email ` +
     `to see updates and photos:\n` +
     `${MY_ORDERS_TRACK_URL}\n\n` +

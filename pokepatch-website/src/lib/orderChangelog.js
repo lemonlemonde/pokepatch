@@ -3,6 +3,7 @@ import {
   computeQuoteTotal,
   defaultServiceLabel,
   formatMoney,
+  normalizeServiceDisplayTitle,
   quoteAdjustmentSignedAmount,
   quoteItemsSubtotal,
   unpackQuoteAdjustments,
@@ -73,7 +74,7 @@ function cardSortIndex(cardId, afterCards, beforeCards) {
 }
 
 function serviceNameForItem(item) {
-  const labeled = String(item?.service_label ?? "").trim();
+  const labeled = normalizeServiceDisplayTitle(item?.service_label);
   if (labeled) return labeled;
   const fallback = defaultServiceLabel(item?.service_key);
   if (fallback) return fallback;

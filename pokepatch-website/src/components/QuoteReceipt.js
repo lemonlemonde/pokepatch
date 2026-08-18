@@ -8,6 +8,7 @@ import {
   formatMoney,
   groupQuoteItemsByCard,
   hasPriorityAdjustment,
+  normalizeServiceDisplayTitle,
   priorityServiceDescription,
   priorityServiceFee,
   quoteAdjustmentLines,
@@ -87,7 +88,7 @@ export default function QuoteReceipt({
             {group.items.map((item, itemIndex) => {
               const amount = quoteItemLineTotal(item);
               const service =
-                (item.service_label || "").trim() || "Service";
+                normalizeServiceDisplayTitle(item.service_label) || "Service";
               return (
                 <div
                   key={item.id ?? `${group.key}-svc-${itemIndex}`}
