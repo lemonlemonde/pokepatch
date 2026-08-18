@@ -43,28 +43,12 @@ function primaryButtonClassName() {
   return "rounded-lg bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50";
 }
 
-function dangerButtonClassName() {
-  return "rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50";
+function compactPrimaryButtonClassName() {
+  return "rounded-lg bg-ink px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50";
 }
 
-function UnpublishedIcon({ className = "h-4 w-4" }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-      <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-      <path d="M1 1l22 22" />
-    </svg>
-  );
+function dangerButtonClassName() {
+  return "rounded-lg px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50";
 }
 
 function LoadingIndicator({ label = "Loading…", className = "" }) {
@@ -123,7 +107,7 @@ function emptyDraft() {
     tcg_lookup_set_name: "",
     tcg_card_id: "",
     damage_tags: [],
-    published: true,
+    published: false,
   };
 }
 
@@ -401,6 +385,7 @@ export default function GalleryManager() {
   const [reordering, setReordering] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [applyingCard, setApplyingCard] = useState(false);
+  const [publishingId, setPublishingId] = useState(null);
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -569,7 +554,7 @@ export default function GalleryManager() {
           tcg_lookup_set_name: draft.tcg_lookup_set_name.trim(),
           tcg_card_id: draft.tcg_card_id.trim(),
           damage_tags: draft.damage_tags,
-          published: draft.published,
+          published: item.published !== false,
         });
       }
 
@@ -736,6 +721,28 @@ export default function GalleryManager() {
     }
   }
 
+  async function handleTogglePublished(item) {
+    if (!item?.id) return;
+
+    setPublishingId(item.id);
+    setListError("");
+    setEditorError("");
+    try {
+      const updated = await saveGalleryItem(item.id, {
+        ...itemToDraft(item),
+        published: item.published === false,
+      });
+      if (selectedId === item.id) replaceSelected(updated);
+      else upsertItem(updated);
+    } catch (err) {
+      const message = err.message || "Could not update publish state.";
+      if (selectedId === item.id) setEditorError(message);
+      else setListError(message);
+    } finally {
+      setPublishingId(null);
+    }
+  }
+
   async function handleDelete(item) {
     if (!item) return;
     if (!window.confirm(`Delete “${item.title}” from the gallery?`)) return;
@@ -848,8 +855,8 @@ export default function GalleryManager() {
           </label>
         </div>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block space-y-1 sm:col-span-2">
+        <div className="mt-4">
+          <label className="block space-y-1">
             <span className="text-sm font-semibold text-ink">Damage tags</span>
             <div className="mt-2 flex flex-wrap gap-2">
               {DAMAGE_TAGS.map((tag) => {
@@ -879,16 +886,6 @@ export default function GalleryManager() {
                 );
               })}
             </div>
-          </label>
-          <label className="flex items-center gap-2 text-sm font-semibold text-ink">
-            <input
-              type="checkbox"
-              checked={draft.published}
-              onChange={(event) =>
-                setDraft({ ...draft, published: event.target.checked })
-              }
-            />
-            Published on /gallery
           </label>
         </div>
 
@@ -1161,6 +1158,8 @@ export default function GalleryManager() {
           <ul className="divide-y divide-ink/10 rounded-lg border border-ink/10">
             {items.map((item) => {
               const isOpen = selectedId === item.id;
+              const isPublished = item.published !== false;
+              const isPublishing = publishingId === item.id;
               return (
                 <li
                   key={item.id}
@@ -1180,13 +1179,12 @@ export default function GalleryManager() {
                         <span className="truncate text-base font-semibold text-ink">
                           {item.title}
                         </span>
-                        {!item.published ? (
+                        {!isPublished ? (
                           <span
-                            className="inline-flex shrink-0 items-center justify-center rounded-md border border-ink/25 bg-ink/10 p-1 text-ink"
-                            title="Unpublished — not shown on /gallery"
-                            aria-label="Unpublished"
+                            className="inline-flex shrink-0 items-center rounded-md border border-ink/20 bg-ink/[0.06] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-ink/55"
+                            title="Not shown on /gallery"
                           >
-                            <UnpublishedIcon className="h-3.5 w-3.5" />
+                            Draft
                           </span>
                         ) : null}
                       </span>
@@ -1234,6 +1232,31 @@ export default function GalleryManager() {
                         className="h-12 w-9 rounded object-cover"
                       />
                     ) : null}
+
+                    <button
+                      type="button"
+                      disabled={saving || publishingId != null}
+                      onClick={() => handleTogglePublished(item)}
+                      className={
+                        isPublished
+                          ? secondaryButtonClassName()
+                          : compactPrimaryButtonClassName()
+                      }
+                      aria-label={
+                        isPublished
+                          ? `Unpublish ${item.title}`
+                          : `Publish ${item.title}`
+                      }
+                      aria-busy={isPublishing}
+                    >
+                      {isPublishing
+                        ? isPublished
+                          ? "Unpublishing…"
+                          : "Publishing…"
+                        : isPublished
+                          ? "Unpublish"
+                          : "Publish"}
+                    </button>
 
                     <button
                       type="button"
