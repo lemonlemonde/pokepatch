@@ -5,7 +5,6 @@ export const PRIVATE_ROUTE_PREFIXES = [
   "/account/",
   "/my-orders/",
   "/messages/",
-  "/contact/",
   "/thank-you/",
   "/verify-email/",
   "/reset-password/",
