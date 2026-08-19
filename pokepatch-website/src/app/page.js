@@ -1,6 +1,5 @@
 import Button from "@/components/Button";
 import Hero from "@/components/marketing/Hero";
-import MarketingPageShell from "@/components/marketing/MarketingPageShell";
 import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
 import ScrollReveal from "@/components/marketing/ScrollReveal";
 import ServiceCard from "@/components/ServiceCard";
@@ -89,7 +88,7 @@ const faqs = [
 
 export default function Home() {
   return (
-    <MarketingPageShell>
+    <div className="overflow-x-clip pb-12 sm:pb-16">
       <HomeStructuredData faqs={faqs} />
       <Hero />
 
@@ -149,7 +148,6 @@ export default function Home() {
               </div>
               <Button
                 href="/quote"
-                variant="marketing"
                 className="w-full min-h-12 shrink-0 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
               >
                 Get Free Quote
@@ -212,7 +210,6 @@ export default function Home() {
               <div className="mt-8 sm:mt-10">
                 <Button
                   href="/quote"
-                  variant="marketing"
                   className="w-full min-h-12 text-center font-mono text-xs uppercase tracking-[0.18em] sm:w-auto"
                 >
                   Get Free Quote
@@ -222,6 +219,6 @@ export default function Home() {
           </ScrollReveal>
         </section>
       </div>
-    </MarketingPageShell>
+    </div>
   );
 }

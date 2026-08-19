@@ -487,7 +487,7 @@ function EditModeToggle({ step, onStepChange }) {
             type="button"
             aria-pressed={active}
             onClick={() => onStepChange(option.id)}
-            className={`rounded-lg px-3 py-1.5 font-secondary text-xs font-semibold transition ${
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
               active ? "bg-ink text-night" : "text-ink/70 hover:text-ink"
             }`}
           >
@@ -551,7 +551,7 @@ function EditorPanel({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <p className="text-center font-secondary text-[11px] font-semibold uppercase tracking-wide text-ink/40">
+      <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-ink/40">
         {label}
       </p>
 
@@ -564,7 +564,7 @@ function EditorPanel({
             type="button"
             onClick={() => onDraftCropChange(DEFAULT_CROP)}
             disabled={!hasCrop}
-            className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Reset crop
           </button>

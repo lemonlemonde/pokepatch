@@ -22,7 +22,7 @@ export function ShapeToolbar({ selectedId, onAdd, onDelete, className = "" }) {
       <button
         type="button"
         onClick={() => onAdd("circle")}
-        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20"
+        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/20"
       >
         Add circle
       </button>
@@ -30,7 +30,7 @@ export function ShapeToolbar({ selectedId, onAdd, onDelete, className = "" }) {
         type="button"
         onClick={onDelete}
         disabled={!selectedId}
-        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 font-secondary text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-lg border border-ink/20 bg-ink/10 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/20 disabled:cursor-not-allowed disabled:opacity-40"
       >
         Delete selected
       </button>

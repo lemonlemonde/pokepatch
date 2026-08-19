@@ -124,7 +124,7 @@ export function SideBank({
     <div className="w-full shrink-0 lg:sticky lg:top-28 lg:w-52 lg:self-start">
       <div className="flex flex-col gap-2 lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto lg:pb-4">
         <div className="flex items-center justify-between">
-          <p className="font-secondary text-sm font-semibold text-ink/90">
+          <p className="text-sm font-semibold text-ink/90">
             {title}
           </p>
           {totalCount > 0 && (
@@ -266,7 +266,7 @@ function PairSlot({
             : "border-dashed border-ink/10"
       }`}
     >
-      <p className="border-b border-ink/10 px-3 py-2 font-secondary text-xs font-semibold uppercase tracking-wide text-ink/80">
+      <p className="border-b border-ink/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink/80">
         {label}
       </p>
       {item && previewUrl ? (
@@ -453,7 +453,7 @@ export default function StudioFolderBoard({
 
       <div className="min-w-0 flex-1 space-y-4">
         <div>
-          <p className="font-secondary text-sm font-semibold text-ink/90">
+          <p className="text-sm font-semibold text-ink/90">
             Pairs
           </p>
           <p className="mt-1 text-xs text-ink/45">
@@ -475,7 +475,7 @@ export default function StudioFolderBoard({
                   }`}
                 >
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="font-secondary text-xs font-semibold text-ink/80">
+                    <p className="text-xs font-semibold text-ink/80">
                       Pair {index + 1}
                       {pairReady ? (
                         <span className="ml-2 font-normal text-ink/40">
@@ -565,7 +565,7 @@ export default function StudioFolderBoard({
         <button
           type="button"
           onClick={addPair}
-          className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
+          className="w-full rounded-xl border border-dashed border-ink/25 bg-night/40 px-4 py-3 text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
         >
           + Add another pair
         </button>

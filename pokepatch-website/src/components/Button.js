@@ -4,9 +4,6 @@ const VARIANTS = {
   primary: "bg-ink text-night shadow-none sm:hover:bg-ink/90",
   secondary:
     "border border-ink/20 bg-transparent text-ink shadow-none sm:hover:border-ink/40 sm:hover:bg-ink/5",
-  marketing: "bg-ink text-night shadow-none sm:hover:bg-ink/90",
-  "marketing-secondary":
-    "border border-ink/20 bg-transparent text-ink shadow-none sm:hover:border-ink/40 sm:hover:bg-ink/5",
 };
 
 const VARIANT_MOTION =
@@ -15,7 +12,7 @@ const VARIANT_MOTION =
 /**
  * Shared pill CTA. Renders a Next.js Link when `href` is given, otherwise a
  * plain <button>. All primary actions across the site should use this so the
- * color, shadow, and press/hover motion stay consistent.
+ * color and press/hover motion stay consistent.
  */
 export default function Button({
   href,
@@ -29,7 +26,7 @@ export default function Button({
     "inline-block rounded-full px-6 py-3 font-bold min-h-11",
     "transition-all duration-200 ease-out",
     VARIANT_MOTION,
-    "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0 disabled:active:shadow-cozy",
+    "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:translate-y-0",
     VARIANTS[variant] ?? VARIANTS.primary,
     fullWidth ? "w-full text-center" : "",
     className,
