@@ -76,7 +76,7 @@ function MetaSwitch({ id, label, description, checked, onChange }) {
       <div className="min-w-0">
         <label
           htmlFor={id}
-          className="font-secondary text-sm font-semibold text-ink"
+          className="text-sm font-semibold text-ink"
         >
           {label}
         </label>
@@ -194,7 +194,7 @@ function StudioCardMetaControls({
   return (
     <div className="space-y-3 rounded-xl border border-ink/15 bg-night/30 p-4">
       <div>
-        <p className="font-secondary text-sm font-semibold text-ink">
+        <p className="text-sm font-semibold text-ink">
           Card info overlay
         </p>
         <p className="mt-0.5 text-xs text-ink/50">
@@ -213,7 +213,7 @@ function StudioCardMetaControls({
       {value.showCardInfo ? (
         <div className="grid gap-4 border-t border-ink/10 pt-3 sm:grid-cols-[minmax(0,11rem)_1fr]">
           <div className="space-y-2">
-            <p className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+            <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
               Front image
             </p>
             <div
@@ -245,14 +245,14 @@ function StudioCardMetaControls({
                   <div className="flex w-24 flex-col gap-1">
                     <label
                       htmlFor={frontInputId}
-                      className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
+                      className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                     >
                       Replace
                     </label>
                     <button
                       type="button"
                       onClick={clearFront}
-                      className="rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
+                      className="rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                     >
                       Clear
                     </button>
@@ -289,7 +289,7 @@ function StudioCardMetaControls({
 
           <div className="grid gap-3">
             <label className="block space-y-1.5">
-              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
                 Card
               </span>
               <input
@@ -301,7 +301,7 @@ function StudioCardMetaControls({
               />
             </label>
             <label className="block space-y-1.5">
-              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
                 Set
               </span>
               <input
@@ -316,7 +316,7 @@ function StudioCardMetaControls({
               type="button"
               onClick={() => setSearchOpen((open) => !open)}
               aria-expanded={searchOpen}
-              className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
+              className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
             >
               {searchOpen ? "Hide catalog search" : "Search TCG catalog"}
             </button>
@@ -339,12 +339,12 @@ function StudioCardMetaControls({
             disabled={picking}
           />
           {picking ? (
-            <p className="font-secondary text-xs text-ink/50">
+            <p className="text-xs text-ink/50">
               Downloading card image…
             </p>
           ) : null}
           {pickError ? (
-            <p className="font-secondary text-xs font-semibold text-ink">
+            <p className="text-xs font-semibold text-ink">
               {pickError}
             </p>
           ) : null}
@@ -385,7 +385,7 @@ function ClearAllButton({ onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 font-secondary text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
+      className="inline-flex items-center gap-1.5 rounded-full border border-ink/20 bg-night/40 px-4 py-2 text-sm font-semibold text-ink/90 transition hover:border-ink/40 hover:bg-night/60 hover:text-ink"
     >
       Clear all
     </button>
@@ -429,7 +429,7 @@ function OutputGrid({
         {outputs.map((output) => {
           const altTextField = onAltTextChange ? (
             <label className="block space-y-1.5 text-left">
-              <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
                 Alt text
               </span>
               <p className="text-[11px] leading-snug text-ink/40">
@@ -449,7 +449,7 @@ function OutputGrid({
           ) : null;
           return (
             <div key={output.key} className="space-y-4 text-center">
-              <p className="font-secondary text-sm text-ink/60">
+              <p className="text-sm text-ink/60">
                 {output.sizeHint
                   ? `${output.label} · ${output.sizeHint}`
                   : output.label}
@@ -547,7 +547,7 @@ function OutputFormatToggle({ value, onChange }) {
       role="group"
       aria-label="Output format"
     >
-      <p className="font-secondary text-sm text-ink/60">Format</p>
+      <p className="text-sm text-ink/60">Format</p>
       <div className="inline-flex rounded-xl border border-ink/20 bg-night/40 p-1">
         {PHOTO_OUTPUT_FORMATS.map((format) => {
           const active = value === format.id;
@@ -557,7 +557,7 @@ function OutputFormatToggle({ value, onChange }) {
               type="button"
               aria-pressed={active}
               onClick={() => onChange(format.id)}
-              className={`rounded-lg px-3 py-2 font-secondary text-sm font-semibold transition ${
+              className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
                 active
                   ? "bg-ink text-night "
                   : "text-ink/70 hover:text-ink"
@@ -952,7 +952,7 @@ function BeforeAfterPairPhotoFormatter({
 
           <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
             <div>
-              <p className="font-secondary text-sm font-semibold text-ink">
+              <p className="text-sm font-semibold text-ink">
                 Downloads
               </p>
               <p className="mt-1 text-xs text-ink/50">
@@ -963,14 +963,14 @@ function BeforeAfterPairPhotoFormatter({
 
             <label className="block space-y-1.5">
               <span className="flex items-center justify-between gap-3">
-                <span className="font-secondary text-xs font-semibold uppercase tracking-wide text-ink/50">
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
                   Post caption
                 </span>
                 <button
                   type="button"
                   onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
                   disabled={caption === DEFAULT_PACKAGE_CAPTION}
-                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 font-secondary text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Restore default
                 </button>

@@ -21,27 +21,22 @@ const meta = await logo.metadata();
 const logoWidth = Math.round((meta.width / meta.height) * LOGO_HEIGHT);
 const logoBase64 = (await logo.png().toBuffer()).toString("base64");
 
-// Mirrors the site's dark plum background with soft pastel blobs.
+// Matches the live marketing background (deep night + soft lavender glow).
 const svg = `
 <svg width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <radialGradient id="blob1" cx="15%" cy="20%" r="70%">
-      <stop offset="0%" stop-color="#79344d" stop-opacity="0.35"/>
-      <stop offset="70%" stop-color="#79344d" stop-opacity="0"/>
+    <radialGradient id="glow1" cx="50%" cy="0%" r="70%">
+      <stop offset="0%" stop-color="#D4C5F9" stop-opacity="0.18"/>
+      <stop offset="70%" stop-color="#D4C5F9" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="blob2" cx="85%" cy="15%" r="70%">
-      <stop offset="0%" stop-color="#3d624c" stop-opacity="0.3"/>
-      <stop offset="70%" stop-color="#3d624c" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="blob3" cx="80%" cy="85%" r="70%">
-      <stop offset="0%" stop-color="#32254d" stop-opacity="0.4"/>
-      <stop offset="70%" stop-color="#32254d" stop-opacity="0"/>
+    <radialGradient id="glow2" cx="85%" cy="18%" r="55%">
+      <stop offset="0%" stop-color="#F3E9F2" stop-opacity="0.08"/>
+      <stop offset="70%" stop-color="#F3E9F2" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="#120c1f"/>
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#blob1)"/>
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#blob2)"/>
-  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#blob3)"/>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="#0a0714"/>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#glow1)"/>
+  <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#glow2)"/>
   <image
     href="data:image/png;base64,${logoBase64}"
     x="${(WIDTH - logoWidth) / 2}" y="100"
@@ -66,7 +61,7 @@ const svg = `
     text-anchor="middle"
     font-family="Verdana, DejaVu Sans, sans-serif"
     font-size="26"
-    fill="#F3E9F2" fill-opacity="0.6"
+    fill="#F3E9F2" fill-opacity="0.55"
   >pokepatch.cards</text>
 </svg>
 `;

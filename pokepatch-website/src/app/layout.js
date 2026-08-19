@@ -3,13 +3,13 @@ import {
   Instrument_Sans,
   Geist_Mono,
 } from "next/font/google";
-import localFont from "next/font/local";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import PostHogProvider from "@/components/PostHogProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
+/** Kept for admin Studio canvas text (see studioLayout LABEL_FONT_FAMILY). */
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
@@ -17,7 +17,6 @@ const nunito = Nunito({
   style: ["normal", "italic"],
 });
 
-// Marketing-page type system: Instrument Sans + mono labels.
 const instrumentSans = Instrument_Sans({
   variable: "--font-instrument-sans",
   subsets: ["latin"],
@@ -32,32 +31,37 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-const pixelify = localFont({
-  src: "./fonts/PixelifySans-VariableFont_wght.ttf",
-  variable: "--font-pixelify",
-  weight: "400 700",
-  display: "swap",
-});
-
-const gugi = localFont({
-  src: "./fonts/Gugi-Regular.ttf",
-  variable: "--font-gugi",
-  weight: "400",
-  display: "swap",
-});
+const SITE_URL = "https://pokepatch.cards";
+const SITE_DESCRIPTION =
+  "Careful trading card restorations. Surface cleaning, edge repair, crease flattening, and full restorations. Bay Area drop-off or US mail-in.";
 
 export const metadata = {
-  metadataBase: new URL("https://pokepatch.cards"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "PokePatch Card Restorations",
     template: "%s — PokePatch",
   },
-  description:
-    "Careful trading card restorations. Surface cleaning, edge repair, crease flattening, and full restorations. Bay Area drop-off or US mail-in.",
+  description: SITE_DESCRIPTION,
   openGraph: {
     siteName: "PokePatch Card Restorations",
-    url: "https://pokepatch.cards",
+    url: SITE_URL,
     type: "website",
+    title: "PokePatch Card Restorations",
+    description: SITE_DESCRIPTION,
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1200,
+        height: 630,
+        alt: "PokePatch Card Restorations",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "PokePatch Card Restorations",
+    description: SITE_DESCRIPTION,
+    images: ["/opengraph-image.png"],
   },
 };
 
@@ -65,7 +69,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body
-        className={`${nunito.variable} ${pixelify.variable} ${gugi.variable} ${instrumentSans.variable} ${geistMono.variable} marketing-page flex min-h-screen flex-col antialiased`}
+        className={`${nunito.variable} ${instrumentSans.variable} ${geistMono.variable} marketing-page flex min-h-screen flex-col antialiased`}
       >
         <div className="marketing-site-bg pointer-events-none fixed inset-0 -z-[9]" aria-hidden="true">
           <div className="marketing-glow absolute inset-0" />

@@ -20,10 +20,8 @@ export default function NotFound() {
         That link doesn&apos;t go anywhere on PokePatch. Try one of these instead:
       </p>
       <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-        <Button href="/" variant="marketing">
-          Back to home
-        </Button>
-        <Button href="/gallery" variant="marketing-secondary">
+        <Button href="/">Back to home</Button>
+        <Button href="/gallery" variant="secondary">
           View gallery
         </Button>
       </div>

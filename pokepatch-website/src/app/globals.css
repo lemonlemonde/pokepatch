@@ -10,7 +10,7 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-nunito), system-ui, sans-serif;
+  font-family: var(--font-instrument-sans), var(--font-nunito), system-ui, sans-serif;
 }
 
 /* Admin shares the public editorial type system (Instrument). */
@@ -62,21 +62,6 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 180px 180px;
   opacity: 0.035;
-}
-
-.gradient-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -10;
-  pointer-events: none;
-  /* Four soft pastel blobs baked into a single static background. One element,
-     painted once, then just composited on scroll. */
-  background-color: #120c1f;
-  background-image:
-    radial-gradient(95vw 95vw at 12% 18%, rgba(72, 52, 110, 0.22) 0%, rgba(44, 28, 75, 0) 70%),
-    radial-gradient(90vw 90vw at 85% 12%, rgba(61, 98, 76, 0.18) 0%, rgba(30, 69, 46, 0) 70%),
-    radial-gradient(100vw 100vw at 78% 82%, rgba(50, 37, 77, 0.2) 0%, rgba(44, 28, 75, 0) 70%),
-    radial-gradient(88vw 88vw at 18% 88%, rgba(120, 80, 41, 0.16) 0%, rgba(77, 53, 29, 0) 70%);
 }
 
 /* Scroll reveal: CSS view timelines when available (cheap), IO class fallback. */
