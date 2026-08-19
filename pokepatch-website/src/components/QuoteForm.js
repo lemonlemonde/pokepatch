@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { CONTACT_TYPES } from "@/lib/contacts";
+import { sanitizeFilename } from "@/lib/customerOrderMedia";
 import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import { capture } from "@/lib/posthog";
@@ -17,6 +18,14 @@ import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
 import { priorityServicePricingHint, CARD_WHITENING_WARNING } from "@/lib/servicePricing";
+import {
+  AccountFieldNote,
+  copyFileList,
+  emptyContactValues,
+  hasAdditionalContact,
+  isQuoteCardComplete as isCardComplete,
+  isQuoteCardEmpty as isCardEmpty,
+} from "@/lib/quoteDraftHelpers";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
@@ -30,32 +39,6 @@ const HEARD_ABOUT_OPTIONS = [
   { value: "other", label: "Other" },
 ];
 
-function copyFileList(fileList) {
-  if (!fileList) return [];
-  const copied = [];
-  for (let i = 0; i < fileList.length; i += 1) {
-    copied.push(fileList[i]);
-  }
-  return copied;
-}
-
-function sanitizeFilename(name) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
-}
-
-// Sits under each field the account controls, so the reason a field is disabled
-// is next to that field rather than at the end of the group.
-function AccountFieldNote({ children }) {
-  return (
-    <p className="mt-1 text-xs text-ink/60">
-      {children}{" "}
-      <Link href="/account" className="font-semibold text-ink hover:underline">
-        Manage account
-      </Link>
-    </p>
-  );
-}
-
 function emptyCard() {
   return {
     id: crypto.randomUUID(),
@@ -65,10 +48,6 @@ function emptyCard() {
     description: "",
     files: [],
   };
-}
-
-function emptyContactValues() {
-  return CONTACT_TYPES.reduce((acc, type) => ({ ...acc, [type.value]: "" }), {});
 }
 
 // The first card is rendered during SSR, so it needs a stable ID that matches on
@@ -84,36 +63,12 @@ function initialCard() {
   };
 }
 
-function isCardComplete(card) {
-  return (
-    card.cardName.trim() !== "" &&
-    normalizeDamageTags(card.damageTags).length > 0 &&
-    card.files.length > 0
-  );
-}
-
-function isCardEmpty(card) {
-  return (
-    card.cardName.trim() === "" &&
-    card.setName.trim() === "" &&
-    normalizeDamageTags(card.damageTags).length === 0 &&
-    card.description.trim() === "" &&
-    card.files.length === 0
-  );
-}
-
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
     damageTags: normalizeDamageTags(card.damageTags).length === 0,
     files: card.files.length === 0,
   };
-}
-
-function hasAdditionalContact(contactValues) {
-  return CONTACT_TYPES.some(
-    (type) => (contactValues[type.value] ?? "").trim() !== ""
-  );
 }
 
 function getFieldErrors({

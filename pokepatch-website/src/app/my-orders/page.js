@@ -135,8 +135,6 @@ export default function MyOrdersPage() {
             latest_unread_message_at:
               latestUnreadAtByOrder.get(row.id) ?? null,
             latest_message_at: latestMessageAtByOrder.get(row.id) ?? null,
-            has_new_updates: unreadOrderIds.has(row.id),
-            has_admin_photos: unreadOrderIds.has(row.id),
           }))
         );
       } catch (err) {
@@ -173,8 +171,6 @@ export default function MyOrdersPage() {
             ? {
                 ...entry,
                 has_unread_messages: false,
-                has_new_updates: false,
-                has_admin_photos: false,
                 latest_message_at:
                   entry.latest_message_at ??
                   entry.latest_unread_message_at ??

@@ -27,27 +27,17 @@ import {
 } from "@/lib/servicePricing";
 import { supabase } from "@/lib/supabaseClient";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
+import {
+  AccountFieldNote,
+  copyFileList,
+  emptyContactValues,
+  hasAdditionalContact,
+  isOrderEditCardComplete as isCardComplete,
+  isOrderEditCardEmpty as isCardEmpty,
+} from "@/lib/quoteDraftHelpers";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
-
-function AccountFieldNote({ children }) {
-  return (
-    <p className="mt-1 text-xs text-ink/60">
-      {children}{" "}
-      <Link href="/account" className="font-semibold text-ink hover:underline">
-        Manage account
-      </Link>
-    </p>
-  );
-}
-
-function emptyContactValues() {
-  return CONTACT_TYPES.reduce(
-    (acc, type) => ({ ...acc, [type.value]: "" }),
-    {}
-  );
-}
 
 function draftFromOrder(order) {
   const contactValues = emptyContactValues();
@@ -115,40 +105,6 @@ function newEmptyCard() {
     existingImages: [],
     newFiles: [],
   };
-}
-
-function copyFileList(fileList) {
-  if (!fileList) return [];
-  const copied = [];
-  for (let i = 0; i < fileList.length; i += 1) {
-    copied.push(fileList[i]);
-  }
-  return copied;
-}
-
-function hasAdditionalContact(contactValues) {
-  return CONTACT_TYPES.some(
-    (type) => (contactValues[type.value] ?? "").trim() !== ""
-  );
-}
-
-function isCardComplete(card) {
-  return (
-    card.cardName.trim() !== "" &&
-    normalizeDamageTags(card.damageTags).length > 0 &&
-    card.existingImages.length + card.newFiles.length > 0
-  );
-}
-
-function isCardEmpty(card) {
-  return (
-    card.cardName.trim() === "" &&
-    card.setName.trim() === "" &&
-    normalizeDamageTags(card.damageTags).length === 0 &&
-    card.description.trim() === "" &&
-    card.existingImages.length === 0 &&
-    card.newFiles.length === 0
-  );
 }
 
 export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
