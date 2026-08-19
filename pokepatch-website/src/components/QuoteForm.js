@@ -952,8 +952,7 @@ export default function QuoteForm() {
             <span>
               <span className="block text-sm text-ink">📦 Shipping</span>
               <span className="mt-0.5 block text-xs text-ink/60">
-                Shipping costs aren&apos;t covered. Cards return in the packaging
-                you send them in.
+                Shipping is $12. Cards return in the packaging you send them in.
               </span>
             </span>
           </label>

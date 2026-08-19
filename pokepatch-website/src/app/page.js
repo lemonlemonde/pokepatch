@@ -72,7 +72,7 @@ const faqs = [
   {
     question: "Is shipping covered?",
     answer:
-      "Any shipping costs are not covered. Cards will be carefully re-packaged and sent back in the same packaging they were sent in.",
+      "Shipping is $12. Cards will be carefully re-packaged and sent back in the same packaging they were sent in.",
   },
   {
     question: "Do you offer before-and-after photos?",
