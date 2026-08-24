@@ -1972,7 +1972,14 @@ export default function AdminApp() {
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}
-      {tab === "insights" && <CustomerInsights />}
+      {tab === "insights" && (
+        <CustomerInsights
+          onOpenOrder={(orderId) => {
+            if (!orderId) return;
+            router.push(`/admin/orders/?edit=${encodeURIComponent(orderId)}`);
+          }}
+        />
+      )}
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (

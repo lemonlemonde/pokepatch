@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { adminHeardAboutInsights } from "@/lib/adminApi";
-import { LoadingIndicator } from "@/components/admin/adminShared";
+import {
+  LoadingIndicator,
+  formatDateShort,
+} from "@/components/admin/adminShared";
+import {
+  normalizeOrderStatus,
+  orderDisplayLabel,
+  orderStatusBadgeClass,
+} from "@/lib/orderStatus";
 
 const SLICE_COLORS = {
   Instagram: "#E879A9",
@@ -11,7 +19,6 @@ const SLICE_COLORS = {
   "Card show": "#FBBF24",
   Friend: "#4ADE80",
   Other: "#C4B5FD",
-  "Not specified": "#64748B",
 };
 
 const FALLBACK_COLORS = [
@@ -65,16 +72,18 @@ function buildPiePaths(slices, cx, cy, radius) {
   });
 }
 
-function PieChart({ slices, activeLabel, onHover }) {
+function PieChart({ slices, highlightLabel, selectedLabel, onHover, onSelect }) {
   const paths = useMemo(() => buildPiePaths(slices, 100, 100, 90), [slices]);
 
   if (paths.length === 0) {
     return (
       <div className="flex h-56 items-center justify-center text-sm text-ink/50">
-        No orders yet.
+        No answered sources yet.
       </div>
     );
   }
+
+  const focusLabel = highlightLabel || selectedLabel;
 
   return (
     <svg
@@ -84,7 +93,7 @@ function PieChart({ slices, activeLabel, onHover }) {
       aria-label="Pie chart of where customers heard about PokePatch"
     >
       {paths.map((slice) => {
-        const active = !activeLabel || activeLabel === slice.label;
+        const active = !focusLabel || focusLabel === slice.label;
         return (
           <path
             key={slice.label}
@@ -96,9 +105,16 @@ function PieChart({ slices, activeLabel, onHover }) {
             className="cursor-pointer transition-opacity duration-150"
             onMouseEnter={() => onHover?.(slice.label)}
             onMouseLeave={() => onHover?.(null)}
+            onClick={() => onSelect?.(slice.label)}
             onFocus={() => onHover?.(slice.label)}
             onBlur={() => onHover?.(null)}
             tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect?.(slice.label);
+              }
+            }}
           >
             <title>
               {slice.label}: {slice.count} ({slice.percent.toFixed(0)}%)
@@ -110,11 +126,73 @@ function PieChart({ slices, activeLabel, onHover }) {
   );
 }
 
-export default function CustomerInsights() {
+function OrdersForSource({ title, orders, onOpenOrder }) {
+  if (!orders?.length) {
+    return (
+      <p className="text-sm text-ink/50">No orders for this source.</p>
+    );
+  }
+
+  return (
+    <div>
+      <h3 className="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-ink/45">
+        {title} · {orders.length}
+      </h3>
+      <div className="overflow-x-auto rounded-lg border border-ink/15">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-ink/5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
+            <tr>
+              <th className="whitespace-nowrap px-3 py-2">Order</th>
+              <th className="whitespace-nowrap px-3 py-2">Customer</th>
+              <th className="whitespace-nowrap px-3 py-2">Status</th>
+              <th className="whitespace-nowrap px-3 py-2">Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((order) => {
+              const status = normalizeOrderStatus(order.status);
+              return (
+                <tr
+                  key={order.id}
+                  onClick={() => onOpenOrder?.(order.id)}
+                  className="cursor-pointer border-t border-ink/10 transition hover:bg-ink/10"
+                >
+                  <td className="whitespace-nowrap px-3 py-2 font-semibold tabular-nums text-ink">
+                    #{order.display_id}
+                  </td>
+                  <td className="max-w-[14rem] truncate px-3 py-2 text-ink">
+                    {order.customer_name || "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span
+                      className={`inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${orderStatusBadgeClass(
+                        status,
+                        order.pending_kind
+                      )}`}
+                    >
+                      {orderDisplayLabel(status, order.pending_kind)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-ink/60">
+                    {formatDateShort(order.created_at)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+export default function CustomerInsights({ onOpenOrder }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
-  const [activeLabel, setActiveLabel] = useState(null);
+  const [hoverLabel, setHoverLabel] = useState(null);
+  const [selectedLabel, setSelectedLabel] = useState(null);
+  const [selectedOther, setSelectedOther] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,7 +221,37 @@ export default function CustomerInsights() {
     () => buildPiePaths(data?.slices ?? [], 100, 100, 90),
     [data?.slices]
   );
-  const activeSlice = paths.find((row) => row.label === activeLabel) ?? null;
+  const focusLabel = hoverLabel || selectedLabel;
+  const focusSlice = paths.find((row) => row.label === focusLabel) ?? null;
+
+  const selectedOrders = useMemo(() => {
+    if (selectedOther) {
+      const detail = (data?.other_details ?? []).find(
+        (row) => row.label === selectedOther
+      );
+      return detail?.orders ?? [];
+    }
+    if (!selectedLabel) return null;
+    const slice = (data?.slices ?? []).find(
+      (row) => row.label === selectedLabel
+    );
+    return slice?.orders ?? [];
+  }, [data, selectedLabel, selectedOther]);
+
+  function selectSlice(label) {
+    setSelectedOther(null);
+    setSelectedLabel((current) => (current === label ? null : label));
+  }
+
+  function selectOtherDetail(label) {
+    if (selectedOther === label) {
+      setSelectedOther(null);
+      setSelectedLabel(null);
+      return;
+    }
+    setSelectedLabel("Other");
+    setSelectedOther(label);
+  }
 
   if (loading) {
     return <LoadingIndicator label="Loading insights…" />;
@@ -160,6 +268,9 @@ export default function CustomerInsights() {
   const total = data?.total ?? 0;
   const answered = data?.answered ?? 0;
   const otherDetails = data?.other_details ?? [];
+  const orderListTitle = selectedOther
+    ? `Other · ${selectedOther}`
+    : selectedLabel || "";
 
   return (
     <div className="space-y-8">
@@ -184,58 +295,70 @@ export default function CustomerInsights() {
         <div className="flex flex-col items-center gap-4">
           <PieChart
             slices={data?.slices ?? []}
-            activeLabel={activeLabel}
-            onHover={setActiveLabel}
+            highlightLabel={hoverLabel}
+            selectedLabel={selectedLabel}
+            onHover={setHoverLabel}
+            onSelect={selectSlice}
           />
-          {activeSlice ? (
+          {focusSlice ? (
             <p className="text-center text-sm text-ink/70">
-              {activeSlice.label} — {activeSlice.count} (
-              {activeSlice.percent.toFixed(0)}%)
+              {focusSlice.label} — {focusSlice.count} (
+              {focusSlice.percent.toFixed(0)}%)
             </p>
           ) : (
             <p className="text-center text-sm text-ink/40">
-              Hover a slice for details
+              Click a slice to list orders
             </p>
           )}
         </div>
 
         <ul className="space-y-2">
-          {paths.map((slice) => (
-            <li key={slice.label}>
-              <button
-                type="button"
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
-                  activeLabel === slice.label
-                    ? "bg-ink/10"
-                    : "hover:bg-ink/5"
-                }`}
-                onMouseEnter={() => setActiveLabel(slice.label)}
-                onMouseLeave={() => setActiveLabel(null)}
-                onFocus={() => setActiveLabel(slice.label)}
-                onBlur={() => setActiveLabel(null)}
-              >
-                <span
-                  className="h-3 w-3 shrink-0 rounded-sm"
-                  style={{ backgroundColor: slice.color }}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1 truncate font-medium text-ink">
-                  {slice.label}
-                </span>
-                <span className="tabular-nums text-ink/55">
-                  {slice.count}
-                  <span className="ml-2 text-ink/35">
-                    {slice.percent.toFixed(0)}%
+          {paths.map((slice) => {
+            const selected = selectedLabel === slice.label && !selectedOther;
+            return (
+              <li key={slice.label}>
+                <button
+                  type="button"
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                    selected || hoverLabel === slice.label
+                      ? "bg-ink/10"
+                      : "hover:bg-ink/5"
+                  }`}
+                  onMouseEnter={() => setHoverLabel(slice.label)}
+                  onMouseLeave={() => setHoverLabel(null)}
+                  onClick={() => selectSlice(slice.label)}
+                >
+                  <span
+                    className="h-3 w-3 shrink-0 rounded-sm"
+                    style={{ backgroundColor: slice.color }}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">
+                    {slice.label}
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                  <span className="tabular-nums text-ink/55">
+                    {slice.count}
+                    <span className="ml-2 text-ink/35">
+                      {slice.percent.toFixed(0)}%
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
           {paths.length === 0 ? (
             <li className="px-3 py-2 text-sm text-ink/50">No data yet.</li>
           ) : null}
         </ul>
       </div>
+
+      {selectedOrders ? (
+        <OrdersForSource
+          title={orderListTitle}
+          orders={selectedOrders}
+          onOpenOrder={onOpenOrder}
+        />
+      ) : null}
 
       {otherDetails.length > 0 ? (
         <div>
@@ -244,14 +367,23 @@ export default function CustomerInsights() {
           </h3>
           <ul className="divide-y divide-ink/10 border-y border-ink/10">
             {otherDetails.map((row) => (
-              <li
-                key={row.label}
-                className="flex items-baseline justify-between gap-4 py-2.5 text-sm"
-              >
-                <span className="min-w-0 break-words text-ink">{row.label}</span>
-                <span className="shrink-0 tabular-nums text-ink/55">
-                  {row.count}
-                </span>
+              <li key={row.label}>
+                <button
+                  type="button"
+                  onClick={() => selectOtherDetail(row.label)}
+                  className={`flex w-full items-baseline justify-between gap-4 py-2.5 text-left text-sm transition ${
+                    selectedOther === row.label
+                      ? "bg-ink/10"
+                      : "hover:bg-ink/5"
+                  }`}
+                >
+                  <span className="min-w-0 break-words text-ink">
+                    {row.label}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-ink/55">
+                    {row.count}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
