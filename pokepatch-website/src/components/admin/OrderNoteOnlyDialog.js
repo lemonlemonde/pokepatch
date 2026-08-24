@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   overlayFadeClassName,
   useOverlayPresence,
@@ -63,9 +64,9 @@ export default function OrderNoteOnlyDialog({
     onSend({ subject: subject.trim(), body: note.trim() });
   }
 
-  return (
+  const dialog = (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
+      className={`fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={() => {
         if (!sending) onCancel();
@@ -135,4 +136,8 @@ export default function OrderNoteOnlyDialog({
       </div>
     </div>
   );
+
+  // Portal to body so overlays sit above page chrome (navbar/footer stacking).
+  if (typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }
