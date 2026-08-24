@@ -49,11 +49,39 @@ export default function MyOrdersPage() {
         const rows = data || [];
 
         const orderIds = rows.map((row) => row.id).filter(Boolean);
-        let unreadOrderIds = new Set();
+        /** @type {Map<string, number>} */
+        const unreadCountByOrder = new Map();
         /** @type {Map<string, string>} */
         const latestUnreadAtByOrder = new Map();
         /** @type {Map<string, string>} */
         const latestMessageAtByOrder = new Map();
+
+        function recordUnread(orderId, sentAt) {
+          unreadCountByOrder.set(
+            orderId,
+            (unreadCountByOrder.get(orderId) ?? 0) + 1
+          );
+          if (!sentAt) return;
+          const prevUnread = latestUnreadAtByOrder.get(orderId);
+          if (
+            !prevUnread ||
+            new Date(sentAt).getTime() > new Date(prevUnread).getTime()
+          ) {
+            latestUnreadAtByOrder.set(orderId, sentAt);
+          }
+        }
+
+        function recordLatestMessage(orderId, sentAt) {
+          if (!sentAt) return;
+          const prev = latestMessageAtByOrder.get(orderId);
+          if (
+            !prev ||
+            new Date(sentAt).getTime() > new Date(prev).getTime()
+          ) {
+            latestMessageAtByOrder.set(orderId, sentAt);
+          }
+        }
+
         if (orderIds.length > 0) {
           const { data: messageRows, error: messagesError } = await supabase
             .from("customer_messages")
@@ -71,28 +99,9 @@ export default function MyOrdersPage() {
               for (const row of fallback.data ?? []) {
                 const orderId = row.order_id;
                 if (!orderId) continue;
-                const sentAt = row.sent_at;
-                if (sentAt) {
-                  const prev = latestMessageAtByOrder.get(orderId);
-                  if (
-                    !prev ||
-                    new Date(sentAt).getTime() > new Date(prev).getTime()
-                  ) {
-                    latestMessageAtByOrder.set(orderId, sentAt);
-                  }
-                }
+                recordLatestMessage(orderId, row.sent_at);
                 if (row.read_at == null) {
-                  unreadOrderIds.add(orderId);
-                  if (sentAt) {
-                    const prevUnread = latestUnreadAtByOrder.get(orderId);
-                    if (
-                      !prevUnread ||
-                      new Date(sentAt).getTime() >
-                        new Date(prevUnread).getTime()
-                    ) {
-                      latestUnreadAtByOrder.set(orderId, sentAt);
-                    }
-                  }
+                  recordUnread(orderId, row.sent_at);
                 }
               }
             }
@@ -100,28 +109,10 @@ export default function MyOrdersPage() {
             for (const row of messageRows ?? []) {
               const orderId = row.order_id;
               if (!orderId) continue;
-              const sentAt = row.sent_at;
-              if (sentAt) {
-                const prev = latestMessageAtByOrder.get(orderId);
-                if (
-                  !prev ||
-                  new Date(sentAt).getTime() > new Date(prev).getTime()
-                ) {
-                  latestMessageAtByOrder.set(orderId, sentAt);
-                }
-              }
+              recordLatestMessage(orderId, row.sent_at);
               // Only admin → customer messages drive unread chips.
               if (row.read_at == null && row.sender !== "customer") {
-                unreadOrderIds.add(orderId);
-                if (sentAt) {
-                  const prevUnread = latestUnreadAtByOrder.get(orderId);
-                  if (
-                    !prevUnread ||
-                    new Date(sentAt).getTime() > new Date(prevUnread).getTime()
-                  ) {
-                    latestUnreadAtByOrder.set(orderId, sentAt);
-                  }
-                }
+                recordUnread(orderId, row.sent_at);
               }
             }
           }
@@ -129,13 +120,17 @@ export default function MyOrdersPage() {
 
         if (cancelled) return;
         setOrders(
-          rows.map((row) => ({
-            ...row,
-            has_unread_messages: unreadOrderIds.has(row.id),
-            latest_unread_message_at:
-              latestUnreadAtByOrder.get(row.id) ?? null,
-            latest_message_at: latestMessageAtByOrder.get(row.id) ?? null,
-          }))
+          rows.map((row) => {
+            const unreadCount = unreadCountByOrder.get(row.id) ?? 0;
+            return {
+              ...row,
+              has_unread_messages: unreadCount > 0,
+              unread_message_count: unreadCount,
+              latest_unread_message_at:
+                latestUnreadAtByOrder.get(row.id) ?? null,
+              latest_message_at: latestMessageAtByOrder.get(row.id) ?? null,
+            };
+          })
         );
       } catch (err) {
         if (!cancelled) {
@@ -171,6 +166,7 @@ export default function MyOrdersPage() {
             ? {
                 ...entry,
                 has_unread_messages: false,
+                unread_message_count: 0,
                 latest_message_at:
                   entry.latest_message_at ??
                   entry.latest_unread_message_at ??

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import { signPaths } from "@/lib/customerOrderMedia";
 import {
   hasPriorityAdjustment,
@@ -10,7 +9,6 @@ import {
 } from "@/lib/servicePricing";
 import {
   customerOrderStatusChipLabel,
-  isPendingOrderStatus,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 
@@ -56,7 +54,21 @@ function latestActivityAt(order) {
 
 /**
  * Compact My Orders list row — detail/edit lives on /my-orders/[orderId].
+ * Status is the only word chip; priority is a bolt icon; unread is a count badge.
  */
+function PriorityBoltIcon({ className = "" }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M9 1 4 9h3.5L6.5 15 12 7H8.5L9 1Z" />
+    </svg>
+  );
+}
+
 export default function OrderCard({ order }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const previewPaths = Array.isArray(order.preview_paths)
@@ -85,24 +97,60 @@ export default function OrderCard({ order }) {
   });
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
-  const statusChipLabel = customerOrderStatusChipLabel(order, { isPriority });
-  const hasUnreadMessages = Boolean(order.has_unread_messages);
+  // Bolt icon carries priority; keep queue chip text without a Priority prefix.
+  const statusChipLabel = customerOrderStatusChipLabel(order, {
+    isPriority: false,
+  });
+  const unreadCount = Math.max(
+    0,
+    Number(order.unread_message_count) ||
+      (order.has_unread_messages ? 1 : 0)
+  );
+  const hasUnreadMessages = unreadCount > 0;
   const lastUpdatedAt = hasUnreadMessages
     ? order.latest_unread_message_at ?? order.latest_message_at
     : order.latest_message_at ?? latestActivityAt(order);
-  const activityChipLabel = hasUnreadMessages
-    ? "New message"
-    : formatUpdateTime(lastUpdatedAt) || "View order";
-  const editable = isPendingOrderStatus(order.status);
+  const activityChipLabel = formatUpdateTime(lastUpdatedAt) || "View order";
+  const unreadBadgeLabel = unreadCount > 99 ? "99+" : String(unreadCount);
+  const metaParts = [
+    formatDate(order.created_at),
+    cardCountText,
+    activityChipLabel,
+  ].filter(Boolean);
 
   return (
     <Link
       href={`/my-orders/detail/?id=${encodeURIComponent(order.id)}`}
-      className="marketing-panel flex items-center gap-3 p-3 transition hover:border-ink/25 sm:p-4"
+      className="marketing-panel relative flex items-center gap-3 p-3 transition hover:border-ink/25 sm:p-4"
     >
+      {hasUnreadMessages ? (
+        <span
+          className="absolute -right-1.5 -top-1.5 z-10 inline-flex min-w-5 items-center justify-center rounded-full bg-peach px-1 text-[10px] font-bold leading-5 text-night shadow-sm"
+          aria-label={
+            unreadCount === 1
+              ? "1 unread message"
+              : `${unreadBadgeLabel} unread messages`
+          }
+        >
+          {unreadBadgeLabel}
+        </span>
+      ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium tracking-tight text-ink">
+          <p
+            className={`flex items-center gap-1.5 tracking-tight text-ink ${
+              hasUnreadMessages ? "font-semibold" : "font-medium"
+            }`}
+          >
+            {isPriority ? (
+              <span
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-status-yellow text-night"
+                title="Priority service"
+                aria-label="Priority service"
+              >
+                <PriorityBoltIcon className="h-3 w-3" />
+              </span>
+            ) : null}
             Order #{order.display_id}
           </p>
           <span
@@ -113,22 +161,8 @@ export default function OrderCard({ order }) {
           >
             {statusChipLabel}
           </span>
-          {isPriority ? <CustomerPriorityBadge /> : null}
-          {editable ? (
-            <span className="inline-flex rounded-full border border-mint/35 bg-mint/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-mint">
-              Editable
-            </span>
-          ) : null}
-          {hasUnreadMessages ? (
-            <span className="inline-flex rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-night">
-              New
-            </span>
-          ) : null}
         </div>
-        <p className="mt-1 text-xs text-ink/55">
-          {formatDate(order.created_at)} · {cardCountText}
-          {activityChipLabel ? ` · ${activityChipLabel}` : ""}
-        </p>
+        <p className="mt-1 text-xs text-ink/55">{metaParts.join(" · ")}</p>
       </div>
 
       <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/40">
