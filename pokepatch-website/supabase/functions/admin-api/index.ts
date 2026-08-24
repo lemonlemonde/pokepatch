@@ -2897,6 +2897,99 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "insights_heard_about") {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(
+          "id, display_id, created_at, customer_name, customer_email, status, pending_kind, heard_about_source"
+        )
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+
+      const KNOWN_LABELS = [
+        "Instagram",
+        "Facebook",
+        "Discord",
+        "Card show",
+        "Friend",
+      ];
+      const knownByLower = new Map(
+        KNOWN_LABELS.map((label) => [label.toLowerCase(), label])
+      );
+      const bucketOrders = new Map<
+        string,
+        Array<Record<string, unknown>>
+      >();
+      const otherOrders = new Map<
+        string,
+        Array<Record<string, unknown>>
+      >();
+      let total = 0;
+      let answered = 0;
+
+      function summarizeOrder(row: Record<string, unknown>) {
+        return {
+          id: row.id,
+          display_id: row.display_id,
+          created_at: row.created_at,
+          customer_name: row.customer_name,
+          customer_email: row.customer_email,
+          status: row.status,
+          pending_kind: row.pending_kind ?? null,
+          heard_about_source: row.heard_about_source,
+        };
+      }
+
+      function pushBucket(bucket: string, row: Record<string, unknown>) {
+        const list = bucketOrders.get(bucket) ?? [];
+        list.push(summarizeOrder(row));
+        bucketOrders.set(bucket, list);
+      }
+
+      for (const row of data ?? []) {
+        // Skip canceled — they rarely reflect real acquisition.
+        if (String(row.status ?? "") === "canceled") continue;
+        total += 1;
+        const trimmed = String(row.heard_about_source ?? "").trim();
+        // Unanswered stay out of the pie; still counted in `total` for response rate.
+        if (!trimmed) continue;
+        answered += 1;
+        const known = knownByLower.get(trimmed.toLowerCase());
+        if (known) {
+          pushBucket(known, row);
+        } else {
+          pushBucket("Other", row);
+          const list = otherOrders.get(trimmed) ?? [];
+          list.push(summarizeOrder(row));
+          otherOrders.set(trimmed, list);
+        }
+      }
+
+      const bucketOrder = [...KNOWN_LABELS, "Other"];
+      const slices = bucketOrder
+        .filter((label) => (bucketOrders.get(label)?.length ?? 0) > 0)
+        .map((label) => {
+          const orders = bucketOrders.get(label) ?? [];
+          return { label, count: orders.length, orders };
+        });
+
+      const other_details = [...otherOrders.entries()]
+        .map(([label, orders]) => ({
+          label,
+          count: orders.length,
+          orders,
+        }))
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+      return jsonResponse(req, {
+        ok: true,
+        total,
+        answered,
+        slices,
+        other_details,
+      });
+    }
+
     if (action === "timers_list") {
       const cards = await fetchInProgressTimers(supabase);
       return jsonResponse(req, { ok: true, cards });
