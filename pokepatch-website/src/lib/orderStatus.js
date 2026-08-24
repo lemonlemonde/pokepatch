@@ -271,6 +271,23 @@ export function customerOrderStatusLabel(
   );
 }
 
+/**
+ * Status chip for My Orders: show "#N in queue" only while status is To do
+ * (`queue_position` is null once the order moves to in progress / later).
+ */
+export function customerOrderStatusChipLabel(order, { isPriority = false } = {}) {
+  if (order?.queue_position != null) {
+    return isPriority
+      ? `Priority · #${order.queue_position} in queue`
+      : `#${order.queue_position} in queue`;
+  }
+  return customerOrderStatusLabel(
+    order?.status,
+    order?.pending_kind,
+    order?.delivery_method,
+  );
+}
+
 export function normalizeOrderStatus(statusId) {
   if (statusId && LABEL_BY_ID[statusId]) return statusId;
   // Legacy values from earlier status schemes.

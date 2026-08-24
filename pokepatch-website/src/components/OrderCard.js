@@ -8,7 +8,7 @@ import {
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 import {
-  customerOrderStatusLabel,
+  customerOrderStatusChipLabel,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 
@@ -97,14 +97,10 @@ export default function OrderCard({ order }) {
   });
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
-  const statusChipLabel =
-    order.queue_position != null
-      ? `#${order.queue_position} in queue`
-      : customerOrderStatusLabel(
-          order.status,
-          order.pending_kind,
-          order.delivery_method,
-        );
+  // Bolt icon carries priority; keep queue chip text without a Priority prefix.
+  const statusChipLabel = customerOrderStatusChipLabel(order, {
+    isPriority: false,
+  });
   const unreadCount = Math.max(
     0,
     Number(order.unread_message_count) ||

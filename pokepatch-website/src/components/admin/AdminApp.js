@@ -784,9 +784,9 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
     ? `Yes, delete ${count} orders`
     : "Yes, delete this order";
 
-  return (
+  const dialog = (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4 ${overlayFadeClassName(visible)}`}
+      className={`fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 ${overlayFadeClassName(visible)}`}
       role="presentation"
       onClick={() => {
         if (!deleting) onCancel();
@@ -842,6 +842,10 @@ function DeleteOrderDialog({ orders, deleting, onCancel, onConfirm }) {
       </div>
     </div>
   );
+
+  // Portal to body so overlays sit above page chrome (navbar/footer stacking).
+  if (typeof document === "undefined") return null;
+  return createPortal(dialog, document.body);
 }
 
 function KanbanBoard({

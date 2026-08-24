@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   CardPhotoPreviewGrid,
@@ -960,37 +961,40 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         </button>
       </div>
 
-      {confirmCancel ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-night/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-ink/15 bg-cream p-5 shadow-xl">
-            <h3 className="text-lg font-medium tracking-tight text-ink">
-              Cancel this order?
-            </h3>
-            <p className="mt-2 text-sm text-ink/70">
-              This can&apos;t be undone. You&apos;ll need to submit a new request
-              if you change your mind.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setConfirmCancel(false)}
-                className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80"
-              >
-                Keep order
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={handleCancelOrder}
-                className="rounded-lg bg-error px-3 py-2 text-sm font-bold text-cream disabled:opacity-40"
-              >
-                {status === "canceling" ? "Canceling…" : "Yes, cancel"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {confirmCancel
+        ? createPortal(
+            <div className="fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4">
+              <div className="w-full max-w-md rounded-2xl border border-ink/15 bg-cream p-5 shadow-xl">
+                <h3 className="text-lg font-medium tracking-tight text-ink">
+                  Cancel this order?
+                </h3>
+                <p className="mt-2 text-sm text-ink/70">
+                  This can&apos;t be undone. You&apos;ll need to submit a new request
+                  if you change your mind.
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setConfirmCancel(false)}
+                    className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80"
+                  >
+                    Keep order
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={handleCancelOrder}
+                    className="rounded-lg bg-error px-3 py-2 text-sm font-bold text-cream disabled:opacity-40"
+                  >
+                    {status === "canceling" ? "Canceling…" : "Yes, cancel"}
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       <WhiteningDisclaimerDialog
         open={whiteningDisclaimerCardId != null}
         onCancel={() => setWhiteningDisclaimerCardId(null)}
