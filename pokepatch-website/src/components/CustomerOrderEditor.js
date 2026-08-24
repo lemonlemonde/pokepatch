@@ -7,6 +7,7 @@ import {
   StagedCardPhotoPreviews,
 } from "@/components/CardPhotoPreviews";
 import Button from "@/components/Button";
+import WhiteningDisclaimerDialog from "@/components/WhiteningDisclaimerDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import {
@@ -122,6 +123,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   const [status, setStatus] = useState("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [whiteningDisclaimerCardId, setWhiteningDisclaimerCardId] =
+    useState(null);
 
   useEffect(() => {
     if (!user || !supabase || profileLoadedRef.current) return;
@@ -232,7 +235,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
     }));
   }
 
-  function toggleCardDamage(cardId, tagId) {
+  function applyCardDamage(cardId, tagId) {
     const card = draft.cards.find((row) => row.id === cardId);
     if (!card) return;
     const selected = card.damageTags.includes(tagId);
@@ -240,6 +243,24 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       ? card.damageTags.filter((id) => id !== tagId)
       : [...card.damageTags, tagId];
     updateCard(cardId, { damageTags: normalizeDamageTags(next) });
+  }
+
+  function toggleCardDamage(cardId, tagId) {
+    const card = draft.cards.find((row) => row.id === cardId);
+    if (!card) return;
+    const selected = card.damageTags.includes(tagId);
+    if (tagId === "whitening" && !selected) {
+      setWhiteningDisclaimerCardId(cardId);
+      return;
+    }
+    applyCardDamage(cardId, tagId);
+  }
+
+  function confirmWhiteningDisclaimer() {
+    const cardId = whiteningDisclaimerCardId;
+    setWhiteningDisclaimerCardId(null);
+    if (cardId == null) return;
+    applyCardDamage(cardId, "whitening");
   }
 
   function validate() {
@@ -970,6 +991,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           </div>
         </div>
       ) : null}
+      <WhiteningDisclaimerDialog
+        open={whiteningDisclaimerCardId != null}
+        onCancel={() => setWhiteningDisclaimerCardId(null)}
+        onConfirm={confirmWhiteningDisclaimer}
+      />
     </form>
   );
 }
