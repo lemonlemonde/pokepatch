@@ -50,7 +50,12 @@ function isQuoteRelatedChange(line) {
   if (raw.startsWith("Status:")) return false;
   if (raw.startsWith("Note:")) return false;
   if (raw === "Removed note") return false;
+  if (raw.startsWith("Photo album")) return false;
   return true;
+}
+
+function isPhotoFolderChange(line) {
+  return String(line ?? "").startsWith("Photo album");
 }
 
 function findCardIdForQuoteItem(item, cards) {
@@ -336,6 +341,25 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
+  // Google Drive photo folder (order-level share link).
+  const beforeDrive = String(
+    beforePayload?.order?.photos_drive_url ?? ""
+  ).trim();
+  const afterDrive = String(afterPayload?.order?.photos_drive_url ?? "").trim();
+  if (
+    beforePayload?.order != null &&
+    afterPayload?.order != null &&
+    beforeDrive !== afterDrive
+  ) {
+    if (!beforeDrive && afterDrive) {
+      orderChanges.push(`Photo album added: ${afterDrive}`);
+    } else if (beforeDrive && !afterDrive) {
+      orderChanges.push("Photo album removed");
+    } else {
+      orderChanges.push(`Photo album updated: ${afterDrive}`);
+    }
+  }
+
   const beforePriority = Boolean(beforePayload?.order?.is_priority);
   const afterPriority = Boolean(afterPayload?.order?.is_priority);
   if (
@@ -575,6 +599,18 @@ export function summarizeChangelog(changelog = {}) {
     const toLabel = String(orderStatusLine).split("→").pop()?.trim();
     if (toLabel) {
       phrases.push(`Your order is now ${toLabel.toLowerCase()}`);
+    }
+  }
+
+  const photoFolderLine = orderChanges.find(isPhotoFolderChange);
+  if (photoFolderLine) {
+    const raw = String(photoFolderLine);
+    if (raw.startsWith("Photo album added")) {
+      phrases.push("A photo album has been added to your order");
+    } else if (raw.startsWith("Photo album updated")) {
+      phrases.push("Your photo album has been updated");
+    } else if (raw.startsWith("Photo album removed")) {
+      phrases.push("Your photo album has been removed");
     }
   }
 

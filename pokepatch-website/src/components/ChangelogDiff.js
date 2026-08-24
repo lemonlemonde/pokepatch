@@ -358,6 +358,30 @@ function DiffText({ text }) {
     );
   }
 
+  const photoFolder = raw.match(
+    /^(Photo album added|Photo album updated):\s+(.+)$/i
+  );
+  if (photoFolder) {
+    const url = photoFolder[2].trim();
+    return (
+      <span>
+        <span className="font-normal text-ink/45">{photoFolder[1]}:</span>{" "}
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="break-all font-semibold text-mint underline decoration-mint/40 underline-offset-2 transition hover:decoration-mint"
+        >
+          {url}
+        </a>
+      </span>
+    );
+  }
+
+  if (/^Photo album removed$/i.test(raw)) {
+    return <span className="font-semibold text-error/80">{raw}</span>;
+  }
+
   const labeled = raw.match(
     /^(Added|Removed|Applied discount|Removed discount|Applied|Updated|High-value fee|Quote total|Note):\s+(.+)$/i
   );
