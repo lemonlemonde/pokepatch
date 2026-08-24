@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   EDITOR_STATUS_OPTIONS,
   editorStatusValue,
@@ -8,6 +9,11 @@ import {
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
+import {
+  buildInstagramProfileUrl,
+  buildSmsHref,
+  copyOutreachMessage,
+} from "@/lib/adminOutreachMessage";
 import {
   AdminNoteField,
   EditorLabel,
@@ -22,6 +28,73 @@ const CONTACT_TYPES = [
   { value: "discord", label: "Discord" },
   { value: "instagram", label: "Instagram" },
 ];
+
+function ContactOutreachActions({ contactType, value }) {
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef(null);
+  const trimmed = String(value ?? "").trim();
+  const isPhone = contactType === "phone";
+  const isInstagram = contactType === "instagram";
+  const smsHref = isPhone ? buildSmsHref(trimmed) : null;
+  const igUrl = isInstagram ? buildInstagramProfileUrl(trimmed) : null;
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+  }, [contactType, trimmed]);
+
+  async function handleCopy() {
+    try {
+      await copyOutreachMessage();
+      setCopied(true);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {smsHref ? (
+        <a
+          href={smsHref}
+          className="text-[10px] font-bold uppercase tracking-wide text-ink/55 transition hover:text-ink"
+        >
+          Text
+        </a>
+      ) : null}
+      {igUrl ? (
+        <a
+          href={igUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] font-bold uppercase tracking-wide text-ink/55 transition hover:text-ink"
+        >
+          Open
+        </a>
+      ) : null}
+      <GhostButton
+        onClick={handleCopy}
+        className="text-[10px] font-bold uppercase tracking-wide"
+      >
+        {copied ? "Copied" : "Copy"}
+      </GhostButton>
+    </div>
+  );
+}
+
+function showContactOutreach(contact) {
+  const type = contact?.contact_type;
+  if (type !== "phone" && type !== "instagram") return false;
+  return Boolean(String(contact?.value ?? "").trim());
+}
 
 export function CustomerPanel() {
   const { draft, updateDraft, saving } = useOrderEditor();
@@ -95,36 +168,44 @@ export function CustomerPanel() {
             {contacts.map((contact, index) => (
               <div
                 key={contact.id ?? `new-${index}`}
-                className="flex items-center gap-1.5"
+                className="space-y-1"
               >
-                <select
-                  className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
-                  value={contact.contact_type}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateContact(index, { contact_type: event.target.value })
-                  }
-                >
-                  {CONTACT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={`${editorFieldClass()} min-w-0`}
-                  value={contact.value}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateContact(index, { value: event.target.value })
-                  }
-                  placeholder="Number or handle"
-                />
-                <RemoveButton
-                  label="Remove contact"
-                  disabled={saving}
-                  onClick={() => removeContact(index)}
-                />
+                <div className="flex items-center gap-1.5">
+                  <select
+                    className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
+                    value={contact.contact_type}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateContact(index, { contact_type: event.target.value })
+                    }
+                  >
+                    {CONTACT_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className={`${editorFieldClass()} min-w-0`}
+                    value={contact.value}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateContact(index, { value: event.target.value })
+                    }
+                    placeholder="Number or handle"
+                  />
+                  <RemoveButton
+                    label="Remove contact"
+                    disabled={saving}
+                    onClick={() => removeContact(index)}
+                  />
+                </div>
+                {showContactOutreach(contact) ? (
+                  <ContactOutreachActions
+                    contactType={contact.contact_type}
+                    value={contact.value}
+                  />
+                ) : null}
               </div>
             ))}
           </div>
