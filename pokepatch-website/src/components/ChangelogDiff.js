@@ -359,7 +359,7 @@ function DiffText({ text }) {
   }
 
   const photoFolder = raw.match(
-    /^(Photo folder added|Photo folder updated):\s+(.+)$/i
+    /^(Photo album added|Photo album updated):\s+(.+)$/i
   );
   if (photoFolder) {
     const url = photoFolder[2].trim();
@@ -378,7 +378,7 @@ function DiffText({ text }) {
     );
   }
 
-  if (/^Photo folder removed$/i.test(raw)) {
+  if (/^Photo album removed$/i.test(raw)) {
     return <span className="font-semibold text-error/80">{raw}</span>;
   }
 

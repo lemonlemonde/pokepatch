@@ -93,14 +93,14 @@ function formatDiffLineHtml(text: string): string {
       `<span style="color:#5EC8A7;font-weight:600;">${escapeHtml(parts.to)}</span>`;
   }
   const photoFolder = String(text).match(
-    /^(Photo folder added|Photo folder updated):\s+(.+)$/i
+    /^(Photo album added|Photo album updated):\s+(.+)$/i
   );
   if (photoFolder) {
     const href = escapeHtml(photoFolder[2].trim());
     return `<span style="color:#C9B8C8;">${escapeHtml(`${photoFolder[1]}:`)}</span> ` +
       `<a href="${href}" style="color:#5EC8A7;font-weight:600;word-break:break-all;" target="_blank" rel="noopener noreferrer">${href}</a>`;
   }
-  if (/^Photo folder removed$/i.test(String(text))) {
+  if (/^Photo album removed$/i.test(String(text))) {
     return `<span style="color:#F87171;font-weight:600;">${escapeHtml(text)}</span>`;
   }
   const labeled = text.match(

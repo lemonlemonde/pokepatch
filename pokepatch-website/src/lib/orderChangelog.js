@@ -50,12 +50,12 @@ function isQuoteRelatedChange(line) {
   if (raw.startsWith("Status:")) return false;
   if (raw.startsWith("Note:")) return false;
   if (raw === "Removed note") return false;
-  if (raw.startsWith("Photo folder")) return false;
+  if (raw.startsWith("Photo album")) return false;
   return true;
 }
 
 function isPhotoFolderChange(line) {
-  return String(line ?? "").startsWith("Photo folder");
+  return String(line ?? "").startsWith("Photo album");
 }
 
 function findCardIdForQuoteItem(item, cards) {
@@ -352,11 +352,11 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     beforeDrive !== afterDrive
   ) {
     if (!beforeDrive && afterDrive) {
-      orderChanges.push(`Photo folder added: ${afterDrive}`);
+      orderChanges.push(`Photo album added: ${afterDrive}`);
     } else if (beforeDrive && !afterDrive) {
-      orderChanges.push("Photo folder removed");
+      orderChanges.push("Photo album removed");
     } else {
-      orderChanges.push(`Photo folder updated: ${afterDrive}`);
+      orderChanges.push(`Photo album updated: ${afterDrive}`);
     }
   }
 
@@ -605,12 +605,12 @@ export function summarizeChangelog(changelog = {}) {
   const photoFolderLine = orderChanges.find(isPhotoFolderChange);
   if (photoFolderLine) {
     const raw = String(photoFolderLine);
-    if (raw.startsWith("Photo folder added")) {
-      phrases.push("Your restoration photos are ready");
-    } else if (raw.startsWith("Photo folder updated")) {
-      phrases.push("Your photo folder has been updated");
-    } else if (raw.startsWith("Photo folder removed")) {
-      phrases.push("Your photo folder has been removed");
+    if (raw.startsWith("Photo album added")) {
+      phrases.push("A photo album has been added to your order");
+    } else if (raw.startsWith("Photo album updated")) {
+      phrases.push("Your photo album has been updated");
+    } else if (raw.startsWith("Photo album removed")) {
+      phrases.push("Your photo album has been removed");
     }
   }
 
