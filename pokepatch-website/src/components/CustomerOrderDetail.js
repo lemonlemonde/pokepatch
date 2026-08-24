@@ -21,7 +21,7 @@ import {
 import {
   cardStatusBadgeClass,
   customerCardStatusLabel,
-  customerOrderStatusLabel,
+  customerOrderStatusChipLabel,
   DEFAULT_PENDING_KIND,
   isPendingOrderStatus,
   normalizePendingKind,
@@ -358,11 +358,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               order.pending_kind
             )}`}
           >
-            {customerOrderStatusLabel(
-              order.status,
-              order.pending_kind,
-              order.delivery_method,
-            )}
+            {customerOrderStatusChipLabel(order, { isPriority })}
           </span>
           {isPriority ? <CustomerPriorityBadge /> : null}
           {canEdit ? (

@@ -44,6 +44,7 @@
 --                                   todo = cards.status todo on orders status=new (To do)
 --   orders.queue_priority          — relative rank within status (0..n-1 per column)
 --   get_my_orders.queue_position   — 1-based place among status=new
+--   get_my_order.queue_position    — same; null once order leaves To do
 --   reorder_status_orders(status, ids[]) / move_order_in_status(...) — service_role; kanban
 --
 -- Webhook: orders INSERT → notify edge function (new path).
