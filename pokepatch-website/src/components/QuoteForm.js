@@ -27,18 +27,10 @@ import {
   isQuoteCardComplete as isCardComplete,
   isQuoteCardEmpty as isCardEmpty,
 } from "@/lib/quoteDraftHelpers";
+import { HEARD_ABOUT_OPTIONS } from "@/lib/heardAbout";
 
 const MAX_CARDS = 25;
 const MAX_PHOTOS_PER_CARD = 4;
-
-const HEARD_ABOUT_OPTIONS = [
-  { value: "instagram", label: "Instagram" },
-  { value: "facebook", label: "Facebook" },
-  { value: "discord", label: "Discord" },
-  { value: "card_show", label: "Card show" },
-  { value: "friend", label: "Friend" },
-  { value: "other", label: "Other" },
-];
 
 function emptyCard() {
   return {

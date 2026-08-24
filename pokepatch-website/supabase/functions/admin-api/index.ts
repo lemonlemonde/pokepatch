@@ -2897,6 +2897,67 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "insights_heard_about") {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("heard_about_source, status");
+      if (error) throw error;
+
+      const KNOWN_LABELS = [
+        "Instagram",
+        "Facebook",
+        "Discord",
+        "Card show",
+        "Friend",
+      ];
+      const knownByLower = new Map(
+        KNOWN_LABELS.map((label) => [label.toLowerCase(), label])
+      );
+      const bucketCounts = new Map<string, number>();
+      const otherCounts = new Map<string, number>();
+      let total = 0;
+      let answered = 0;
+
+      for (const row of data ?? []) {
+        // Skip canceled — they rarely reflect real acquisition.
+        if (String(row.status ?? "") === "canceled") continue;
+        total += 1;
+        const trimmed = String(row.heard_about_source ?? "").trim();
+        if (!trimmed) {
+          bucketCounts.set(
+            "Not specified",
+            (bucketCounts.get("Not specified") ?? 0) + 1
+          );
+          continue;
+        }
+        answered += 1;
+        const known = knownByLower.get(trimmed.toLowerCase());
+        if (known) {
+          bucketCounts.set(known, (bucketCounts.get(known) ?? 0) + 1);
+        } else {
+          bucketCounts.set("Other", (bucketCounts.get("Other") ?? 0) + 1);
+          otherCounts.set(trimmed, (otherCounts.get(trimmed) ?? 0) + 1);
+        }
+      }
+
+      const bucketOrder = [...KNOWN_LABELS, "Other", "Not specified"];
+      const slices = bucketOrder
+        .filter((label) => (bucketCounts.get(label) ?? 0) > 0)
+        .map((label) => ({ label, count: bucketCounts.get(label) ?? 0 }));
+
+      const other_details = [...otherCounts.entries()]
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+      return jsonResponse(req, {
+        ok: true,
+        total,
+        answered,
+        slices,
+        other_details,
+      });
+    }
+
     if (action === "timers_list") {
       const cards = await fetchInProgressTimers(supabase);
       return jsonResponse(req, { ok: true, cards });

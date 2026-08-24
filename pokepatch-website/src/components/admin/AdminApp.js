@@ -29,6 +29,7 @@ import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import OrdersAllSection from "@/components/admin/OrdersAllSection";
+import CustomerInsights from "@/components/admin/CustomerInsights";
 import {
   AccountStatusBadge,
   KanbanThumbImg,
@@ -111,6 +112,14 @@ const ADMIN_TABS = [
     title: "Restoration guide",
     subtitle:
      "Restoration tree: dirt and scratches first, then any damage branches that apply, cool press when needed, and wrap up.",
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    path: "/admin/insights/",
+    title: "Customer insights",
+    subtitle:
+      "Where customers say they heard about us — from the quote form.",
   },
 ];
 
@@ -1963,6 +1972,7 @@ export default function AdminApp() {
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}
+      {tab === "insights" && <CustomerInsights />}
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (

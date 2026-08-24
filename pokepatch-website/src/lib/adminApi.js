@@ -228,6 +228,20 @@ export async function adminListTimers() {
   return payload.cards ?? [];
 }
 
+/** Aggregated "how did you hear about us?" counts for the Insights tab. */
+export async function adminHeardAboutInsights() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "insights_heard_about" },
+  });
+  return {
+    total: payload.total ?? 0,
+    answered: payload.answered ?? 0,
+    slices: payload.slices ?? [],
+    other_details: payload.other_details ?? [],
+  };
+}
+
 /** Discord-notify any due card timers (idempotent). */
 export async function adminNotifyDueTimers() {
   return adminRequest(apiUrl(), {
