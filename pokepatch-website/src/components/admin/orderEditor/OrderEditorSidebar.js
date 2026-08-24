@@ -10,8 +10,8 @@ import {
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
 import {
-  buildInstagramProfileUrl,
-  buildSmsHref,
+  DEFAULT_OUTREACH_MESSAGE,
+  buildContactOpenHref,
   copyOutreachMessage,
 } from "@/lib/adminOutreachMessage";
 import {
@@ -29,25 +29,61 @@ const CONTACT_TYPES = [
   { value: "instagram", label: "Instagram" },
 ];
 
-function ContactOutreachActions({ contactType, value }) {
+function OpenGlyph({ className = "h-3.5 w-3.5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M7 17L17 7" />
+      <path d="M8 7h9v9" />
+    </svg>
+  );
+}
+
+function ContactValueField({ contactType, value, disabled, onChange }) {
+  const href = buildContactOpenHref(contactType, value);
+  const isSms = href?.startsWith("sms:");
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <input
+        className={`${editorFieldClass()} ${href ? "pr-8" : ""}`}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        placeholder="Number or handle"
+      />
+      {href ? (
+        <a
+          href={href}
+          {...(isSms ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+          aria-label="Open contact"
+          title="Open"
+          className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-ink/30 transition hover:bg-ink/10 hover:text-ink/70"
+        >
+          <OpenGlyph />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function QuoteMessageBlock() {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef(null);
-  const trimmed = String(value ?? "").trim();
-  const isPhone = contactType === "phone";
-  const isInstagram = contactType === "instagram";
-  const smsHref = isPhone ? buildSmsHref(trimmed) : null;
-  const igUrl = isInstagram ? buildInstagramProfileUrl(trimmed) : null;
 
   useEffect(() => {
     return () => {
       if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    setCopied(false);
-    if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
-  }, [contactType, trimmed]);
 
   async function handleCopy() {
     try {
@@ -61,39 +97,18 @@ function ContactOutreachActions({ contactType, value }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      {smsHref ? (
-        <a
-          href={smsHref}
-          className="text-[10px] font-bold uppercase tracking-wide text-ink/55 transition hover:text-ink"
-        >
-          Text
-        </a>
-      ) : null}
-      {igUrl ? (
-        <a
-          href={igUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-[10px] font-bold uppercase tracking-wide text-ink/55 transition hover:text-ink"
-        >
-          Open
-        </a>
-      ) : null}
-      <GhostButton
-        onClick={handleCopy}
-        className="text-[10px] font-bold uppercase tracking-wide"
-      >
-        {copied ? "Copied" : "Copy"}
-      </GhostButton>
+    <div className="mt-4 border-t border-ink/10 pt-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <EditorLabel className="mb-0">Quote message</EditorLabel>
+        <GhostButton onClick={handleCopy} className="text-xs">
+          {copied ? "Copied" : "Copy"}
+        </GhostButton>
+      </div>
+      <p className="text-xs leading-relaxed text-ink/55">
+        {DEFAULT_OUTREACH_MESSAGE}
+      </p>
     </div>
   );
-}
-
-function showContactOutreach(contact) {
-  const type = contact?.contact_type;
-  if (type !== "phone" && type !== "instagram") return false;
-  return Boolean(String(contact?.value ?? "").trim());
 }
 
 export function CustomerPanel() {
@@ -168,48 +183,40 @@ export function CustomerPanel() {
             {contacts.map((contact, index) => (
               <div
                 key={contact.id ?? `new-${index}`}
-                className="space-y-1"
+                className="flex items-center gap-1.5"
               >
-                <div className="flex items-center gap-1.5">
-                  <select
-                    className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
-                    value={contact.contact_type}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateContact(index, { contact_type: event.target.value })
-                    }
-                  >
-                    {CONTACT_TYPES.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className={`${editorFieldClass()} min-w-0`}
-                    value={contact.value}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateContact(index, { value: event.target.value })
-                    }
-                    placeholder="Number or handle"
-                  />
-                  <RemoveButton
-                    label="Remove contact"
-                    disabled={saving}
-                    onClick={() => removeContact(index)}
-                  />
-                </div>
-                {showContactOutreach(contact) ? (
-                  <ContactOutreachActions
-                    contactType={contact.contact_type}
-                    value={contact.value}
-                  />
-                ) : null}
+                <select
+                  className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
+                  value={contact.contact_type}
+                  disabled={saving}
+                  onChange={(event) =>
+                    updateContact(index, { contact_type: event.target.value })
+                  }
+                >
+                  {CONTACT_TYPES.map((type) => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+                <ContactValueField
+                  contactType={contact.contact_type}
+                  value={contact.value}
+                  disabled={saving}
+                  onChange={(event) =>
+                    updateContact(index, { value: event.target.value })
+                  }
+                />
+                <RemoveButton
+                  label="Remove contact"
+                  disabled={saving}
+                  onClick={() => removeContact(index)}
+                />
               </div>
             ))}
           </div>
         )}
+        <QuoteMessageBlock />
       </div>
     </Panel>
   );

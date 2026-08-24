@@ -41,6 +41,39 @@ export function buildInstagramProfileUrl(handleValue) {
   return `https://www.instagram.com/${handle}/`;
 }
 
+/**
+ * Discord only deep-links by numeric user id (snowflake), not by username.
+ * Accepts a bare id or a discord.com/users/<id> URL.
+ */
+export function normalizeDiscordUserId(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const fromUrl = raw.match(
+    /(?:https?:\/\/)?(?:www\.)?discord(?:app)?\.com\/users\/(\d{17,20})/i
+  );
+  if (fromUrl?.[1]) return fromUrl[1];
+  if (/^\d{17,20}$/.test(raw)) return raw;
+  return "";
+}
+
+export function buildDiscordProfileUrl(value) {
+  const userId = normalizeDiscordUserId(value);
+  if (!userId) return null;
+  return `https://discord.com/users/${userId}`;
+}
+
+/** Open href for a contact row, or null when we can't deep-link. */
+export function buildContactOpenHref(
+  contactType,
+  value,
+  message = DEFAULT_OUTREACH_MESSAGE
+) {
+  if (contactType === "phone") return buildSmsHref(value, message);
+  if (contactType === "instagram") return buildInstagramProfileUrl(value);
+  if (contactType === "discord") return buildDiscordProfileUrl(value);
+  return null;
+}
+
 export async function copyOutreachMessage(
   message = DEFAULT_OUTREACH_MESSAGE
 ) {
