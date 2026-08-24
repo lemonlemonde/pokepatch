@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import {
   EDITOR_STATUS_OPTIONS,
   editorStatusValue,
@@ -8,6 +9,11 @@ import {
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
+import {
+  DEFAULT_OUTREACH_MESSAGE,
+  buildContactOpenHref,
+  copyOutreachMessage,
+} from "@/lib/adminOutreachMessage";
 import {
   AdminNoteField,
   EditorLabel,
@@ -22,6 +28,88 @@ const CONTACT_TYPES = [
   { value: "discord", label: "Discord" },
   { value: "instagram", label: "Instagram" },
 ];
+
+function OpenGlyph({ className = "h-3.5 w-3.5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M7 17L17 7" />
+      <path d="M8 7h9v9" />
+    </svg>
+  );
+}
+
+function ContactValueField({ contactType, value, disabled, onChange }) {
+  const href = buildContactOpenHref(contactType, value);
+  const isSms = href?.startsWith("sms:");
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <input
+        className={`${editorFieldClass()} ${href ? "pr-8" : ""}`}
+        value={value}
+        disabled={disabled}
+        onChange={onChange}
+        placeholder="Number or handle"
+      />
+      {href ? (
+        <a
+          href={href}
+          {...(isSms ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+          aria-label="Open contact"
+          title="Open"
+          className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-md text-ink/30 transition hover:bg-ink/10 hover:text-ink/70"
+        >
+          <OpenGlyph />
+        </a>
+      ) : null}
+    </div>
+  );
+}
+
+function QuoteMessageBlock() {
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    };
+  }, []);
+
+  async function handleCopy() {
+    try {
+      await copyOutreachMessage();
+      setCopied(true);
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-ink/10 pt-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <EditorLabel className="mb-0">Quote message</EditorLabel>
+        <GhostButton onClick={handleCopy} className="text-xs">
+          {copied ? "Copied" : "Copy"}
+        </GhostButton>
+      </div>
+      <p className="text-xs leading-relaxed text-ink/55">
+        {DEFAULT_OUTREACH_MESSAGE}
+      </p>
+    </div>
+  );
+}
 
 export function CustomerPanel() {
   const { draft, updateDraft, saving } = useOrderEditor();
@@ -111,14 +199,13 @@ export function CustomerPanel() {
                     </option>
                   ))}
                 </select>
-                <input
-                  className={`${editorFieldClass()} min-w-0`}
+                <ContactValueField
+                  contactType={contact.contact_type}
                   value={contact.value}
                   disabled={saving}
                   onChange={(event) =>
                     updateContact(index, { value: event.target.value })
                   }
-                  placeholder="Number or handle"
                 />
                 <RemoveButton
                   label="Remove contact"
@@ -129,6 +216,7 @@ export function CustomerPanel() {
             ))}
           </div>
         )}
+        <QuoteMessageBlock />
       </div>
     </Panel>
   );
