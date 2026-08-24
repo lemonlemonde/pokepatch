@@ -50,7 +50,12 @@ function isQuoteRelatedChange(line) {
   if (raw.startsWith("Status:")) return false;
   if (raw.startsWith("Note:")) return false;
   if (raw === "Removed note") return false;
+  if (raw.startsWith("Photo folder")) return false;
   return true;
+}
+
+function isPhotoFolderChange(line) {
+  return String(line ?? "").startsWith("Photo folder");
 }
 
 function findCardIdForQuoteItem(item, cards) {
@@ -336,6 +341,25 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
+  // Google Drive photo folder (order-level share link).
+  const beforeDrive = String(
+    beforePayload?.order?.photos_drive_url ?? ""
+  ).trim();
+  const afterDrive = String(afterPayload?.order?.photos_drive_url ?? "").trim();
+  if (
+    beforePayload?.order != null &&
+    afterPayload?.order != null &&
+    beforeDrive !== afterDrive
+  ) {
+    if (!beforeDrive && afterDrive) {
+      orderChanges.push(`Photo folder added: ${afterDrive}`);
+    } else if (beforeDrive && !afterDrive) {
+      orderChanges.push("Photo folder removed");
+    } else {
+      orderChanges.push(`Photo folder updated: ${afterDrive}`);
+    }
+  }
+
   const beforePriority = Boolean(beforePayload?.order?.is_priority);
   const afterPriority = Boolean(afterPayload?.order?.is_priority);
   if (
@@ -575,6 +599,18 @@ export function summarizeChangelog(changelog = {}) {
     const toLabel = String(orderStatusLine).split("→").pop()?.trim();
     if (toLabel) {
       phrases.push(`Your order is now ${toLabel.toLowerCase()}`);
+    }
+  }
+
+  const photoFolderLine = orderChanges.find(isPhotoFolderChange);
+  if (photoFolderLine) {
+    const raw = String(photoFolderLine);
+    if (raw.startsWith("Photo folder added")) {
+      phrases.push("Your restoration photos are ready");
+    } else if (raw.startsWith("Photo folder updated")) {
+      phrases.push("Your photo folder has been updated");
+    } else if (raw.startsWith("Photo folder removed")) {
+      phrases.push("Your photo folder has been removed");
     }
   }
 

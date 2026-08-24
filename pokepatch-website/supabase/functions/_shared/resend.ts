@@ -92,6 +92,17 @@ function formatDiffLineHtml(text: string): string {
       `<span style="color:#8A7A89;margin:0 0.35em;">→</span>` +
       `<span style="color:#5EC8A7;font-weight:600;">${escapeHtml(parts.to)}</span>`;
   }
+  const photoFolder = String(text).match(
+    /^(Photo folder added|Photo folder updated):\s+(.+)$/i
+  );
+  if (photoFolder) {
+    const href = escapeHtml(photoFolder[2].trim());
+    return `<span style="color:#C9B8C8;">${escapeHtml(`${photoFolder[1]}:`)}</span> ` +
+      `<a href="${href}" style="color:#5EC8A7;font-weight:600;word-break:break-all;" target="_blank" rel="noopener noreferrer">${href}</a>`;
+  }
+  if (/^Photo folder removed$/i.test(String(text))) {
+    return `<span style="color:#F87171;font-weight:600;">${escapeHtml(text)}</span>`;
+  }
   const labeled = text.match(
     /^(Added|Removed|Applied discount|Removed discount|Applied|Updated|High-value fee|Quote total):\s+(.+)$/i
   );
