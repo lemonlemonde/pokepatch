@@ -6,6 +6,7 @@ import Link from "next/link";
 import Button from "@/components/Button";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import QuoteLoginDialog from "@/components/QuoteLoginDialog";
+import WhiteningDisclaimerDialog from "@/components/WhiteningDisclaimerDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -212,6 +213,8 @@ export default function QuoteForm() {
   const [cardFileErrors, setCardFileErrors] = useState({});
   const [formStarted, setFormStarted] = useState(false);
   const [loginPromptOpen, setLoginPromptOpen] = useState(false);
+  const [whiteningDisclaimerCardId, setWhiteningDisclaimerCardId] =
+    useState(null);
   // Set when the visitor chose "continue as guest" on an email that already has
   // an account. Blocks submission until they change the email or log in.
   const [guestBlockedEmail, setGuestBlockedEmail] = useState("");
@@ -345,8 +348,7 @@ export default function QuoteForm() {
     );
   }
 
-  function toggleCardDamage(id, tagId) {
-    onFormInteraction();
+  function applyCardDamage(id, tagId) {
     const card = cards.find((entry) => entry.id === id);
     if (!card) return;
     const current = card.damageTags ?? [];
@@ -360,6 +362,26 @@ export default function QuoteForm() {
         entry.id === id ? { ...entry, damageTags } : entry
       )
     );
+  }
+
+  function toggleCardDamage(id, tagId) {
+    const card = cards.find((entry) => entry.id === id);
+    if (!card) return;
+    const selected = (card.damageTags ?? []).includes(tagId);
+    if (tagId === "whitening" && !selected) {
+      setWhiteningDisclaimerCardId(id);
+      return;
+    }
+    onFormInteraction();
+    applyCardDamage(id, tagId);
+  }
+
+  function confirmWhiteningDisclaimer() {
+    const cardId = whiteningDisclaimerCardId;
+    setWhiteningDisclaimerCardId(null);
+    if (cardId == null) return;
+    onFormInteraction();
+    applyCardDamage(cardId, "whitening");
   }
 
   function addCard() {
@@ -1379,6 +1401,11 @@ export default function QuoteForm() {
         onGuest={handleLoginPromptGuest}
       />
     )}
+    <WhiteningDisclaimerDialog
+      open={whiteningDisclaimerCardId != null}
+      onCancel={() => setWhiteningDisclaimerCardId(null)}
+      onConfirm={confirmWhiteningDisclaimer}
+    />
     {unsavedChangesDialog}
     </>
   );
