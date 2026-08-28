@@ -129,13 +129,114 @@ export function resizeCrop(origin, handleId, nx, ny, aspectRatio, imageAspect) {
   return clampCrop({ x, y, w, h });
 }
 
-function loadImageElement(imageUrl) {
-  return new Promise((resolve, reject) => {
+const IMAGE_LOAD_TIMEOUT_MS = 30_000;
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
+function imageSize(drawable) {
+  const width = drawable.naturalWidth || drawable.width || 0;
+  const height = drawable.naturalHeight || drawable.height || 0;
+  return { width, height };
+}
+
+/** Load via HTMLImageElement. Never hang forever on a dead blob URL. */
+function loadImageElement(imageUrl, { timeoutMs = IMAGE_LOAD_TIMEOUT_MS } = {}) {
+  if (!imageUrl) {
+    return Promise.reject(new Error("Missing image URL."));
+  }
+
+  const load = new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error("Failed to load image"));
+        return;
+      }
+      resolve(image);
+    };
     image.onerror = () => reject(new Error("Failed to load image"));
     image.src = imageUrl;
   });
+
+  return withTimeout(load, timeoutMs, "Timed out loading image.");
+}
+
+async function loadDrawableFromBlob(blob) {
+  if (!blob) throw new Error("Missing image file.");
+
+  if (typeof createImageBitmap === "function") {
+    for (const options of [{ imageOrientation: "from-image" }, undefined]) {
+      try {
+        const bitmap = await withTimeout(
+          options ? createImageBitmap(blob, options) : createImageBitmap(blob),
+          IMAGE_LOAD_TIMEOUT_MS,
+          "Timed out decoding image.",
+        );
+        return {
+          drawable: bitmap,
+          ...imageSize(bitmap),
+          release: () => bitmap.close?.(),
+        };
+      } catch {
+        // try next strategy / fall through to <img>
+      }
+    }
+  }
+
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = await loadImageElement(url);
+    return {
+      drawable: image,
+      ...imageSize(image),
+      release: () => URL.revokeObjectURL(url),
+    };
+  } catch (err) {
+    URL.revokeObjectURL(url);
+    throw err;
+  }
+}
+
+/**
+ * Prefer the slot's File (stable) over a preview object URL (can be revoked or
+ * race the React effect that creates it). Preview URL is a last-resort fallback.
+ */
+async function loadStudioDrawable(item, imageUrl) {
+  const errors = [];
+
+  if (item?.file) {
+    try {
+      return await loadDrawableFromBlob(item.file);
+    } catch (err) {
+      errors.push(err);
+    }
+  }
+
+  if (imageUrl) {
+    try {
+      const image = await loadImageElement(imageUrl);
+      return {
+        drawable: image,
+        ...imageSize(image),
+        release: () => {},
+      };
+    } catch (err) {
+      errors.push(err);
+    }
+  }
+
+  const message =
+    errors.find((err) => err instanceof Error)?.message ||
+    "Failed to load image";
+  throw new Error(message);
 }
 
 /**
@@ -147,27 +248,39 @@ function loadImageElement(imageUrl) {
  * compensation math.
  */
 export async function renderStudioSlotCanvas(item, imageUrl) {
-  const img = await loadImageElement(imageUrl);
-  const crop = isDefaultCrop(item.crop) ? DEFAULT_CROP : clampCrop(item.crop);
+  const loaded = await loadStudioDrawable(item, imageUrl);
+  try {
+    const { drawable, width, height } = loaded;
+    if (!width || !height) {
+      throw new Error("Failed to load image");
+    }
 
-  const sx = Math.round(crop.x * img.naturalWidth);
-  const sy = Math.round(crop.y * img.naturalHeight);
-  const sw = Math.max(1, Math.round(crop.w * img.naturalWidth));
-  const sh = Math.max(1, Math.round(crop.h * img.naturalHeight));
+    const crop = isDefaultCrop(item.crop) ? DEFAULT_CROP : clampCrop(item.crop);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+    const sx = Math.round(crop.x * width);
+    const sy = Math.round(crop.y * height);
+    const sw = Math.max(1, Math.round(crop.w * width));
+    const sh = Math.max(1, Math.round(crop.h * height));
 
-  if (item.annotations?.length) {
-    drawShapesOnCanvas(ctx, item.annotations, sw, sh);
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("Could not prepare this image for upload.");
+    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(drawable, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    if (item.annotations?.length) {
+      drawShapesOnCanvas(ctx, item.annotations, sw, sh);
+    }
+
+    return canvas;
+  } finally {
+    loaded.release?.();
   }
-
-  return canvas;
 }
 
 /**
@@ -176,6 +289,8 @@ export async function renderStudioSlotCanvas(item, imageUrl) {
  * *directly* rather than a re-encoded File — the formatter accepts either, and
  * routing through a JPEG in between cost a generation of quality that only
  * edited slots paid.
+ *
+ * `imageUrl` is optional — edited slots load from `item.file` first.
  */
 export async function resolveStudioImageSource(item, imageUrl) {
   if (!item?.file) return null;

@@ -55,13 +55,38 @@ function isHeicLike(file) {
   return /\.hei[cf]$/i.test(file.name || "");
 }
 
+const IMAGE_LOAD_TIMEOUT_MS = 30_000;
+const CANVAS_ENCODE_TIMEOUT_MS = 30_000;
+
+function withTimeout(promise, ms, message) {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), ms);
+    }),
+  ]);
+}
+
 function loadImageElement(url) {
-  return new Promise((resolve, reject) => {
+  if (!url) {
+    return Promise.reject(new Error("Failed to load image"));
+  }
+
+  const load = new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      if (!image.naturalWidth || !image.naturalHeight) {
+        reject(new Error("Failed to load image"));
+        return;
+      }
+      resolve(image);
+    };
     image.onerror = () => reject(new Error("Failed to load image"));
     image.src = url;
   });
+
+  return withTimeout(load, IMAGE_LOAD_TIMEOUT_MS, "Timed out loading image.");
 }
 
 /**
@@ -71,9 +96,13 @@ function loadImageElement(url) {
  */
 async function drawableFromBlob(blob) {
   try {
-    const bitmap = await createImageBitmap(blob, {
-      imageOrientation: "from-image",
-    });
+    const bitmap = await withTimeout(
+      createImageBitmap(blob, {
+        imageOrientation: "from-image",
+      }),
+      IMAGE_LOAD_TIMEOUT_MS,
+      "Timed out decoding image.",
+    );
     return {
       drawable: bitmap,
       width: bitmap.width,
@@ -85,7 +114,11 @@ async function drawableFromBlob(blob) {
   }
 
   try {
-    const bitmap = await createImageBitmap(blob);
+    const bitmap = await withTimeout(
+      createImageBitmap(blob),
+      IMAGE_LOAD_TIMEOUT_MS,
+      "Timed out decoding image.",
+    );
     return {
       drawable: bitmap,
       width: bitmap.width,
@@ -167,9 +200,17 @@ async function encodeCanvasToFile(
   if (!canvas) return null;
 
   const tryEncode = (mimeType) =>
-    new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob), mimeType, quality);
-    });
+    withTimeout(
+      new Promise((resolve, reject) => {
+        try {
+          canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error("Could not encode image."));
+        }
+      }),
+      CANVAS_ENCODE_TIMEOUT_MS,
+      "Timed out encoding image.",
+    );
 
   let blob = await tryEncode(WEBP_TYPE);
   let type = WEBP_TYPE;
