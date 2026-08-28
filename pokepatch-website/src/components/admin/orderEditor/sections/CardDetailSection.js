@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AdminOrderCardPhotoGroups } from "@/components/CardPhotoPreviews";
-import { adminDeletePhoto } from "@/lib/adminApi";
 import {
   QUOTE_SERVICES,
   SERVICE_KEYS,
@@ -66,7 +65,11 @@ function pickCardSection(cardId, draft) {
     .map((item) => ({ ...item }));
   const hv = draft.quote_card_hv?.[String(cardId)];
   return {
-    card: { ...card, pending_files: [...(card.pending_files ?? [])] },
+    card: {
+      ...card,
+      pending_files: [...(card.pending_files ?? [])],
+      pending_image_deletes: [...(card.pending_image_deletes ?? [])],
+    },
     quote_items,
     quote_card_hv: hv ? { [String(cardId)]: { ...hv } } : {},
   };
@@ -97,17 +100,7 @@ export default function CardDetailSection({
   onExpandedChange,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
-  const [removingPhotoId, setRemovingPhotoId] = useState(null);
-  const [photoError, setPhotoError] = useState("");
-  const {
-    draft,
-    updateDraft,
-    applyServerPatch,
-    saving,
-    orderId,
-    order,
-    onOrderUpdated,
-  } = useOrderEditor();
+  const { draft, updateDraft, saving } = useOrderEditor();
 
   const section = useMemo(() => pickCardSection(cardId, draft), [cardId, draft]);
   const card = section?.card;
@@ -238,37 +231,18 @@ export default function CardDetailSection({
     setExpandedQuoteLineId(quoteItems[index]?.id ?? null);
   }
 
-  async function removePhoto(imageId) {
-    if (!orderId || removingPhotoId != null) return;
-    setRemovingPhotoId(imageId);
-    setPhotoError("");
-    const stripImage = (entry) => ({
-      ...entry,
-      images: (entry.images ?? []).filter(
-        (image) => String(image.id) !== String(imageId)
+  function removePhoto(imageId) {
+    if (saving || imageId == null) return;
+    const idKey = String(imageId);
+    const pending = card.pending_image_deletes ?? [];
+    updateCard({
+      images: (card.images ?? []).filter(
+        (image) => String(image.id) !== idKey
       ),
+      pending_image_deletes: pending.some((id) => String(id) === idKey)
+        ? pending
+        : [...pending, imageId],
     });
-    try {
-      await adminDeletePhoto(orderId, imageId);
-      // The delete already happened server-side: update draft + baseline in
-      // place so other unsaved edits survive and the order doesn't turn dirty.
-      applyServerPatch((current) => ({
-        ...current,
-        cards: current.cards.map((entry) =>
-          String(entry.id) === cardIdStr ? stripImage(entry) : entry
-        ),
-      }));
-      onOrderUpdated({
-        ...order,
-        cards: (order.cards ?? []).map((entry) =>
-          String(entry.id) === cardIdStr ? stripImage(entry) : entry
-        ),
-      });
-    } catch (err) {
-      setPhotoError(err.message || "Could not remove photo.");
-    } finally {
-      setRemovingPhotoId(null);
-    }
   }
 
   function addPendingFiles(fileList) {
@@ -597,9 +571,7 @@ export default function CardDetailSection({
             <AdminOrderCardPhotoGroups
               items={savedPhotoItems(card.images ?? [])}
               pendingFiles={pendingFiles}
-              onRemove={
-                removingPhotoId != null || saving ? undefined : removePhoto
-              }
+              onRemove={saving ? undefined : removePhoto}
               onRemovePending={
                 saving
                   ? undefined
@@ -611,9 +583,6 @@ export default function CardDetailSection({
                       })
               }
             />
-            {photoError ? (
-              <p className="text-sm text-error">{photoError}</p>
-            ) : null}
             <div>
               <input
                 id={photoInputId}
