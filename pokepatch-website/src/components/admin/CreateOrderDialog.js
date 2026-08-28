@@ -19,8 +19,8 @@ const EMPTY_FORM = {
   delivery_method: "local_dropoff",
 };
 
-const MIN_ACCOUNT_QUERY = 2;
-const ACCOUNT_SEARCH_DEBOUNCE_MS = 280;
+const MIN_ACCOUNT_QUERY = 1;
+const ACCOUNT_SEARCH_DEBOUNCE_MS = 150;
 
 function accountLabel(account) {
   const name = [account.first_name, account.last_name]
@@ -249,21 +249,19 @@ export default function CreateOrderDialog({
                   className={fieldClassName()}
                 />
                 <p className="mt-1.5 text-xs text-ink/40">
-                  Type at least {MIN_ACCOUNT_QUERY} characters. Optional — leave
-                  blank for a guest order.
+                  Live search by first name, last name, or email. Optional —
+                  leave blank for a guest order.
                 </p>
               </>
             )}
 
             {showSearchPanel ? (
               <div className="mt-2 max-h-52 overflow-auto rounded-xl border border-ink/15 bg-cream">
-                {searching ? (
-                  <p className="px-3.5 py-2.5 text-sm text-ink/50">Searching…</p>
-                ) : searchError ? (
+                {searchError ? (
                   <p className="px-3.5 py-2.5 text-sm text-error">{searchError}</p>
                 ) : searchResults.length === 0 ? (
                   <p className="px-3.5 py-2.5 text-sm text-ink/50">
-                    No matching accounts.
+                    {searching ? "Searching…" : "No matching accounts."}
                   </p>
                 ) : (
                   <>

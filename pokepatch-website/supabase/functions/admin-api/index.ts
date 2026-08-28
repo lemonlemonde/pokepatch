@@ -1521,7 +1521,23 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-type AuthUserRow = { id: string; email: string };
+type AuthUserRow = {
+  id: string;
+  email: string;
+  /** Signup JWT metadata — often set before customer_profiles exists. */
+  first_name: string;
+  last_name: string;
+};
+
+function authMetadataName(user: {
+  user_metadata?: Record<string, unknown> | null;
+}): { first_name: string; last_name: string } {
+  const meta = user.user_metadata ?? {};
+  return {
+    first_name: String(meta.first_name ?? "").trim(),
+    last_name: String(meta.last_name ?? "").trim(),
+  };
+}
 
 async function listAllAuthUsers(
   supabase: ReturnType<typeof getServiceClient>
@@ -1540,7 +1556,13 @@ async function listAllAuthUsers(
     for (const user of data?.users ?? []) {
       const email = normalizeEmail(user.email);
       if (!email || !user.id) continue;
-      users.push({ id: user.id, email });
+      const metaName = authMetadataName(user);
+      users.push({
+        id: user.id,
+        email,
+        first_name: metaName.first_name,
+        last_name: metaName.last_name,
+      });
     }
 
     const count = data?.users?.length ?? 0;
@@ -1623,8 +1645,144 @@ type AccountSearchHit = {
 };
 
 const ACCOUNT_SEARCH_LIMIT = 20;
+const ACCOUNT_SEARCH_MIN_CHARS = 1;
 
-/** Match Auth users by name or email substring for admin new-order prefill. */
+function pickNonEmptyName(
+  ...candidates: Array<{ first_name?: string | null; last_name?: string | null } | null | undefined>
+): { first_name: string; last_name: string } {
+  for (const candidate of candidates) {
+    const first = (candidate?.first_name ?? "").trim();
+    const last = (candidate?.last_name ?? "").trim();
+    if (first || last) return { first_name: first, last_name: last };
+  }
+  return { first_name: "", last_name: "" };
+}
+
+function namesFromOrderRow(row: {
+  first_name?: unknown;
+  last_name?: unknown;
+  customer_name?: unknown;
+}): { first_name: string; last_name: string } {
+  const first = String(row.first_name ?? "").trim();
+  const last = String(row.last_name ?? "").trim();
+  if (first || last) return { first_name: first, last_name: last };
+  const legacy = String(row.customer_name ?? "").trim();
+  return legacy ? { first_name: legacy, last_name: "" } : { first_name: "", last_name: "" };
+}
+
+/**
+ * Latest order name for accounts still missing profile/metadata names.
+ * Prefers linked user_id rows, then email match. Keyed by user_id.
+ */
+async function fetchLatestOrderNamesForAccounts(
+  supabase: ReturnType<typeof getServiceClient>,
+  users: { id: string; email: string }[]
+): Promise<Map<string, { first_name: string; last_name: string }>> {
+  const byUserId = new Map<string, { first_name: string; last_name: string }>();
+  if (users.length === 0) return byUserId;
+
+  const emailToUserId = new Map(
+    users.map((user) => [user.email, user.id] as const)
+  );
+
+  const absorbRows = (
+    rows: {
+      user_id?: unknown;
+      customer_email?: unknown;
+      first_name?: unknown;
+      last_name?: unknown;
+      customer_name?: unknown;
+    }[]
+  ) => {
+    for (const row of rows) {
+      const email = normalizeEmail(row.customer_email);
+      const userId =
+        (row.user_id && String(row.user_id)) || emailToUserId.get(email) || "";
+      if (!userId || byUserId.has(userId)) continue;
+      const names = namesFromOrderRow(row);
+      if (!names.first_name && !names.last_name) continue;
+      byUserId.set(userId, names);
+    }
+  };
+
+  const chunkSize = 200;
+  const userIds = users.map((user) => user.id);
+  for (let i = 0; i < userIds.length; i += chunkSize) {
+    const chunk = userIds.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("user_id, customer_email, first_name, last_name, customer_name, created_at")
+      .in("user_id", chunk)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    absorbRows(data ?? []);
+  }
+
+  const emailsStillMissing = users
+    .filter((user) => !byUserId.has(user.id))
+    .map((user) => user.email);
+  for (let i = 0; i < emailsStillMissing.length; i += chunkSize) {
+    const chunk = emailsStillMissing.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from("orders")
+      .select("user_id, customer_email, first_name, last_name, customer_name, created_at")
+      .in("customer_email", chunk)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    absorbRows(data ?? []);
+  }
+
+  return byUserId;
+}
+
+function normalizeAccountSearchText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+/** Every query token must appear in first, last, full name, or email (substring). */
+function accountMatchesSearchTokens(
+  firstName: string,
+  lastName: string,
+  email: string,
+  tokens: string[]
+): boolean {
+  if (tokens.length === 0) return false;
+  const emailLocal = email.includes("@") ? email.slice(0, email.indexOf("@")) : email;
+  const fields = [
+    firstName,
+    lastName,
+    `${firstName} ${lastName}`.trim(),
+    email,
+    emailLocal,
+  ].map(normalizeAccountSearchText);
+
+  return tokens.every((token) => fields.some((field) => field.includes(token)));
+}
+
+function accountSearchRank(
+  hit: AccountSearchHit,
+  query: string,
+  tokens: string[]
+): number {
+  const email = normalizeAccountSearchText(hit.email);
+  const first = normalizeAccountSearchText(hit.first_name);
+  const last = normalizeAccountSearchText(hit.last_name);
+  const full = `${first} ${last}`.trim();
+  const primary = tokens[0] ?? query;
+
+  if (email === query) return 0;
+  if (full === query) return 1;
+  if (email.startsWith(query)) return 2;
+  if (full.startsWith(query)) return 3;
+  if (first.startsWith(primary) || last.startsWith(primary)) return 4;
+  if (email.includes(query) || full.includes(query)) return 5;
+  return 6;
+}
+
+/**
+ * Match Auth users by fuzzy name/email tokens for admin new-order prefill.
+ * Name resolution: customer_profiles → Auth user_metadata → latest order.
+ */
 async function searchCustomerAccounts(
   supabase: ReturnType<typeof getServiceClient>,
   rawQuery: string
@@ -1634,8 +1792,9 @@ async function searchCustomerAccounts(
   truncated: boolean;
 }> {
   const trimmed = rawQuery.trim();
-  const query = trimmed.toLowerCase();
-  if (query.length < 2) {
+  const query = normalizeAccountSearchText(trimmed);
+  const tokens = query.split(/\s+/).filter(Boolean);
+  if (query.length < ACCOUNT_SEARCH_MIN_CHARS || tokens.length === 0) {
     return { accounts: [], query: trimmed, truncated: false };
   }
 
@@ -1645,14 +1804,25 @@ async function searchCustomerAccounts(
     authUsers.map((user) => user.id)
   );
 
+  const usersNeedingOrderNames = authUsers.filter((user) => {
+    const resolved = pickNonEmptyName(namesByUserId.get(user.id), user);
+    return !resolved.first_name && !resolved.last_name;
+  });
+  const orderNamesByUserId = await fetchLatestOrderNamesForAccounts(
+    supabase,
+    usersNeedingOrderNames
+  );
+
   const matched: AccountSearchHit[] = [];
   for (const user of authUsers) {
-    const profile = namesByUserId.get(user.id);
-    const firstName = (profile?.first_name ?? "").trim();
-    const lastName = (profile?.last_name ?? "").trim();
-    const fullName = `${firstName} ${lastName}`.trim();
-    const haystack = `${firstName} ${lastName} ${fullName} ${user.email}`.toLowerCase();
-    if (!haystack.includes(query)) continue;
+    const { first_name: firstName, last_name: lastName } = pickNonEmptyName(
+      namesByUserId.get(user.id),
+      user,
+      orderNamesByUserId.get(user.id)
+    );
+    if (!accountMatchesSearchTokens(firstName, lastName, user.email, tokens)) {
+      continue;
+    }
     matched.push({
       user_id: user.id,
       email: user.email,
@@ -1662,6 +1832,9 @@ async function searchCustomerAccounts(
   }
 
   matched.sort((a, b) => {
+    const rankDelta =
+      accountSearchRank(a, query, tokens) - accountSearchRank(b, query, tokens);
+    if (rankDelta !== 0) return rankDelta;
     const nameA = `${a.first_name} ${a.last_name}`.trim() || a.email;
     const nameB = `${b.first_name} ${b.last_name}`.trim() || b.email;
     return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });

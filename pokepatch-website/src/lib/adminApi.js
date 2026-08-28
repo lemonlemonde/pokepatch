@@ -312,8 +312,8 @@ export async function adminGetOrder(orderId) {
 }
 
 /**
- * Search Auth accounts by name or email (min 2 chars). Used to prefill
- * admin "new order" for an existing customer.
+ * Search Auth accounts by name or email (live, fuzzy token match). Used to
+ * prefill admin "new order" for an existing customer.
  */
 export async function adminSearchAccounts(query) {
   const payload = await adminRequest(apiUrl(), {
