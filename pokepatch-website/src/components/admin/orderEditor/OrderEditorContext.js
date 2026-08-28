@@ -88,16 +88,6 @@ export function OrderEditorProvider({
     });
   }, []);
 
-  /**
-   * Apply a server-confirmed change (e.g. a photo delete that already hit the
-   * API) to both the draft and the saved baseline, preserving unsaved edits
-   * without marking the order dirty.
-   */
-  const applyServerPatch = useCallback((updater) => {
-    setDraft((current) => updater(current));
-    setSavedDraft((current) => updater(current));
-  }, []);
-
   const discardChanges = useCallback(() => {
     setDraft(JSON.parse(JSON.stringify(savedDraft)));
     setError("");
@@ -163,7 +153,6 @@ export function OrderEditorProvider({
   const value = {
     draft,
     updateDraft,
-    applyServerPatch,
     dirty,
     saving,
     error,

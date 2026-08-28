@@ -1,4 +1,5 @@
 import {
+  adminDeletePhoto,
   adminGetOrder,
   adminSaveOrder,
   adminSendMessages,
@@ -9,8 +10,8 @@ import { buildCardThumbById } from "@/lib/orderChangelog";
 import { draftPayload } from "@/lib/adminOrderDraft";
 
 /**
- * Save a full order draft (including pending photo uploads) and return the
- * refreshed order from the server.
+ * Save a full order draft (pending photo uploads + staged photo deletes) and
+ * return the refreshed order from the server.
  */
 export async function saveAdminOrderDraft(orderId, draft, { notify = false, subject = "", body = "", changelog = null } = {}) {
   const pendingUploads = (draft.cards ?? [])
@@ -20,9 +21,29 @@ export async function saveAdminOrderDraft(orderId, draft, { notify = false, subj
     }))
     .filter((entry) => entry.files.length > 0);
 
+  const pendingDeletes = [];
+  const seenDeleteIds = new Set();
+  for (const card of draft.cards ?? []) {
+    for (const imageId of card.pending_image_deletes ?? []) {
+      const key = String(imageId);
+      if (seenDeleteIds.has(key)) continue;
+      seenDeleteIds.add(key);
+      pendingDeletes.push(imageId);
+    }
+  }
+
   const emailThumbs = buildCardThumbById(draft.cards);
   const payload = draftPayload(draft);
   let refreshed = await adminSaveOrder(orderId, payload);
+
+  for (const imageId of pendingDeletes) {
+    try {
+      await adminDeletePhoto(orderId, imageId);
+    } catch (err) {
+      // Idempotent: already gone after a prior partial save retry.
+      if (!/photo not found/i.test(String(err?.message ?? ""))) throw err;
+    }
+  }
 
   for (const { cardId, files } of pendingUploads) {
     for (const entry of files) {
@@ -36,7 +57,7 @@ export async function saveAdminOrderDraft(orderId, draft, { notify = false, subj
     }
   }
 
-  if (pendingUploads.length > 0) {
+  if (pendingUploads.length > 0 || pendingDeletes.length > 0) {
     refreshed = await adminGetOrder(orderId);
   }
 

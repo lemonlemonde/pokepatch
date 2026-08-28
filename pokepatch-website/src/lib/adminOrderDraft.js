@@ -41,6 +41,7 @@ export function emptyAdminCard() {
     status: DEFAULT_CARD_STATUS,
     images: [],
     pending_files: [],
+    pending_image_deletes: [],
   };
 }
 
@@ -253,6 +254,7 @@ export function orderToDraft(order) {
     status: normalizeCardStatus(card.status),
     images: card.images ?? [],
     pending_files: [],
+    pending_image_deletes: [],
   }));
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
