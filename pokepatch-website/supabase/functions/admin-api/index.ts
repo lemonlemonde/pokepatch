@@ -502,7 +502,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   ] = await Promise.all([
     supabase
       .from("cards")
-      .select("id, order_id, status, sort_order, checklist, card_name, set_name")
+      .select("id, order_id, status, sort_order, card_name, set_name")
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true }),
@@ -522,28 +522,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     emailToUserId
   );
 
-  // Keep in sync with CARD_CHECKLIST_GROUPS in src/lib/orderStatus.js.
-  const CHECKLIST_GROUPS: Record<string, string[]> = {
-    before: ["before_scans", "before_closeup_photos"],
-    after: ["after_scans", "after_closeup_photos"],
-    social: ["post_gallery", "post_instagram"],
-  };
-
-  function emptyChecklistProgress() {
-    return Object.fromEntries(
-      Object.keys(CHECKLIST_GROUPS).map((groupId) => [
-        groupId,
-        { done: 0, total: 0 },
-      ])
-    ) as Record<string, { done: number; total: number }>;
-  }
-
   const countByOrder = new Map<string, number>();
   const completedCountByOrder = new Map<string, number>();
-  const checklistProgressByOrder = new Map<
-    string,
-    Record<string, { done: number; total: number }>
-  >();
   const cardOrderById = new Map<string, string>();
   const cardsByOrder = new Map<string, Array<Record<string, unknown>>>();
   for (const card of cards ?? []) {
@@ -565,20 +545,6 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       set_name: card.set_name ?? null,
     });
     cardsByOrder.set(orderId, cardList);
-
-    const progress =
-      checklistProgressByOrder.get(orderId) ?? emptyChecklistProgress();
-    const checklist =
-      card.checklist && typeof card.checklist === "object"
-        ? (card.checklist as Record<string, unknown>)
-        : {};
-    for (const [groupId, itemIds] of Object.entries(CHECKLIST_GROUPS)) {
-      progress[groupId].total += itemIds.length;
-      progress[groupId].done += itemIds.filter(
-        (itemId) => checklist[itemId] === true
-      ).length;
-    }
-    checklistProgressByOrder.set(orderId, progress);
   }
 
   const quoteItemsByOrder = new Map<string, typeof quoteItems>();
@@ -632,8 +598,6 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       cards: cardsByOrder.get(orderId) ?? [],
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
-      checklist_progress:
-        checklistProgressByOrder.get(orderId) ?? emptyChecklistProgress(),
       queue_position: queuePositionById.get(orderId) ?? null,
       preview_paths: preview.map((row) => row.path),
       preview_urls: preview.map((row) => row.url),
@@ -972,7 +936,7 @@ async function fetchOrderGraph(
     supabase
       .from("cards")
       .select(
-        "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, checklist"
+        "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status"
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true })
