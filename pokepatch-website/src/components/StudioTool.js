@@ -48,7 +48,6 @@ function createEmptyCardMeta() {
     frontPreviewUrl: null,
     card: "",
     set: "",
-    showCardInfo: true,
     tcg_card_id: "",
     card_number: "",
     tcg_lookup_title: "",
@@ -61,7 +60,6 @@ function cardMetaFromStored(partial = {}) {
   const frontFile = partial.frontFile ?? null;
   return {
     ...createEmptyCardMeta(),
-    showCardInfo: partial.showCardInfo ?? true,
     card: partial.card ?? "",
     set: partial.set ?? "",
     frontFile,
@@ -81,57 +79,18 @@ const CLEARED_TCG_FIELDS = {
 };
 
 function validateCardMeta(meta) {
-  if (meta.showCardInfo) {
-    if (!meta.frontFile) return "Card info needs a front image.";
-    if (!meta.card.trim()) return "Card info needs a card name.";
-    if (!meta.set.trim()) return "Card info needs a set name.";
-  }
+  if (!meta.frontFile) return "Card info needs a front image.";
+  if (!meta.card.trim()) return "Card info needs a card name.";
+  if (!meta.set.trim()) return "Card info needs a set name.";
   return null;
 }
 
 function cardMetaToOverlayOptions(meta) {
   return {
-    showCardInfo: meta.showCardInfo,
     frontFile: meta.frontFile,
     card: meta.card.trim(),
     set: meta.set.trim(),
   };
-}
-
-function MetaSwitch({ id, label, description, checked, onChange }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="min-w-0">
-        <label
-          htmlFor={id}
-          className="text-sm font-semibold text-ink"
-        >
-          {label}
-        </label>
-        {description ? (
-          <p className="mt-0.5 text-xs text-ink/50">{description}</p>
-        ) : null}
-      </div>
-      <button
-        id={id}
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-          checked ? "bg-ink" : "bg-ink/25"
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-cream transition ${
-            checked ? "translate-x-5" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </div>
-  );
 }
 
 /**
@@ -144,7 +103,6 @@ function StudioCardMetaControls({
   resolveDroppedItemFile = null,
 }) {
   const frontInputId = useId();
-  const cardInfoSwitchId = useId();
   const [uploadDragging, setUploadDragging] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [pickedCard, setPickedCard] = useState(null);
@@ -236,133 +194,123 @@ function StudioCardMetaControls({
           Card info overlay
         </p>
         <p className="mt-0.5 text-xs text-ink/50">
-          Optional chip in the corner of each generated post
+          Front thumbnail, card name, and set on each generated post
         </p>
       </div>
 
-      <MetaSwitch
-        id={cardInfoSwitchId}
-        label="Include card info"
-        description="Front thumbnail, card name, and set"
-        checked={value.showCardInfo}
-        onChange={(showCardInfo) => patch({ showCardInfo })}
-      />
-
-      {value.showCardInfo ? (
-        <div className="grid gap-4 border-t border-ink/10 pt-3 sm:grid-cols-[minmax(0,11rem)_1fr]">
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-              Front image
-            </p>
-            <div
-              onDragOver={(event) => {
-                event.preventDefault();
-                setUploadDragging(true);
-              }}
-              onDragLeave={() => setUploadDragging(false)}
-              onDrop={handleUploadDrop}
-              className={`rounded-xl transition ${
-                uploadDragging ? "ring-2 ring-ink/60" : ""
-              }`}
-            >
-              {value.frontPreviewUrl ? (
-                <div className="space-y-2">
-                  <StudioOpenableThumb
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,11rem)_1fr]">
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+            Front image
+          </p>
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setUploadDragging(true);
+            }}
+            onDragLeave={() => setUploadDragging(false)}
+            onDrop={handleUploadDrop}
+            className={`rounded-xl transition ${
+              uploadDragging ? "ring-2 ring-ink/60" : ""
+            }`}
+          >
+            {value.frontPreviewUrl ? (
+              <div className="space-y-2">
+                <StudioOpenableThumb
+                  src={value.frontPreviewUrl}
+                  alt="Card front preview"
+                  label={value.frontFile?.name || "Card front"}
+                  className="block w-24"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={value.frontPreviewUrl}
                     alt="Card front preview"
-                    label={value.frontFile?.name || "Card front"}
-                    className="block w-24"
+                    className="h-24 w-24 rounded-lg border border-ink/15 object-cover"
+                  />
+                </StudioOpenableThumb>
+                <div className="flex w-24 flex-col gap-1">
+                  <label
+                    htmlFor={frontInputId}
+                    className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={value.frontPreviewUrl}
-                      alt="Card front preview"
-                      className="h-24 w-24 rounded-lg border border-ink/15 object-cover"
-                    />
-                  </StudioOpenableThumb>
-                  <div className="flex w-24 flex-col gap-1">
-                    <label
-                      htmlFor={frontInputId}
-                      className="cursor-pointer rounded-lg border border-ink/20 px-2 py-1 text-center text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
-                    >
-                      Replace
-                    </label>
-                    <button
-                      type="button"
-                      onClick={clearFront}
-                      className="rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
-                    >
-                      Clear
-                    </button>
-                  </div>
+                    Replace
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearFront}
+                    className="rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
+                  >
+                    Clear
+                  </button>
                 </div>
-              ) : (
-                <label
-                  htmlFor={frontInputId}
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-6 text-center transition ${
-                    uploadDragging
-                      ? "border-ink bg-ink/10"
-                      : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
-                  }`}
-                >
-                  <p className="text-xs text-ink/70">
-                    Drop image here or browse
+              </div>
+            ) : (
+              <label
+                htmlFor={frontInputId}
+                className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed px-3 py-6 text-center transition ${
+                  uploadDragging
+                    ? "border-ink bg-ink/10"
+                    : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
+                }`}
+              >
+                <p className="text-xs text-ink/70">
+                  Drop image here or browse
+                </p>
+                {resolveDroppedItemFile ? (
+                  <p className="text-[10px] text-ink/40">
+                    or drag one in from Before/After photos
                   </p>
-                  {resolveDroppedItemFile ? (
-                    <p className="text-[10px] text-ink/40">
-                      or drag one in from Before/After photos
-                    </p>
-                  ) : null}
-                </label>
-              )}
-            </div>
-            <input
-              id={frontInputId}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={handleFrontChange}
-            />
+                ) : null}
+              </label>
+            )}
           </div>
-
-          <div className="grid gap-3">
-            <label className="block space-y-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                Card
-              </span>
-              <input
-                type="text"
-                value={value.card}
-                onChange={(event) => patch({ card: event.target.value })}
-                placeholder="Sylveon-GX (Secret Rare)"
-                className={INPUT_CLASS}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                Set
-              </span>
-              <input
-                type="text"
-                value={value.set}
-                onChange={(event) => patch({ set: event.target.value })}
-                placeholder="Guardians Rising"
-                className={INPUT_CLASS}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => setSearchOpen((open) => !open)}
-              aria-expanded={searchOpen}
-              className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
-            >
-              {searchOpen ? "Hide catalog search" : "Search TCG catalog"}
-            </button>
-          </div>
+          <input
+            id={frontInputId}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={handleFrontChange}
+          />
         </div>
-      ) : null}
 
-      {value.showCardInfo && searchOpen ? (
+        <div className="grid gap-3">
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+              Card
+            </span>
+            <input
+              type="text"
+              value={value.card}
+              onChange={(event) => patch({ card: event.target.value })}
+              placeholder="Sylveon-GX (Secret Rare)"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
+              Set
+            </span>
+            <input
+              type="text"
+              value={value.set}
+              onChange={(event) => patch({ set: event.target.value })}
+              placeholder="Guardians Rising"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setSearchOpen((open) => !open)}
+            aria-expanded={searchOpen}
+            className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
+          >
+            {searchOpen ? "Hide catalog search" : "Search TCG catalog"}
+          </button>
+        </div>
+      </div>
+
+      {searchOpen ? (
         <div className="space-y-2 border-t border-ink/10 pt-3">
           <GalleryCardSearch
             selectedCard={pickedCard}
