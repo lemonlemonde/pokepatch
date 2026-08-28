@@ -312,6 +312,8 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     afterOrderStatus === "pending"
       ? normalizePendingKind(afterPayload?.order?.pending_kind)
       : null;
+  const beforeDelivery = beforePayload?.order?.delivery_method ?? null;
+  const afterDelivery = afterPayload?.order?.delivery_method ?? null;
   if (
     beforePayload?.order != null &&
     afterPayload?.order != null &&
@@ -321,8 +323,13 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     orderChanges.push(
       `Status: ${customerOrderStatusLabel(
         beforeOrderStatus,
-        beforePendingKind
-      )} → ${customerOrderStatusLabel(afterOrderStatus, afterPendingKind)}`
+        beforePendingKind,
+        beforeDelivery
+      )} → ${customerOrderStatusLabel(
+        afterOrderStatus,
+        afterPendingKind,
+        afterDelivery
+      )}`
     );
   }
 
@@ -582,8 +589,9 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
 }
 
 /**
- * Short customer-facing subject. Up to two phrases join with " + ";
- * more than that becomes a single "multiple changes" line.
+ * Short customer-facing subject. Up to two phrases join with " + ".
+ * More than that collapses to "multiple changes", except when the order
+ * became ready — that signal is kept as "…ready… + other updates".
  * @param {{ cardGroups?: CardChangelogGroup[], orderChanges?: string[], quoteSummary?: string | null }} changelog
  */
 export function summarizeChangelog(changelog = {}) {
@@ -592,13 +600,24 @@ export function summarizeChangelog(changelog = {}) {
   const orderChanges = changelog.orderChanges ?? [];
   const quoteSummary = changelog.quoteSummary ?? null;
 
+  let orderReadyPhrase = null;
   const orderStatusLine = orderChanges.find((line) =>
     String(line).startsWith("Status:")
   );
   if (orderStatusLine) {
     const toLabel = String(orderStatusLine).split("→").pop()?.trim();
     if (toLabel) {
-      phrases.push(`Your order is now ${toLabel.toLowerCase()}`);
+      const lowered = toLabel.toLowerCase();
+      // Ready-for-customer is the important customer signal when work finishes.
+      if (
+        lowered.startsWith("ready for pickup") ||
+        lowered.startsWith("ready to ship")
+      ) {
+        orderReadyPhrase = `Your order is ${lowered}`;
+        phrases.push(orderReadyPhrase);
+      } else {
+        phrases.push(`Your order is now ${lowered}`);
+      }
     }
   }
 
@@ -634,7 +653,14 @@ export function summarizeChangelog(changelog = {}) {
       else otherCardStatus += 1;
     }
   }
-  if (completedCards >= 1) phrases.push("Some cards on your order have been completed");
+  // When the order itself became ready, card-completion lines are redundant.
+  if (completedCards >= 1 && !orderReadyPhrase) {
+    phrases.push(
+      completedCards === 1
+        ? "A card on your order has been completed"
+        : "Some cards on your order have been completed"
+    );
+  }
   if (inProgressCards >= 1) {
     phrases.push(
       inProgressCards === 1
@@ -678,6 +704,8 @@ export function summarizeChangelog(changelog = {}) {
   }
 
   if (phrases.length > 2) {
+    // Keep the ready-for-customer signal even when other changes pile up.
+    if (orderReadyPhrase) return `${orderReadyPhrase} + other updates`;
     return "Your order has multiple changes";
   }
   return phrases.join(" + ");

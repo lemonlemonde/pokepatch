@@ -10,6 +10,7 @@ import {
 } from "react";
 import { buildOrderChangelog } from "@/lib/orderChangelog";
 import {
+  applyAutoOrderStatusFromCards,
   applyAutoPendingDropoff,
   draftPayload,
   draftPayloadForSavePreview,
@@ -17,6 +18,7 @@ import {
   validateDraftForSave,
 } from "@/lib/adminOrderDraft";
 import { saveAdminOrderDraft } from "@/lib/adminOrderSave";
+import { normalizeOrderStatus, normalizePendingKind } from "@/lib/orderStatus";
 
 const OrderEditorContext = createContext(null);
 
@@ -68,7 +70,21 @@ export function OrderEditorProvider({
         Object.keys(patchOrFn).length === 1 &&
         Object.prototype.hasOwnProperty.call(patchOrFn, "pending_kind");
       if (pendingKindOnly) return next;
-      return applyAutoPendingDropoff(next);
+
+      // If the admin changed order status this edit, skip card→status auto-advance
+      // (same rule as update_order's v_order_status_manually_set).
+      const statusTouched =
+        normalizeOrderStatus(current.status) !==
+          normalizeOrderStatus(next.status) ||
+        (normalizeOrderStatus(next.status) === "pending" &&
+          normalizePendingKind(current.pending_kind) !==
+            normalizePendingKind(next.pending_kind));
+
+      let result = applyAutoPendingDropoff(next);
+      if (!statusTouched) {
+        result = applyAutoOrderStatusFromCards(result);
+      }
+      return result;
     });
   }, []);
 

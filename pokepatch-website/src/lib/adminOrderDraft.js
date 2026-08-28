@@ -151,6 +151,17 @@ export function applyAutoPendingDropoff(draft) {
   return { ...draft, pending_kind: "drop_off" };
 }
 
+/** Mirror update_order: all active cards completed → ready; any in progress → in progress. */
+export function applyAutoOrderStatusFromCards(draft) {
+  const autoStatus = orderStatusFromCardStatuses(draft.status, draft.cards);
+  if (!autoStatus) return draft;
+  return {
+    ...draft,
+    status: autoStatus,
+    pending_kind: null,
+  };
+}
+
 /** Ensure every order card has at least one (possibly empty) quote line. */
 export function ensureQuoteItemsForCards(cards, quoteItems) {
   const items = [...(quoteItems ?? [])];

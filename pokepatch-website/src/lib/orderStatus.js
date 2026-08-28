@@ -91,13 +91,15 @@ export function normalizeCardStatus(statusId) {
 /**
  * Matches update_order auto-advance from card statuses (skipped when the admin
  * manually changed order status on the same save):
- * - every card completed → ready
+ * - every active (non-canceled) card completed → ready
  * - else any card in_progress → in_progress
  * The reverse (order → ready marks cards completed) is a DB trigger.
  * Returns null when no auto change applies.
  */
 export function orderStatusFromCardStatuses(orderStatus, cards) {
-  const list = cards ?? [];
+  const list = (cards ?? []).filter(
+    (card) => normalizeCardStatus(card.status) !== "canceled"
+  );
   if (list.length === 0) return null;
   const status = normalizeOrderStatus(orderStatus);
   if (status === "ready" || status === "completed" || status === "canceled") {
