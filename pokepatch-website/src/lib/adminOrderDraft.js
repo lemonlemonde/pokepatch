@@ -1,6 +1,5 @@
 import {
   isPendingOrderStatus,
-  normalizeCardChecklist,
   normalizeCardStatus,
   normalizeOrderStatus,
   normalizePendingKind,
@@ -40,7 +39,6 @@ export function emptyAdminCard() {
     admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
-    checklist: normalizeCardChecklist(null),
     images: [],
     pending_files: [],
   };
@@ -242,7 +240,6 @@ export function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
-    checklist: normalizeCardChecklist(card.checklist),
     images: card.images ?? [],
     pending_files: [],
   }));
@@ -320,7 +317,6 @@ export function draftPayload(draft) {
       admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
-      checklist: normalizeCardChecklist(card.checklist),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))

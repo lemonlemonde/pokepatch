@@ -35,9 +35,6 @@ import {
   quoteItemHasService,
   quoteItemIsReady,
 } from "@/lib/adminOrderDraft";
-import ChecklistGroupChip, {
-  CARD_CHECKLIST_GROUPS,
-} from "@/components/admin/orderEditor/ChecklistGroupChip";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import {
   AdminNoteField,
@@ -570,43 +567,28 @@ export default function CardDetailSection({
             placeholder="Optional note about this card…"
           />
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <EditorLabel>Status</EditorLabel>
-              <div className="flex flex-wrap gap-1.5">
-                {CARD_STATUSES.map((status) => {
-                  const selected = cardStatus === status.id;
-                  return (
-                    <button
-                      key={status.id}
-                      type="button"
-                      disabled={saving}
-                      onClick={() => updateCard({ status: status.id })}
-                      aria-pressed={selected}
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                        selected
-                          ? cardStatusBadgeClass(status.id)
-                          : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
-                      }`}
-                    >
-                      {status.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div>
-              <EditorLabel>Checklist</EditorLabel>
-              <div className="flex flex-wrap gap-1.5">
-                {CARD_CHECKLIST_GROUPS.map((group) => (
-                  <ChecklistGroupChip
-                    key={group.id}
-                    group={group}
-                    checklist={card.checklist}
-                    onChange={(checklist) => updateCard({ checklist })}
-                  />
-                ))}
-              </div>
+          <div>
+            <EditorLabel>Status</EditorLabel>
+            <div className="flex flex-wrap gap-1.5">
+              {CARD_STATUSES.map((status) => {
+                const selected = cardStatus === status.id;
+                return (
+                  <button
+                    key={status.id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => updateCard({ status: status.id })}
+                    aria-pressed={selected}
+                    className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                      selected
+                        ? cardStatusBadgeClass(status.id)
+                        : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+                    }`}
+                  >
+                    {status.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

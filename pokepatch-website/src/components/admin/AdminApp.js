@@ -658,42 +658,22 @@ function KanbanCard({
             {formatMoney(orderAmount(order))}
           </p>
         </div>
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="mt-1 text-sm font-semibold text-ink">
-              {order.customer_name}
-            </p>
-            <div className="mt-1.5">
-              <AccountStatusBadge hasAccount={order.has_account} />
-            </div>
-            <p className="mt-1 text-xs text-ink/60">
-              {showCardProgress
-                ? `${cardsCompleted}/${cardCount} cards complete`
-                : `${cardCount} card${cardCount === 1 ? "" : "s"}`}{" "}
-              · {deliveryLabel(order.delivery_method)}
-            </p>
-            <p className="mt-0.5 text-xs text-ink/50">
-              {formatDate(order.created_at)}
-            </p>
+        <div className="min-w-0">
+          <p className="mt-1 text-sm font-semibold text-ink">
+            {order.customer_name}
+          </p>
+          <div className="mt-1.5">
+            <AccountStatusBadge hasAccount={order.has_account} />
           </div>
-          {order.checklist_progress ? (
-            <div className="mt-1 shrink-0 space-y-0.5 text-right text-[11px] font-medium tabular-nums">
-              {Object.entries(order.checklist_progress).map(
-                ([groupId, progress]) => (
-                  <p
-                    key={groupId}
-                    className={
-                      progress.total > 0 && progress.done === progress.total
-                        ? "text-mint"
-                        : "text-ink/50"
-                    }
-                  >
-                    {progress.done}/{progress.total} {groupId}
-                  </p>
-                )
-              )}
-            </div>
-          ) : null}
+          <p className="mt-1 text-xs text-ink/60">
+            {showCardProgress
+              ? `${cardsCompleted}/${cardCount} cards complete`
+              : `${cardCount} card${cardCount === 1 ? "" : "s"}`}{" "}
+            · {deliveryLabel(order.delivery_method)}
+          </p>
+          <p className="mt-0.5 text-xs text-ink/50">
+            {formatDate(order.created_at)}
+          </p>
         </div>
         <div className="mt-2 flex items-center gap-1.5 rounded-lg border border-ink/10 bg-night/40 p-1.5">
           {previewUrls.length === 0 ? (
