@@ -412,9 +412,6 @@ verify_jwt = false
 [functions.cancel-stale-quotes]
 verify_jwt = true
 
-[functions.notify-card-timers]
-verify_jwt = true
-
 [analytics]
 enabled = true
 port = 54327
