@@ -123,7 +123,6 @@ export async function buildStudioSeedFromGalleryItem(itemId) {
     cardMeta: {
       card: (item.title ?? "").trim(),
       set: (item.set_name ?? "").trim(),
-      showCardInfo: true,
       frontFile,
     },
   };

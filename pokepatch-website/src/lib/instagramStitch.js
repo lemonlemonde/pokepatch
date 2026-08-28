@@ -55,25 +55,21 @@ export function loadImage(file) {
 /**
  * Resolve Studio overlay options into canvas overlay payload.
  * @param {{
- *   showCardInfo?: boolean,
  *   frontFile?: File | null,
  *   card?: string,
  *   set?: string,
  * } | null} options
  */
 export async function resolveOverlay(options) {
-  if (!options) return null;
+  if (!options?.frontFile) return null;
 
-  if (options.showCardInfo && options.frontFile) {
-    return {
-      cardInfo: {
-        frontImg: await loadImage(options.frontFile),
-        card: options.card ?? "",
-        set: options.set ?? "",
-      },
-    };
-  }
-  return null;
+  return {
+    cardInfo: {
+      frontImg: await loadImage(options.frontFile),
+      card: options.card ?? "",
+      set: options.set ?? "",
+    },
+  };
 }
 
 async function stitchComparison(
