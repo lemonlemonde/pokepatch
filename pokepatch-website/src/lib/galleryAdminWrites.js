@@ -19,6 +19,31 @@ import {
   makeVideoPosterForUpload,
 } from "@/lib/imageCompression";
 
+const UPLOAD_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 600;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withUploadRetries(fn, label) {
+  let lastError;
+  for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt >= UPLOAD_ATTEMPTS) break;
+      await sleep(RETRY_DELAY_MS * attempt);
+    }
+  }
+  const message =
+    lastError instanceof Error && lastError.message
+      ? lastError.message
+      : `Could not upload ${label}.`;
+  throw new Error(message);
+}
+
 /** Canonical gallery item fields for create/save (same shape everywhere). */
 export function normalizeGalleryItemFields({
   title = "",
@@ -86,10 +111,14 @@ async function prepareGalleryPairSideUpload(file) {
 export async function uploadGalleryPairSide(pairId, side, file) {
   const { uploadFile, thumb, poster } =
     await prepareGalleryPairSideUpload(file);
-  return adminUploadGalleryPairSide(pairId, side, uploadFile, {
-    thumb,
-    poster,
-  });
+  return withUploadRetries(
+    () =>
+      adminUploadGalleryPairSide(pairId, side, uploadFile, {
+        thumb,
+        poster,
+      }),
+    side,
+  );
 }
 
 /**
@@ -128,5 +157,8 @@ export async function uploadGalleryThumbnail(itemId, file) {
   if (compressError || !uploadFile) {
     throw new Error(compressError || "Couldn't process this image.");
   }
-  return adminUploadGalleryThumbnail(itemId, uploadFile);
+  return withUploadRetries(
+    () => adminUploadGalleryThumbnail(itemId, uploadFile),
+    "thumbnail",
+  );
 }

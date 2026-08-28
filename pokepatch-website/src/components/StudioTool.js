@@ -49,8 +49,36 @@ function createEmptyCardMeta() {
     card: "",
     set: "",
     showCardInfo: true,
+    tcg_card_id: "",
+    card_number: "",
+    tcg_lookup_title: "",
+    tcg_lookup_set_name: "",
   };
 }
+
+/** Rebuild card meta from a draft/seed, minting a fresh object URL for the front file. */
+function cardMetaFromStored(partial = {}) {
+  const frontFile = partial.frontFile ?? null;
+  return {
+    ...createEmptyCardMeta(),
+    showCardInfo: partial.showCardInfo ?? true,
+    card: partial.card ?? "",
+    set: partial.set ?? "",
+    frontFile,
+    frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
+    tcg_card_id: partial.tcg_card_id ?? "",
+    card_number: partial.card_number ?? "",
+    tcg_lookup_title: partial.tcg_lookup_title ?? "",
+    tcg_lookup_set_name: partial.tcg_lookup_set_name ?? "",
+  };
+}
+
+const CLEARED_TCG_FIELDS = {
+  tcg_card_id: "",
+  card_number: "",
+  tcg_lookup_title: "",
+  tcg_lookup_set_name: "",
+};
 
 function validateCardMeta(meta) {
   if (meta.showCardInfo) {
@@ -139,6 +167,8 @@ function StudioCardMetaControls({
     patch({
       frontFile: file,
       frontPreviewUrl: URL.createObjectURL(file),
+      // Manual / bank drops are not a catalog pick — clear TCG linkage.
+      ...CLEARED_TCG_FIELDS,
     });
   }
 
@@ -146,7 +176,7 @@ function StudioCardMetaControls({
     const file = event.target.files?.[0] ?? null;
     event.target.value = "";
     if (!file) {
-      patch({ frontFile: null, frontPreviewUrl: null });
+      clearFront();
       return;
     }
     setFrontFile(file);
@@ -169,7 +199,11 @@ function StudioCardMetaControls({
   }
 
   function clearFront() {
-    patch({ frontFile: null, frontPreviewUrl: null });
+    patch({
+      frontFile: null,
+      frontPreviewUrl: null,
+      ...CLEARED_TCG_FIELDS,
+    });
   }
 
   async function applySearchedCard(card) {
@@ -183,6 +217,10 @@ function StudioCardMetaControls({
         frontPreviewUrl: URL.createObjectURL(file),
         card: (card.name ?? "").trim() || value.card,
         set: (card.set_name ?? "").trim() || value.set,
+        tcg_card_id: (card.id ?? "").trim(),
+        card_number: (card.number ?? "").trim(),
+        tcg_lookup_title: (card.name ?? "").trim(),
+        tcg_lookup_set_name: (card.set_name ?? "").trim(),
       });
     } catch {
       setPickError("Couldn't download that card's image. Try another, or upload one.");
@@ -533,8 +571,8 @@ async function generatePhotoOutputs(files, overlayOptions = null, format = "reel
 async function resolveStudioItemsToSources(items, previewUrls) {
   return Promise.all(
     items.map((item) =>
-      item && previewUrls[item.id]
-        ? resolveStudioImageSource(item, previewUrls[item.id])
+      item
+        ? resolveStudioImageSource(item, previewUrls?.[item.id])
         : null,
     ),
   );
@@ -597,6 +635,8 @@ function BeforeAfterPairPhotoFormatter({
   const [outputs, setOutputs] = useState(null);
   const [busy, setBusy] = useState(false);
   const [sendingToGallery, setSendingToGallery] = useState(false);
+  const [sendingToGalleryStatus, setSendingToGalleryStatus] = useState("");
+  const sendingToGalleryRef = useRef(false);
   const [error, setError] = useState("");
   const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
   const [altTextByKey, setAltTextByKey] = useState({});
@@ -782,6 +822,7 @@ function BeforeAfterPairPhotoFormatter({
   }
 
   async function handleSendToGallery() {
+    if (sendingToGalleryRef.current) return;
     setError("");
 
     const partial = pairs.some(
@@ -802,7 +843,9 @@ function BeforeAfterPairPhotoFormatter({
       return;
     }
 
+    sendingToGalleryRef.current = true;
     setSendingToGallery(true);
+    setSendingToGalleryStatus("Preparing images…");
     try {
       await publishStudioPairsToGallery({
         pairs,
@@ -812,15 +855,26 @@ function BeforeAfterPairPhotoFormatter({
         meta: {
           title: cardMeta.card.trim(),
           set_name: cardMeta.set.trim(),
+          card_number: (cardMeta.card_number ?? "").trim(),
+          tcg_card_id: (cardMeta.tcg_card_id ?? "").trim(),
+          tcg_lookup_title:
+            (cardMeta.tcg_lookup_title ?? "").trim() || cardMeta.card.trim(),
+          tcg_lookup_set_name:
+            (cardMeta.tcg_lookup_set_name ?? "").trim() || cardMeta.set.trim(),
         },
+        thumbnailFile: cardMeta.frontFile ?? null,
+        onProgress: setSendingToGalleryStatus,
       });
+      setSendingToGalleryStatus("Opening gallery…");
       router.push("/admin/gallery/");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not send to gallery.",
       );
     } finally {
+      sendingToGalleryRef.current = false;
       setSendingToGallery(false);
+      setSendingToGalleryStatus("");
     }
   }
 
@@ -930,7 +984,7 @@ function BeforeAfterPairPhotoFormatter({
               className="w-full flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {sendingToGallery
-                ? "Sending to gallery…"
+                ? sendingToGalleryStatus || "Sending to gallery…"
                 : completePairCount <= 1
                   ? "Send to gallery"
                   : `Send ${completePairCount} pairs to gallery`}
@@ -1039,14 +1093,7 @@ export default function StudioTool() {
       setOutputFormat(normalizeOutputFormat(restored.outputFormat));
     }
     if (restored.cardMeta) {
-      const frontFile = restored.cardMeta.frontFile ?? null;
-      setCardMeta({
-        showCardInfo: restored.cardMeta.showCardInfo ?? true,
-        card: restored.cardMeta.card ?? "",
-        set: restored.cardMeta.set ?? "",
-        frontFile,
-        frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
-      });
+      setCardMeta(cardMetaFromStored(restored.cardMeta));
     }
   }, [restored, gallerySeed, galleryImporting]);
 
@@ -1071,14 +1118,7 @@ export default function StudioTool() {
         ]);
         if (cancelled) return;
 
-        const frontFile = seed.cardMeta.frontFile ?? null;
-        setCardMeta({
-          showCardInfo: seed.cardMeta.showCardInfo ?? true,
-          card: seed.cardMeta.card ?? "",
-          set: seed.cardMeta.set ?? "",
-          frontFile,
-          frontPreviewUrl: frontFile ? URL.createObjectURL(frontFile) : null,
-        });
+        setCardMeta(cardMetaFromStored(seed.cardMeta));
         setGallerySeed(seed);
       } catch (err) {
         if (!cancelled) {
@@ -1098,6 +1138,10 @@ export default function StudioTool() {
 
     return () => {
       cancelled = true;
+      // React Strict Mode remounts effects; clear the guard so the retry can run.
+      if (galleryImportStartedRef.current === itemId) {
+        galleryImportStartedRef.current = null;
+      }
     };
   }, [fromGalleryParam, router]);
 
