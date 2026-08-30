@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
+import { expandDroppedFiles } from "@/lib/extractZipImages";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -152,7 +153,7 @@ export function SideBank({
               : "border-ink/25 bg-night/40 hover:border-ink/40 hover:bg-night/60"
           }`}
         >
-          <p className="text-xs text-ink/70">Drop folder or browse</p>
+          <p className="text-xs text-ink/70">Drop folder, zip, or browse</p>
           <p className="text-[10px] text-ink/40">PNG or JPG</p>
           <input
             id={`grid-${role}-folder`}
@@ -227,7 +228,7 @@ export function SideBank({
             <p className="flex h-full min-h-[4rem] items-center justify-center px-2 text-center text-xs text-ink/40">
               {totalCount > 0
                 ? "All placed — drag one back here to free it"
-                : `Drop a ${role} folder or browse`}
+                : `Drop a ${role} folder, zip, or browse`}
             </p>
           )}
         </div>
@@ -339,10 +340,17 @@ export default function StudioFolderBoard({
     );
   }
 
-  function addFiles(role, fileList) {
-    const images = Array.from(fileList).filter(isImage);
+  async function addFiles(role, fileList) {
+    let files;
+    try {
+      files = await expandDroppedFiles(Array.from(fileList ?? []));
+    } catch {
+      onError("Could not read that zip file.");
+      return;
+    }
+    const images = files.filter(isImage);
     if (images.length === 0) {
-      onError("No images found in that folder.");
+      onError("No PNG or JPG images found.");
       return;
     }
     settersByRole[role]((prev) => [
