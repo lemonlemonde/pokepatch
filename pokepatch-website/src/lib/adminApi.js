@@ -570,7 +570,7 @@ export async function adminClearGalleryThumbnail(itemId) {
 }
 
 export async function adminSearchGalleryTcg(
-  { cardName = "", setName = "", page = 1, pageSize = 24 } = {},
+  { cardName = "", setName = "", page = 1, pageSize = 100 } = {},
   { signal } = {}
 ) {
   const payload = await adminRequest(

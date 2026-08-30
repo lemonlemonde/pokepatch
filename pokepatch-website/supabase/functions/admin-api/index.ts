@@ -6,6 +6,7 @@ import {
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
 import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
 import {
+  CATALOG_MAX_PAGE_SIZE,
   fetchPokemonTcgCard,
   normalizeSearchText,
   searchPokemonTcgCatalog,
@@ -2562,7 +2563,10 @@ Deno.serve(async (req) => {
         typeof body.set_name === "string" ? body.set_name : ""
       );
       const page = Math.max(1, Number(body.page) || 1);
-      const pageSize = Math.min(Math.max(Number(body.page_size) || 24, 1), 50);
+      const pageSize = Math.min(
+        Math.max(Number(body.page_size) || CATALOG_MAX_PAGE_SIZE, 1),
+        CATALOG_MAX_PAGE_SIZE
+      );
 
       if (cardName.length < 2 && setName.length < 2) {
         return jsonResponse(

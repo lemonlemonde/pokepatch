@@ -1,13 +1,20 @@
 const POKEMON_TCG_BASE = "https://api.pokemontcg.io/v2";
 const REQUEST_TIMEOUT_MS = 18_000;
-/** Per-attempt fetch timeout for catalog search. */
-const CATALOG_SEARCH_TIMEOUT_MS = 5_000;
-/** Hard ceiling for the whole catalog search (all queries + retries). */
-const CATALOG_OVERALL_BUDGET_MS = 12_000;
+/** Per-attempt fetch timeout for catalog search (API is often slow). */
+const CATALOG_SEARCH_TIMEOUT_MS = 12_000;
+/**
+ * Hard ceiling for the whole catalog search (all queries + retries).
+ * Must stay under the edge-function wall clock and under the admin UI abort.
+ */
+const CATALOG_OVERALL_BUDGET_MS = 28_000;
+/** Don't start an attempt that cannot finish under the remaining budget. */
+const CATALOG_MIN_ATTEMPT_BUDGET_MS = 2_000;
+/** Pokémon TCG API allows up to 250; we cap admin search at 100. */
+export const CATALOG_MAX_PAGE_SIZE = 100;
 const CATALOG_CACHE_TTL_MS = 10 * 60 * 1000;
 const CATALOG_CACHE_MAX = 80;
-const CATALOG_RETRY_ATTEMPTS = 2;
-const CATALOG_RETRY_DELAY_MS = 200;
+const CATALOG_RETRY_ATTEMPTS = 3;
+const CATALOG_RETRY_DELAY_MS = 400;
 
 type CatalogSearchResult = {
   candidates: TcgCardCandidate[];
@@ -205,7 +212,7 @@ async function fetchCatalogPage(
 
   for (let attempt = 0; attempt < CATALOG_RETRY_ATTEMPTS; attempt++) {
     const remaining = budgetMs - (Date.now() - started);
-    if (remaining < 400) {
+    if (remaining < CATALOG_MIN_ATTEMPT_BUDGET_MS) {
       throw lastError ?? catalogTimeoutError();
     }
 
@@ -220,7 +227,12 @@ async function fetchCatalogPage(
         if (response.status !== 429 && response.status < 500) {
           throw lastError;
         }
-        await sleep(Math.min(CATALOG_RETRY_DELAY_MS * (attempt + 1), remaining));
+        // 429 / 5xx — back off harder before retrying.
+        const backoff =
+          response.status === 429
+            ? CATALOG_RETRY_DELAY_MS * Math.pow(2, attempt + 1)
+            : CATALOG_RETRY_DELAY_MS * (attempt + 1);
+        await sleep(Math.min(backoff, remaining));
         continue;
       }
 
@@ -255,7 +267,7 @@ async function fetchCatalogPage(
       }
       await sleep(
         Math.min(
-          CATALOG_RETRY_DELAY_MS * (attempt + 1),
+          CATALOG_RETRY_DELAY_MS * Math.pow(2, attempt),
           Math.max(0, budgetMs - (Date.now() - started))
         )
       );
@@ -320,10 +332,10 @@ function buildCatalogSearchQueries(
 export async function searchPokemonTcgCatalog(
   cardName: string,
   setName: string,
-  { page = 1, pageSize = 24 } = {}
+  { page = 1, pageSize = CATALOG_MAX_PAGE_SIZE } = {}
 ): Promise<CatalogSearchResult> {
   const safePage = Math.max(1, page);
-  const safeSize = Math.min(Math.max(pageSize, 1), 50);
+  const safeSize = Math.min(Math.max(pageSize, 1), CATALOG_MAX_PAGE_SIZE);
   const cacheKey = catalogCacheKey(cardName, setName, safePage, safeSize);
   const cached = readCatalogCache(cacheKey);
   if (cached) return cached;
@@ -340,7 +352,7 @@ export async function searchPokemonTcgCatalog(
 
   for (const query of queries) {
     const remaining = deadline - Date.now();
-    if (remaining < 400) {
+    if (remaining < CATALOG_MIN_ATTEMPT_BUDGET_MS) {
       lastError = catalogTimeoutError();
       break;
     }
