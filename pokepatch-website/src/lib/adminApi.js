@@ -233,6 +233,27 @@ export async function adminHeardAboutInsights() {
   };
 }
 
+/** Card quote / market price / order quote range pies for the Insights tab. */
+function normalizeValueRangeMetric(metric) {
+  return {
+    average: metric?.average ?? null,
+    counted: metric?.counted ?? 0,
+    slices: metric?.slices ?? [],
+  };
+}
+
+export async function adminValueRangeInsights() {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "insights_value_ranges" },
+  });
+  return {
+    card_quote: normalizeValueRangeMetric(payload.card_quote),
+    card_market: normalizeValueRangeMetric(payload.card_market),
+    order_quote: normalizeValueRangeMetric(payload.order_quote),
+  };
+}
+
 /** Search cards by name/set/description; optionally scope to order statuses. */
 export async function adminSearchOrders(query, { statuses } = {}) {
   const payload = await adminRequest(apiUrl(), {
