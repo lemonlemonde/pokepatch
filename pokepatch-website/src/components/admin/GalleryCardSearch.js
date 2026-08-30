@@ -5,11 +5,15 @@ import { adminSearchGalleryTcg } from "@/lib/adminApi";
 import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 
-const PAGE_SIZE = 12;
+/** Fetch up to this many matches per request (API/server also cap at 100). */
+const PAGE_SIZE = 100;
 const MIN_SET_LENGTH = 2;
 const MIN_NAME_ONLY_LENGTH = 3;
-/** Client ceiling so a hung edge function cannot leave Search spinning forever. */
-const CLIENT_SEARCH_TIMEOUT_MS = 15_000;
+/**
+ * Client ceiling so a hung edge function cannot leave Search spinning forever.
+ * Must exceed server catalog budget (~28s) plus cold-start / network slack.
+ */
+const CLIENT_SEARCH_TIMEOUT_MS = 40_000;
 
 function fieldClassName() {
   return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
