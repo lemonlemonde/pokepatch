@@ -13,6 +13,10 @@ import {
   tcgCardImageSmallUrl,
 } from "../_shared/pokemonTcg.ts";
 import { sanitizeDamageTags } from "../_shared/damageTags.ts";
+import {
+  buildValueRangeInsights,
+  isCanceledStatus,
+} from "../_shared/insightsValueRanges.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -3000,6 +3004,56 @@ Deno.serve(async (req) => {
         answered,
         slices,
         other_details,
+      });
+    }
+
+    if (action === "insights_value_ranges") {
+      const { data: orders, error: ordersError } = await supabase
+        .from("orders")
+        .select(
+          "id, display_id, created_at, customer_name, customer_email, status, pending_kind, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount"
+        )
+        .order("created_at", { ascending: false });
+      if (ordersError) throw ordersError;
+
+      const activeOrders = (orders ?? []).filter(
+        (row) => !isCanceledStatus(row.status)
+      );
+      if (activeOrders.length === 0) {
+        return jsonResponse(req, {
+          ok: true,
+          ...buildValueRangeInsights([], [], []),
+        });
+      }
+
+      const orderIds = activeOrders.map((row) => row.id as string);
+      const [
+        { data: cards, error: cardsError },
+        { data: quoteItems, error: quoteError },
+      ] = await Promise.all([
+        supabase
+          .from("cards")
+          .select(
+            "id, order_id, card_name, set_name, status, market_value_raw_nm, sort_order"
+          )
+          .in("order_id", orderIds)
+          .order("sort_order", { ascending: true })
+          .order("id", { ascending: true }),
+        supabase
+          .from("order_quote_items")
+          .select("order_id, card_name, set_name, quote_base_amount")
+          .in("order_id", orderIds),
+      ]);
+      if (cardsError) throw cardsError;
+      if (quoteError) throw quoteError;
+
+      return jsonResponse(req, {
+        ok: true,
+        ...buildValueRangeInsights(
+          activeOrders,
+          cards ?? [],
+          quoteItems ?? []
+        ),
       });
     }
 
