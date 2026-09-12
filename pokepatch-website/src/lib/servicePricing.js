@@ -745,6 +745,20 @@ export function cardsWithQuoteHv(cards = [], cardHv = {}) {
   });
 }
 
+/**
+ * Cards ready for QuoteReceipt / computeQuoteTotal from a stored order.
+ * Attaches quote_bulk_counts.card_hv onto cards for any order status.
+ */
+export function quoteCardsFromStoredOrder(order) {
+  if (!order) return [];
+  const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
+  const baseCards =
+    Array.isArray(order.cards) && order.cards.length > 0
+      ? order.cards
+      : Object.keys(cardHvMap).map((id) => ({ id }));
+  return cardsWithQuoteHv(baseCards, cardHvMap);
+}
+
 function legacyBulkEntry(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const count = Math.max(0, Math.floor(Number(value.count) || 0));
@@ -888,12 +902,7 @@ export function orderQuoteTotalFromStored(order) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
-  const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
-  const baseCards =
-    Array.isArray(order.cards) && order.cards.length > 0
-      ? order.cards
-      : Object.keys(cardHvMap).map((id) => ({ id }));
-  const cards = cardsWithQuoteHv(baseCards, cardHvMap);
+  const cards = quoteCardsFromStoredOrder(order);
   const cardCount = Array.isArray(order.cards)
     ? billableQuoteCards(order.cards).length
     : (order.card_count ?? null);

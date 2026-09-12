@@ -16,6 +16,7 @@ import {
   billableQuoteCards,
   hasPriorityAdjustment,
   hasQuoteData,
+  quoteCardsFromStoredOrder,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 import {
@@ -309,6 +310,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
     overrideLabel: order.quote_override_label ?? "",
     overrideAmount: order.quote_override_amount,
   });
+  const quoteCards = quoteCardsFromStoredOrder(order);
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(quoteAdjustments);
   const delivery = deliveryLabel(order.delivery_method);
@@ -319,7 +321,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
     ) &&
     hasQuoteData({
       items: order.quote_items,
-      cards: order.cards,
+      cards: quoteCards,
       adjustments: quoteAdjustments,
       isPriority,
     });
@@ -388,10 +390,10 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
         <QuoteReceipt
           title="Your quote"
           items={order.quote_items}
-          cards={order.cards}
+          cards={quoteCards}
           adjustments={quoteAdjustments}
           isPriority={isPriority}
-          cardCount={billableQuoteCards(order.cards).length}
+          cardCount={billableQuoteCards(quoteCards).length}
           className={
             isPriority ? "border-ink/25 bg-ink/[0.07]" : undefined
           }
