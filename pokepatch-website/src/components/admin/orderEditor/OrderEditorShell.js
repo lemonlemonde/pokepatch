@@ -132,6 +132,10 @@ function OrderEditorContent({
   }
 
   function handleRemoveCard(cardId) {
+    if ((draft.cards ?? []).length <= 1) {
+      onError?.("Orders need at least one card.");
+      return;
+    }
     if (!window.confirm("Remove this card from the order?")) return;
     onError?.("");
     updateDraft((base) => {
@@ -284,7 +288,11 @@ function OrderEditorContent({
                       onExpandedChange={(open) =>
                         setManualExpandId(open ? String(card.id) : null)
                       }
-                      onRemoveCard={() => handleRemoveCard(card.id)}
+                      onRemoveCard={
+                        cards.length > 1
+                          ? () => handleRemoveCard(card.id)
+                          : undefined
+                      }
                     />
                   </div>
                 ))}

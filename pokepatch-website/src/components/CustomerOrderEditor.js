@@ -351,6 +351,10 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         });
       }
 
+      if (cardsPayload.length < 1) {
+        throw new Error("Add at least one card before saving.");
+      }
+
       const keptPaths = new Set(
         cardsPayload.flatMap((card) =>
           (card.images ?? []).map((image) => image.storage_path)

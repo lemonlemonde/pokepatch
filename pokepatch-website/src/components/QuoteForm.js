@@ -79,7 +79,7 @@ function getFieldErrors({
     deliveryMethod: deliveryMethod === "",
     contacts: !hasAdditionalContact(contactValues),
     cards: {},
-    noCards: cards.length === 0,
+    noCards: !cards.some(isCardComplete),
   };
 
   const incompleteCards = cards.filter(
@@ -138,7 +138,9 @@ function getFirstErrorElement(errors, cards) {
     );
   }
   if (errors.noCards) {
-    return document.getElementById("cards_empty");
+    const emptyEl = document.getElementById("cards_empty");
+    if (emptyEl) return emptyEl;
+    // Placeholder/incomplete card rows: fall through to per-card fields.
   }
 
   for (const card of cards) {
@@ -647,6 +649,10 @@ export default function QuoteForm() {
           damage_tags: normalizeDamageTags(card.damageTags),
           images,
         });
+      }
+
+      if (cardsPayload.length < 1) {
+        throw new Error("Add at least one card before submitting.");
       }
 
       setStatus("submitting");

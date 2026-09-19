@@ -120,21 +120,30 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
   if (cardsError) throw cardsError;
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
-  let paths: string[] = [];
-
-  if (cardIds.length > 0) {
-    const { data: images, error: imagesError } = await supabase
-      .from("card_images")
-      .select("storage_path")
-      .in("card_id", cardIds);
-    if (imagesError) throw imagesError;
-    paths = (images ?? [])
-      .map((img) => img.storage_path as string)
-      .filter(Boolean);
+  if (cardIds.length < 1) {
+    console.log("notify: skipping order with no cards", orderUuid);
+    return;
   }
+
+  const { data: images, error: imagesError } = await supabase
+    .from("card_images")
+    .select("storage_path")
+    .in("card_id", cardIds);
+  if (imagesError) throw imagesError;
+  const paths = (images ?? [])
+    .map((img) => img.storage_path as string)
+    .filter(Boolean);
 
   const photoUrls = await signPaths(paths, supabase);
   const contactsList = contacts ?? [];
+
+  // Admin "create order" seeds a blank card with no photos/contacts — don't
+  // treat that like a customer submission.
+  if (paths.length < 1 && contactsList.length < 1) {
+    console.log("notify: skipping admin shell order", orderUuid);
+    return;
+  }
+
   const storagePrefix = orderUuid ? `order-${orderUuid}` : extractFolderId(paths);
 
   await notifyDiscordOrder({

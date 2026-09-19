@@ -1859,53 +1859,33 @@ Deno.serve(async (req) => {
         );
       }
 
-      const orderId = crypto.randomUUID();
-      const customerName = `${firstName} ${lastName}`.trim();
       const linkedUserId = await resolveUserIdByEmail(
         supabase,
         normalizeEmail(customerEmail)
       );
 
-      const { data: inserted, error: insertError } = await supabase
-        .from("orders")
-        .insert({
-          id: orderId,
-          user_id: linkedUserId,
-          first_name: firstName,
-          last_name: lastName,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          delivery_method: deliveryMethod,
-          preferred_contact_type: "email",
-          preferred_contact_value: customerEmail,
-          status: "pending",
-          pending_kind: "quote",
-          is_priority: false,
-        })
-        .select(
-          "id, display_id, created_at, first_name, last_name, customer_name, delivery_method, general_notes"
-        )
-        .single();
-      if (insertError) throw insertError;
+      const shellPayload: Record<string, unknown> = {
+        first_name: firstName,
+        last_name: lastName,
+        customer_email: customerEmail,
+        delivery_method: deliveryMethod,
+      };
+      if (linkedUserId) shellPayload.user_id = linkedUserId;
 
-      const { error: originalError } = await supabase
-        .from("orders_original")
-        .insert({
-          id: inserted.id,
-          display_id: inserted.display_id,
-          created_at: inserted.created_at,
-          first_name: inserted.first_name,
-          last_name: inserted.last_name,
-          customer_name: inserted.customer_name,
-          delivery_method: inserted.delivery_method,
-          general_notes: inserted.general_notes,
-        });
-      if (originalError) {
-        await supabase.from("orders").delete().eq("id", orderId);
-        throw originalError;
+      const { data: inserted, error: insertError } = await supabase.rpc(
+        "create_admin_order_shell",
+        { p_payload: shellPayload }
+      );
+      if (insertError) throw insertError;
+      if (!inserted?.id) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order not created" },
+          500
+        );
       }
 
-      const order = await fetchOrderGraph(supabase, orderId);
+      const order = await fetchOrderGraph(supabase, String(inserted.id));
       if (!order) {
         return jsonResponse(
           req,
@@ -2079,6 +2059,13 @@ Deno.serve(async (req) => {
         body.order && typeof body.order === "object" ? { ...body.order } : {};
       const contacts = Array.isArray(body.contacts) ? body.contacts : null;
       const cards = Array.isArray(body.cards) ? body.cards : null;
+      if (cards && cards.length < 1) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "at least one card is required" },
+          400
+        );
+      }
       if (Array.isArray(body.quote_items)) {
         orderPatch.quote_items = body.quote_items;
       }
