@@ -113,14 +113,16 @@ export function serviceSelectLabel(service) {
 /** Paid priority service — flat per-card fee on the order. */
 export const PRIORITY_FEE_PER_CARD = 15;
 
-/** Dollar fee for priority on an order with `cardCount` cards. */
+/** Dollar fee for priority on an order with `cardCount` active cards. */
 export function priorityServiceFee(cardCount) {
-  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
-  return Math.round(count * PRIORITY_FEE_PER_CARD * 100) / 100;
+  const n = Math.floor(Number(cardCount));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.round(n * PRIORITY_FEE_PER_CARD * 100) / 100;
 }
 
 export function priorityServiceDescription(cardCount) {
-  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
+  const n = Math.floor(Number(cardCount));
+  const count = Number.isFinite(n) && n > 0 ? n : 0;
   if (count <= 1) {
     return `Priority service ($${PRIORITY_FEE_PER_CARD} per card)`;
   }
@@ -129,7 +131,8 @@ export function priorityServiceDescription(cardCount) {
 
 /** Customer-facing priority pricing copy (quote form, etc.). */
 export function priorityServicePricingHint(cardCount) {
-  const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
+  const n = Math.floor(Number(cardCount));
+  const count = Number.isFinite(n) && n > 0 ? n : 1;
   const rate = `$${PRIORITY_FEE_PER_CARD} per card`;
   if (count <= 1) {
     return `${rate}.`;
@@ -169,9 +172,38 @@ export function syncPriorityQuoteAdjustments(
   cardCount,
   adjustments = []
 ) {
-  const without = (adjustments ?? []).filter((row) => !isPriorityAdjustmentRow(row));
+  const list = adjustments ?? [];
+  const existing = list.find(isPriorityAdjustmentRow);
+  const without = list.filter((row) => !isPriorityAdjustmentRow(row));
   if (!isPriority) return without;
-  return [...without, priorityQuoteAdjustment(cardCount)];
+  const fee = priorityServiceFee(cardCount);
+  if (fee <= 0) return without;
+  const next = priorityQuoteAdjustment(cardCount);
+  if (existing?.id) next.id = existing.id;
+  return [...without, next];
+}
+
+/**
+ * Recompute the Priority service quote row from active (non-canceled) cards.
+ * No-op when the draft has no priority flag and no priority adjustment row.
+ */
+export function syncDraftPriorityQuote(draft) {
+  if (!draft) return draft;
+  const hasPriorityRow = hasPriorityAdjustment(draft.quote_adjustments);
+  if (!draft.is_priority && !hasPriorityRow) return draft;
+  const count = billableQuoteCards(draft.cards).length;
+  const nextAdjustments = syncPriorityQuoteAdjustments(
+    Boolean(draft.is_priority),
+    count,
+    draft.quote_adjustments ?? []
+  );
+  if (
+    JSON.stringify(nextAdjustments) ===
+    JSON.stringify(draft.quote_adjustments ?? [])
+  ) {
+    return draft;
+  }
+  return { ...draft, quote_adjustments: nextAdjustments };
 }
 
 /**
@@ -864,18 +896,23 @@ export function computeQuoteTotal({
   const billableItems = billableQuoteItems(items, cards);
   const subtotal = quoteItemsSubtotal(billableItems);
   const cardHv = quoteCardsHvTotal(billableCards);
-  const adjustmentTotal = quoteAdjustmentsTotal(adjustments, billableItems);
+  // Priority is always recomputed from active cards; ignore stale stored rows.
+  const nonPriorityAdjustments = (adjustments ?? []).filter(
+    (row) => !isPriorityAdjustmentRow(row)
+  );
+  const adjustmentTotal = quoteAdjustmentsTotal(
+    nonPriorityAdjustments,
+    billableItems
+  );
   // Prefer live card list (canceled excluded) over a stale cardCount hint.
   const count =
     Array.isArray(cards) && cards.length > 0
       ? billableCards.length
       : cardCount ?? null;
+  const effectivePriority =
+    Boolean(isPriority) || hasPriorityAdjustment(adjustments);
   const priorityFee =
-    isPriority &&
-    count != null &&
-    !hasPriorityAdjustment(adjustments)
-      ? priorityServiceFee(count)
-      : 0;
+    effectivePriority && count != null ? priorityServiceFee(count) : 0;
   return (
     Math.round((subtotal + cardHv + adjustmentTotal + priorityFee) * 100) / 100
   );

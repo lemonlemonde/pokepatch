@@ -8,6 +8,7 @@ import {
   formatMoney,
   groupQuoteItemsByCard,
   hasPriorityAdjustment,
+  isPriorityAdjustmentRow,
   normalizeServiceDisplayTitle,
   priorityServiceDescription,
   priorityServiceFee,
@@ -35,16 +36,18 @@ export default function QuoteReceipt({
   const [open, setOpen] = useState(defaultOpen);
   const lines = billableQuoteItems(items, cards);
   const cardGroups = groupQuoteItemsByCard(items, cards);
-  const adjustmentLines = quoteAdjustmentLines(adjustments, lines);
+  const nonPriorityAdjustments = (adjustments ?? []).filter(
+    (row) => !isPriorityAdjustmentRow(row)
+  );
+  const adjustmentLines = quoteAdjustmentLines(nonPriorityAdjustments, lines);
   const resolvedCardCount =
     Array.isArray(cards) && cards.length > 0
       ? billableQuoteCards(cards).length
       : cardCount ?? null;
-  const showComputedPriorityLine =
-    isPriority &&
-    resolvedCardCount != null &&
-    !hasPriorityAdjustment(adjustments);
-  const priorityFee = showComputedPriorityLine
+  const showPriorityLine =
+    (Boolean(isPriority) || hasPriorityAdjustment(adjustments)) &&
+    resolvedCardCount != null;
+  const priorityFee = showPriorityLine
     ? priorityServiceFee(resolvedCardCount)
     : 0;
   const total = computeQuoteTotal({

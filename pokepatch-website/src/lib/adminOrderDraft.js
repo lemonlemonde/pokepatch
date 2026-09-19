@@ -15,6 +15,7 @@ import {
   packAdminLedger,
   packQuoteAdjustments,
   parseMoneyInput,
+  syncDraftPriorityQuote,
   unpackAdminLedger,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
@@ -297,6 +298,7 @@ export function orderToDraft(order) {
 }
 
 export function draftPayload(draft) {
+  const quote_adjustments = syncDraftPriorityQuote(draft).quote_adjustments;
   const status = normalizeOrderStatus(draft.status);
   return {
     order: {
@@ -309,7 +311,7 @@ export function draftPayload(draft) {
         ? { pending_kind: normalizePendingKind(draft.pending_kind) }
         : { pending_kind: null }),
       quote_bulk_counts: packQuoteAdjustments(
-        draft.quote_adjustments,
+        quote_adjustments,
         draft.quote_card_hv
       ),
       quote_override_label: "",

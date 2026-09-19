@@ -17,6 +17,7 @@ import {
   orderToDraft,
   validateDraftForSave,
 } from "@/lib/adminOrderDraft";
+import { syncDraftPriorityQuote } from "@/lib/servicePricing";
 import { saveAdminOrderDraft } from "@/lib/adminOrderSave";
 import { normalizeOrderStatus, normalizePendingKind } from "@/lib/orderStatus";
 
@@ -84,7 +85,7 @@ export function OrderEditorProvider({
       if (!statusTouched) {
         result = applyAutoOrderStatusFromCards(result);
       }
-      return result;
+      return syncDraftPriorityQuote(result);
     });
   }, []);
 

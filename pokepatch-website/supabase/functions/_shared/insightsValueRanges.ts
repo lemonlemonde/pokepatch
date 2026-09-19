@@ -279,8 +279,9 @@ function unpackAdjustments(
 }
 
 function priorityFee(cardCount: number) {
-  const count = Math.max(1, Math.floor(cardCount) || 1);
-  return money(count * PRIORITY_FEE_PER_CARD);
+  const n = Math.floor(Number(cardCount));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return money(n * PRIORITY_FEE_PER_CARD);
 }
 
 /** Aggregate active orders into range-pie metrics. */
@@ -415,8 +416,12 @@ export function buildValueRangeInsights(
       orderRow.quote_override_label,
       orderRow.quote_override_amount
     );
+    const nonPriorityAdjustments = adjustments.filter(
+      (row) =>
+        String(row.description ?? "").trim().toLowerCase() !== PRIORITY_LABEL
+    );
     const adjustmentTotal = money(
-      adjustments.reduce(
+      nonPriorityAdjustments.reduce(
         (sum, row) => sum + adjustmentSignedAmount(row, subtotal),
         0
       )
@@ -426,7 +431,7 @@ export function buildValueRangeInsights(
         String(row.description ?? "").trim().toLowerCase() === PRIORITY_LABEL
     );
     const priority =
-      Boolean(orderRow.is_priority) && !hasPriorityAdj
+      Boolean(orderRow.is_priority) || hasPriorityAdj
         ? priorityFee(billableCards.length)
         : 0;
     const orderTotal = money(
