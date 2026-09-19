@@ -642,9 +642,13 @@ export default function CardDetailSection({
           </div>
 
           <div className="flex items-center justify-between border-t border-ink/10 pt-3">
-            <GhostButton danger onClick={onRemoveCard} disabled={saving}>
-              Remove card
-            </GhostButton>
+            {onRemoveCard ? (
+              <GhostButton danger onClick={onRemoveCard} disabled={saving}>
+                Remove card
+              </GhostButton>
+            ) : (
+              <span />
+            )}
             <p className="text-right text-sm font-bold tabular-nums text-ink">
               {cardStatus === "canceled" ? (
                 <span className="font-semibold text-ink/45">

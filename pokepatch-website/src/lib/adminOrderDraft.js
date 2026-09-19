@@ -384,6 +384,9 @@ export function validateDraftForSave(draft) {
   if (driveError) {
     return driveError;
   }
+  if (!Array.isArray(draft.cards) || draft.cards.length < 1) {
+    return "Add at least one card before saving.";
+  }
   for (const contact of draft.contacts) {
     if (!contact.value.trim()) {
       return "Fill in every contact or remove empty rows before saving.";

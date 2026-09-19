@@ -32,7 +32,7 @@ function accountLabel(account) {
 
 /**
  * Create a pending quote order for a guest or an existing account holder.
- * Cards and the rest of the draft are filled in the order editor afterward.
+ * Seeds one blank card (orders require ≥1 card); fill details in the editor.
  */
 export default function CreateOrderDialog({
   open,
