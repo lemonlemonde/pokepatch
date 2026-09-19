@@ -8,7 +8,6 @@ import {
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
-import { syncPriorityQuoteAdjustments } from "@/lib/servicePricing";
 import {
   DEFAULT_OUTREACH_MESSAGE,
   buildContactOpenHref,
@@ -295,16 +294,7 @@ export function OrderPanel() {
             checked={Boolean(draft.is_priority)}
             disabled={saving}
             onChange={(event) => {
-              const checked = event.target.checked;
-              updateDraft((current) => ({
-                ...current,
-                is_priority: checked,
-                quote_adjustments: syncPriorityQuoteAdjustments(
-                  checked,
-                  (current.cards ?? []).length,
-                  current.quote_adjustments ?? []
-                ),
-              }));
+              updateDraft({ is_priority: event.target.checked });
             }}
             className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
           />
