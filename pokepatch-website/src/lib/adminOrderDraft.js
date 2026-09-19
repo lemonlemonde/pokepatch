@@ -215,24 +215,27 @@ export function applyCardHvFromMarket(quoteCardHv, cardId, marketValue) {
 
 export function orderToDraft(order) {
   const orderCards = order.cards ?? [];
-  const quoteItems = (order.quote_items ?? []).map((item) => {
-    const card_name = item.card_name ?? "";
-    const set_name = item.set_name ?? "";
-    const matchedId = findMatchingOrderCardId(
-      { card_name, set_name },
-      orderCards
-    );
-    return {
-      id: item.id ?? newClientId(),
-      card_pick: matchedId ?? "",
-      card_name,
-      set_name,
-      service_key: item.service_key ?? SERVICE_KEYS.CUSTOM,
-      service_label: item.service_label ?? "",
-      quote_base_amount:
-        item.quote_base_amount != null ? String(item.quote_base_amount) : "",
-    };
-  });
+  // Hide quote lines with no matching card (orphans from customer deletes).
+  const quoteItems = (order.quote_items ?? [])
+    .map((item) => {
+      const card_name = item.card_name ?? "";
+      const set_name = item.set_name ?? "";
+      const matchedId = findMatchingOrderCardId(
+        { card_name, set_name },
+        orderCards
+      );
+      return {
+        id: item.id ?? newClientId(),
+        card_pick: matchedId ?? "",
+        card_name,
+        set_name,
+        service_key: item.service_key ?? SERVICE_KEYS.CUSTOM,
+        service_label: item.service_label ?? "",
+        quote_base_amount:
+          item.quote_base_amount != null ? String(item.quote_base_amount) : "",
+      };
+    })
+    .filter((item) => item.card_pick);
   const ensuredQuoteItems = ensureQuoteItemsForCards(orderCards, quoteItems);
   const quote_adjustments = unpackQuoteAdjustments(order.quote_bulk_counts, {
     overrideLabel: order.quote_override_label ?? "",
