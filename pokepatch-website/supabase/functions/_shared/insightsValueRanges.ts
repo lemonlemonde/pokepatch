@@ -79,8 +79,7 @@ export const ORDER_QUOTE_RANGES: MoneyRange[] = [
   { label: "$500+", min: 500, max: Number.POSITIVE_INFINITY },
 ];
 
-const PRIORITY_BASE_FEE = 25;
-const PRIORITY_EXTRA_CARD_FEE = 10;
+const PRIORITY_FEE_PER_CARD = 15;
 const PRIORITY_LABEL = "priority service";
 
 function money(n: number) {
@@ -281,9 +280,7 @@ function unpackAdjustments(
 
 function priorityFee(cardCount: number) {
   const count = Math.max(1, Math.floor(cardCount) || 1);
-  return money(
-    PRIORITY_BASE_FEE + Math.max(0, count - 1) * PRIORITY_EXTRA_CARD_FEE
-  );
+  return money(count * PRIORITY_FEE_PER_CARD);
 }
 
 /** Aggregate active orders into range-pie metrics. */

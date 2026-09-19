@@ -110,35 +110,27 @@ export function serviceSelectLabel(service) {
   return price ? `${service.title} (${price})` : service.title;
 }
 
-/** Paid priority service — whole order, not per card. */
-export const PRIORITY_BASE_FEE = 25;
-export const PRIORITY_EXTRA_CARD_FEE = 10;
+/** Paid priority service — flat per-card fee on the order. */
+export const PRIORITY_FEE_PER_CARD = 15;
 
 /** Dollar fee for priority on an order with `cardCount` cards. */
 export function priorityServiceFee(cardCount) {
   const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
-  return (
-    Math.round(
-      (PRIORITY_BASE_FEE +
-        Math.max(0, count - 1) * PRIORITY_EXTRA_CARD_FEE) *
-        100
-    ) / 100
-  );
+  return Math.round(count * PRIORITY_FEE_PER_CARD * 100) / 100;
 }
 
 export function priorityServiceDescription(cardCount) {
   const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
   if (count <= 1) {
-    return `Priority service ($${PRIORITY_BASE_FEE} first card)`;
+    return `Priority service ($${PRIORITY_FEE_PER_CARD} per card)`;
   }
-  const extras = count - 1;
-  return `Priority service ($${PRIORITY_BASE_FEE} first card + ${extras} × $${PRIORITY_EXTRA_CARD_FEE})`;
+  return `Priority service (${count} × $${PRIORITY_FEE_PER_CARD})`;
 }
 
 /** Customer-facing priority pricing copy (quote form, etc.). */
 export function priorityServicePricingHint(cardCount) {
   const count = Math.max(1, Math.floor(Number(cardCount)) || 1);
-  const rate = `$${PRIORITY_BASE_FEE} for the first card, plus $${PRIORITY_EXTRA_CARD_FEE} for each additional card`;
+  const rate = `$${PRIORITY_FEE_PER_CARD} per card`;
   if (count <= 1) {
     return `${rate}.`;
   }
@@ -326,8 +318,7 @@ const PRIORITY_PRICING_MARKETING = {
   title: "Priority",
   features: ["Faster queue for your order"],
   bulk: [
-    { label: "First card", value: `$${PRIORITY_BASE_FEE}` },
-    { label: "Each additional card", value: `+$${PRIORITY_EXTRA_CARD_FEE}` },
+    { label: "Per card", value: `$${PRIORITY_FEE_PER_CARD}` },
   ],
   bulkLabel: "Pricing",
 };
