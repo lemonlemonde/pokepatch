@@ -125,14 +125,6 @@ export function contractRestorationFeeForCard(card, draft) {
   return fee;
 }
 
-function customerDisplayName(draft) {
-  const first = String(draft?.first_name ?? "").trim();
-  const last = String(draft?.last_name ?? "").trim();
-  const combined = [first, last].filter(Boolean).join(" ");
-  if (combined) return combined;
-  return String(draft?.customer_name ?? "").trim();
-}
-
 /** Build contract PDF payload from the live order draft (read-only source). */
 export function buildContractPrefillFromDraft(draft) {
   const cards = billableQuoteCards(draft?.cards ?? []);
@@ -153,7 +145,8 @@ export function buildContractPrefillFromDraft(draft) {
   }
 
   return {
-    customer_name: customerDisplayName(draft),
+    // Customer signs offline — leave Name blank for them to fill in.
+    customer_name: "",
     representative_name: POKEPATCH_REPRESENTATIVE_NAME,
     agreement_date: formatContractDate(),
     cards: rows,

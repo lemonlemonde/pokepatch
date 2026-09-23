@@ -125,12 +125,6 @@ export default function ContractPanel({ orderId, displayId }) {
 
         <div className="space-y-1 text-sm text-ink/80">
           <div className="flex justify-between gap-2">
-            <EditorLabel className="mb-0">Customer</EditorLabel>
-            <span className="text-right font-medium text-ink">
-              {preview.customer_name || "—"}
-            </span>
-          </div>
-          <div className="flex justify-between gap-2">
             <EditorLabel className="mb-0">Date</EditorLabel>
             <span className="text-right font-medium text-ink">
               {formatContractDate()}
