@@ -20,6 +20,8 @@ import {
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
+const CONTRACT_BUCKET = "order-contracts";
+const MAX_CONTRACT_UPLOAD_BYTES = 15 * 1024 * 1024;
 const GALLERY_ITEM_COLUMNS =
   "id, created_at, updated_at, title, set_name, card_number, damage_tags, published, thumbnail_path, tcg_lookup_title, tcg_lookup_set_name, tcg_card_id";
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
@@ -902,6 +904,182 @@ async function fetchOrderGraph(
   return orderId ? enriched[0] ?? null : enriched;
 }
 
+function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
+  const input =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const cardsIn = Array.isArray(input.cards) ? input.cards : [];
+  const cards = cardsIn.slice(0, 200).map((row, index) => {
+    const r =
+      row && typeof row === "object" && !Array.isArray(row)
+        ? (row as Record<string, unknown>)
+        : {};
+    const feeRaw = r.restoration_fee;
+    const nmRaw = r.market_value_raw_nm;
+    const fee =
+      feeRaw === "" || feeRaw == null
+        ? null
+        : Number.isFinite(Number(feeRaw))
+          ? Math.round(Number(feeRaw) * 100) / 100
+          : null;
+    const nm =
+      nmRaw === "" || nmRaw == null
+        ? null
+        : Number.isFinite(Number(nmRaw))
+          ? Math.round(Number(nmRaw) * 100) / 100
+          : null;
+    return {
+      id: String(r.id ?? `row-${index}`).slice(0, 80),
+      card_name: String(r.card_name ?? "").trim().slice(0, 200),
+      set_name: String(r.set_name ?? "").trim().slice(0, 200),
+      restoration_fee: fee,
+      market_value_raw_nm: nm,
+    };
+  });
+  return {
+    customer_name: String(input.customer_name ?? "").trim().slice(0, 200),
+    representative_name: String(input.representative_name ?? "")
+      .trim()
+      .slice(0, 200),
+    cards,
+  };
+}
+
+async function signContractPaths(
+  supabase: ReturnType<typeof getServiceClient>,
+  paths: string[]
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const unique = [...new Set(paths.filter(Boolean))];
+  if (unique.length === 0) return map;
+  const { data, error } = await supabase.storage
+    .from(CONTRACT_BUCKET)
+    .createSignedUrls(unique, SIGNED_URL_EXPIRES_IN);
+  if (error) {
+    console.error("contract createSignedUrls error", error);
+    return map;
+  }
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl && !(item as { error?: string }).error) {
+      map.set(item.path, item.signedUrl);
+    }
+  }
+  return map;
+}
+
+async function fetchOrderContractResponse(
+  req: Request,
+  supabase: ReturnType<typeof getServiceClient>,
+  orderId: string
+) {
+  const { data, error } = await supabase
+    .from("order_contracts")
+    .select(
+      "order_id, status, payload, unsigned_path, signed_path, prepared_at, signed_at, updated_at"
+    )
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const unsignedPath = data?.unsigned_path ? String(data.unsigned_path) : "";
+  const signedPath = data?.signed_path ? String(data.signed_path) : "";
+  const urls = await signContractPaths(supabase, [unsignedPath, signedPath]);
+
+  return jsonResponse(req, {
+    ok: true,
+    contract: data ?? null,
+    unsigned_url: unsignedPath ? urls.get(unsignedPath) ?? null : null,
+    signed_url: signedPath ? urls.get(signedPath) ?? null : null,
+  });
+}
+
+async function handleOrderContractUpload(
+  req: Request,
+  form: FormData,
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const orderId = String(form.get("order_id") ?? "").trim();
+  const file = form.get("file");
+  const payloadRaw = String(form.get("payload") ?? "");
+
+  if (!orderId) {
+    return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
+  }
+  if (!(file instanceof File)) {
+    return jsonResponse(req, { ok: false, error: "file required" }, 400);
+  }
+  if (file.size > MAX_CONTRACT_UPLOAD_BYTES) {
+    return jsonResponse(req, { ok: false, error: "PDF too large" }, 413);
+  }
+  const contentType = String(file.type || "").toLowerCase();
+  if (contentType && contentType !== "application/pdf") {
+    return jsonResponse(req, { ok: false, error: "PDF required" }, 400);
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!order) {
+    return jsonResponse(req, { ok: false, error: "order not found" }, 404);
+  }
+
+  let parsedPayload: unknown = {};
+  try {
+    parsedPayload = payloadRaw ? JSON.parse(payloadRaw) : {};
+  } catch {
+    return jsonResponse(req, { ok: false, error: "invalid payload JSON" }, 400);
+  }
+  const payload = sanitizeContractPayload(parsedPayload);
+  const unsignedPath = `${orderId}/agreement.pdf`;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  const { error: uploadError } = await supabase.storage
+    .from(CONTRACT_BUCKET)
+    .upload(unsignedPath, bytes, {
+      contentType: "application/pdf",
+      upsert: true,
+      cacheControl: "3600",
+    });
+  if (uploadError) throw uploadError;
+
+  const now = new Date().toISOString();
+  const { data: existing, error: existingError } = await supabase
+    .from("order_contracts")
+    .select("signed_path, status")
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  const keepSigned =
+    existing?.status === "signed" && existing?.signed_path
+      ? true
+      : false;
+
+  const row: Record<string, unknown> = {
+    order_id: orderId,
+    status: keepSigned ? "signed" : "ready",
+    payload,
+    unsigned_path: unsignedPath,
+    signed_path: keepSigned ? existing?.signed_path ?? null : null,
+    prepared_at: now,
+    updated_at: now,
+  };
+  if (!keepSigned) {
+    row.signed_at = null;
+  }
+
+  const { error: upsertError } = await supabase
+    .from("order_contracts")
+    .upsert(row, { onConflict: "order_id" });
+  if (upsertError) throw upsertError;
+
+  return await fetchOrderContractResponse(req, supabase, orderId);
+}
+
 async function handleOrderUpload(
   req: Request,
   form: FormData,
@@ -1782,6 +1960,9 @@ Deno.serve(async (req) => {
       }
       if (kind === "gallery_thumbnail") {
         return await handleGalleryThumbnailUpload(req, form, supabase);
+      }
+      if (kind === "order_contract") {
+        return await handleOrderContractUpload(req, form, supabase);
       }
       if (kind !== "order") {
         return jsonResponse(
@@ -3042,6 +3223,23 @@ Deno.serve(async (req) => {
           quoteItems ?? []
         ),
       });
+    }
+
+    if (action === "contract_get") {
+      const orderId = String(body.order_id ?? "").trim();
+      if (!orderId) {
+        return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
+      }
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (orderError) throw orderError;
+      if (!order) {
+        return jsonResponse(req, { ok: false, error: "order not found" }, 404);
+      }
+      return await fetchOrderContractResponse(req, supabase, orderId);
     }
 
     return jsonResponse(req, { ok: false, error: `unknown action: ${action || "(missing)"}` }, 400);
