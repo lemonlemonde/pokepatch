@@ -25,7 +25,6 @@ function moneyLabel(value) {
 export default function ContractPanel({ orderId, displayId }) {
   const { draft } = useOrderEditor();
   const [contract, setContract] = useState(null);
-  const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -43,7 +42,6 @@ export default function ContractPanel({ orderId, displayId }) {
       .then((result) => {
         if (cancelled) return;
         setContract(result.contract);
-        setSignedUrl(result.signed_url ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -75,7 +73,6 @@ export default function ContractPanel({ orderId, displayId }) {
       });
       const result = await adminPrepareOrderContract(orderId, payload, file);
       setContract(result.contract);
-      setSignedUrl(result.signed_url ?? null);
       const url = result.unsigned_url;
       if (!url) {
         popup?.close();
@@ -176,16 +173,6 @@ export default function ContractPanel({ orderId, displayId }) {
           >
             {busy ? "Working…" : "Download PDF"}
           </button>
-          {signedUrl ? (
-            <a
-              href={signedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-md border border-status-green/30 bg-status-green/10 px-2.5 py-1 text-xs font-semibold text-status-green transition hover:brightness-110"
-            >
-              Signed PDF
-            </a>
-          ) : null}
           <button
             type="button"
             disabled={

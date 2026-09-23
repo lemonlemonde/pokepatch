@@ -66,19 +66,12 @@ export function parseExactMoney(value) {
 }
 
 /**
- * Format a money amount for the PDF without rounding currency.
- * Strips only binary float noise (not business rounding).
+ * Format a money amount for display/PDF with exactly two decimal places.
  */
 export function formatExactMoneyAmount(value) {
-  if (value === "" || value == null) return "";
-  if (typeof value === "string") {
-    const trimmed = value.trim().replace(/^\$/, "");
-    if (trimmed !== "" && Number.isFinite(Number(trimmed))) return trimmed;
-  }
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "";
-  const cleaned = n.toFixed(12).replace(/\.?0+$/, "");
-  return cleaned === "-0" ? "0" : cleaned;
+  const n = parseExactMoney(value);
+  if (n == null) return "";
+  return n.toFixed(2);
 }
 
 function wrapText(text, font, size, maxWidth) {
