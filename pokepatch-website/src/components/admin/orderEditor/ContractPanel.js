@@ -25,7 +25,6 @@ function moneyLabel(value) {
 export default function ContractPanel({ orderId, displayId }) {
   const { draft } = useOrderEditor();
   const [contract, setContract] = useState(null);
-  const [unsignedUrl, setUnsignedUrl] = useState(null);
   const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -44,7 +43,6 @@ export default function ContractPanel({ orderId, displayId }) {
       .then((result) => {
         if (cancelled) return;
         setContract(result.contract);
-        setUnsignedUrl(result.unsigned_url ?? null);
         setSignedUrl(result.signed_url ?? null);
         setLoading(false);
       })
@@ -64,9 +62,11 @@ export default function ContractPanel({ orderId, displayId }) {
     return "Ready for customer";
   }, [contract]);
 
-  async function handlePrepare() {
+  async function handleDownload() {
     setBusy(true);
     setError("");
+    // Open synchronously so the browser allows the tab after awaits.
+    const popup = window.open("about:blank", "_blank");
     try {
       const payload = buildContractPrefillFromDraft(draft);
       const bytes = await buildOrderContractPdf(payload);
@@ -75,9 +75,20 @@ export default function ContractPanel({ orderId, displayId }) {
       });
       const result = await adminPrepareOrderContract(orderId, payload, file);
       setContract(result.contract);
-      setUnsignedUrl(result.unsigned_url ?? null);
       setSignedUrl(result.signed_url ?? null);
+      const url = result.unsigned_url;
+      if (!url) {
+        popup?.close();
+        setError("Prepared PDF but no download URL was returned.");
+        return;
+      }
+      if (popup) {
+        popup.location.href = url;
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
     } catch (err) {
+      popup?.close();
       setError(err.message || "Failed to prepare contract");
     } finally {
       setBusy(false);
@@ -160,21 +171,11 @@ export default function ContractPanel({ orderId, displayId }) {
           <button
             type="button"
             disabled={busy || loading || cards.length === 0}
-            onClick={handlePrepare}
+            onClick={handleDownload}
             className="rounded-md bg-ink px-2.5 py-1 text-xs font-bold text-night transition hover:brightness-110 disabled:opacity-40"
           >
-            {busy ? "Working…" : contract ? "Update PDF" : "Prepare PDF"}
+            {busy ? "Working…" : "Download PDF"}
           </button>
-          {unsignedUrl ? (
-            <a
-              href={unsignedUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-md border border-ink/15 px-2.5 py-1 text-xs font-semibold text-ink/80 transition hover:border-ink/30 hover:text-ink"
-            >
-              Download PDF
-            </a>
-          ) : null}
           {signedUrl ? (
             <a
               href={signedUrl}
