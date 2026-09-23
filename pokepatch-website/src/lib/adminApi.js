@@ -676,6 +676,18 @@ export async function adminGetOrderContract(orderId) {
   };
 }
 
+export async function adminMarkOrderContractNotified(orderId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "contract_mark_notified", order_id: orderId },
+  });
+  return {
+    contract: payload.contract ?? null,
+    unsigned_url: payload.unsigned_url ?? null,
+    signed_url: payload.signed_url ?? null,
+  };
+}
+
 export async function adminPrepareOrderContract(orderId, contractPayload, file) {
   const formData = new FormData();
   formData.append("kind", "order_contract");
