@@ -16,25 +16,32 @@ export default function OrderNoteOnlyDialog({
   open,
   displayId,
   customerEmail,
+  initialSubject = null,
+  initialBody = "",
+  title = "Send message",
   sending = false,
   onCancel,
   onSend,
 }) {
-  const defaultSubject =
+  const fallbackSubject =
     displayId != null
       ? `Update on your order #${displayId}`
       : "Update on your order";
+  const defaultSubject =
+    initialSubject != null && String(initialSubject).trim() !== ""
+      ? String(initialSubject)
+      : fallbackSubject;
   const [subject, setSubject] = useState(defaultSubject);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialBody);
   const [error, setError] = useState("");
   const { mounted, visible } = useOverlayPresence(open);
 
   useEffect(() => {
     if (!open) return;
     setSubject(defaultSubject);
-    setNote("");
+    setNote(initialBody ?? "");
     setError("");
-  }, [open, defaultSubject]);
+  }, [open, defaultSubject, initialBody]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -47,7 +54,7 @@ export default function OrderNoteOnlyDialog({
 
   if (!mounted) return null;
 
-  function handleSend() {
+  async function handleSend() {
     setError("");
     if (!customerEmail?.trim()) {
       setError("No email on this order.");
@@ -61,7 +68,13 @@ export default function OrderNoteOnlyDialog({
       setError("Write a message.");
       return;
     }
-    onSend({ subject: subject.trim(), body: note.trim() });
+    try {
+      await Promise.resolve(
+        onSend({ subject: subject.trim(), body: note.trim() })
+      );
+    } catch (err) {
+      setError(err?.message || "Failed to send message");
+    }
   }
 
   const dialog = (
@@ -79,7 +92,7 @@ export default function OrderNoteOnlyDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-ink/10 px-5 py-4">
-          <h2 className="text-xl font-bold text-ink">Send message</h2>
+          <h2 className="text-xl font-bold text-ink">{title}</h2>
           <p className="mt-1 text-xs text-ink/50">
             Emails {customerEmail || "—"} and appears in Messages.
           </p>
