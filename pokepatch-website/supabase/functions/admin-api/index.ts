@@ -921,13 +921,13 @@ function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
       feeRaw === "" || feeRaw == null
         ? null
         : Number.isFinite(Number(feeRaw))
-          ? Math.round(Number(feeRaw) * 100) / 100
+          ? Number(feeRaw)
           : null;
     const nm =
       nmRaw === "" || nmRaw == null
         ? null
         : Number.isFinite(Number(nmRaw))
-          ? Math.round(Number(nmRaw) * 100) / 100
+          ? Number(nmRaw)
           : null;
     return {
       id: String(r.id ?? `row-${index}`).slice(0, 80),
@@ -942,6 +942,7 @@ function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
     representative_name: String(input.representative_name ?? "")
       .trim()
       .slice(0, 200),
+    agreement_date: String(input.agreement_date ?? "").trim().slice(0, 80),
     cards,
   };
 }
