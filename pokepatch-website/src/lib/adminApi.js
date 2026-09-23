@@ -663,3 +663,33 @@ export async function adminSendMessages({
   });
   return payload;
 }
+
+export async function adminGetOrderContract(orderId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "contract_get", order_id: orderId },
+  });
+  return {
+    contract: payload.contract ?? null,
+    unsigned_url: payload.unsigned_url ?? null,
+    signed_url: payload.signed_url ?? null,
+  };
+}
+
+export async function adminPrepareOrderContract(orderId, contractPayload, file) {
+  const formData = new FormData();
+  formData.append("kind", "order_contract");
+  formData.append("order_id", orderId);
+  formData.append("payload", JSON.stringify(contractPayload ?? {}));
+  formData.append("file", file);
+
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    formData,
+  });
+  return {
+    contract: payload.contract ?? null,
+    unsigned_url: payload.unsigned_url ?? null,
+    signed_url: payload.signed_url ?? null,
+  };
+}

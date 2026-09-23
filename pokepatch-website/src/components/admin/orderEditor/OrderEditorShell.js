@@ -25,6 +25,7 @@ import {
   OrderPanel,
 } from "@/components/admin/orderEditor/OrderEditorSidebar";
 import AdminOrderMessagesPanel from "@/components/admin/orderEditor/AdminOrderMessagesPanel";
+import ContractPanel from "@/components/admin/orderEditor/ContractPanel";
 import CardDetailSection from "@/components/admin/orderEditor/sections/CardDetailSection";
 import QuoteSection, {
   buildQuotePreview,
@@ -306,6 +307,7 @@ function OrderEditorContent({
         <aside className="space-y-4">
           <CustomerPanel />
           <OrderPanel />
+          <ContractPanel orderId={orderId} displayId={displayId} />
           <AdminOrderMessagesPanel orderId={orderId} />
         </aside>
       </div>

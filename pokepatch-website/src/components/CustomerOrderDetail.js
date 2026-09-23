@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import CustomerOrderEditor from "@/components/CustomerOrderEditor";
+import CustomerOrderContract from "@/components/CustomerOrderContract";
 import CustomerOrderMessages from "@/components/CustomerOrderMessages";
 import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import MediaLightbox from "@/components/MediaLightbox";
@@ -376,6 +377,8 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
       </div>
 
       <CustomerOrderMessages orderId={order.id} />
+
+      <CustomerOrderContract orderId={order.id} />
 
       {order.general_notes ? (
         <section className="rounded-xl border border-mint/30 bg-mint/10 p-4">
