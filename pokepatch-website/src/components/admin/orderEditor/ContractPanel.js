@@ -16,6 +16,7 @@ import {
   defaultContractNotifyBody,
   formatContractDate,
   formatExactMoneyAmount,
+  isContractPayloadUpToDate,
   DEFAULT_CONTRACT_NOTIFY_SUBJECT,
 } from "@/lib/orderContractPdf";
 
@@ -74,10 +75,12 @@ export default function ContractPanel({ orderId, displayId }) {
   }, [orderId]);
 
   const statusLabel = useMemo(() => {
-    if (!contract) return "Not prepared";
-    if (contract.status === "signed") return "Signed";
-    return "Ready for customer";
-  }, [contract]);
+    if (!contract?.unsigned_path) return "Not created";
+    if (isContractPayloadUpToDate(contract.payload, preview)) {
+      return "Up to date";
+    }
+    return "Not up to date";
+  }, [contract, preview]);
 
   async function handleDownload() {
     setBusy(true);

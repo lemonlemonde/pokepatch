@@ -146,6 +146,41 @@ export function buildContractPrefillFromDraft(draft) {
   };
 }
 
+/** Normalize money for equality checks (two-decimal currency). */
+function normalizeMoneyForCompare(value) {
+  const n = parseExactMoney(value);
+  if (n == null) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Snapshot of order fields that affect the unsigned PDF (excludes date/name).
+ * Used to tell whether a prepared contract still matches the live order.
+ */
+export function contractOrderSnapshot(payload) {
+  const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+  return {
+    representative_name: String(payload?.representative_name ?? "").trim(),
+    cards: cards
+      .map((row) => ({
+        id: String(row?.id ?? ""),
+        card_name: String(row?.card_name ?? "").trim(),
+        set_name: String(row?.set_name ?? "").trim(),
+        restoration_fee: normalizeMoneyForCompare(row?.restoration_fee),
+        market_value_raw_nm: normalizeMoneyForCompare(row?.market_value_raw_nm),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  };
+}
+
+/** True when stored prepared payload matches the live order draft snapshot. */
+export function isContractPayloadUpToDate(storedPayload, livePayload) {
+  return (
+    JSON.stringify(contractOrderSnapshot(storedPayload)) ===
+    JSON.stringify(contractOrderSnapshot(livePayload))
+  );
+}
+
 export function formatContractDate(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
