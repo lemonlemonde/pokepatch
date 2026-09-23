@@ -2,8 +2,6 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   PRIORITY_FEE_PER_CARD,
   billableQuoteCards,
-  formatMoney,
-  groupQuoteItemsByCard,
 } from "@/lib/servicePricing";
 
 export const ORDER_CONTRACTS_BUCKET = "order-contracts";
@@ -44,10 +42,37 @@ const AGREEMENT_TAIL = [
   "Once a card has been handed directly back to Customer, PokéPatch's responsibility and coverage for that card under this Agreement ends. After a card has been returned to Customer, it is no longer covered or insured by PokéPatch.",
 ];
 
-function moneyDisplay(value) {
+/** Parse a money field without rounding. Empty → null. */
+export function parseExactMoney(value) {
+  if (value === "" || value == null) return null;
+  if (typeof value === "string") {
+    const trimmed = value.trim().replace(/^\$/, "");
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Format a money amount for the PDF without rounding currency.
+ * Strips only binary float noise (not business rounding).
+ */
+export function formatExactMoneyAmount(value) {
+  if (value === "" || value == null) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim().replace(/^\$/, "");
+    if (trimmed !== "" && Number.isFinite(Number(trimmed))) return trimmed;
+  }
   const n = Number(value);
   if (!Number.isFinite(n)) return "";
-  return formatMoney(n).replace(/^\$/, "");
+  const cleaned = n.toFixed(12).replace(/\.?0+$/, "");
+  return cleaned === "-0" ? "0" : cleaned;
+}
+
+function moneyDisplay(value) {
+  return formatExactMoneyAmount(value);
 }
 
 function wrapText(text, font, size, maxWidth) {
@@ -78,6 +103,22 @@ function truncateToWidth(text, font, size, maxWidth) {
   return out ? `${out}…` : "";
 }
 
+/** Exact per-card restoration fee: coded services + HV + priority (if on). */
+export function contractRestorationFeeForCard(card, draft) {
+  const cardId = String(card?.id ?? "");
+  let fee = 0;
+  for (const item of draft?.quote_items ?? []) {
+    if (String(item?.card_pick ?? "") !== cardId) continue;
+    const amount = parseExactMoney(item.quote_base_amount);
+    if (amount != null) fee += amount;
+  }
+  const hvEntry = draft?.quote_card_hv?.[cardId];
+  const hv = parseExactMoney(hvEntry?.amount_dollars);
+  if (hv != null && hv > 0) fee += hv;
+  if (draft?.is_priority) fee += PRIORITY_FEE_PER_CARD;
+  return fee;
+}
+
 function customerDisplayName(draft) {
   const first = String(draft?.first_name ?? "").trim();
   const last = String(draft?.last_name ?? "").trim();
@@ -86,39 +127,29 @@ function customerDisplayName(draft) {
   return String(draft?.customer_name ?? "").trim();
 }
 
-/** Build editable contract rows from the current admin order draft. */
+/** Build contract PDF payload from the live order draft (read-only source). */
 export function buildContractPrefillFromDraft(draft) {
   const cards = billableQuoteCards(draft?.cards ?? []);
-  const groups = groupQuoteItemsByCard(draft?.quote_items ?? [], cards);
-  const byKey = new Map();
-  for (const group of groups) {
-    byKey.set(group.key, group);
-  }
-
-  const priorityAdd = draft?.is_priority ? PRIORITY_FEE_PER_CARD : 0;
   const rows = [];
 
   for (const card of cards) {
     const name = String(card.card_name ?? "").trim();
     const set = String(card.set_name ?? "").trim();
-    const key = `${name.toLowerCase()}|${set.toLowerCase()}`;
-    const group = byKey.get(key);
-    const servicesAndHv = group ? Number(group.subtotal) || 0 : 0;
-    const restorationFee =
-      Math.round((servicesAndHv + priorityAdd) * 100) / 100;
-    const nm = Number(card.market_value_raw_nm);
+    const restorationFee = contractRestorationFeeForCard(card, draft);
+    const nm = parseExactMoney(card.market_value_raw_nm);
     rows.push({
       id: String(card.id),
       card_name: name,
       set_name: set,
       restoration_fee: restorationFee,
-      market_value_raw_nm: Number.isFinite(nm) ? nm : "",
+      market_value_raw_nm: nm == null ? "" : nm,
     });
   }
 
   return {
     customer_name: customerDisplayName(draft),
     representative_name: "",
+    agreement_date: formatContractDate(),
     cards: rows,
   };
 }
@@ -277,7 +308,32 @@ function drawTable(ctx, cards) {
   ctx.y -= 6;
 }
 
-function drawSignatureBlock(ctx, payload) {
+export function formatContractDate(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+export const REP_SIGNATURE_PUBLIC_PATH =
+  "/contracts/pokepatch-rep-signature.png";
+
+/** Load the PokéPatch rep signature PNG (transparent bg) for stamping. */
+export async function loadRepSignaturePngBytes() {
+  if (typeof fetch !== "function") return null;
+  try {
+    const response = await fetch(REP_SIGNATURE_PUBLIC_PATH);
+    if (!response.ok) return null;
+    return new Uint8Array(await response.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+function drawSignatureBlock(ctx, payload, signatureImage = null) {
   drawSectionTitle(ctx, "ACKNOWLEDGMENT & SIGNATURES");
   drawWrappedParagraph(
     ctx,
@@ -288,9 +344,11 @@ function drawSignatureBlock(ctx, payload) {
     "Customer confirms that they have read and understood this Agreement and agree to all of its terms."
   );
 
-  ensureSpace(ctx, 120);
+  ensureSpace(ctx, 140);
   const customerName = String(payload.customer_name ?? "").trim();
   const repName = String(payload.representative_name ?? "").trim();
+  const agreementDate =
+    String(payload.agreement_date ?? "").trim() || formatContractDate();
 
   ctx.page.drawText(`Customer Name: ${customerName}`, {
     x: MARGIN_X,
@@ -308,6 +366,7 @@ function drawSignatureBlock(ctx, payload) {
     color: rgb(0.12, 0.12, 0.14),
   });
   ctx.y -= 22;
+  // Left blank — customer fills when they sign offline.
   ctx.page.drawText("Date: ______________________", {
     x: MARGIN_X,
     y: ctx.y,
@@ -324,15 +383,43 @@ function drawSignatureBlock(ctx, payload) {
     color: rgb(0.12, 0.12, 0.14),
   });
   ctx.y -= 22;
-  ctx.page.drawText("Signature: _________________________________________________", {
+
+  const sigLabel = "Signature: ";
+  ctx.page.drawText(sigLabel, {
     x: MARGIN_X,
     y: ctx.y,
     size: FONT_SIZE,
     font: ctx.font,
     color: rgb(0.12, 0.12, 0.14),
   });
-  ctx.y -= 22;
-  ctx.page.drawText("Date: ______________________", {
+
+  const labelWidth = ctx.font.widthOfTextAtSize(sigLabel, FONT_SIZE);
+  if (signatureImage) {
+    const maxWidth = 160;
+    const maxHeight = 36;
+    const scale = Math.min(
+      maxWidth / signatureImage.width,
+      maxHeight / signatureImage.height
+    );
+    const drawWidth = signatureImage.width * scale;
+    const drawHeight = signatureImage.height * scale;
+    ctx.page.drawImage(signatureImage, {
+      x: MARGIN_X + labelWidth + 4,
+      y: ctx.y - 6,
+      width: drawWidth,
+      height: drawHeight,
+    });
+  } else {
+    ctx.page.drawText("_________________________________________________", {
+      x: MARGIN_X + labelWidth,
+      y: ctx.y,
+      size: FONT_SIZE,
+      font: ctx.font,
+      color: rgb(0.12, 0.12, 0.14),
+    });
+  }
+  ctx.y -= 28;
+  ctx.page.drawText(`Date: ${agreementDate}`, {
     x: MARGIN_X,
     y: ctx.y,
     size: FONT_SIZE,
@@ -359,6 +446,16 @@ export async function buildOrderContractPdf(payload) {
     y: PAGE_HEIGHT - MARGIN_TOP,
   };
 
+  let signatureImage = null;
+  const signatureBytes = await loadRepSignaturePngBytes();
+  if (signatureBytes?.length) {
+    try {
+      signatureImage = await doc.embedPng(signatureBytes);
+    } catch {
+      signatureImage = null;
+    }
+  }
+
   ctx.y = drawHeader(ctx.page, font, bold, ctx.y);
 
   drawSectionTitle(ctx, "RESTORATION ORDER");
@@ -384,7 +481,7 @@ export async function buildOrderContractPdf(payload) {
     drawWrappedParagraph(ctx, para);
   }
 
-  drawSignatureBlock(ctx, payload ?? {});
+  drawSignatureBlock(ctx, payload ?? {}, signatureImage);
 
   return doc.save();
 }
