@@ -29,7 +29,7 @@ export default function CustomerOrderContract({ orderId }) {
         const { data, error: loadError } = await supabase
           .from("order_contracts")
           .select(
-            "order_id, status, unsigned_path, signed_path, prepared_at, signed_at"
+            "order_id, status, unsigned_path, signed_path, prepared_at, signed_at, notified_at"
           )
           .eq("order_id", orderId)
           .maybeSingle();
@@ -118,7 +118,7 @@ export default function CustomerOrderContract({ orderId }) {
     }
   }
 
-  if (loading || !contract?.unsigned_path) {
+  if (loading || !contract?.unsigned_path || !contract?.notified_at) {
     return null;
   }
 

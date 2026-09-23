@@ -977,7 +977,7 @@ async function fetchOrderContractResponse(
   const { data, error } = await supabase
     .from("order_contracts")
     .select(
-      "order_id, status, payload, unsigned_path, signed_path, prepared_at, signed_at, updated_at"
+      "order_id, status, payload, unsigned_path, signed_path, prepared_at, signed_at, notified_at, updated_at"
     )
     .eq("order_id", orderId)
     .maybeSingle();
@@ -3240,6 +3240,33 @@ Deno.serve(async (req) => {
       if (!order) {
         return jsonResponse(req, { ok: false, error: "order not found" }, 404);
       }
+      return await fetchOrderContractResponse(req, supabase, orderId);
+    }
+
+    if (action === "contract_mark_notified") {
+      const orderId = String(body.order_id ?? "").trim();
+      if (!orderId) {
+        return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
+      }
+      const { data: existing, error: existingError } = await supabase
+        .from("order_contracts")
+        .select("order_id, unsigned_path")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing?.unsigned_path) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "prepare the contract PDF before notifying" },
+          400
+        );
+      }
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from("order_contracts")
+        .update({ notified_at: now, updated_at: now })
+        .eq("order_id", orderId);
+      if (updateError) throw updateError;
       return await fetchOrderContractResponse(req, supabase, orderId);
     }
 

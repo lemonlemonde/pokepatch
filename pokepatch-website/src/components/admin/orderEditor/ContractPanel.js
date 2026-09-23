@@ -6,6 +6,7 @@ import { EditorLabel, Panel } from "@/components/admin/orderEditor/editorUi";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import {
   adminGetOrderContract,
+  adminMarkOrderContractNotified,
   adminPrepareOrderContract,
   adminSendMessages,
 } from "@/lib/adminApi";
@@ -123,6 +124,10 @@ export default function ContractPanel({ orderId, displayId }) {
   async function handleNotifySend({ subject, body }) {
     setNotifySending(true);
     try {
+      // Make the agreement visible on My Orders before (or even if) email fails.
+      const result = await adminMarkOrderContractNotified(orderId);
+      setContract(result.contract);
+      setSignedUrl(result.signed_url ?? null);
       await adminSendMessages({
         order_ids: [orderId],
         subject,
@@ -142,6 +147,7 @@ export default function ContractPanel({ orderId, displayId }) {
   const cards = preview.cards ?? [];
   const signedAtLabel = formatSignedAt(contract?.signed_at);
   const hasSignedPdf = Boolean(signedUrl);
+  const customerCanSee = Boolean(contract?.notified_at);
 
   return (
     <>
@@ -166,6 +172,16 @@ export default function ContractPanel({ orderId, displayId }) {
               <EditorLabel className="mb-0">Date</EditorLabel>
               <span className="text-right font-medium text-ink">
                 {formatContractDate()}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <EditorLabel className="mb-0">Customer view</EditorLabel>
+              <span className="text-right font-medium text-ink">
+                {loading
+                  ? "…"
+                  : customerCanSee
+                    ? "Visible on My Orders"
+                    : "Hidden until notified"}
               </span>
             </div>
           </div>
