@@ -147,7 +147,11 @@ export default function ContractPanel({ orderId, displayId }) {
   const cards = preview.cards ?? [];
   const signedAtLabel = formatSignedAt(contract?.signed_at);
   const hasSignedPdf = Boolean(signedUrl);
-  const customerCanSee = Boolean(contract?.notified_at);
+  const signedStatusLabel = hasSignedPdf
+    ? "Signed"
+    : contract?.notified_at
+      ? "Customer notified"
+      : "Contract not created";
 
   return (
     <>
@@ -172,16 +176,6 @@ export default function ContractPanel({ orderId, displayId }) {
               <EditorLabel className="mb-0">Date</EditorLabel>
               <span className="text-right font-medium text-ink">
                 {formatContractDate()}
-              </span>
-            </div>
-            <div className="flex justify-between gap-2">
-              <EditorLabel className="mb-0">Customer view</EditorLabel>
-              <span className="text-right font-medium text-ink">
-                {loading
-                  ? "…"
-                  : customerCanSee
-                    ? "Visible on My Orders"
-                    : "Hidden until notified"}
               </span>
             </div>
           </div>
@@ -242,7 +236,7 @@ export default function ContractPanel({ orderId, displayId }) {
         tone="internal"
         action={
           <span className="rounded-full border border-ink/15 bg-night/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/70">
-            {loading ? "…" : hasSignedPdf ? "Uploaded" : "Awaiting"}
+            {loading ? "…" : signedStatusLabel}
           </span>
         }
       >
@@ -270,7 +264,9 @@ export default function ContractPanel({ orderId, displayId }) {
             <p className="text-xs text-ink/45">
               {loading
                 ? "Loading…"
-                : "Customer has not uploaded a signed agreement yet."}
+                : contract?.notified_at
+                  ? "Waiting for the customer to upload a signed agreement."
+                  : "Notify the customer to send the agreement on My Orders."}
             </p>
           )}
         </div>
