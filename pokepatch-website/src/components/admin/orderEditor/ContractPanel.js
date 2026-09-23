@@ -23,9 +23,23 @@ function moneyLabel(value) {
   return formatted ? `$${formatted}` : "—";
 }
 
+function formatSignedAt(value) {
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 export default function ContractPanel({ orderId, displayId }) {
   const { draft } = useOrderEditor();
   const [contract, setContract] = useState(null);
+  const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -45,6 +59,7 @@ export default function ContractPanel({ orderId, displayId }) {
       .then((result) => {
         if (cancelled) return;
         setContract(result.contract);
+        setSignedUrl(result.signed_url ?? null);
         setLoading(false);
       })
       .catch((err) => {
@@ -76,6 +91,7 @@ export default function ContractPanel({ orderId, displayId }) {
       });
       const result = await adminPrepareOrderContract(orderId, payload, file);
       setContract(result.contract);
+      setSignedUrl(result.signed_url ?? null);
       const url = result.unsigned_url;
       if (!url) {
         popup?.close();
@@ -124,6 +140,8 @@ export default function ContractPanel({ orderId, displayId }) {
   }
 
   const cards = preview.cards ?? [];
+  const signedAtLabel = formatSignedAt(contract?.signed_at);
+  const hasSignedPdf = Boolean(signedUrl);
 
   return (
     <>
@@ -200,6 +218,45 @@ export default function ContractPanel({ orderId, displayId }) {
               Notify customer
             </button>
           </div>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Signed PDF"
+        tone="internal"
+        action={
+          <span className="rounded-full border border-ink/15 bg-night/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/70">
+            {loading ? "…" : hasSignedPdf ? "Uploaded" : "Awaiting"}
+          </span>
+        }
+      >
+        <div className="space-y-2.5">
+          {hasSignedPdf ? (
+            <>
+              <div className="flex justify-between gap-2 text-sm text-ink/80">
+                <EditorLabel className="mb-0">Uploaded</EditorLabel>
+                <span className="text-right font-medium text-ink">
+                  {signedAtLabel || "—"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 border-t border-ink/10 pt-2.5">
+                <a
+                  href={signedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md bg-ink px-2.5 py-1 text-xs font-bold text-night transition hover:brightness-110"
+                >
+                  Download
+                </a>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-ink/45">
+              {loading
+                ? "Loading…"
+                : "Customer has not uploaded a signed agreement yet."}
+            </p>
+          )}
         </div>
       </Panel>
 
