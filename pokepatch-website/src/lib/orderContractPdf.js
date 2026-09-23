@@ -5,18 +5,28 @@ import {
 } from "@/lib/servicePricing";
 
 export const ORDER_CONTRACTS_BUCKET = "order-contracts";
+export const POKEPATCH_REPRESENTATIVE_NAME = "Ray Li";
 
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
-const MARGIN_X = 54;
-const MARGIN_TOP = 48;
-const MARGIN_BOTTOM = 48;
+const MARGIN_X = 50;
+const MARGIN_TOP = 46;
+const MARGIN_BOTTOM = 46;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
-const FONT_SIZE = 10;
-const TITLE_SIZE = 16;
-const SECTION_SIZE = 11;
-const LINE_HEIGHT = 13;
-const TABLE_ROW_HEIGHT = 18;
+
+const FONT_SIZE = 9.5;
+const TITLE_SIZE = 18;
+const SUBTITLE_SIZE = 10.5;
+const SECTION_SIZE = 10;
+const LINE_HEIGHT = 12.5;
+const TABLE_ROW_HEIGHT = 16;
+const TABLE_HEADER_SIZE = 7.5;
+
+const INK = rgb(0.12, 0.12, 0.14);
+const INK_MUTED = rgb(0.32, 0.32, 0.35);
+const RULE = rgb(0.72, 0.72, 0.74);
+const RULE_SOFT = rgb(0.86, 0.86, 0.87);
+const HEADER_BAND = rgb(0.95, 0.95, 0.96);
 
 const AGREEMENT_PARAS = [
   "Customer agrees to pay PokéPatch the Restoration Fee listed for each card for the restoration services described or agreed upon. Restoration Fees are separate from the Near Mint Raw Market Values.",
@@ -69,10 +79,6 @@ export function formatExactMoneyAmount(value) {
   if (!Number.isFinite(n)) return "";
   const cleaned = n.toFixed(12).replace(/\.?0+$/, "");
   return cleaned === "-0" ? "0" : cleaned;
-}
-
-function moneyDisplay(value) {
-  return formatExactMoneyAmount(value);
 }
 
 function wrapText(text, font, size, maxWidth) {
@@ -148,164 +154,10 @@ export function buildContractPrefillFromDraft(draft) {
 
   return {
     customer_name: customerDisplayName(draft),
-    representative_name: "",
+    representative_name: POKEPATCH_REPRESENTATIVE_NAME,
     agreement_date: formatContractDate(),
     cards: rows,
   };
-}
-
-function drawHeader(page, font, bold, y) {
-  let cursor = y;
-  page.drawText("POKÉPATCH", {
-    x: MARGIN_X,
-    y: cursor,
-    size: TITLE_SIZE,
-    font: bold,
-    color: rgb(0.1, 0.1, 0.12),
-  });
-  cursor -= 18;
-  page.drawText("Pokémon Card Restoration — Customer Property & Liability Agreement", {
-    x: MARGIN_X,
-    y: cursor,
-    size: 11,
-    font: bold,
-    color: rgb(0.15, 0.15, 0.18),
-  });
-  cursor -= 16;
-  const intro =
-    'This Agreement is between PokéPatch ("Restorer") and the undersigned customer ("Customer") regarding the Pokémon card(s) submitted for restoration under this Agreement.';
-  for (const line of wrapText(intro, font, FONT_SIZE, CONTENT_WIDTH)) {
-    page.drawText(line, {
-      x: MARGIN_X,
-      y: cursor,
-      size: FONT_SIZE,
-      font,
-      color: rgb(0.2, 0.2, 0.22),
-    });
-    cursor -= LINE_HEIGHT;
-  }
-  return cursor - 8;
-}
-
-function ensureSpace(ctx, needed) {
-  if (ctx.y - needed >= MARGIN_BOTTOM) return;
-  ctx.page = ctx.doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-  ctx.y = PAGE_HEIGHT - MARGIN_TOP;
-}
-
-function drawSectionTitle(ctx, title) {
-  ensureSpace(ctx, 24);
-  ctx.page.drawText(title, {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: SECTION_SIZE,
-    font: ctx.bold,
-    color: rgb(0.1, 0.1, 0.12),
-  });
-  ctx.y -= 4;
-  ctx.page.drawLine({
-    start: { x: MARGIN_X, y: ctx.y },
-    end: { x: PAGE_WIDTH - MARGIN_X, y: ctx.y },
-    thickness: 1,
-    color: rgb(0.75, 0.75, 0.78),
-  });
-  ctx.y -= 16;
-}
-
-function drawWrappedParagraph(ctx, text, { indent = 0, bullet = false } = {}) {
-  const maxWidth = CONTENT_WIDTH - indent - (bullet ? 14 : 0);
-  const lines = wrapText(text, ctx.font, FONT_SIZE, maxWidth);
-  for (let i = 0; i < lines.length; i += 1) {
-    ensureSpace(ctx, LINE_HEIGHT + 2);
-    const x = MARGIN_X + indent + (bullet ? 14 : 0);
-    if (bullet && i === 0) {
-      ctx.page.drawText("•", {
-        x: MARGIN_X + indent,
-        y: ctx.y,
-        size: FONT_SIZE,
-        font: ctx.font,
-        color: rgb(0.2, 0.2, 0.22),
-      });
-    }
-    ctx.page.drawText(lines[i], {
-      x,
-      y: ctx.y,
-      size: FONT_SIZE,
-      font: ctx.font,
-      color: rgb(0.2, 0.2, 0.22),
-    });
-    ctx.y -= LINE_HEIGHT;
-  }
-  ctx.y -= 4;
-}
-
-function drawTable(ctx, cards) {
-  const cols = [
-    { label: "Card Name", width: 180 },
-    { label: "Set / Expansion", width: 150 },
-    { label: "Restoration Fee", width: 100 },
-    { label: "Near Mint Raw Market Value", width: 104 },
-  ];
-
-  ensureSpace(ctx, TABLE_ROW_HEIGHT + 8);
-  let x = MARGIN_X;
-  for (const col of cols) {
-    ctx.page.drawText(col.label, {
-      x,
-      y: ctx.y,
-      size: 8,
-      font: ctx.bold,
-      color: rgb(0.25, 0.25, 0.28),
-    });
-    x += col.width;
-  }
-  ctx.y -= 4;
-  ctx.page.drawLine({
-    start: { x: MARGIN_X, y: ctx.y },
-    end: { x: PAGE_WIDTH - MARGIN_X, y: ctx.y },
-    thickness: 0.75,
-    color: rgb(0.7, 0.7, 0.72),
-  });
-  ctx.y -= TABLE_ROW_HEIGHT;
-
-  const rows =
-    cards.length > 0
-      ? cards
-      : [{ card_name: "", set_name: "", restoration_fee: "", market_value_raw_nm: "" }];
-
-  for (const row of rows) {
-    ensureSpace(ctx, TABLE_ROW_HEIGHT);
-    const values = [
-      truncateToWidth(row.card_name, ctx.font, FONT_SIZE, cols[0].width - 6),
-      truncateToWidth(row.set_name, ctx.font, FONT_SIZE, cols[1].width - 6),
-      row.restoration_fee === "" || row.restoration_fee == null
-        ? ""
-        : `$${moneyDisplay(row.restoration_fee)}`,
-      row.market_value_raw_nm === "" || row.market_value_raw_nm == null
-        ? ""
-        : `$${moneyDisplay(row.market_value_raw_nm)}`,
-    ];
-    let cx = MARGIN_X;
-    for (let i = 0; i < cols.length; i += 1) {
-      ctx.page.drawText(values[i], {
-        x: cx,
-        y: ctx.y,
-        size: FONT_SIZE,
-        font: ctx.font,
-        color: rgb(0.12, 0.12, 0.14),
-      });
-      cx += cols[i].width;
-    }
-    ctx.y -= 3;
-    ctx.page.drawLine({
-      start: { x: MARGIN_X, y: ctx.y },
-      end: { x: PAGE_WIDTH - MARGIN_X, y: ctx.y },
-      thickness: 0.4,
-      color: rgb(0.82, 0.82, 0.84),
-    });
-    ctx.y -= TABLE_ROW_HEIGHT - 3;
-  }
-  ctx.y -= 6;
 }
 
 export function formatContractDate(value = new Date()) {
@@ -333,6 +185,271 @@ export async function loadRepSignaturePngBytes() {
   }
 }
 
+function ensureSpace(ctx, needed) {
+  if (ctx.y - needed >= MARGIN_BOTTOM) return;
+  ctx.page = ctx.doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  ctx.y = PAGE_HEIGHT - MARGIN_TOP;
+}
+
+function drawRule(ctx, { soft = false } = {}) {
+  ctx.page.drawLine({
+    start: { x: MARGIN_X, y: ctx.y },
+    end: { x: PAGE_WIDTH - MARGIN_X, y: ctx.y },
+    thickness: soft ? 0.5 : 1,
+    color: soft ? RULE_SOFT : RULE,
+  });
+}
+
+function drawHeader(ctx) {
+  ensureSpace(ctx, 72);
+  ctx.page.drawText("POKÉPATCH", {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: TITLE_SIZE,
+    font: ctx.bold,
+    color: INK,
+  });
+  ctx.y -= 16;
+  ctx.page.drawText(
+    "Pokémon Card Restoration — Customer Property & Liability Agreement",
+    {
+      x: MARGIN_X,
+      y: ctx.y,
+      size: SUBTITLE_SIZE,
+      font: ctx.bold,
+      color: INK_MUTED,
+    }
+  );
+  ctx.y -= 8;
+  drawRule(ctx);
+  ctx.y -= 14;
+
+  const intro =
+    'This Agreement is between PokéPatch ("Restorer") and the undersigned customer ("Customer") regarding the Pokémon card(s) submitted for restoration under this Agreement.';
+  for (const line of wrapText(intro, ctx.font, FONT_SIZE, CONTENT_WIDTH)) {
+    ensureSpace(ctx, LINE_HEIGHT + 2);
+    ctx.page.drawText(line, {
+      x: MARGIN_X,
+      y: ctx.y,
+      size: FONT_SIZE,
+      font: ctx.font,
+      color: INK,
+    });
+    ctx.y -= LINE_HEIGHT;
+  }
+  ctx.y -= 10;
+}
+
+function drawSectionTitle(ctx, title) {
+  ensureSpace(ctx, 28);
+  ctx.page.drawText(title, {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: SECTION_SIZE,
+    font: ctx.bold,
+    color: INK,
+  });
+  ctx.y -= 5;
+  drawRule(ctx);
+  ctx.y -= 12;
+}
+
+function drawWrappedParagraph(ctx, text, { indent = 0, bullet = false } = {}) {
+  const bulletGap = bullet ? 12 : 0;
+  const maxWidth = CONTENT_WIDTH - indent - bulletGap;
+  const lines = wrapText(text, ctx.font, FONT_SIZE, maxWidth);
+  for (let i = 0; i < lines.length; i += 1) {
+    ensureSpace(ctx, LINE_HEIGHT + 2);
+    if (bullet && i === 0) {
+      ctx.page.drawText("•", {
+        x: MARGIN_X + indent,
+        y: ctx.y,
+        size: FONT_SIZE,
+        font: ctx.font,
+        color: INK,
+      });
+    }
+    ctx.page.drawText(lines[i], {
+      x: MARGIN_X + indent + bulletGap,
+      y: ctx.y,
+      size: FONT_SIZE,
+      font: ctx.font,
+      color: INK,
+    });
+    ctx.y -= LINE_HEIGHT;
+  }
+  ctx.y -= 5;
+}
+
+function drawTable(ctx, cards) {
+  // Widths must sum to CONTENT_WIDTH.
+  const cols = [
+    { label: "Card Name", width: 170, align: "left" },
+    { label: "Set / Expansion", width: 140, align: "left" },
+    {
+      label: "Restoration Fee",
+      lines: ["Restoration", "Fee"],
+      width: 96,
+      align: "right",
+    },
+    {
+      label: "Near Mint Raw Market Value",
+      lines: ["Near Mint Raw", "Market Value"],
+      width: 106,
+      align: "right",
+    },
+  ];
+
+  const headerLines = cols.map((col) =>
+    Array.isArray(col.lines)
+      ? col.lines
+      : wrapText(col.label, ctx.bold, TABLE_HEADER_SIZE, col.width - 8)
+  );
+  const headerLineCount = Math.max(
+    1,
+    ...headerLines.map((lines) => lines.length)
+  );
+  const headerPadY = 5;
+  const headerBlockHeight = headerLineCount * 9 + headerPadY * 2;
+
+  ensureSpace(ctx, headerBlockHeight + TABLE_ROW_HEIGHT * 2);
+
+  // Header band
+  ctx.page.drawRectangle({
+    x: MARGIN_X,
+    y: ctx.y - headerBlockHeight + 4,
+    width: CONTENT_WIDTH,
+    height: headerBlockHeight,
+    color: HEADER_BAND,
+  });
+
+  let x = MARGIN_X;
+  for (let i = 0; i < cols.length; i += 1) {
+    const col = cols[i];
+    const lines = headerLines[i];
+    let lineY = ctx.y - headerPadY;
+    for (const line of lines) {
+      const textWidth = ctx.bold.widthOfTextAtSize(line, TABLE_HEADER_SIZE);
+      const textX =
+        col.align === "right"
+          ? x + col.width - 6 - textWidth
+          : x + 6;
+      ctx.page.drawText(line, {
+        x: textX,
+        y: lineY,
+        size: TABLE_HEADER_SIZE,
+        font: ctx.bold,
+        color: INK_MUTED,
+      });
+      lineY -= 9;
+    }
+    x += col.width;
+  }
+
+  ctx.y -= headerBlockHeight;
+  drawRule(ctx);
+  ctx.y -= TABLE_ROW_HEIGHT;
+
+  const rows =
+    cards.length > 0
+      ? cards
+      : [
+          {
+            card_name: "",
+            set_name: "",
+            restoration_fee: "",
+            market_value_raw_nm: "",
+          },
+        ];
+
+  rows.forEach((row, rowIndex) => {
+    ensureSpace(ctx, TABLE_ROW_HEIGHT + 4);
+    if (rowIndex % 2 === 1) {
+      ctx.page.drawRectangle({
+        x: MARGIN_X,
+        y: ctx.y - 4,
+        width: CONTENT_WIDTH,
+        height: TABLE_ROW_HEIGHT,
+        color: rgb(0.985, 0.985, 0.988),
+      });
+    }
+
+    const values = [
+      truncateToWidth(row.card_name, ctx.font, FONT_SIZE, cols[0].width - 12),
+      truncateToWidth(row.set_name, ctx.font, FONT_SIZE, cols[1].width - 12),
+      truncateToWidth(
+        row.restoration_fee === "" || row.restoration_fee == null
+          ? ""
+          : `$${formatExactMoneyAmount(row.restoration_fee)}`,
+        ctx.font,
+        FONT_SIZE,
+        cols[2].width - 12
+      ),
+      truncateToWidth(
+        row.market_value_raw_nm === "" || row.market_value_raw_nm == null
+          ? ""
+          : `$${formatExactMoneyAmount(row.market_value_raw_nm)}`,
+        ctx.font,
+        FONT_SIZE,
+        cols[3].width - 12
+      ),
+    ];
+
+    let cx = MARGIN_X;
+    for (let i = 0; i < cols.length; i += 1) {
+      const col = cols[i];
+      const value = values[i];
+      const textWidth = ctx.font.widthOfTextAtSize(value, FONT_SIZE);
+      const textX =
+        col.align === "right" ? cx + col.width - 6 - textWidth : cx + 6;
+      ctx.page.drawText(value, {
+        x: textX,
+        y: ctx.y,
+        size: FONT_SIZE,
+        font: ctx.font,
+        color: INK,
+      });
+      cx += col.width;
+    }
+
+    ctx.y -= 4;
+    drawRule(ctx, { soft: true });
+    ctx.y -= TABLE_ROW_HEIGHT - 4;
+  });
+
+  ctx.y -= 8;
+}
+
+function drawLabeledLine(ctx, label, value = "", { lineWidth = 280 } = {}) {
+  ensureSpace(ctx, 22);
+  ctx.page.drawText(label, {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: FONT_SIZE,
+    font: ctx.font,
+    color: INK,
+  });
+  const labelWidth = ctx.font.widthOfTextAtSize(label, FONT_SIZE);
+  const startX = MARGIN_X + labelWidth + 6;
+  if (value) {
+    ctx.page.drawText(value, {
+      x: startX,
+      y: ctx.y,
+      size: FONT_SIZE,
+      font: ctx.font,
+      color: INK,
+    });
+  } else {
+    ctx.page.drawLine({
+      start: { x: startX, y: ctx.y - 1 },
+      end: { x: Math.min(startX + lineWidth, PAGE_WIDTH - MARGIN_X), y: ctx.y - 1 },
+      thickness: 0.7,
+      color: RULE,
+    });
+  }
+  ctx.y -= 20;
+}
+
 function drawSignatureBlock(ctx, payload, signatureImage = null) {
   drawSectionTitle(ctx, "ACKNOWLEDGMENT & SIGNATURES");
   drawWrappedParagraph(
@@ -344,88 +461,99 @@ function drawSignatureBlock(ctx, payload, signatureImage = null) {
     "Customer confirms that they have read and understood this Agreement and agree to all of its terms."
   );
 
-  ensureSpace(ctx, 140);
   const customerName = String(payload.customer_name ?? "").trim();
-  const repName = String(payload.representative_name ?? "").trim();
+  const repName =
+    String(payload.representative_name ?? "").trim() ||
+    POKEPATCH_REPRESENTATIVE_NAME;
   const agreementDate =
     String(payload.agreement_date ?? "").trim() || formatContractDate();
 
-  ctx.page.drawText(`Customer Name: ${customerName}`, {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: FONT_SIZE,
-    font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
-  });
-  ctx.y -= 22;
-  ctx.page.drawText("Customer Signature: ___________________________________________", {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: FONT_SIZE,
-    font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
-  });
-  ctx.y -= 22;
-  // Left blank — customer fills when they sign offline.
-  ctx.page.drawText("Date: ______________________", {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: FONT_SIZE,
-    font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
-  });
-  ctx.y -= 28;
-  ctx.page.drawText(`PokéPatch Representative: ${repName}`, {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: FONT_SIZE,
-    font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
-  });
-  ctx.y -= 22;
+  ensureSpace(ctx, 200);
+  ctx.y -= 4;
 
-  const sigLabel = "Signature: ";
+  ctx.page.drawText("Customer", {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: 8,
+    font: ctx.bold,
+    color: INK_MUTED,
+  });
+  ctx.y -= 14;
+  drawLabeledLine(ctx, "Name:", customerName, { lineWidth: 320 });
+  drawLabeledLine(ctx, "Signature:", "", { lineWidth: 300 });
+  drawLabeledLine(ctx, "Date:", "", { lineWidth: 160 });
+
+  ctx.y -= 8;
+  ctx.page.drawText("PokéPatch", {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: 8,
+    font: ctx.bold,
+    color: INK_MUTED,
+  });
+  ctx.y -= 14;
+  drawLabeledLine(ctx, "Representative:", repName, { lineWidth: 260 });
+
+  // Signature row — image sits fully below the label baseline.
+  ensureSpace(ctx, 70);
+  const sigLabel = "Signature:";
   ctx.page.drawText(sigLabel, {
     x: MARGIN_X,
     y: ctx.y,
     size: FONT_SIZE,
     font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
+    color: INK,
   });
-
   const labelWidth = ctx.font.widthOfTextAtSize(sigLabel, FONT_SIZE);
+  const sigX = MARGIN_X + labelWidth + 8;
+
   if (signatureImage) {
-    const maxWidth = 160;
-    const maxHeight = 36;
+    const maxWidth = 150;
+    const maxHeight = 42;
     const scale = Math.min(
       maxWidth / signatureImage.width,
       maxHeight / signatureImage.height
     );
     const drawWidth = signatureImage.width * scale;
     const drawHeight = signatureImage.height * scale;
+    // Drop below the label so the image never intersects "Representative".
+    ctx.y -= 8;
     ctx.page.drawImage(signatureImage, {
-      x: MARGIN_X + labelWidth + 4,
-      y: ctx.y - 6,
+      x: sigX,
+      y: ctx.y - drawHeight,
       width: drawWidth,
       height: drawHeight,
     });
+    ctx.y -= drawHeight + 14;
   } else {
-    ctx.page.drawText("_________________________________________________", {
-      x: MARGIN_X + labelWidth,
-      y: ctx.y,
-      size: FONT_SIZE,
-      font: ctx.font,
-      color: rgb(0.12, 0.12, 0.14),
+    ctx.page.drawLine({
+      start: { x: sigX, y: ctx.y - 1 },
+      end: { x: PAGE_WIDTH - MARGIN_X, y: ctx.y - 1 },
+      thickness: 0.7,
+      color: RULE,
+    });
+    ctx.y -= 22;
+  }
+
+  drawLabeledLine(ctx, "Date:", agreementDate, { lineWidth: 160 });
+}
+
+function drawPageNumbers(doc, font) {
+  const pages = doc.getPages();
+  const total = pages.length;
+  if (total <= 1) return;
+  for (let i = 0; i < total; i += 1) {
+    const page = pages[i];
+    const label = `${i + 1} / ${total}`;
+    const width = font.widthOfTextAtSize(label, 8);
+    page.drawText(label, {
+      x: PAGE_WIDTH - MARGIN_X - width,
+      y: 24,
+      size: 8,
+      font,
+      color: INK_MUTED,
     });
   }
-  ctx.y -= 28;
-  ctx.page.drawText(`Date: ${agreementDate}`, {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: FONT_SIZE,
-    font: ctx.font,
-    color: rgb(0.12, 0.12, 0.14),
-  });
 }
 
 /**
@@ -456,7 +584,7 @@ export async function buildOrderContractPdf(payload) {
     }
   }
 
-  ctx.y = drawHeader(ctx.page, font, bold, ctx.y);
+  drawHeader(ctx);
 
   drawSectionTitle(ctx, "RESTORATION ORDER");
   drawTable(ctx, Array.isArray(payload?.cards) ? payload.cards : []);
@@ -465,23 +593,26 @@ export async function buildOrderContractPdf(payload) {
   for (const para of AGREEMENT_PARAS) {
     drawWrappedParagraph(ctx, para);
   }
-  drawWrappedParagraph(ctx, "1. Receive the damaged card back, with no payment from PokéPatch;", {
-    indent: 12,
-  });
+  drawWrappedParagraph(
+    ctx,
+    "1. Receive the damaged card back, with no payment from PokéPatch;",
+    { indent: 10 }
+  );
   drawWrappedParagraph(
     ctx,
     "2. Receive the Near Mint Raw Market Value, in which case PokéPatch will retain the damaged card.",
-    { indent: 12 }
+    { indent: 10 }
   );
   drawWrappedParagraph(ctx, "Covered damage includes:");
   for (const item of DAMAGES) {
-    drawWrappedParagraph(ctx, item, { bullet: true, indent: 8 });
+    drawWrappedParagraph(ctx, item, { bullet: true, indent: 10 });
   }
   for (const para of AGREEMENT_TAIL) {
     drawWrappedParagraph(ctx, para);
   }
 
   drawSignatureBlock(ctx, payload ?? {}, signatureImage);
+  drawPageNumbers(doc, font);
 
   return doc.save();
 }
