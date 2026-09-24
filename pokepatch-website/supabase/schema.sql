@@ -42,8 +42,8 @@
 --                                   (when p_cards provided, omitted cards are deleted)
 --   get_queue_card_count()         — public; { todo, in_progress, completed };
 --                                   todo = cards.status todo on orders status=new (To do)
---   get_public_queue()             — public; anonymized priority + regular lanes
---   get_public_queue_order(id)     — public; cards (name/set/catalog art) for one display_id
+--   get_public_queue()             — public; in_progress + anonymized priority/regular lanes
+--   get_public_queue_order(id)     — public; cards for one display_id (new or in_progress)
 --   orders.queue_priority          — relative rank within status (0..n-1 per column)
 --   get_my_orders.queue_position   — 1-based place among status=new
 --   get_my_order.queue_position    — same; null once order leaves To do

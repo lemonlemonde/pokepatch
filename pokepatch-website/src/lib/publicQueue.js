@@ -7,17 +7,20 @@ function parseLane(rows) {
     display_id: Number(row.display_id),
     lane_position: Number(row.lane_position) || 0,
     card_count: Number(row.card_count) || 0,
+    is_priority: Boolean(row.is_priority),
   }));
 }
 
 /**
- * Public anonymized dual queue (priority + regular). No customer PII.
+ * Public anonymized board: in progress + priority/standard To do lanes.
+ * No customer PII.
  */
 export async function fetchPublicQueue() {
   if (!isSupabaseConfigured || !supabase) return null;
   const { data, error } = await supabase.rpc("get_public_queue");
   if (error) throw error;
   return {
+    in_progress: parseLane(data?.in_progress),
     priority: parseLane(data?.priority),
     regular: parseLane(data?.regular),
   };
@@ -32,7 +35,8 @@ function catalogImageForCard(card) {
 }
 
 /**
- * Cards for one queued order by public display id. Null if not in To do.
+ * Cards for one board order by public display id.
+ * Null if not in To do or In progress.
  */
 export async function fetchPublicQueueOrder(displayId) {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -50,12 +54,14 @@ export async function fetchPublicQueueOrder(displayId) {
         card_name: card.card_name ?? "",
         set_name: card.set_name ?? "",
         catalog_image_url: catalogImageForCard(card),
+        damage_tags: Array.isArray(card.damage_tags) ? card.damage_tags : [],
         sort_order: card.sort_order ?? 0,
       }))
     : [];
 
   return {
     display_id: Number(data.display_id),
+    status: data.status ?? null,
     is_priority: Boolean(data.is_priority),
     lane_position: Number(data.lane_position) || null,
     queue_position: Number(data.queue_position) || null,
