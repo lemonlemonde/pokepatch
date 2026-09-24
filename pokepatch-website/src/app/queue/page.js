@@ -218,17 +218,21 @@ function InProgressStrip({
                 aria-label={`${mine ? "Your order, " : ""}In progress, ${cardCountLabel(order.card_count)}`}
                 className={`block w-[4.25rem] rounded-lg border p-1.5 text-left transition sm:w-[4.75rem] ${orderShellClass(open, mine)}`}
               >
-                <CardArt
-                  src={lead?.catalog_image_url ?? ""}
-                  className="w-full"
-                />
-                <span className="mt-1.5 flex flex-col gap-0.5">
-                  {mine ? <YourOrderLabel /> : null}
-                  <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
-                    {order.is_priority ? <CustomerPriorityBadge /> : null}
-                    <span className="tabular-nums">
-                      {cardCountLabel(order.card_count)}
+                <span className="relative block">
+                  <CardArt
+                    src={lead?.catalog_image_url ?? ""}
+                    className="w-full"
+                  />
+                  {mine ? (
+                    <span className="absolute left-0.5 top-0.5 rounded border border-peach/50 bg-night/90 px-1 py-0.5 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-peach shadow-sm">
+                      Yours
                     </span>
+                  ) : null}
+                </span>
+                <span className="mt-1.5 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
+                  {order.is_priority ? <CustomerPriorityBadge /> : null}
+                  <span className="tabular-nums">
+                    {cardCountLabel(order.card_count)}
                   </span>
                 </span>
               </button>
