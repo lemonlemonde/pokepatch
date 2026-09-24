@@ -55,7 +55,7 @@ function latestActivityAt(order) {
 
 /**
  * Compact My Orders list row — detail/edit lives on /my-orders/[orderId].
- * Status is the only word chip; priority is a compact P badge; unread is a count badge.
+ * Status is the only word chip; priority is a yellow star badge; unread is a count badge.
  */
 export default function OrderCard({ order }) {
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -85,7 +85,7 @@ export default function OrderCard({ order }) {
   });
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
-  // Compact P badge carries priority; keep queue chip text without a Priority prefix.
+  // Star badge carries priority; keep queue chip text without a Priority prefix.
   const statusChipLabel = customerOrderStatusChipLabel(order, {
     isPriority: false,
   });
