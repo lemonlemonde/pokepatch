@@ -13,6 +13,8 @@ import { fetchPublicQueue } from "@/lib/publicQueue";
 
 const REFRESH_MS = 60_000;
 const PREVIEW_NAMES = 4;
+const H_SCROLL =
+  "overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 function formatUpdatedAt(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
@@ -76,6 +78,20 @@ function CardArt({ src, className = "" }) {
   );
 }
 
+function DamageChips({ tags, chipClassName }) {
+  const damage = labeledDamageTags(tags);
+  if (!damage.length) return null;
+  return (
+    <ul className="mt-1.5 flex flex-wrap gap-1">
+      {damage.map((tag) => (
+        <li key={tag.id} className={chipClassName}>
+          {tag.label}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Full card list for one order: art, name, set, selected damage. */
 function CardList({ cards }) {
   if (!cards.length) {
@@ -83,58 +99,121 @@ function CardList({ cards }) {
   }
   return (
     <ul className="space-y-2.5">
-      {cards.map((card, index) => {
-        const damage = labeledDamageTags(card.damage_tags);
-        return (
-          <li
-            key={`${card.card_name}-${card.set_name}-${index}`}
-            className="flex items-start gap-3"
-          >
-            <CardArt src={card.catalog_image_url} className="w-14 sm:w-16" />
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="truncate text-sm font-medium leading-snug text-ink">
-                {card.card_name || "Untitled card"}
+      {cards.map((card, index) => (
+        <li
+          key={`${card.card_name}-${card.set_name}-${index}`}
+          className="flex items-start gap-3"
+        >
+          <CardArt src={card.catalog_image_url} className="w-14 sm:w-16" />
+          <div className="min-w-0 flex-1 pt-0.5">
+            <p className="truncate text-sm font-medium leading-snug text-ink">
+              {card.card_name || "Untitled card"}
+            </p>
+            {card.set_name ? (
+              <p className="truncate text-xs leading-snug text-ink/50">
+                {card.set_name}
               </p>
-              {card.set_name ? (
-                <p className="truncate text-xs leading-snug text-ink/50">
-                  {card.set_name}
-                </p>
-              ) : null}
-              {damage.length > 0 ? (
-                <ul className="mt-1.5 flex flex-wrap gap-1">
-                  {damage.map((tag) => (
-                    <li
-                      key={tag.id}
-                      className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink/65"
-                    >
-                      {tag.label}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </li>
-        );
-      })}
+            ) : null}
+            <DamageChips
+              tags={card.damage_tags}
+              chipClassName="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-ink/65"
+            />
+          </div>
+        </li>
+      ))}
     </ul>
   );
 }
 
-/** Being worked on right now — cards shown outright, nothing to click. */
-function InProgressTile({ order, highlighted, tileRef }) {
+/** Horizontal filmstrip of cards for the in-progress detail row. */
+function CardFilmstrip({ cards }) {
+  if (!cards.length) {
+    return <p className="text-xs text-ink/45">No cards on this order.</p>;
+  }
   return (
-    <li
-      ref={tileRef}
-      className={`rounded-lg border bg-ink/[0.02] p-3 sm:p-4 ${
-        highlighted ? "border-mint/50 ring-1 ring-mint/40" : "border-ink/10"
-      }`}
-    >
-      <div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
-        {order.is_priority ? <CustomerPriorityBadge /> : null}
-        <span>{cardCountLabel(order.card_count)}</span>
-      </div>
-      <CardList cards={order.cards} />
-    </li>
+    <ul className={`flex gap-3 pb-1 ${H_SCROLL}`}>
+      {cards.map((card, index) => (
+        <li
+          key={`${card.card_name}-${card.set_name}-${index}`}
+          className="w-[5.5rem] shrink-0 sm:w-28"
+        >
+          <CardArt src={card.catalog_image_url} className="w-full" />
+          <p className="mt-1.5 line-clamp-2 text-[11px] font-medium leading-snug text-ink">
+            {card.card_name || "Untitled card"}
+          </p>
+          {card.set_name ? (
+            <p className="mt-0.5 line-clamp-1 text-[10px] text-ink/50">
+              {card.set_name}
+            </p>
+          ) : null}
+          <DamageChips
+            tags={card.damage_tags}
+            chipClassName="rounded border border-ink/12 bg-ink/[0.04] px-1 py-0.5 text-[9px] font-semibold leading-none text-ink/65"
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * In progress: one thumbnail per order in a row. Selecting an order opens
+ * its full card filmstrip in a single row underneath.
+ */
+function InProgressStrip({ orders, openId, onToggle, registerRef }) {
+  const selected =
+    orders.find((order) => order.display_id === openId) ?? null;
+  const panelId = "queue-in-progress-detail";
+
+  return (
+    <div>
+      <ul className={`flex gap-2.5 pb-1 sm:gap-3 ${H_SCROLL}`}>
+        {orders.map((order) => {
+          const open = openId === order.display_id;
+          const lead = order.cards[0];
+          return (
+            <li
+              key={order.display_id}
+              ref={registerRef(order.display_id)}
+              className="shrink-0"
+            >
+              <button
+                type="button"
+                onClick={() => onToggle(order.display_id)}
+                aria-expanded={open}
+                aria-controls={panelId}
+                aria-label={`In progress order, ${cardCountLabel(order.card_count)}`}
+                className={`block w-[4.25rem] rounded-lg border p-1.5 text-left transition sm:w-[4.75rem] ${
+                  open
+                    ? "border-mint/50 ring-1 ring-mint/40"
+                    : "border-ink/10 bg-ink/[0.02] hover:border-ink/25"
+                }`}
+              >
+                <CardArt
+                  src={lead?.catalog_image_url ?? ""}
+                  className="w-full"
+                />
+                <span className="mt-1.5 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
+                  {order.is_priority ? <CustomerPriorityBadge /> : null}
+                  <span className="tabular-nums">
+                    {cardCountLabel(order.card_count)}
+                  </span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <ExpandPanel open={selected != null}>
+        <div
+          id={panelId}
+          className="mt-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-3 sm:p-4"
+        >
+          {selected ? <CardFilmstrip cards={selected.cards} /> : null}
+        </div>
+      </ExpandPanel>
+    </div>
   );
 }
 
@@ -382,16 +461,12 @@ function QueuePageInner() {
                   Nothing on the bench right now.
                 </p>
               ) : (
-                <ul className="grid items-start gap-3 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]">
-                  {inProgress.map((order) => (
-                    <InProgressTile
-                      key={order.display_id}
-                      order={order}
-                      highlighted={openId === order.display_id}
-                      tileRef={registerRef(order.display_id)}
-                    />
-                  ))}
-                </ul>
+                <InProgressStrip
+                  orders={inProgress}
+                  openId={openId}
+                  onToggle={handleToggle}
+                  registerRef={registerRef}
+                />
               )}
             </section>
           </ScrollReveal>
