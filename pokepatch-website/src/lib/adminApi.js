@@ -635,6 +635,52 @@ export async function adminApplyGalleryTcgThumbnail(itemId, cardId) {
   return payload.item;
 }
 
+/** Apply Pokémon TCG catalog art to an order card (public queue thumbnail). */
+export async function adminApplyOrderCardTcg(orderCardId, tcgCardId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "order_card_tcg_apply",
+      order_card_id: orderCardId,
+      card_id: tcgCardId,
+    },
+  });
+  if (!payload.card) {
+    throw new Error("Could not apply catalog thumbnail.");
+  }
+  return payload.card;
+}
+
+export async function adminUploadOrderCardCatalog(orderCardId, file) {
+  const formData = new FormData();
+  formData.append("kind", "order_card_catalog");
+  formData.append("card_id", orderCardId);
+  formData.append("file", file);
+
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    formData,
+  });
+  if (!payload.card) {
+    throw new Error("Could not upload catalog thumbnail.");
+  }
+  return payload.card;
+}
+
+export async function adminClearOrderCardCatalog(orderCardId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "order_card_catalog_clear",
+      order_card_id: orderCardId,
+    },
+  });
+  if (!payload.card) {
+    throw new Error("Could not clear catalog thumbnail.");
+  }
+  return payload.card;
+}
+
 export async function adminMessageHistory({ email, order_id, limit } = {}) {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

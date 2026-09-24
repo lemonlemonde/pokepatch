@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
 import ScrollReveal from "@/components/marketing/ScrollReveal";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -112,14 +113,22 @@ export default function QueueCount() {
             dotClass="bg-status-green"
           />
         </div>
-        {updatedLabel ? (
-          <p
-            className="mt-6 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/35"
-            aria-live="polite"
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {updatedLabel ? (
+            <p
+              className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/35"
+              aria-live="polite"
+            >
+              Updated {updatedLabel}
+            </p>
+          ) : null}
+          <Link
+            href="/queue/"
+            className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/55 underline decoration-ink/20 underline-offset-4 transition hover:text-ink"
           >
-            Updated {updatedLabel}
-          </p>
-        ) : null}
+            View full queue →
+          </Link>
+        </div>
       </ScrollReveal>
     </section>
   );

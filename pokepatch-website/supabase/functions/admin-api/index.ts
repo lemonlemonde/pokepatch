@@ -173,6 +173,107 @@ function tcgThumbnailStoragePath(itemId: string, cardId: string): string {
   return `item-${itemId}/tcg-${slug}.thumb.webp`;
 }
 
+function orderCardCatalogStoragePath(cardId: string): string {
+  return `order-catalog/${cardId}/thumb.webp`;
+}
+
+function isOrderCatalogStorageUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return /\/order-catalog\//.test(url) || /order-catalog%2F/i.test(url);
+}
+
+async function clearOrderCardCatalogStorage(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string,
+  previousUrl: string | null | undefined
+) {
+  if (!isOrderCatalogStorageUrl(previousUrl)) return;
+  const path = orderCardCatalogStoragePath(cardId);
+  await supabase.storage.from(GALLERY_BUCKET).remove([path]);
+}
+
+async function handleOrderCardCatalogUpload(
+  req: Request,
+  form: FormData,
+  supabase: ReturnType<typeof getServiceClient>
+) {
+  const cardId = String(form.get("card_id") ?? "").trim();
+  const file = form.get("file");
+
+  if (!cardId) {
+    return jsonResponse(req, { ok: false, error: "card_id required" }, 400);
+  }
+  if (!(file instanceof File)) {
+    return jsonResponse(req, { ok: false, error: "file required" }, 400);
+  }
+  if (!file.type.startsWith("image/")) {
+    return jsonResponse(req, { ok: false, error: "image required" }, 400);
+  }
+  const allowedThumbTypes = new Set([
+    "image/webp",
+    "image/jpeg",
+    "image/png",
+  ]);
+  if (!allowedThumbTypes.has(file.type)) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "thumbnail must be WebP, JPEG, or PNG" },
+      400
+    );
+  }
+  if (file.size > MAX_GALLERY_CARD_THUMB_BYTES) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "thumbnail too large — recompress before uploading" },
+      413
+    );
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("cards")
+    .select("id, catalog_image_url")
+    .eq("id", cardId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) {
+    return jsonResponse(
+      req,
+      { ok: false, error: "card not found — save the order first" },
+      404
+    );
+  }
+
+  const path = orderCardCatalogStoragePath(cardId);
+  const { error: uploadError } = await supabase.storage
+    .from(GALLERY_BUCKET)
+    .upload(path, file, {
+      upsert: true,
+      contentType: file.type || "image/webp",
+      cacheControl: GALLERY_CACHE_CONTROL,
+    });
+  if (uploadError) throw uploadError;
+
+  const publicUrl = galleryPublicUrl(
+    supabase,
+    path,
+    String(Date.now())
+  );
+
+  const { data: updated, error: updateError } = await supabase
+    .from("cards")
+    .update({
+      catalog_image_url: publicUrl,
+      // Custom upload replaces API art; keep tcg id cleared so queue uses this file.
+      tcg_card_id: null,
+    })
+    .eq("id", cardId)
+    .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+    .single();
+  if (updateError) throw updateError;
+
+  return jsonResponse(req, { ok: true, card: updated });
+}
+
 function detectMediaKindFromPath(path: string | null | undefined): "image" | "video" {
   if (!path) return "image";
   return /\.(mp4|webm|mov)(\?|$)/i.test(path) ? "video" : "image";
@@ -804,7 +905,7 @@ async function fetchOrderGraph(
 
   const [
     { data: contacts, error: contactsError },
-    { data: cards, error: cardsError },
+    cardsResult,
     quoteItemsResult,
     authUsers,
   ] = await Promise.all([
@@ -812,14 +913,41 @@ async function fetchOrderGraph(
       .from("contacts")
       .select("id, order_id, contact_type, value")
       .in("order_id", orderIds),
-    supabase
-      .from("cards")
-      .select(
-        "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status"
-      )
-      .in("order_id", orderIds)
-      .order("sort_order", { ascending: true })
-      .order("id", { ascending: true }),
+    (async () => {
+      const withCatalog = await supabase
+        .from("cards")
+        .select(
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, tcg_card_id, catalog_image_url"
+        )
+        .in("order_id", orderIds)
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true });
+      if (
+        !withCatalog.error ||
+        !/tcg_card_id|catalog_image_url|42703/i.test(
+          `${withCatalog.error.message ?? ""} ${withCatalog.error.details ?? ""} ${withCatalog.error.code ?? ""}`
+        )
+      ) {
+        return withCatalog;
+      }
+      const legacy = await supabase
+        .from("cards")
+        .select(
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status"
+        )
+        .in("order_id", orderIds)
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true });
+      if (legacy.error) return legacy;
+      return {
+        data: (legacy.data ?? []).map((card) => ({
+          ...card,
+          tcg_card_id: null,
+          catalog_image_url: null,
+        })),
+        error: null,
+      };
+    })(),
     supabase
       .from("order_quote_items")
       .select(
@@ -829,6 +957,7 @@ async function fetchOrderGraph(
       .order("sort_order", { ascending: true }),
     listAllAuthUsers(supabase),
   ]);
+  const { data: cards, error: cardsError } = cardsResult;
   if (contactsError) throw contactsError;
   if (cardsError) throw cardsError;
   // Table may not exist until migration; treat as empty quote list.
@@ -1962,6 +2091,9 @@ Deno.serve(async (req) => {
       if (kind === "gallery_thumbnail") {
         return await handleGalleryThumbnailUpload(req, form, supabase);
       }
+      if (kind === "order_card_catalog") {
+        return await handleOrderCardCatalogUpload(req, form, supabase);
+      }
       if (kind === "order_contract") {
         return await handleOrderContractUpload(req, form, supabase);
       }
@@ -2849,6 +2981,103 @@ Deno.serve(async (req) => {
           err instanceof Error ? err.message : "Could not apply TCG thumbnail";
         return jsonResponse(req, { ok: false, error: message }, 502);
       }
+    }
+
+    // Official catalog art for public queue (not customer photos).
+    if (action === "order_card_tcg_apply") {
+      const orderCardId = String(body.order_card_id ?? body.card_row_id ?? "").trim();
+      const tcgId = String(body.card_id ?? body.tcg_card_id ?? "").trim();
+      if (!orderCardId || !tcgId) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_card_id and card_id required" },
+          400
+        );
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("cards")
+        .select("id, catalog_image_url")
+        .eq("id", orderCardId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "card not found — save the order first" },
+          404
+        );
+      }
+
+      try {
+        const tcgCard = await fetchPokemonTcgCard(tcgId);
+        if (!tcgCard) {
+          return jsonResponse(req, { ok: false, error: "card not found" }, 404);
+        }
+        const imageUrl =
+          tcgCard.image_small?.trim() || tcgCardImageSmallUrl(tcgCard.id);
+
+        // Drop any previous custom upload in gallery storage.
+        await clearOrderCardCatalogStorage(
+          supabase,
+          orderCardId,
+          existing.catalog_image_url as string | null
+        );
+
+        const { data: updated, error: updateError } = await supabase
+          .from("cards")
+          .update({
+            tcg_card_id: tcgCard.id,
+            catalog_image_url: imageUrl,
+          })
+          .eq("id", orderCardId)
+          .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+          .single();
+        if (updateError) throw updateError;
+
+        return jsonResponse(req, { ok: true, card: updated, tcg: tcgCard });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Could not apply TCG thumbnail";
+        return jsonResponse(req, { ok: false, error: message }, 502);
+      }
+    }
+
+    if (action === "order_card_catalog_clear") {
+      const orderCardId = String(body.order_card_id ?? body.card_id ?? "").trim();
+      if (!orderCardId) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_card_id required" },
+          400
+        );
+      }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("cards")
+        .select("id, catalog_image_url")
+        .eq("id", orderCardId)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (!existing) {
+        return jsonResponse(req, { ok: false, error: "card not found" }, 404);
+      }
+
+      await clearOrderCardCatalogStorage(
+        supabase,
+        orderCardId,
+        existing.catalog_image_url as string | null
+      );
+
+      const { data: updated, error: updateError } = await supabase
+        .from("cards")
+        .update({ tcg_card_id: null, catalog_image_url: null })
+        .eq("id", orderCardId)
+        .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+        .single();
+      if (updateError) throw updateError;
+
+      return jsonResponse(req, { ok: true, card: updated });
     }
 
     if (action === "messages_list_orders") {
