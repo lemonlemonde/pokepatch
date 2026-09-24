@@ -48,7 +48,8 @@
 --   orders.queue_priority          — relative rank within status (0..n-1 per column)
 --   get_my_orders.queue_position   — 1-based place among status=new
 --   get_my_order.queue_position    — same; null once order leaves To do
---   cards.tcg_card_id / catalog_image_url — optional official art for public queue
+--   cards.tcg_card_id / catalog_image_url / catalog_card_name / catalog_set_name
+--                                   — optional official art + title for public queue
 --   reorder_status_orders(status, ids[]) / move_order_in_status(...) — service_role; kanban
 --
 -- Webhook: orders INSERT → notify edge function (new path).

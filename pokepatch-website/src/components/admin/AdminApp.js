@@ -417,6 +417,8 @@ function KanbanCard({
   onContextMenu,
   dragging,
   showPendingChip = false,
+  showPublish = false,
+  onPublish,
   onSetPendingKind,
   suppressInspect = false,
 }) {
@@ -558,6 +560,25 @@ function KanbanCard({
           onInteract={hideInspect}
           disabled={dragging}
         />
+      ) : null}
+      {showPublish ? (
+        <button
+          type="button"
+          draggable={false}
+          disabled={dragging}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            hideInspect();
+            onPublish?.(order);
+          }}
+          onMouseDown={(event) => event.stopPropagation()}
+          className="shrink-0 rounded border border-ink/20 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink/65 transition hover:border-ink/40 hover:text-ink disabled:opacity-40"
+          title="Publish queue art & titles"
+          aria-label={`Publish queue art for order #${order.display_id}`}
+        >
+          Publish
+        </button>
       ) : null}
       <button
         type="button"
@@ -821,6 +842,7 @@ function KanbanBoard({
   onRequestDelete,
   onViewAllOrders,
   onCreateOrder,
+  onPublishQueue,
   suppressInspect = false,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
@@ -1021,6 +1043,10 @@ function KanbanBoard({
               onContextMenu={handleCardContextMenu}
               dragging={dragOrderId === order.id}
               showPendingChip={status.id === "pending"}
+              showPublish={
+                status.id === "new" || status.id === "in_progress"
+              }
+              onPublish={onPublishQueue}
               onSetPendingKind={onSetPendingKind}
               suppressInspect={suppressInspect}
             />
@@ -2047,6 +2073,13 @@ export default function AdminApp() {
                   setListError("");
                   setCreateOrderOpen(true);
                 }}
+                onPublishQueue={(order) => {
+                  setQueueCatalogPrompt({
+                    mode: "publish",
+                    orderId: order.id,
+                    displayId: order.display_id,
+                  });
+                }}
                 suppressInspect={Boolean(
                   movePrompt || queueCatalogPrompt || deleteTargets?.length
                 )}
@@ -2067,11 +2100,17 @@ export default function AdminApp() {
               />
               {queueCatalogPrompt ? (
                 <QueueCatalogDialog
+                  key={`${queueCatalogPrompt.mode ?? "move"}-${queueCatalogPrompt.orderId}`}
                   open
+                  mode={queueCatalogPrompt.mode ?? "move"}
                   orderId={queueCatalogPrompt.orderId}
                   displayId={queueCatalogPrompt.displayId}
                   onCancel={() => setQueueCatalogPrompt(null)}
                   onContinue={() => {
+                    if (queueCatalogPrompt.mode === "publish") {
+                      setQueueCatalogPrompt(null);
+                      return;
+                    }
                     setMovePrompt(queueCatalogPrompt);
                     setQueueCatalogPrompt(null);
                   }}

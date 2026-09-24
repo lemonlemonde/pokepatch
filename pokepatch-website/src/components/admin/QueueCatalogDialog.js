@@ -20,31 +20,43 @@ function catalogPreviewUrl(card) {
   return "";
 }
 
+function displayCardName(card) {
+  const catalog = (card?.catalog_card_name ?? "").trim();
+  if (catalog) return catalog;
+  return (card?.card_name ?? "").trim() || "Untitled card";
+}
+
+function displaySetName(card) {
+  const catalog = (card?.catalog_set_name ?? "").trim();
+  if (catalog) return catalog;
+  return (card?.set_name ?? "").trim();
+}
+
 /**
- * Shown when an order is dragged into the To do / queue column.
- * Lets admin attach official catalog art before the move/notify prompt.
+ * Catalog art + official titles for the public queue.
+ * `mode="move"` — before dragging into To do (Continue → move/notify).
+ * `mode="publish"` — edit art/titles on an order already in the queue (Done closes).
  */
 export default function QueueCatalogDialog({
   open,
   orderId,
   displayId,
+  mode = "move",
   onCancel,
   onContinue,
 }) {
   const [cards, setCards] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
 
   const { mounted, visible } = useOverlayPresence(open);
+  const publishOnly = mode === "publish";
 
   useEffect(() => {
     if (!open || !orderId) return undefined;
 
     let cancelled = false;
-    setLoading(true);
-    setError("");
-    setExpandedId(null);
 
     adminGetOrder(orderId)
       .then((order) => {
@@ -57,19 +69,22 @@ export default function QueueCatalogDialog({
             set_name: card.set_name ?? "",
             tcg_card_id: card.tcg_card_id ?? "",
             catalog_image_url: card.catalog_image_url ?? "",
+            catalog_card_name: card.catalog_card_name ?? "",
+            catalog_set_name: card.catalog_set_name ?? "",
           }));
         setCards(next);
-        if (next.length === 1) setExpandedId(String(next[0].id));
+        setExpandedId(next.length === 1 ? String(next[0].id) : null);
+        setError("");
+        setLoading(false);
       })
       .catch((err) => {
         if (cancelled) return;
         setCards([]);
+        setExpandedId(null);
         setError(
           err instanceof Error ? err.message : "Could not load order cards."
         );
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       });
 
     return () => {
@@ -115,8 +130,11 @@ export default function QueueCatalogDialog({
             {title}
           </h2>
           <p className="mt-1 text-xs text-ink/50">
-            Official card art for the public queue page — not customer photos.
-            Continue without art if you prefer to add it later.
+            Official card art and titles for the public queue — not customer
+            photos.
+            {publishOnly
+              ? " Changes save as you apply them."
+              : " Continue without art if you prefer to add it later."}
           </p>
         </div>
 
@@ -137,8 +155,8 @@ export default function QueueCatalogDialog({
             const id = String(card.id);
             const expanded = expandedId === id;
             const preview = catalogPreviewUrl(card);
-            const name = (card.card_name ?? "").trim() || "Untitled card";
-            const set = (card.set_name ?? "").trim();
+            const name = displayCardName(card);
+            const set = displaySetName(card);
 
             return (
               <div
@@ -204,6 +222,10 @@ export default function QueueCatalogDialog({
                                   tcg_card_id: updated.tcg_card_id ?? "",
                                   catalog_image_url:
                                     updated.catalog_image_url ?? "",
+                                  catalog_card_name:
+                                    updated.catalog_card_name ?? "",
+                                  catalog_set_name:
+                                    updated.catalog_set_name ?? "",
                                 }
                               : entry
                           )
@@ -218,20 +240,32 @@ export default function QueueCatalogDialog({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-ink/10 px-5 py-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onContinue}
-            className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
-          >
-            Continue
-          </button>
+          {publishOnly ? (
+            <button
+              type="button"
+              onClick={onContinue}
+              className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+            >
+              Done
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onCancel}
+                className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onContinue}
+                className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+              >
+                Continue
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
