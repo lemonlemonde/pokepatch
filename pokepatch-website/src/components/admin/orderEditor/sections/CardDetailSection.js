@@ -421,111 +421,92 @@ export default function CardDetailSection({
           : "border-ink/10 bg-cream/40 hover:border-ink/25"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onExpandedChange?.(!expanded)}
-        aria-expanded={expanded}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left sm:px-5"
-      >
-        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink/10 text-[11px] font-bold tabular-nums text-ink/55">
-          {cardIndex + 1}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate">
-            <span className="text-sm font-semibold text-ink">{cardName}</span>
-            {cardSet ? (
-              <span className="text-sm text-ink/45"> · {cardSet}</span>
-            ) : null}
-          </span>
-          {customerDamageTags.length > 0 ? (
-            <span className="mt-1 flex flex-wrap gap-1">
-              <DamageTagChips
-                tags={customerDamageTags}
-                className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
-              />
-            </span>
-          ) : (
-            <span className="mt-1 block text-[11px] font-medium text-ink/40">
-              No damage tags
-            </span>
-          )}
-        </span>
-        {subtotal > 0 ? (
-          <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
-            {formatMoney(subtotal)}
-          </span>
-        ) : null}
-        {card.is_priority ? (
-          <span className="inline-flex shrink-0 rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
-            Priority
-          </span>
-        ) : null}
-        <span
-          className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
-            cardStatus
-          )}`}
+      <div className="flex w-full items-center gap-2 px-4 py-3 sm:gap-3 sm:px-5">
+        <button
+          type="button"
+          onClick={() => onExpandedChange?.(!expanded)}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
         >
-          {statusLabel}
-        </span>
-        <ExpandChevron open={expanded} className="h-4 w-4 text-ink/35" />
-      </button>
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-ink/10 text-[11px] font-bold tabular-nums text-ink/55">
+            {cardIndex + 1}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">
+              <span className="text-sm font-semibold text-ink">{cardName}</span>
+              {cardSet ? (
+                <span className="text-sm text-ink/45"> · {cardSet}</span>
+              ) : null}
+            </span>
+            {customerDamageTags.length > 0 ? (
+              <span className="mt-1 flex flex-wrap gap-1">
+                <DamageTagChips
+                  tags={customerDamageTags}
+                  className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
+                />
+              </span>
+            ) : (
+              <span className="mt-1 block text-[11px] font-medium text-ink/40">
+                No damage tags
+              </span>
+            )}
+          </span>
+          {subtotal > 0 ? (
+            <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
+              {formatMoney(subtotal)}
+            </span>
+          ) : null}
+          <span
+            className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
+              cardStatus
+            )}`}
+          >
+            {statusLabel}
+          </span>
+          <ExpandChevron open={expanded} className="h-4 w-4 text-ink/35" />
+        </button>
+        <button
+          type="button"
+          disabled={saving}
+          aria-pressed={Boolean(card.is_priority)}
+          aria-label={
+            card.is_priority ? "Priority service on" : "Priority service off"
+          }
+          onClick={() => updateCard({ is_priority: !card.is_priority })}
+          className={`inline-flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full border px-1 text-[10px] font-bold uppercase leading-none tracking-[0.08em] transition disabled:opacity-50 ${
+            card.is_priority
+              ? "border-ink/40 bg-ink/20 text-ink"
+              : "border-ink/15 bg-transparent text-ink/30 hover:border-ink/30 hover:text-ink/55"
+          }`}
+        >
+          P
+        </button>
+      </div>
 
       <ExpandPanel
         open={expanded}
         innerClassName="space-y-5 border-t border-ink/10 px-4 pb-4 pt-4 sm:px-5 sm:pb-5"
       >
-          <label
-            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
-              card.is_priority
-                ? "border-ink/30 bg-ink/[0.08]"
-                : "border-ink/10 bg-night/20"
-            }`}
-          >
+        <FieldGrid>
+          <label className="block">
+            <EditorLabel>Card name</EditorLabel>
             <input
-              type="checkbox"
-              checked={Boolean(card.is_priority)}
+              className={editorFieldClass()}
+              value={card.card_name}
               disabled={saving}
-              onChange={(event) =>
-                updateCard({ is_priority: event.target.checked })
-              }
-              className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
+              onChange={(event) => updateCard({ card_name: event.target.value })}
             />
-            <span className="min-w-0 text-sm leading-relaxed text-ink/75">
-              <span className="flex flex-wrap items-center gap-2 font-semibold text-ink">
-                <span>Priority service</span>
-                {card.is_priority ? (
-                  <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
-                    Active
-                  </span>
-                ) : null}
-              </span>
-              <span className="mt-0.5 block text-xs text-ink/50">
-                $15 for this card. Saving a mix of priority and standard cards
-                splits this order in two.
-              </span>
-            </span>
           </label>
-
-          <FieldGrid>
-            <label className="block">
-              <EditorLabel>Card name</EditorLabel>
-              <input
-                className={editorFieldClass()}
-                value={card.card_name}
-                disabled={saving}
-                onChange={(event) => updateCard({ card_name: event.target.value })}
-              />
-            </label>
-            <label className="block">
-              <EditorLabel>Set</EditorLabel>
-              <input
-                className={editorFieldClass()}
-                value={card.set_name}
-                disabled={saving}
-                onChange={(event) => updateCard({ set_name: event.target.value })}
-              />
-            </label>
-          </FieldGrid>
+          <label className="block">
+            <EditorLabel>Set</EditorLabel>
+            <input
+              className={editorFieldClass()}
+              value={card.set_name}
+              disabled={saving}
+              onChange={(event) => updateCard({ set_name: event.target.value })}
+            />
+          </label>
+        </FieldGrid>
 
           <div>
             <EditorLabel>Damage</EditorLabel>

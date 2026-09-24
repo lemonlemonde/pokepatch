@@ -127,6 +127,7 @@ function OrderEditorContent({
     onError?.("");
     const card = emptyAdminCard();
     card.card_name = "New card";
+    card.is_priority = Boolean(draft.is_priority);
     updateDraft((base) => ({
       ...base,
       cards: [...base.cards, card],
