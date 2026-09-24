@@ -12,7 +12,7 @@ import { labeledDamageTags } from "@/lib/damageTags";
 import { fetchPublicQueue } from "@/lib/publicQueue";
 
 const REFRESH_MS = 60_000;
-const PREVIEW_THUMBS = 4;
+const PREVIEW_NAMES = 4;
 
 function formatUpdatedAt(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
@@ -90,7 +90,7 @@ function CardList({ cards }) {
             key={`${card.card_name}-${card.set_name}-${index}`}
             className="flex items-start gap-3"
           >
-            <CardArt src={card.catalog_image_url} className="w-10" />
+            <CardArt src={card.catalog_image_url} className="w-14 sm:w-16" />
             <div className="min-w-0 flex-1 pt-0.5">
               <p className="truncate text-sm font-medium leading-snug text-ink">
                 {card.card_name || "Untitled card"}
@@ -138,11 +138,14 @@ function InProgressTile({ order, highlighted, tileRef }) {
   );
 }
 
-/** Waiting order: position + art preview; expands in place to the full list. */
+/** Waiting order: card names in the bar; expands in place for art + damage. */
 function QueueRow({ order, laneTitle, open, onToggle, rowRef }) {
   const panelId = `queue-order-${order.display_id}`;
-  const preview = order.cards.slice(0, PREVIEW_THUMBS);
+  const preview = order.cards.slice(0, PREVIEW_NAMES);
   const overflow = order.cards.length - preview.length;
+  const namePreview = preview
+    .map((card) => card.card_name || "Untitled card")
+    .join(" · ");
 
   return (
     <li
@@ -165,18 +168,10 @@ function QueueRow({ order, laneTitle, open, onToggle, rowRef }) {
           {order.lane_position}
         </span>
 
-        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-          {preview.map((card, index) => (
-            <CardArt
-              key={`${card.card_name}-${index}`}
-              src={card.catalog_image_url}
-              className="w-6"
-            />
-          ))}
+        <span className="min-w-0 flex-1 truncate text-xs text-ink/70">
+          {namePreview || "No cards"}
           {overflow > 0 ? (
-            <span className="font-mono text-[10px] tabular-nums text-ink/45">
-              +{overflow}
-            </span>
+            <span className="text-ink/40"> · +{overflow}</span>
           ) : null}
         </span>
 
@@ -403,7 +398,7 @@ function QueuePageInner() {
 
           <ScrollReveal>
             <LaneLabel trailing={waitingCount}>Waiting</LaneLabel>
-            <div className="grid gap-6 sm:grid-cols-2 sm:gap-8">
+            <div className="grid items-start gap-6 sm:grid-cols-2 sm:gap-8">
               <WaitingLane
                 title="Priority"
                 priority
