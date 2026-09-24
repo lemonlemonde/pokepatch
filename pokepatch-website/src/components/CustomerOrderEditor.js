@@ -1031,8 +1031,6 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       />
       <PrioritySplitDialog
         open={splitConfirmOpen}
-        priorityCount={completeCards.filter((c) => c.isPriority).length}
-        standardCount={completeCards.filter((c) => !c.isPriority).length}
         confirmLabel="Save and split"
         onCancel={() => {
           setSplitConfirmOpen(false);

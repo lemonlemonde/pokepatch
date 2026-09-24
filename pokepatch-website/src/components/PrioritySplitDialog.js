@@ -6,7 +6,6 @@ import {
   overlayFadeClassName,
   useOverlayPresence,
 } from "@/components/ExpandReveal";
-import { PRIORITY_FEE_PER_CARD, formatMoney } from "@/lib/servicePricing";
 
 /**
  * Confirm before create/save when some cards are priority and some are not.
@@ -14,8 +13,6 @@ import { PRIORITY_FEE_PER_CARD, formatMoney } from "@/lib/servicePricing";
  */
 export default function PrioritySplitDialog({
   open,
-  priorityCount = 0,
-  standardCount = 0,
   onCancel,
   onConfirm,
   confirmLabel = "Continue",
@@ -32,8 +29,6 @@ export default function PrioritySplitDialog({
   }, [open, onCancel]);
 
   if (!mounted) return null;
-
-  const priorityFee = priorityCount * PRIORITY_FEE_PER_CARD;
 
   const dialog = (
     <div
@@ -60,12 +55,8 @@ export default function PrioritySplitDialog({
             id="priority-split-body"
             className="mt-1.5 text-sm leading-relaxed text-ink/70"
           >
-            Priority cards become their own order (
-            {priorityCount === 1 ? "1 card" : `${priorityCount} cards`},{" "}
-            {formatMoney(priorityFee)} priority fee). The rest stay on a
-            standard order (
-            {standardCount === 1 ? "1 card" : `${standardCount} cards`}).
-            Both show up under My Orders.
+            Priority cards become their own order. The rest stay on a standard
+            order. Both show up under My Orders.
           </p>
         </div>
         <div className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end">

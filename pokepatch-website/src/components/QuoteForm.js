@@ -1122,38 +1122,6 @@ export default function QuoteForm() {
                 </button>
               </div>
 
-              <label
-                className={`${optionClassName()} ${
-                  card.isPriority
-                    ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
-                    : ""
-                }`.trim()}
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(card.isPriority)}
-                  onChange={(e) => {
-                    onFormInteraction();
-                    updateCard(card.id, { isPriority: e.target.checked });
-                  }}
-                  className="mt-1 h-4 w-4 shrink-0 accent-ink"
-                />
-                <span className="text-sm leading-relaxed text-ink/80">
-                  <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
-                    <span>Priority service</span>
-                    {card.isPriority ? (
-                      <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
-                        Active
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mt-1 block text-ink/65">
-                    {priorityServicePricingHint(1)} Faster queue for this card
-                    only.
-                  </span>
-                </span>
-              </label>
-
               <div>
                 <label
                   htmlFor={`card_name_${card.id}`}
@@ -1306,6 +1274,31 @@ export default function QuoteForm() {
                   }`}
                 />
               </div>
+
+              <label
+                className={`${optionClassName()} ${
+                  card.isPriority
+                    ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
+                    : ""
+                }`.trim()}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(card.isPriority)}
+                  onChange={(e) => {
+                    onFormInteraction();
+                    updateCard(card.id, { isPriority: e.target.checked });
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-ink"
+                />
+                <span className="text-sm leading-relaxed text-ink/80">
+                  <span className="font-bold text-ink">Priority service</span>
+                  <span className="mt-1 block text-ink/65">
+                    {priorityServicePricingHint(1)} Faster queue for this card
+                    only.
+                  </span>
+                </span>
+              </label>
             </div>
           );
         })}
@@ -1378,16 +1371,6 @@ export default function QuoteForm() {
       />
 
       <div className="space-y-2">
-        {hasMixedCardPriority(completeCards) ? (
-          <p
-            className="rounded-2xl border border-ink/20 bg-ink/[0.06] px-4 py-3 text-sm text-ink/80"
-            role="status"
-          >
-            Priority and standard cards in one submission will split into{" "}
-            <span className="font-semibold text-ink">two orders</span> when you
-            submit — you&apos;ll confirm before it goes through.
-          </p>
-        ) : null}
         {showValidationError && (
           <p
             className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
@@ -1430,8 +1413,6 @@ export default function QuoteForm() {
     />
     <PrioritySplitDialog
       open={splitConfirmOpen}
-      priorityCount={completeCards.filter((c) => c.isPriority).length}
-      standardCount={completeCards.filter((c) => !c.isPriority).length}
       confirmLabel="Submit both orders"
       onCancel={() => {
         setSplitConfirmOpen(false);
