@@ -10,6 +10,7 @@ import {
   hasPriorityAdjustment,
   isPriorityAdjustmentRow,
   normalizeServiceDisplayTitle,
+  priorityBillableCards,
   priorityServiceDescription,
   priorityServiceFee,
   quoteAdjustmentLines,
@@ -44,18 +45,22 @@ export default function QuoteReceipt({
     Array.isArray(cards) && cards.length > 0
       ? billableQuoteCards(cards).length
       : cardCount ?? null;
-  const showPriorityLine =
-    (Boolean(isPriority) || hasPriorityAdjustment(adjustments)) &&
-    resolvedCardCount != null;
+  const priorityCount =
+    Array.isArray(cards) && cards.length > 0
+      ? priorityBillableCards(cards).length
+      : Boolean(isPriority) || hasPriorityAdjustment(adjustments)
+        ? resolvedCardCount
+        : 0;
+  const showPriorityLine = priorityCount != null && priorityCount > 0;
   const priorityFee = showPriorityLine
-    ? priorityServiceFee(resolvedCardCount)
+    ? priorityServiceFee(priorityCount)
     : 0;
   const total = computeQuoteTotal({
     items,
     cards,
     adjustments,
-    isPriority,
-    cardCount: resolvedCardCount,
+    isPriority: showPriorityLine,
+    cardCount: priorityCount,
   });
   const bodyOpen = !collapsible || open;
 
@@ -151,7 +156,7 @@ export default function QuoteReceipt({
         <div className="flex items-start justify-between gap-3 text-ink/80">
           <span className="min-w-0">
             <span className="text-ink/45">+ </span>
-            {priorityServiceDescription(resolvedCardCount)}
+            {priorityServiceDescription(priorityCount)}
           </span>
           <span className="shrink-0 tabular-nums">{formatMoney(priorityFee)}</span>
         </div>

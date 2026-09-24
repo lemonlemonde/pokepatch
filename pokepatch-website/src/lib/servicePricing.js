@@ -110,10 +110,10 @@ export function serviceSelectLabel(service) {
   return price ? `${service.title} (${price})` : service.title;
 }
 
-/** Paid priority service — flat per-card fee on the order. */
+/** Paid priority service — flat fee per priority card. */
 export const PRIORITY_FEE_PER_CARD = 15;
 
-/** Dollar fee for priority on an order with `cardCount` active cards. */
+/** Dollar fee for priority on an order with `cardCount` priority cards. */
 export function priorityServiceFee(cardCount) {
   const n = Math.floor(Number(cardCount));
   if (!Number.isFinite(n) || n <= 0) return 0;
@@ -138,6 +138,42 @@ export function priorityServicePricingHint(cardCount) {
     return `${rate}.`;
   }
   return `${rate}. ${count} cards: ${formatMoney(priorityServiceFee(count))} total.`;
+}
+
+/** Billable cards marked priority (`is_priority` or draft `isPriority`). */
+export function priorityBillableCards(cards) {
+  return billableQuoteCards(cards).filter(
+    (card) => Boolean(card?.is_priority) || Boolean(card?.isPriority)
+  );
+}
+
+/** True when some cards are priority and some are not (matches server mix check). */
+export function hasMixedCardPriority(cards) {
+  const list = cards ?? [];
+  if (list.length < 2) return false;
+  let hasPriority = false;
+  let hasStandard = false;
+  for (const card of list) {
+    if (Boolean(card?.is_priority) || Boolean(card?.isPriority)) {
+      hasPriority = true;
+    } else {
+      hasStandard = true;
+    }
+    if (hasPriority && hasStandard) return true;
+  }
+  return false;
+}
+
+/**
+ * Homogeneous priority flag for an order: true only when every billable card
+ * is priority (mixed carts split before this applies on the server).
+ */
+export function orderIsPriorityFromCards(cards) {
+  const billable = billableQuoteCards(cards);
+  if (billable.length === 0) return false;
+  return billable.every(
+    (card) => Boolean(card?.is_priority) || Boolean(card?.isPriority)
+  );
 }
 
 export const PRIORITY_ADJUSTMENT_LABEL = "Priority service";
@@ -184,26 +220,39 @@ export function syncPriorityQuoteAdjustments(
 }
 
 /**
- * Recompute the Priority service quote row from active (non-canceled) cards.
- * No-op when the draft has no priority flag and no priority adjustment row.
+ * Recompute order-level priority flag + Priority service quote row from
+ * per-card `is_priority`. Fee uses priority card count only. Mixed drafts
+ * still show a fee preview for priority cards; save splits into two orders.
  */
 export function syncDraftPriorityQuote(draft) {
   if (!draft) return draft;
+  const priorityCards = priorityBillableCards(draft.cards);
+  const priorityCount = priorityCards.length;
+  const isPriority = orderIsPriorityFromCards(draft.cards);
+  // Preview fee whenever any card is priority (including mixed pre-split).
+  const feeActive = priorityCount > 0;
   const hasPriorityRow = hasPriorityAdjustment(draft.quote_adjustments);
-  if (!draft.is_priority && !hasPriorityRow) return draft;
-  const count = billableQuoteCards(draft.cards).length;
+  if (!feeActive && !hasPriorityRow && !draft.is_priority) {
+    if (draft.is_priority === isPriority) return draft;
+    return { ...draft, is_priority: isPriority };
+  }
   const nextAdjustments = syncPriorityQuoteAdjustments(
-    Boolean(draft.is_priority),
-    count,
+    feeActive,
+    priorityCount,
     draft.quote_adjustments ?? []
   );
   if (
+    draft.is_priority === isPriority &&
     JSON.stringify(nextAdjustments) ===
-    JSON.stringify(draft.quote_adjustments ?? [])
+      JSON.stringify(draft.quote_adjustments ?? [])
   ) {
     return draft;
   }
-  return { ...draft, quote_adjustments: nextAdjustments };
+  return {
+    ...draft,
+    is_priority: isPriority,
+    quote_adjustments: nextAdjustments,
+  };
 }
 
 /**
@@ -348,7 +397,7 @@ function slabMarketingPanel() {
 
 const PRIORITY_PRICING_MARKETING = {
   title: "Priority",
-  features: ["Faster queue for your order"],
+  features: ["Per card — mixed carts become two orders"],
   bulk: [
     { label: "Per card", value: `$${PRIORITY_FEE_PER_CARD}` },
   ],
@@ -904,15 +953,22 @@ export function computeQuoteTotal({
     nonPriorityAdjustments,
     billableItems
   );
-  // Prefer live card list (canceled excluded) over a stale cardCount hint.
-  const count =
-    Array.isArray(cards) && cards.length > 0
-      ? billableCards.length
-      : cardCount ?? null;
-  const effectivePriority =
+  const wantsPriority =
     Boolean(isPriority) || hasPriorityAdjustment(adjustments);
+  let priorityCount = 0;
+  if (Array.isArray(cards) && cards.length > 0) {
+    const marked = priorityBillableCards(cards).length;
+    if (marked > 0) {
+      priorityCount = marked;
+    } else if (wantsPriority) {
+      // Order-level priority without per-card flags (legacy / homogeneous).
+      priorityCount = billableCards.length;
+    }
+  } else if (wantsPriority) {
+    priorityCount = cardCount ?? 0;
+  }
   const priorityFee =
-    effectivePriority && count != null ? priorityServiceFee(count) : 0;
+    priorityCount > 0 ? priorityServiceFee(priorityCount) : 0;
   return (
     Math.round((subtotal + cardHv + adjustmentTotal + priorityFee) * 100) / 100
   );

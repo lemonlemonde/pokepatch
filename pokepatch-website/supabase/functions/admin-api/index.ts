@@ -2307,6 +2307,28 @@ Deno.serve(async (req) => {
       });
       if (rpcError) throw rpcError;
 
+      let splitResult: Record<string, unknown> | null = null;
+      if (cards) {
+        const priorityPayload = cards.map(
+          (card: { id?: unknown; is_priority?: unknown }) => ({
+            id: card?.id,
+            is_priority: Boolean(card?.is_priority),
+          })
+        );
+        const { data: splitData, error: splitError } = await supabase.rpc(
+          "apply_card_priorities_and_split",
+          {
+            p_order_id: orderId,
+            p_cards: priorityPayload,
+          }
+        );
+        if (splitError) throw splitError;
+        splitResult =
+          splitData && typeof splitData === "object"
+            ? (splitData as Record<string, unknown>)
+            : null;
+      }
+
       if (hasAfterCompletion || hasRestorationCosts) {
         const ledgerPatch: Record<string, unknown> = {};
         if (hasAfterCompletion) {
@@ -2342,7 +2364,12 @@ Deno.serve(async (req) => {
       if (!order) {
         return jsonResponse(req, { ok: false, error: "order not found after save" }, 404);
       }
-      return jsonResponse(req, { ok: true, order, full: order });
+      return jsonResponse(req, {
+        ok: true,
+        order,
+        full: order,
+        split: splitResult,
+      });
     }
 
     if (action === "column_reorder") {

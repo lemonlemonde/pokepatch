@@ -282,37 +282,6 @@ export function OrderPanel() {
           </select>
         </label>
 
-        <label
-          className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
-            draft.is_priority
-              ? "border-ink/30 bg-ink/[0.08]"
-              : "border-ink/10 bg-night/20"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={Boolean(draft.is_priority)}
-            disabled={saving}
-            onChange={(event) => {
-              updateDraft({ is_priority: event.target.checked });
-            }}
-            className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
-          />
-          <span className="min-w-0 text-sm leading-relaxed text-ink/75">
-            <span className="flex flex-wrap items-center gap-2 font-semibold text-ink">
-              <span>Priority service</span>
-              {draft.is_priority ? (
-                <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
-                  Active
-                </span>
-              ) : null}
-            </span>
-            <span className="mt-0.5 block text-xs text-ink/50">
-              Faster queue handling. The priority fee is added automatically.
-            </span>
-          </span>
-        </label>
-
         <div>
           <div className="flex items-baseline justify-between gap-2">
             <EditorLabel>Drive folder</EditorLabel>

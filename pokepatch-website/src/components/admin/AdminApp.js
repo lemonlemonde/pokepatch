@@ -1354,6 +1354,16 @@ export default function AdminApp() {
     }
   }, []);
 
+  const syncOrderAfterSaveWithSplit = useCallback(
+    (refreshed, meta = {}) => {
+      syncOrderAfterSave(refreshed);
+      if (meta?.split?.split) {
+        void refreshOrders();
+      }
+    },
+    [refreshOrders, syncOrderAfterSave]
+  );
+
   useEffect(() => {
     let cancelled = false;
     async function boot() {
@@ -1989,7 +1999,7 @@ export default function AdminApp() {
                         ? "Back to all orders"
                         : "Back to board"
                     }
-                    onOrderUpdated={syncOrderAfterSave}
+                    onOrderUpdated={syncOrderAfterSaveWithSplit}
                     onDirtyChange={setEditorDirty}
                     onError={setEditorError}
                     externalError={editorError}
