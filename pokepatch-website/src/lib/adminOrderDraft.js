@@ -12,6 +12,7 @@ import {
   SERVICE_KEYS,
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
+  orderIsPriorityFromCards,
   packAdminLedger,
   packQuoteAdjustments,
   parseMoneyInput,
@@ -40,6 +41,7 @@ export function emptyAdminCard() {
     admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
+    is_priority: false,
     tcg_card_id: "",
     catalog_image_url: "",
     images: [],
@@ -258,6 +260,7 @@ export function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
+    is_priority: Boolean(card.is_priority),
     tcg_card_id: card.tcg_card_id ?? "",
     catalog_image_url: card.catalog_image_url ?? "",
     images: card.images ?? [],
@@ -283,7 +286,7 @@ export function orderToDraft(order) {
     heard_about_source: order.heard_about_source ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
-    is_priority: Boolean(order.is_priority),
+    is_priority: orderIsPriorityFromCards(cards),
     pending_kind: isPendingOrderStatus(order.status)
       ? normalizePendingKind(order.pending_kind)
       : null,
@@ -302,14 +305,15 @@ export function orderToDraft(order) {
 }
 
 export function draftPayload(draft) {
-  const quote_adjustments = syncDraftPriorityQuote(draft).quote_adjustments;
+  const synced = syncDraftPriorityQuote(draft);
+  const quote_adjustments = synced.quote_adjustments;
   const status = normalizeOrderStatus(draft.status);
   return {
     order: {
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
       photos_drive_url: draft.photos_drive_url.trim(),
-      is_priority: Boolean(draft.is_priority),
+      is_priority: orderIsPriorityFromCards(draft.cards),
       status,
       ...(status === "pending"
         ? { pending_kind: normalizePendingKind(draft.pending_kind) }
@@ -339,6 +343,7 @@ export function draftPayload(draft) {
       admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
+      is_priority: Boolean(card.is_priority),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))

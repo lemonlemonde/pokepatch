@@ -102,6 +102,7 @@ export default function OrderSaveChangesDialog({
   beforePayload,
   afterPayload,
   saving = false,
+  willSplit = false,
   onCancel,
   onConfirm,
 }) {
@@ -272,6 +273,13 @@ export default function OrderSaveChangesDialog({
               Customer gets an email and this appears in Messages.
             </p>
           )}
+          {willSplit && variant === "save" ? (
+            <p className="mt-3 rounded-xl border border-ink/15 bg-ink/[0.06] px-3 py-2 text-sm text-ink/80">
+              Priority cards will move to a{" "}
+              <strong className="font-semibold text-ink">new order</strong> on
+              save. You&apos;ll stay on this order with the remaining cards.
+            </p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">

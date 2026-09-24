@@ -25,8 +25,10 @@ import {
 } from "@/lib/imageCompression";
 import {
   CARD_WHITENING_WARNING,
+  hasMixedCardPriority,
   priorityServicePricingHint,
 } from "@/lib/servicePricing";
+import PrioritySplitDialog from "@/components/PrioritySplitDialog";
 import { supabase } from "@/lib/supabaseClient";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import {
@@ -65,6 +67,7 @@ function draftFromOrder(order) {
     setName: card.set_name ?? "",
     damageTags: normalizeDamageTags(card.damage_tags),
     description: card.description ?? "",
+    isPriority: Boolean(card.is_priority),
     existingImages: (card.images ?? [])
       .filter((image) => (image.image_type ?? "customer") === "customer")
       .map((image) => ({
@@ -88,7 +91,6 @@ function draftFromOrder(order) {
 
   return {
     deliveryMethod: order?.delivery_method ?? "",
-    isPriority: Boolean(order?.is_priority),
     contactValues,
     preferredContactId: preferred,
     cards: cards.length > 0 ? cards : [newEmptyCard()],
@@ -104,6 +106,7 @@ function newEmptyCard() {
     setName: "",
     damageTags: [],
     description: "",
+    isPriority: false,
     existingImages: [],
     newFiles: [],
   };
@@ -126,6 +129,9 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [whiteningDisclaimerCardId, setWhiteningDisclaimerCardId] =
     useState(null);
+  const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
+  const splitConfirmedRef = useRef(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     if (!user || !supabase || profileLoadedRef.current) return;
@@ -299,6 +305,13 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       return;
     }
 
+    const willSplit = hasMixedCardPriority(completeCards);
+    if (willSplit && !splitConfirmedRef.current) {
+      setSplitConfirmOpen(true);
+      return;
+    }
+    splitConfirmedRef.current = false;
+
     setStatus("saving");
     setErrorMessage("");
 
@@ -347,6 +360,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           set_name: card.setName.trim() || null,
           description: card.description.trim() || null,
           damage_tags: normalizeDamageTags(card.damageTags),
+          is_priority: Boolean(card.isPriority),
           images,
         });
       }
@@ -373,7 +387,6 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
       const payload = {
         delivery_method: draft.deliveryMethod,
-        is_priority: draft.isPriority,
         preferred_contact_type: preferredType,
         preferred_contact_value: preferredValue,
         contacts: CONTACT_TYPES.filter(
@@ -403,6 +416,14 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       }
 
       setStatus("idle");
+      if (data?.split) {
+        setErrorMessage("");
+        window.alert(
+          data?.split_result?.new_display_id != null
+            ? `Saved. Priority cards were moved to order #${data.split_result.new_display_id}.`
+            : "Saved. Priority cards were split into a separate order."
+        );
+      }
       onSaved?.(data);
     } catch (err) {
       setStatus("idle");
@@ -439,7 +460,12 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   );
 
   return (
-    <form onSubmit={handleSave} noValidate className="space-y-10">
+    <form
+      ref={formRef}
+      onSubmit={handleSave}
+      noValidate
+      className="space-y-10"
+    >
       {errorMessage ? (
         <p className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
           {errorMessage}
@@ -652,6 +678,38 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                   </button>
                 ) : null}
               </div>
+
+              <label
+                className={`${optionClassName()} ${
+                  card.isPriority
+                    ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
+                    : ""
+                }`.trim()}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(card.isPriority)}
+                  disabled={busy}
+                  onChange={(event) =>
+                    updateCard(card.id, { isPriority: event.target.checked })
+                  }
+                  className="mt-1 h-4 w-4 shrink-0 accent-ink"
+                />
+                <span className="text-sm leading-relaxed text-ink/80">
+                  <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
+                    <span>Priority service</span>
+                    {card.isPriority ? (
+                      <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
+                        Active
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="mt-1 block text-ink/65">
+                    {priorityServicePricingHint(1)} Faster queue for this card
+                    only.
+                  </span>
+                </span>
+              </label>
 
               <div>
                 <label
@@ -899,49 +957,16 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         </div>
       </section>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-xl font-bold text-ink">Priority service</h2>
-          <p className="mt-1 text-sm text-ink/60">
-            Optional faster handling for your whole order.
-          </p>
-        </div>
-        <label
-          className={`${optionClassName()} ${
-            draft.isPriority
-              ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
-              : ""
-          }`.trim()}
-        >
-          <input
-            type="checkbox"
-            checked={draft.isPriority}
-            disabled={busy}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                isPriority: event.target.checked,
-              }))
-            }
-            className="mt-1 h-4 w-4 shrink-0 accent-ink"
-          />
-          <span className="text-sm leading-relaxed text-ink/80">
-            <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
-              <span>Prioritize my order</span>
-              {draft.isPriority ? (
-                <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
-                  Active
-                </span>
-              ) : null}
-            </span>
-            <span className="mt-1 block text-ink/65">
-              {priorityServicePricingHint(Math.max(1, completeCards.length))}
-            </span>
-          </span>
-        </label>
-      </section>
-
       <div className="space-y-3 border-t border-ink/10 pt-6">
+        {hasMixedCardPriority(completeCards) ? (
+          <p
+            className="rounded-lg border border-ink/15 bg-ink/[0.05] px-4 py-3 text-sm text-ink/75"
+            role="status"
+          >
+            Saving with mixed priority will split priority cards into a
+            separate order.
+          </p>
+        ) : null}
         {showValidationError ? (
           <p
             className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
@@ -1003,6 +1028,21 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         open={whiteningDisclaimerCardId != null}
         onCancel={() => setWhiteningDisclaimerCardId(null)}
         onConfirm={confirmWhiteningDisclaimer}
+      />
+      <PrioritySplitDialog
+        open={splitConfirmOpen}
+        priorityCount={completeCards.filter((c) => c.isPriority).length}
+        standardCount={completeCards.filter((c) => !c.isPriority).length}
+        confirmLabel="Save and split"
+        onCancel={() => {
+          setSplitConfirmOpen(false);
+          splitConfirmedRef.current = false;
+        }}
+        onConfirm={() => {
+          setSplitConfirmOpen(false);
+          splitConfirmedRef.current = true;
+          formRef.current?.requestSubmit();
+        }}
       />
     </form>
   );

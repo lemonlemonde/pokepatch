@@ -455,6 +455,11 @@ export default function CardDetailSection({
             {formatMoney(subtotal)}
           </span>
         ) : null}
+        {card.is_priority ? (
+          <span className="inline-flex shrink-0 rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink">
+            Priority
+          </span>
+        ) : null}
         <span
           className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
             cardStatus
@@ -469,6 +474,38 @@ export default function CardDetailSection({
         open={expanded}
         innerClassName="space-y-5 border-t border-ink/10 px-4 pb-4 pt-4 sm:px-5 sm:pb-5"
       >
+          <label
+            className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 transition ${
+              card.is_priority
+                ? "border-ink/30 bg-ink/[0.08]"
+                : "border-ink/10 bg-night/20"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(card.is_priority)}
+              disabled={saving}
+              onChange={(event) =>
+                updateCard({ is_priority: event.target.checked })
+              }
+              className="mt-0.5 h-4 w-4 shrink-0 accent-ink"
+            />
+            <span className="min-w-0 text-sm leading-relaxed text-ink/75">
+              <span className="flex flex-wrap items-center gap-2 font-semibold text-ink">
+                <span>Priority service</span>
+                {card.is_priority ? (
+                  <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
+                    Active
+                  </span>
+                ) : null}
+              </span>
+              <span className="mt-0.5 block text-xs text-ink/50">
+                $15 for this card. Saving a mix of priority and standard cards
+                splits this order in two.
+              </span>
+            </span>
+          </label>
+
           <FieldGrid>
             <label className="block">
               <EditorLabel>Card name</EditorLabel>

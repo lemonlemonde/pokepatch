@@ -12,7 +12,12 @@ import {
   ensureQuoteItemsForCards,
   quoteItemBelongsToCard,
 } from "@/lib/adminOrderDraft";
-import { computeQuoteTotal, formatMoney, adminLedgerTotal } from "@/lib/servicePricing";
+import {
+  computeQuoteTotal,
+  formatMoney,
+  adminLedgerTotal,
+  priorityBillableCards,
+} from "@/lib/servicePricing";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
 import { buildCardThumbById } from "@/lib/orderChangelog";
@@ -67,6 +72,7 @@ function OrderEditorContent({
     setSavePromptOpen,
     beforePayload,
     afterPayload,
+    willSplit,
   } = useOrderEditor();
 
   const cards = draft.cards ?? [];
@@ -87,12 +93,13 @@ function OrderEditorContent({
     manualExpandId === undefined ? autoExpandId : manualExpandId;
 
   const preview = buildQuotePreview(draft);
+  const priorityCardCount = priorityBillableCards(draft.cards).length;
   const total = computeQuoteTotal({
     items: preview.items,
     cards: preview.cards,
     adjustments: preview.adjustments,
-    isPriority: Boolean(draft.is_priority),
-    cardCount: (draft.cards ?? []).length,
+    isPriority: priorityCardCount > 0,
+    cardCount: priorityCardCount,
   });
   const afterCompletionTotal = adminLedgerTotal(draft.after_completion_amounts);
   const costsTotal = adminLedgerTotal(draft.restoration_costs);
@@ -321,6 +328,7 @@ function OrderEditorContent({
         beforePayload={beforePayload}
         afterPayload={afterPayload}
         saving={saving}
+        willSplit={willSplit}
         onCancel={() => {
           if (!saving) setSavePromptOpen(false);
         }}
@@ -328,6 +336,14 @@ function OrderEditorContent({
           const result = await performSave(opts);
           if (result.ok && result.notifyError) {
             onError?.(result.notifyError);
+          }
+          if (result.ok && result.split?.split) {
+            const newId = result.split.new_display_id;
+            window.alert(
+              newId != null
+                ? `Order updated. Priority cards were split into order #${newId}.`
+                : "Order updated. Priority cards were split into a new order."
+            );
           }
         }}
       />

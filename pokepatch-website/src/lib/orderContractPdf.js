@@ -114,7 +114,9 @@ export function contractRestorationFeeForCard(card, draft) {
   const hvEntry = draft?.quote_card_hv?.[cardId];
   const hv = parseExactMoney(hvEntry?.amount_dollars);
   if (hv != null && hv > 0) fee += hv;
-  if (draft?.is_priority) fee += PRIORITY_FEE_PER_CARD;
+  if (Boolean(card?.is_priority)) {
+    fee += PRIORITY_FEE_PER_CARD;
+  }
   return fee;
 }
 

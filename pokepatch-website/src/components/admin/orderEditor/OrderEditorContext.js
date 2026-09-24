@@ -17,7 +17,7 @@ import {
   orderToDraft,
   validateDraftForSave,
 } from "@/lib/adminOrderDraft";
-import { syncDraftPriorityQuote } from "@/lib/servicePricing";
+import { syncDraftPriorityQuote, hasMixedCardPriority } from "@/lib/servicePricing";
 import { saveAdminOrderDraft } from "@/lib/adminOrderSave";
 import { normalizeOrderStatus, normalizePendingKind } from "@/lib/orderStatus";
 
@@ -113,24 +113,29 @@ export function OrderEditorProvider({
       setError("");
       setSavePromptOpen(false);
       try {
-        const { order: refreshed, notifyError } = await saveAdminOrderDraft(
+        const { order: refreshed, notifyError, split } = await saveAdminOrderDraft(
           orderId,
           draft,
           { notify, subject, body, changelog }
         );
-        onOrderUpdated(refreshed);
+        onOrderUpdated(refreshed, { split });
         const next = orderToDraft(refreshed);
         setDraft(next);
         setSavedDraft(next);
-        return { ok: true, notifyError };
+        return { ok: true, notifyError, split };
       } catch (err) {
         setError(err.message || "Save failed.");
-        return { ok: false, notifyError: null };
+        return { ok: false, notifyError: null, split: null };
       } finally {
         setSaving(false);
       }
     },
     [draft, orderId, onOrderUpdated]
+  );
+
+  const willSplit = useMemo(
+    () => hasMixedCardPriority(draft.cards),
+    [draft.cards]
   );
 
   const requestSave = useCallback(() => {
@@ -144,12 +149,12 @@ export function OrderEditorProvider({
       beforePayload,
       afterPayload,
     });
-    if (!hasChangelog) {
+    if (!hasChangelog && !willSplit) {
       void performSave({ notify: false });
       return;
     }
     setSavePromptOpen(true);
-  }, [afterPayload, beforePayload, draft, performSave]);
+  }, [afterPayload, beforePayload, draft, performSave, willSplit]);
 
   const value = {
     draft,
@@ -165,6 +170,7 @@ export function OrderEditorProvider({
     setSavePromptOpen,
     beforePayload,
     afterPayload,
+    willSplit,
     orderId,
     order,
     onOrderUpdated,

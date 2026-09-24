@@ -347,7 +347,10 @@ export async function adminSaveOrder(
       quote_items,
     },
   });
-  return stabilizeOrderDetail(payload.full ?? payload.order);
+  return {
+    order: stabilizeOrderDetail(payload.full ?? payload.order),
+    split: payload.split ?? null,
+  };
 }
 
 export async function adminSetStatus(
