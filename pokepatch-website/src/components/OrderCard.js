@@ -11,6 +11,7 @@ import {
   customerOrderStatusChipLabel,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
+import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -54,21 +55,8 @@ function latestActivityAt(order) {
 
 /**
  * Compact My Orders list row — detail/edit lives on /my-orders/[orderId].
- * Status is the only word chip; priority is a bolt icon; unread is a count badge.
+ * Status is the only word chip; priority is a compact P badge; unread is a count badge.
  */
-function PriorityBoltIcon({ className = "" }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="currentColor"
-      aria-hidden="true"
-      className={className}
-    >
-      <path d="M9 1 4 9h3.5L6.5 15 12 7H8.5L9 1Z" />
-    </svg>
-  );
-}
-
 export default function OrderCard({ order }) {
   const [previewUrl, setPreviewUrl] = useState(null);
   const previewPaths = Array.isArray(order.preview_paths)
@@ -97,7 +85,7 @@ export default function OrderCard({ order }) {
   });
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
-  // Bolt icon carries priority; keep queue chip text without a Priority prefix.
+  // Compact P badge carries priority; keep queue chip text without a Priority prefix.
   const statusChipLabel = customerOrderStatusChipLabel(order, {
     isPriority: false,
   });
@@ -117,12 +105,14 @@ export default function OrderCard({ order }) {
     cardCountText,
     activityChipLabel,
   ].filter(Boolean);
+  const detailHref = `/my-orders/detail/?id=${encodeURIComponent(order.id)}`;
+  const queueHref =
+    order.queue_position != null && order.display_id != null
+      ? `/queue/?order=${encodeURIComponent(order.display_id)}`
+      : null;
 
   return (
-    <Link
-      href={`/my-orders/detail/?id=${encodeURIComponent(order.id)}`}
-      className="marketing-panel relative flex items-center gap-3 p-3 transition hover:border-ink/25 sm:p-4"
-    >
+    <div className="marketing-panel relative flex items-center gap-3 p-3 transition hover:border-ink/25 sm:p-4">
       {hasUnreadMessages ? (
         <span
           className="absolute -right-1.5 -top-1.5 z-10 inline-flex min-w-5 items-center justify-center rounded-full bg-peach px-1 text-[10px] font-bold leading-5 text-night shadow-sm"
@@ -137,35 +127,44 @@ export default function OrderCard({ order }) {
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p
-            className={`flex items-center gap-1.5 tracking-tight text-ink ${
+          {isPriority ? <CustomerPriorityBadge /> : null}
+          <Link
+            href={detailHref}
+            className={`tracking-tight text-ink hover:underline ${
               hasUnreadMessages ? "font-semibold" : "font-medium"
             }`}
           >
-            {isPriority ? (
-              <span
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-status-yellow text-night"
-                title="Priority service"
-                aria-label="Priority service"
-              >
-                <PriorityBoltIcon className="h-3 w-3" />
-              </span>
-            ) : null}
             Order #{order.display_id}
-          </p>
-          <span
+          </Link>
+          <Link
+            href={detailHref}
             className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${orderStatusBadgeClass(
               order.status,
               order.pending_kind
             )}`}
           >
             {statusChipLabel}
-          </span>
+          </Link>
+          {queueHref ? (
+            <Link
+              href={queueHref}
+              className="inline-flex rounded-full border border-ink/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/55 transition hover:border-ink/35 hover:text-ink"
+            >
+              View queue
+            </Link>
+          ) : null}
         </div>
-        <p className="mt-1 text-xs text-ink/55">{metaParts.join(" · ")}</p>
+        <Link href={detailHref} className="mt-1 block text-xs text-ink/55">
+          {metaParts.join(" · ")}
+        </Link>
       </div>
 
-      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/40">
+      <Link
+        href={detailHref}
+        className="h-14 w-11 shrink-0 overflow-hidden rounded-lg border border-ink/10 bg-night/40"
+        tabIndex={-1}
+        aria-hidden="true"
+      >
         {displayPreviewUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -177,9 +176,14 @@ export default function OrderCard({ order }) {
         ) : (
           <div className="h-full w-full animate-pulse bg-ink/5" />
         )}
-      </div>
+      </Link>
 
-      <span className="shrink-0 text-sm font-semibold text-ink/50">View →</span>
-    </Link>
+      <Link
+        href={detailHref}
+        className="shrink-0 text-sm font-semibold text-ink/50"
+      >
+        View →
+      </Link>
+    </div>
   );
 }

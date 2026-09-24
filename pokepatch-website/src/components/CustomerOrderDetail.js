@@ -364,6 +364,14 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
             {customerOrderStatusChipLabel(order, { isPriority })}
           </span>
           {isPriority ? <CustomerPriorityBadge /> : null}
+          {order.queue_position != null ? (
+            <Link
+              href={`/queue/?order=${encodeURIComponent(order.display_id)}`}
+              className="inline-flex rounded-full border border-ink/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-ink/55 transition hover:border-ink/35 hover:text-ink"
+            >
+              View full queue
+            </Link>
+          ) : null}
           {canEdit ? (
             <span className="inline-flex rounded-full border border-mint/35 bg-mint/15 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em] text-mint">
               Editable

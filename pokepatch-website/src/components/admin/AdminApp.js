@@ -24,6 +24,7 @@ import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import CreateOrderDialog from "@/components/admin/CreateOrderDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
+import QueueCatalogDialog from "@/components/admin/QueueCatalogDialog";
 import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
@@ -1292,6 +1293,7 @@ export default function AdminApp() {
   const [deletingOrder, setDeletingOrder] = useState(false);
   const [movePrompt, setMovePrompt] = useState(null);
   const [moveSaving, setMoveSaving] = useState(false);
+  const [queueCatalogPrompt, setQueueCatalogPrompt] = useState(null);
   const [noteOnlySending, setNoteOnlySending] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
@@ -1317,6 +1319,7 @@ export default function AdminApp() {
     setEditorError("");
     setLoadingOrderId(null);
     setMovePrompt(null);
+    setQueueCatalogPrompt(null);
   }, []);
 
   const syncOrderAfterSave = useCallback((refreshed) => {
@@ -1559,7 +1562,7 @@ export default function AdminApp() {
     const previewUrls = Array.isArray(moving.preview_urls)
       ? moving.preview_urls.filter(Boolean)
       : [];
-    setMovePrompt({
+    const prompt = {
       orderId,
       nextStatus,
       previous,
@@ -1606,7 +1609,15 @@ export default function AdminApp() {
         cards: [],
         quote_items: [],
       },
-    });
+    };
+
+    // Entering the public queue → catalog art popup first, then move/notify.
+    if (nextStatus === "new") {
+      setQueueCatalogPrompt(prompt);
+      return;
+    }
+
+    setMovePrompt(prompt);
   }
 
   async function commitPlaceOrder({ orderId, nextStatus, previous, moving }) {
@@ -2042,7 +2053,9 @@ export default function AdminApp() {
                   setListError("");
                   setCreateOrderOpen(true);
                 }}
-                suppressInspect={Boolean(movePrompt || deleteTargets?.length)}
+                suppressInspect={Boolean(
+                  movePrompt || queueCatalogPrompt || deleteTargets?.length
+                )}
               />
               <CreateOrderDialog
                 open={createOrderOpen}
@@ -2058,6 +2071,18 @@ export default function AdminApp() {
                 onCancel={handleCancelDelete}
                 onConfirm={handleConfirmDelete}
               />
+              {queueCatalogPrompt ? (
+                <QueueCatalogDialog
+                  open
+                  orderId={queueCatalogPrompt.orderId}
+                  displayId={queueCatalogPrompt.displayId}
+                  onCancel={() => setQueueCatalogPrompt(null)}
+                  onContinue={() => {
+                    setMovePrompt(queueCatalogPrompt);
+                    setQueueCatalogPrompt(null);
+                  }}
+                />
+              ) : null}
               {movePrompt ? (
                 <OrderSaveChangesDialog
                   open
