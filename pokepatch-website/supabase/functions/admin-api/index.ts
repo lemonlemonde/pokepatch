@@ -917,14 +917,14 @@ async function fetchOrderGraph(
       const withCatalog = await supabase
         .from("cards")
         .select(
-          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, tcg_card_id, catalog_image_url"
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, tcg_card_id, catalog_image_url"
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true });
       if (
         !withCatalog.error ||
-        !/tcg_card_id|catalog_image_url|42703/i.test(
+        !/tcg_card_id|catalog_image_url|is_priority|42703/i.test(
           `${withCatalog.error.message ?? ""} ${withCatalog.error.details ?? ""} ${withCatalog.error.code ?? ""}`
         )
       ) {
@@ -942,6 +942,7 @@ async function fetchOrderGraph(
       return {
         data: (legacy.data ?? []).map((card) => ({
           ...card,
+          is_priority: false,
           tcg_card_id: null,
           catalog_image_url: null,
         })),

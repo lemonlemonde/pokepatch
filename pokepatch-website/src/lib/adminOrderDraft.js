@@ -248,7 +248,8 @@ export function orderToDraft(order) {
   });
   const after_completion_amounts = unpackAdminLedger(order.after_completion_amounts);
   const restoration_costs = unpackAdminLedger(order.restoration_costs);
-  const cards = orderCards.map((card) => ({
+  const orderPriority = Boolean(order.is_priority);
+  let cards = orderCards.map((card) => ({
     id: card.id,
     card_name: card.card_name ?? "",
     set_name: card.set_name ?? "",
@@ -260,13 +261,18 @@ export function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
-    is_priority: Boolean(card.is_priority),
+    is_priority:
+      card.is_priority == null ? orderPriority : Boolean(card.is_priority),
     tcg_card_id: card.tcg_card_id ?? "",
     catalog_image_url: card.catalog_image_url ?? "",
     images: card.images ?? [],
     pending_files: [],
     pending_image_deletes: [],
   }));
+  // Priority order with no card flags (stale rows / older API): treat all as priority.
+  if (orderPriority && !cards.some((card) => card.is_priority)) {
+    cards = cards.map((card) => ({ ...card, is_priority: true }));
+  }
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
   const firstName = (order.first_name ?? "").trim();
