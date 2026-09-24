@@ -14,7 +14,7 @@ import { fetchPublicQueue } from "@/lib/publicQueue";
 import { supabase } from "@/lib/supabaseClient";
 
 const REFRESH_MS = 60_000;
-const PREVIEW_NAMES = 4;
+const PREVIEW_THUMBS = 5;
 const H_SCROLL =
   "overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
@@ -262,14 +262,11 @@ function InProgressStrip({
   );
 }
 
-/** Waiting order: card names in the bar; expands in place for art + damage. */
+/** Waiting order: tiny square thumbs in the bar; expands for art + damage. */
 function QueueRow({ order, laneTitle, open, onToggle, rowRef, mine }) {
   const panelId = `queue-order-${order.display_id}`;
-  const preview = order.cards.slice(0, PREVIEW_NAMES);
+  const preview = order.cards.slice(0, PREVIEW_THUMBS);
   const overflow = order.cards.length - preview.length;
-  const namePreview = preview
-    .map((card) => card.card_name || "Untitled card")
-    .join(" · ");
 
   return (
     <li
@@ -289,13 +286,35 @@ function QueueRow({ order, laneTitle, open, onToggle, rowRef, mine }) {
         </span>
 
         <span className="min-w-0 flex-1">
-          {mine ? <YourOrderLabel className="mb-0.5 block" /> : null}
-          <span className="block truncate text-xs text-ink/70">
-            {namePreview || "No cards"}
-            {overflow > 0 ? (
-              <span className="text-ink/40"> · +{overflow}</span>
-            ) : null}
-          </span>
+          {mine ? <YourOrderLabel className="mb-1 block" /> : null}
+          {preview.length === 0 ? (
+            <span className="text-xs text-ink/45">No cards</span>
+          ) : (
+            <span className="flex items-center gap-1">
+              {preview.map((card, index) => (
+                <span
+                  key={`${card.card_name}-${card.set_name}-${index}`}
+                  className="h-7 w-7 shrink-0 overflow-hidden rounded-[3px] bg-night/40 ring-1 ring-ink/10"
+                >
+                  {card.catalog_image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={card.catalog_image_url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover object-top"
+                    />
+                  ) : null}
+                </span>
+              ))}
+              {overflow > 0 ? (
+                <span className="pl-0.5 font-mono text-[10px] tabular-nums text-ink/40">
+                  +{overflow}
+                </span>
+              ) : null}
+            </span>
+          )}
         </span>
 
         <span className="shrink-0 text-xs tabular-nums text-ink/50">
