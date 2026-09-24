@@ -18,6 +18,7 @@ import {
   serviceSelectLabel,
 } from "@/lib/servicePricing";
 import { DAMAGE_TAGS, labeledDamageTags, normalizeDamageTags } from "@/lib/gallery";
+import { PriorityStarIcon } from "@/components/CustomerPriorityBadge";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -473,13 +474,13 @@ export default function CardDetailSection({
             card.is_priority ? "Priority service on" : "Priority service off"
           }
           onClick={() => updateCard({ is_priority: !card.is_priority })}
-          className={`inline-flex h-[22px] min-w-[22px] shrink-0 items-center justify-center rounded-full border px-1 text-[10px] font-bold uppercase leading-none tracking-[0.08em] transition disabled:opacity-50 ${
+          className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${
             card.is_priority
-              ? "border-ink/40 bg-ink/20 text-ink"
+              ? "border-status-yellow/55 bg-status-yellow/15 text-status-yellow"
               : "border-ink/15 bg-transparent text-ink/30 hover:border-ink/30 hover:text-ink/55"
           }`}
         >
-          P
+          <PriorityStarIcon className="h-3 w-3" />
         </button>
       </div>
 

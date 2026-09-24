@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
@@ -410,23 +411,6 @@ function PendingKindChip({
   );
 }
 
-/** Paid priority service — distinct from manual queue reorder (removed). */
-function PriorityServiceBadge({ compact = false }) {
-  return (
-    <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-full border border-ink/35 bg-ink/15 font-bold uppercase tracking-[0.08em] text-ink ${
-        compact
-          ? "h-[18px] min-w-[18px] px-1 text-[9px] leading-none"
-          : "px-2.5 py-1 text-[11px] leading-none"
-      }`}
-      title="Priority service"
-      aria-label="Priority service"
-    >
-      {compact ? "P" : "Priority"}
-    </span>
-  );
-}
-
 function KanbanCard({
   order,
   onOpen,
@@ -566,7 +550,7 @@ function KanbanCard({
       <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
         #{order.display_id}
       </span>
-      {order.is_priority ? <PriorityServiceBadge compact /> : null}
+      {order.is_priority ? <CustomerPriorityBadge /> : null}
       {showPendingChip ? (
         <PendingKindChip
           order={order}
@@ -636,7 +620,7 @@ function KanbanCard({
             #{order.display_id}
             {order.is_priority ? (
               <span className="ml-2 inline-flex align-middle">
-                <PriorityServiceBadge compact />
+                <CustomerPriorityBadge />
               </span>
             ) : null}
           </p>
