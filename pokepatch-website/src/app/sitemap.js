@@ -3,6 +3,7 @@ export const dynamic = "force-static";
 /** Public marketing pages only — auth/account routes are excluded on purpose. */
 const PUBLIC_PATHS = [
   { path: "/", changeFrequency: "weekly", priority: 1 },
+  { path: "/queue/", changeFrequency: "hourly", priority: 0.85 },
   { path: "/gallery/", changeFrequency: "weekly", priority: 0.9 },
   { path: "/quote/", changeFrequency: "monthly", priority: 0.8 },
 ];

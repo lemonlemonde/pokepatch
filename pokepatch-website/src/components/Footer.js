@@ -3,8 +3,9 @@ import SocialLinks from "@/components/SocialLinks";
 
 const FOOTER_LINKS = [
   { href: "/", label: "Home" },
-  { href: "/gallery", label: "Gallery" },
   { href: "/quote", label: "Get Free Quote" },
+  { href: "/gallery", label: "Gallery" },
+  { href: "/queue", label: "Queue" },
 ];
 
 export default function Footer() {

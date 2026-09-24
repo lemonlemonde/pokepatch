@@ -40,6 +40,8 @@ export function emptyAdminCard() {
     admin_note: "",
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
+    tcg_card_id: "",
+    catalog_image_url: "",
     images: [],
     pending_files: [],
     pending_image_deletes: [],
@@ -256,6 +258,8 @@ export function orderToDraft(order) {
         ? String(card.market_value_raw_nm)
         : "",
     status: normalizeCardStatus(card.status),
+    tcg_card_id: card.tcg_card_id ?? "",
+    catalog_image_url: card.catalog_image_url ?? "",
     images: card.images ?? [],
     pending_files: [],
     pending_image_deletes: [],
