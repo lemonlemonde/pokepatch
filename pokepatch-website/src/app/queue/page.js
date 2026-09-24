@@ -404,15 +404,29 @@ function QueuePageInner() {
   const regular = board?.regular ?? [];
   const waitingCount = priority.length + regular.length;
   const updatedLabel = formatUpdatedAt(updatedAt);
-  const summary = `${inProgress.length} in progress · ${waitingCount} waiting`;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 md:py-12">
-      <ScrollReveal>
-        <MarketingSectionHeading note="Workshop">
-          Current queue
-        </MarketingSectionHeading>
-      </ScrollReveal>
+      <MarketingSectionHeading
+        note="Workshop"
+        trailing={
+          updatedLabel ? (
+            <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/40 tabular-nums">
+              Updated {updatedLabel}
+              {" · "}
+              <button
+                type="button"
+                onClick={refreshQueue}
+                className="underline decoration-ink/25 underline-offset-2 transition hover:text-ink/70"
+              >
+                Refresh
+              </button>
+            </p>
+          ) : null
+        }
+      >
+        Current queue
+      </MarketingSectionHeading>
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -435,23 +449,6 @@ function QueuePageInner() {
       ) : (
         <div className="space-y-10 sm:space-y-12">
           <ScrollReveal>
-            <div className="-mt-4 mb-8 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.18em] text-ink/40 sm:-mt-6">
-              <p className="tabular-nums text-ink/55">{summary}</p>
-              {updatedLabel ? (
-                <p className="tabular-nums">
-                  Updated {updatedLabel}
-                  {" · "}
-                  <button
-                    type="button"
-                    onClick={refreshQueue}
-                    className="underline decoration-ink/25 underline-offset-2 transition hover:text-ink/70"
-                  >
-                    Refresh
-                  </button>
-                </p>
-              ) : null}
-            </div>
-
             <section aria-label="In progress">
               <LaneLabel live trailing={inProgress.length}>
                 In progress
