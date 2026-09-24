@@ -417,8 +417,6 @@ function KanbanCard({
   onContextMenu,
   dragging,
   showPendingChip = false,
-  showPublish = false,
-  onPublish,
   onSetPendingKind,
   suppressInspect = false,
 }) {
@@ -560,25 +558,6 @@ function KanbanCard({
           onInteract={hideInspect}
           disabled={dragging}
         />
-      ) : null}
-      {showPublish ? (
-        <button
-          type="button"
-          draggable={false}
-          disabled={dragging}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            hideInspect();
-            onPublish?.(order);
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-          className="shrink-0 rounded border border-ink/20 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink/65 transition hover:border-ink/40 hover:text-ink disabled:opacity-40"
-          title="Publish queue art & titles"
-          aria-label={`Publish queue art for order #${order.display_id}`}
-        >
-          Publish
-        </button>
       ) : null}
       <button
         type="button"
@@ -965,7 +944,7 @@ function KanbanBoard({
     setContextMenu({
       order,
       x: Math.min(event.clientX, window.innerWidth - 200),
-      y: Math.min(event.clientY, window.innerHeight - 100),
+      y: Math.min(event.clientY, window.innerHeight - 140),
     });
   }
 
@@ -1043,10 +1022,6 @@ function KanbanBoard({
               onContextMenu={handleCardContextMenu}
               dragging={dragOrderId === order.id}
               showPendingChip={status.id === "pending"}
-              showPublish={
-                status.id === "new" || status.id === "in_progress"
-              }
-              onPublish={onPublishQueue}
               onSetPendingKind={onSetPendingKind}
               suppressInspect={suppressInspect}
             />
@@ -1162,6 +1137,12 @@ function KanbanBoard({
     );
   }
 
+  const contextMenuStatus = contextMenu
+    ? normalizeOrderStatus(contextMenu.order.status)
+    : null;
+  const showPublishInMenu =
+    contextMenuStatus === "new" || contextMenuStatus === "in_progress";
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1251,6 +1232,20 @@ function KanbanBoard({
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
         >
+          {showPublishInMenu ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-ink transition hover:bg-ink/5"
+              onClick={() => {
+                const order = contextMenu.order;
+                setContextMenu(null);
+                onPublishQueue?.(order);
+              }}
+            >
+              Publish
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"
