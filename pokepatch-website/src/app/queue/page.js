@@ -1,9 +1,8 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
-import ScrollReveal from "@/components/marketing/ScrollReveal";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
@@ -313,27 +312,18 @@ function WaitingLane({
 }
 
 function QueuePageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const highlightId = parseOrderParam(searchParams.get("order"));
+  const initialOrderId = parseOrderParam(searchParams.get("order"));
 
   const [board, setBoard] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
-  // Open order; also the mint-ringed one. Seeded from and mirrored to ?order=.
-  const [openId, setOpenId] = useState(highlightId);
-  const [seenHighlightId, setSeenHighlightId] = useState(highlightId);
-
-  // URL changed underneath us (e.g. My Orders → View queue): open that order.
-  // Render-time adjust rather than an effect so there's no extra paint.
-  if (highlightId !== seenHighlightId) {
-    setSeenHighlightId(highlightId);
-    if (highlightId != null) setOpenId(highlightId);
-  }
+  const [openId, setOpenId] = useState(initialOrderId);
 
   const nodeRefs = useRef(new Map());
-  const scrolledToRef = useRef(null);
+  // Only auto-scroll for the landing deep link, never for later clicks.
+  const deepLinkScrollDoneRef = useRef(false);
 
   const registerRef = useCallback(
     (displayId) => (node) => {
@@ -380,23 +370,26 @@ function QueuePageInner() {
     };
   }, [refreshQueue]);
 
-  // Deep link (My Orders → View queue): bring that order into view once.
+  // My Orders → View queue: scroll to that order once after the board loads.
   useEffect(() => {
-    if (!board || highlightId == null) return;
-    if (scrolledToRef.current === highlightId) return;
-    const node = nodeRefs.current.get(highlightId);
+    if (!board || initialOrderId == null || deepLinkScrollDoneRef.current) {
+      return;
+    }
+    const node = nodeRefs.current.get(initialOrderId);
     if (!node) return;
-    scrolledToRef.current = highlightId;
+    deepLinkScrollDoneRef.current = true;
     node.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [board, highlightId]);
+  }, [board, initialOrderId]);
 
   function handleToggle(displayId) {
     const next = openId === displayId ? null : displayId;
     setOpenId(next);
-    router.replace(
-      next == null ? "/queue/" : `/queue/?order=${encodeURIComponent(next)}`,
-      { scroll: false },
-    );
+    // Avoid Next router navigation — it can reset scroll / remount Suspense.
+    const url =
+      next == null
+        ? "/queue/"
+        : `/queue/?order=${encodeURIComponent(next)}`;
+    window.history.replaceState(null, "", url);
   }
 
   const inProgress = board?.in_progress ?? [];
@@ -409,6 +402,7 @@ function QueuePageInner() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 md:py-12">
       <MarketingSectionHeading
         note="Workshop"
+        reveal={false}
         trailing={
           updatedLabel ? (
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/40 tabular-nums">
@@ -448,27 +442,25 @@ function QueuePageInner() {
         </div>
       ) : (
         <div className="space-y-10 sm:space-y-12">
-          <ScrollReveal>
-            <section aria-label="In progress">
-              <LaneLabel live trailing={inProgress.length}>
-                In progress
-              </LaneLabel>
-              {inProgress.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-ink/10 px-3 py-5 text-center text-xs text-ink/45">
-                  Nothing on the bench right now.
-                </p>
-              ) : (
-                <InProgressStrip
-                  orders={inProgress}
-                  openId={openId}
-                  onToggle={handleToggle}
-                  registerRef={registerRef}
-                />
-              )}
-            </section>
-          </ScrollReveal>
+          <section aria-label="In progress">
+            <LaneLabel live trailing={inProgress.length}>
+              In progress
+            </LaneLabel>
+            {inProgress.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-ink/10 px-3 py-5 text-center text-xs text-ink/45">
+                Nothing on the bench right now.
+              </p>
+            ) : (
+              <InProgressStrip
+                orders={inProgress}
+                openId={openId}
+                onToggle={handleToggle}
+                registerRef={registerRef}
+              />
+            )}
+          </section>
 
-          <ScrollReveal>
+          <section aria-label="Waiting">
             <LaneLabel trailing={waitingCount}>Waiting</LaneLabel>
             <div className="grid items-start gap-6 sm:grid-cols-2 sm:gap-8">
               <WaitingLane
@@ -489,7 +481,7 @@ function QueuePageInner() {
                 registerRef={registerRef}
               />
             </div>
-          </ScrollReveal>
+          </section>
         </div>
       )}
     </div>

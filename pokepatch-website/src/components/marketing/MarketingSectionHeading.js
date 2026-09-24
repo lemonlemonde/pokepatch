@@ -4,10 +4,16 @@ import ScrollReveal from "@/components/marketing/ScrollReveal";
  * Editorial section header for the marketing page.
  * Mono note + hairline rule reads like a catalog entry.
  * Optional `trailing` sits on the title row (e.g. a timestamp).
+ * Pass `reveal={false}` to skip scroll animation (interactive pages).
  */
-export default function MarketingSectionHeading({ note, children, trailing }) {
-  return (
-    <ScrollReveal as="header" variant="dramatic" className="mb-8 sm:mb-12 md:mb-14">
+export default function MarketingSectionHeading({
+  note,
+  children,
+  trailing,
+  reveal = true,
+}) {
+  const inner = (
+    <>
       {note ? (
         <div className="mb-3 flex items-center gap-4 sm:mb-4">
           <p className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40 sm:text-[11px] sm:tracking-[0.28em]">
@@ -22,6 +28,18 @@ export default function MarketingSectionHeading({ note, children, trailing }) {
         </h2>
         {trailing ? <div className="shrink-0">{trailing}</div> : null}
       </div>
+    </>
+  );
+
+  if (!reveal) {
+    return (
+      <header className="mb-8 sm:mb-12 md:mb-14">{inner}</header>
+    );
+  }
+
+  return (
+    <ScrollReveal as="header" variant="dramatic" className="mb-8 sm:mb-12 md:mb-14">
+      {inner}
     </ScrollReveal>
   );
 }
