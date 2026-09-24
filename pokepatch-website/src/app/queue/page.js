@@ -1,15 +1,17 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
-import ScrollReveal from "@/components/marketing/ScrollReveal";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
+import { useAuth } from "@/contexts/AuthContext";
+import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
 import { labeledDamageTags } from "@/lib/damageTags";
 import { fetchPublicQueue } from "@/lib/publicQueue";
+import { supabase } from "@/lib/supabaseClient";
 
 const REFRESH_MS = 60_000;
 const PREVIEW_NAMES = 4;
@@ -34,6 +36,30 @@ function cardCountLabel(count) {
 function parseOrderParam(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function YourOrderLabel({ className = "" }) {
+  return (
+    <span
+      className={`font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-peach ${className}`.trim()}
+    >
+      Your order
+    </span>
+  );
+}
+
+/** Border/ring for open vs the signed-in user's own order. */
+function orderShellClass(open, mine) {
+  if (open && mine) {
+    return "border-peach/55 bg-peach/[0.08] ring-1 ring-peach/40";
+  }
+  if (open) {
+    return "border-mint/50 ring-1 ring-mint/40";
+  }
+  if (mine) {
+    return "border-peach/45 bg-peach/[0.07] ring-1 ring-peach/30";
+  }
+  return "border-ink/10 bg-ink/[0.02] hover:border-ink/25";
 }
 
 /** Mono micro-label + hairline rule, with optional trailing slot. */
@@ -160,7 +186,13 @@ function CardFilmstrip({ cards }) {
  * In progress: one thumbnail per order in a row. Selecting an order opens
  * its full card filmstrip in a single row underneath.
  */
-function InProgressStrip({ orders, openId, onToggle, registerRef }) {
+function InProgressStrip({
+  orders,
+  openId,
+  onToggle,
+  registerRef,
+  mineIds,
+}) {
   const selected =
     orders.find((order) => order.display_id === openId) ?? null;
   const panelId = "queue-in-progress-detail";
@@ -170,6 +202,7 @@ function InProgressStrip({ orders, openId, onToggle, registerRef }) {
       <ul className={`flex gap-2.5 pb-1 sm:gap-3 ${H_SCROLL}`}>
         {orders.map((order) => {
           const open = openId === order.display_id;
+          const mine = mineIds.has(order.display_id);
           const lead = order.cards[0];
           return (
             <li
@@ -182,21 +215,20 @@ function InProgressStrip({ orders, openId, onToggle, registerRef }) {
                 onClick={() => onToggle(order.display_id)}
                 aria-expanded={open}
                 aria-controls={panelId}
-                aria-label={`In progress order, ${cardCountLabel(order.card_count)}`}
-                className={`block w-[4.25rem] rounded-lg border p-1.5 text-left transition sm:w-[4.75rem] ${
-                  open
-                    ? "border-mint/50 ring-1 ring-mint/40"
-                    : "border-ink/10 bg-ink/[0.02] hover:border-ink/25"
-                }`}
+                aria-label={`${mine ? "Your order, " : ""}In progress, ${cardCountLabel(order.card_count)}`}
+                className={`block w-[4.25rem] rounded-lg border p-1.5 text-left transition sm:w-[4.75rem] ${orderShellClass(open, mine)}`}
               >
                 <CardArt
                   src={lead?.catalog_image_url ?? ""}
                   className="w-full"
                 />
-                <span className="mt-1.5 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
-                  {order.is_priority ? <CustomerPriorityBadge /> : null}
-                  <span className="tabular-nums">
-                    {cardCountLabel(order.card_count)}
+                <span className="mt-1.5 flex flex-col gap-0.5">
+                  {mine ? <YourOrderLabel /> : null}
+                  <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
+                    {order.is_priority ? <CustomerPriorityBadge /> : null}
+                    <span className="tabular-nums">
+                      {cardCountLabel(order.card_count)}
+                    </span>
                   </span>
                 </span>
               </button>
@@ -208,8 +240,17 @@ function InProgressStrip({ orders, openId, onToggle, registerRef }) {
       <ExpandPanel open={selected != null}>
         <div
           id={panelId}
-          className="mt-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-3 sm:p-4"
+          className={`mt-3 rounded-lg border p-3 sm:p-4 ${
+            selected && mineIds.has(selected.display_id)
+              ? "border-peach/40 bg-peach/[0.05]"
+              : "border-ink/10 bg-ink/[0.02]"
+          }`}
         >
+          {selected && mineIds.has(selected.display_id) ? (
+            <p className="mb-2">
+              <YourOrderLabel />
+            </p>
+          ) : null}
           {selected ? <CardFilmstrip cards={selected.cards} /> : null}
         </div>
       </ExpandPanel>
@@ -218,7 +259,7 @@ function InProgressStrip({ orders, openId, onToggle, registerRef }) {
 }
 
 /** Waiting order: card names in the bar; expands in place for art + damage. */
-function QueueRow({ order, laneTitle, open, onToggle, rowRef }) {
+function QueueRow({ order, laneTitle, open, onToggle, rowRef, mine }) {
   const panelId = `queue-order-${order.display_id}`;
   const preview = order.cards.slice(0, PREVIEW_NAMES);
   const overflow = order.cards.length - preview.length;
@@ -229,29 +270,28 @@ function QueueRow({ order, laneTitle, open, onToggle, rowRef }) {
   return (
     <li
       ref={rowRef}
-      className={`overflow-hidden rounded-lg border bg-ink/[0.02] transition-colors ${
-        open
-          ? "border-mint/50 ring-1 ring-mint/40"
-          : "border-ink/10 hover:border-ink/20"
-      }`}
+      className={`overflow-hidden rounded-lg border transition-colors ${orderShellClass(open, mine)}`}
     >
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={open}
         aria-controls={panelId}
-        aria-label={`${laneTitle} ${order.lane_position}, ${cardCountLabel(order.card_count)}`}
+        aria-label={`${mine ? "Your order, " : ""}${laneTitle} ${order.lane_position}, ${cardCountLabel(order.card_count)}`}
         className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
       >
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-ink/[0.07] font-mono text-xs font-semibold tabular-nums text-ink/75">
           {order.lane_position}
         </span>
 
-        <span className="min-w-0 flex-1 truncate text-xs text-ink/70">
-          {namePreview || "No cards"}
-          {overflow > 0 ? (
-            <span className="text-ink/40"> · +{overflow}</span>
-          ) : null}
+        <span className="min-w-0 flex-1">
+          {mine ? <YourOrderLabel className="mb-0.5 block" /> : null}
+          <span className="block truncate text-xs text-ink/70">
+            {namePreview || "No cards"}
+            {overflow > 0 ? (
+              <span className="text-ink/40"> · +{overflow}</span>
+            ) : null}
+          </span>
         </span>
 
         <span className="shrink-0 text-xs tabular-nums text-ink/50">
@@ -277,6 +317,7 @@ function WaitingLane({
   openId,
   onToggle,
   registerRef,
+  mineIds,
 }) {
   return (
     <section aria-label={title} className="min-w-0">
@@ -302,6 +343,7 @@ function WaitingLane({
               order={order}
               laneTitle={title}
               open={openId === order.display_id}
+              mine={mineIds.has(order.display_id)}
               onToggle={() => onToggle(order.display_id)}
               rowRef={registerRef(order.display_id)}
             />
@@ -313,27 +355,30 @@ function WaitingLane({
 }
 
 function QueuePageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const highlightId = parseOrderParam(searchParams.get("order"));
+  const initialOrderId = parseOrderParam(searchParams.get("order"));
+  const { user } = useAuth();
+  const customerAuthEnabled = isCustomerAuthEnabled();
 
   const [board, setBoard] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
-  // Open order; also the mint-ringed one. Seeded from and mirrored to ?order=.
-  const [openId, setOpenId] = useState(highlightId);
-  const [seenHighlightId, setSeenHighlightId] = useState(highlightId);
+  const [openId, setOpenId] = useState(initialOrderId);
+  const [mineIds, setMineIds] = useState(() => new Set());
+  const mineUserId =
+    customerAuthEnabled && user?.id ? user.id : null;
+  const [mineForUserId, setMineForUserId] = useState(mineUserId);
 
-  // URL changed underneath us (e.g. My Orders → View queue): open that order.
-  // Render-time adjust rather than an effect so there's no extra paint.
-  if (highlightId !== seenHighlightId) {
-    setSeenHighlightId(highlightId);
-    if (highlightId != null) setOpenId(highlightId);
+  // Clear highlights immediately when the user signs out (render-time adjust).
+  if (mineForUserId !== mineUserId) {
+    setMineForUserId(mineUserId);
+    if (mineUserId == null) setMineIds(new Set());
   }
 
   const nodeRefs = useRef(new Map());
-  const scrolledToRef = useRef(null);
+  // Only auto-scroll for the landing deep link, never for later clicks.
+  const deepLinkScrollDoneRef = useRef(false);
 
   const registerRef = useCallback(
     (displayId) => (node) => {
@@ -380,23 +425,53 @@ function QueuePageInner() {
     };
   }, [refreshQueue]);
 
-  // Deep link (My Orders → View queue): bring that order into view once.
+  // Signed-in customer's board orders (To do + In progress) for highlighting.
   useEffect(() => {
-    if (!board || highlightId == null) return;
-    if (scrolledToRef.current === highlightId) return;
-    const node = nodeRefs.current.get(highlightId);
+    if (!mineUserId || !supabase) return undefined;
+
+    let cancelled = false;
+
+    supabase
+      .rpc("get_my_orders")
+      .then(({ data, error }) => {
+        if (cancelled || error) return;
+        const ids = new Set();
+        for (const row of data ?? []) {
+          if (row.status !== "new" && row.status !== "in_progress") continue;
+          const id = Number(row.display_id);
+          if (Number.isFinite(id) && id > 0) ids.add(id);
+        }
+        setMineIds(ids);
+      })
+      .catch(() => {
+        if (!cancelled) setMineIds(new Set());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mineUserId]);
+
+  // My Orders → View queue: scroll to that order once after the board loads.
+  useEffect(() => {
+    if (!board || initialOrderId == null || deepLinkScrollDoneRef.current) {
+      return;
+    }
+    const node = nodeRefs.current.get(initialOrderId);
     if (!node) return;
-    scrolledToRef.current = highlightId;
+    deepLinkScrollDoneRef.current = true;
     node.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [board, highlightId]);
+  }, [board, initialOrderId]);
 
   function handleToggle(displayId) {
     const next = openId === displayId ? null : displayId;
     setOpenId(next);
-    router.replace(
-      next == null ? "/queue/" : `/queue/?order=${encodeURIComponent(next)}`,
-      { scroll: false },
-    );
+    // Avoid Next router navigation — it can reset scroll / remount Suspense.
+    const url =
+      next == null
+        ? "/queue/"
+        : `/queue/?order=${encodeURIComponent(next)}`;
+    window.history.replaceState(null, "", url);
   }
 
   const inProgress = board?.in_progress ?? [];
@@ -409,6 +484,7 @@ function QueuePageInner() {
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 md:py-12">
       <MarketingSectionHeading
         note="Workshop"
+        reveal={false}
         trailing={
           updatedLabel ? (
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/40 tabular-nums">
@@ -448,27 +524,26 @@ function QueuePageInner() {
         </div>
       ) : (
         <div className="space-y-10 sm:space-y-12">
-          <ScrollReveal>
-            <section aria-label="In progress">
-              <LaneLabel live trailing={inProgress.length}>
-                In progress
-              </LaneLabel>
-              {inProgress.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-ink/10 px-3 py-5 text-center text-xs text-ink/45">
-                  Nothing on the bench right now.
-                </p>
-              ) : (
-                <InProgressStrip
-                  orders={inProgress}
-                  openId={openId}
-                  onToggle={handleToggle}
-                  registerRef={registerRef}
-                />
-              )}
-            </section>
-          </ScrollReveal>
+          <section aria-label="In progress">
+            <LaneLabel live trailing={inProgress.length}>
+              In progress
+            </LaneLabel>
+            {inProgress.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-ink/10 px-3 py-5 text-center text-xs text-ink/45">
+                Nothing on the bench right now.
+              </p>
+            ) : (
+              <InProgressStrip
+                orders={inProgress}
+                openId={openId}
+                onToggle={handleToggle}
+                registerRef={registerRef}
+                mineIds={mineIds}
+              />
+            )}
+          </section>
 
-          <ScrollReveal>
+          <section aria-label="Waiting">
             <LaneLabel trailing={waitingCount}>Waiting</LaneLabel>
             <div className="grid items-start gap-6 sm:grid-cols-2 sm:gap-8">
               <WaitingLane
@@ -479,6 +554,7 @@ function QueuePageInner() {
                 openId={openId}
                 onToggle={handleToggle}
                 registerRef={registerRef}
+                mineIds={mineIds}
               />
               <WaitingLane
                 title="Standard"
@@ -487,9 +563,10 @@ function QueuePageInner() {
                 openId={openId}
                 onToggle={handleToggle}
                 registerRef={registerRef}
+                mineIds={mineIds}
               />
             </div>
-          </ScrollReveal>
+          </section>
         </div>
       )}
     </div>
