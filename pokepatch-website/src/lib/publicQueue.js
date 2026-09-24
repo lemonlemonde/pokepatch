@@ -9,11 +9,24 @@ function catalogImageForCard(card) {
   return "";
 }
 
+/** Prefer official TCG catalog title when set; else the order's card fields. */
+function displayNameForCard(card) {
+  const catalog = (card?.catalog_card_name ?? "").trim();
+  if (catalog) return catalog;
+  return (card?.card_name ?? "").trim();
+}
+
+function displaySetForCard(card) {
+  const catalog = (card?.catalog_set_name ?? "").trim();
+  if (catalog) return catalog;
+  return (card?.set_name ?? "").trim();
+}
+
 function parseCards(rows) {
   if (!Array.isArray(rows)) return [];
   return rows.map((card) => ({
-    card_name: card.card_name ?? "",
-    set_name: card.set_name ?? "",
+    card_name: displayNameForCard(card),
+    set_name: displaySetForCard(card),
     catalog_image_url: catalogImageForCard(card),
     damage_tags: Array.isArray(card.damage_tags) ? card.damage_tags : [],
     sort_order: card.sort_order ?? 0,

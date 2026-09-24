@@ -263,11 +263,16 @@ async function handleOrderCardCatalogUpload(
     .from("cards")
     .update({
       catalog_image_url: publicUrl,
-      // Custom upload replaces API art; keep tcg id cleared so queue uses this file.
+      // Custom upload replaces API art; clear TCG identity so queue uses this file
+      // and falls back to the order's card_name / set_name.
       tcg_card_id: null,
+      catalog_card_name: null,
+      catalog_set_name: null,
     })
     .eq("id", cardId)
-    .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+    .select(
+      "id, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name, card_name, set_name"
+    )
     .single();
   if (updateError) throw updateError;
 
@@ -917,14 +922,14 @@ async function fetchOrderGraph(
       const withCatalog = await supabase
         .from("cards")
         .select(
-          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, tcg_card_id, catalog_image_url"
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name"
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true });
       if (
         !withCatalog.error ||
-        !/tcg_card_id|catalog_image_url|is_priority|42703/i.test(
+        !/tcg_card_id|catalog_image_url|catalog_card_name|catalog_set_name|is_priority|42703/i.test(
           `${withCatalog.error.message ?? ""} ${withCatalog.error.details ?? ""} ${withCatalog.error.code ?? ""}`
         )
       ) {
@@ -945,6 +950,8 @@ async function fetchOrderGraph(
           is_priority: false,
           tcg_card_id: null,
           catalog_image_url: null,
+          catalog_card_name: null,
+          catalog_set_name: null,
         })),
         error: null,
       };
@@ -3030,9 +3037,13 @@ Deno.serve(async (req) => {
           .update({
             tcg_card_id: tcgCard.id,
             catalog_image_url: imageUrl,
+            catalog_card_name: tcgCard.name?.trim() || null,
+            catalog_set_name: tcgCard.set_name?.trim() || null,
           })
           .eq("id", orderCardId)
-          .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+          .select(
+            "id, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name, card_name, set_name"
+          )
           .single();
         if (updateError) throw updateError;
 
@@ -3072,9 +3083,16 @@ Deno.serve(async (req) => {
 
       const { data: updated, error: updateError } = await supabase
         .from("cards")
-        .update({ tcg_card_id: null, catalog_image_url: null })
+        .update({
+          tcg_card_id: null,
+          catalog_image_url: null,
+          catalog_card_name: null,
+          catalog_set_name: null,
+        })
         .eq("id", orderCardId)
-        .select("id, tcg_card_id, catalog_image_url, card_name, set_name")
+        .select(
+          "id, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name, card_name, set_name"
+        )
         .single();
       if (updateError) throw updateError;
 
