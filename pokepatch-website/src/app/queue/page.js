@@ -6,6 +6,7 @@ import MarketingSectionHeading from "@/components/marketing/MarketingSectionHead
 import ScrollReveal from "@/components/marketing/ScrollReveal";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
+import { labeledDamageTags } from "@/lib/damageTags";
 import { fetchPublicQueue, fetchPublicQueueOrder } from "@/lib/publicQueue";
 
 function formatUpdatedAt(date) {
@@ -21,71 +22,91 @@ function formatUpdatedAt(date) {
   }
 }
 
-function QueueOrderCards({ detail, loading, error }) {
+function cardCountLabel(count) {
+  return count === 1 ? "1 card" : `${count} cards`;
+}
+
+function QueueOrderCards({ detail, loading, error, compact = false }) {
   if (loading) {
     return (
-      <div className="mt-3 flex justify-center py-6">
+      <div className="flex justify-center py-4">
         <LoadingSpinner />
       </div>
     );
   }
   if (error) {
-    return <p className="mt-3 text-sm text-error">{error}</p>;
+    return <p className="text-sm text-error">{error}</p>;
   }
   if (!detail) {
     return (
-      <p className="mt-3 text-sm text-ink/50">
-        This order is no longer in the queue.
-      </p>
+      <p className="text-sm text-ink/50">This order is no longer on the board.</p>
     );
   }
   if (!detail.cards.length) {
-    return <p className="mt-3 text-sm text-ink/50">No cards on this order.</p>;
+    return <p className="text-sm text-ink/50">No cards on this order.</p>;
   }
 
   return (
-    <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-      {detail.cards.map((card, index) => (
-        <li
-          key={`${card.card_name}-${card.set_name}-${index}`}
-          className="overflow-hidden rounded-lg border border-ink/10 bg-ink/[0.02]"
-        >
-          <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/25`}>
-            {card.catalog_image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={card.catalog_image_url}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center px-2 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink/30">
-                No art yet
-              </div>
-            )}
-          </div>
-          <div className="space-y-0.5 p-2.5">
-            <p className="line-clamp-2 text-xs font-semibold leading-tight text-ink">
-              {card.card_name || "Untitled card"}
-            </p>
-            {card.set_name ? (
-              <p className="line-clamp-1 text-[10px] text-ink/50">
-                {card.set_name}
+    <ul
+      className={`grid gap-2 ${
+        compact
+          ? "grid-cols-2 sm:grid-cols-3"
+          : "grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8"
+      }`}
+    >
+      {detail.cards.map((card, index) => {
+        const damage = labeledDamageTags(card.damage_tags);
+        return (
+          <li
+            key={`${card.card_name}-${card.set_name}-${index}`}
+            className="overflow-hidden rounded-md border border-ink/10 bg-ink/[0.02]"
+          >
+            <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/25`}>
+              {card.catalog_image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={card.catalog_image_url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center px-1 text-center font-mono text-[9px] uppercase tracking-[0.12em] text-ink/30">
+                  No art
+                </div>
+              )}
+            </div>
+            <div className="space-y-1 p-1.5">
+              <p className="line-clamp-2 text-[11px] font-semibold leading-tight text-ink">
+                {card.card_name || "Untitled card"}
               </p>
-            ) : null}
-          </div>
-        </li>
-      ))}
+              {card.set_name ? (
+                <p className="line-clamp-1 text-[9px] text-ink/50">
+                  {card.set_name}
+                </p>
+              ) : null}
+              {damage.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {damage.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="rounded border border-ink/12 bg-ink/[0.04] px-1 py-0.5 text-[9px] font-semibold leading-none text-ink/70"
+                    >
+                      {tag.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function QueueLane({
-  title,
-  note,
-  emptyLabel,
+function InProgressStrip({
   orders,
   selectedId,
   onSelect,
@@ -93,57 +114,133 @@ function QueueLane({
   detailLoading,
   detailError,
 }) {
+  const selectedHere =
+    detail?.display_id === selectedId && detail?.status === "in_progress";
+  const selectedOrder = orders.find((order) => order.display_id === selectedId);
+
   return (
-    <section aria-label={title}>
-      <MarketingSectionHeading note={note}>{title}</MarketingSectionHeading>
+    <section aria-label="In progress">
+      <div className="mb-3 flex items-center gap-3">
+        <p className="shrink-0 font-mono text-[10px] uppercase tracking-[0.22em] text-ink/40 sm:text-[11px]">
+          In progress
+        </p>
+        <div className="h-px min-w-0 flex-1 bg-ink/10" aria-hidden="true" />
+        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
+          <span
+            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-status-blue"
+            aria-hidden="true"
+          />
+          {orders.length}
+        </span>
+      </div>
+
       {orders.length === 0 ? (
-        <p className="text-sm text-ink/50">{emptyLabel}</p>
+        <p className="text-sm text-ink/50">Nothing on the bench right now.</p>
       ) : (
-        <ol className="space-y-2">
+        <ul className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {orders.map((order) => {
             const isOpen = selectedId === order.display_id;
-            const cardLabel =
-              order.card_count === 1
-                ? "1 card"
-                : `${order.card_count} cards`;
+            return (
+              <li key={order.display_id} className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onSelect(isOpen ? null : order.display_id)}
+                  aria-expanded={isOpen}
+                  aria-label={`In progress ${order.lane_position}, ${cardCountLabel(order.card_count)}`}
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                    isOpen
+                      ? "border-ink/30 bg-ink/[0.06]"
+                      : "border-ink/10 bg-cream/50 hover:border-ink/25"
+                  }`}
+                >
+                  {order.is_priority ? (
+                    <span
+                      className="inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-ink/35 bg-ink/15 px-0.5 text-[8px] font-bold text-ink"
+                      title="Priority"
+                      aria-hidden="true"
+                    >
+                      P
+                    </span>
+                  ) : null}
+                  <span className="text-sm font-medium tabular-nums text-ink">
+                    {order.lane_position}
+                  </span>
+                  <span className="text-[10px] text-ink/45">
+                    {cardCountLabel(order.card_count)}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {selectedId != null &&
+      (selectedHere ||
+        (detailLoading &&
+          orders.some((order) => order.display_id === selectedId))) ? (
+        <div className="mt-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-3">
+          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
+            In progress
+            {selectedOrder?.lane_position != null
+              ? ` · ${selectedOrder.lane_position}`
+              : ""}
+          </p>
+          <QueueOrderCards
+            detail={selectedHere ? detail : null}
+            loading={detailLoading}
+            error={detailError}
+          />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function QueueLaneColumn({
+  title,
+  emptyLabel,
+  orders,
+  selectedId,
+  onSelect,
+}) {
+  return (
+    <section aria-label={title} className="min-w-0">
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="text-base font-medium tracking-tight text-ink sm:text-lg">
+          {title}
+        </h2>
+        <span className="font-mono text-[10px] tabular-nums text-ink/40">
+          {orders.length}
+        </span>
+      </div>
+
+      {orders.length === 0 ? (
+        <p className="text-xs text-ink/45">{emptyLabel}</p>
+      ) : (
+        <ol className="space-y-1.5">
+          {orders.map((order) => {
+            const isOpen = selectedId === order.display_id;
             return (
               <li key={order.display_id}>
                 <button
                   type="button"
-                  onClick={() =>
-                    onSelect(isOpen ? null : order.display_id)
-                  }
+                  onClick={() => onSelect(isOpen ? null : order.display_id)}
                   aria-expanded={isOpen}
-                  className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left transition sm:px-4 ${
+                  aria-label={`${title} position ${order.lane_position}, ${cardCountLabel(order.card_count)}`}
+                  className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition ${
                     isOpen
                       ? "border-ink/30 bg-ink/[0.05]"
                       : "border-ink/10 bg-cream/40 hover:border-ink/25"
                   }`}
                 >
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-ink/10 font-mono text-sm font-semibold tabular-nums text-ink/70">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded bg-ink/10 font-mono text-[11px] font-semibold tabular-nums text-ink/65">
                     {order.lane_position}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-medium text-ink">
-                      Order #{order.display_id}
-                    </span>
-                    <span className="mt-0.5 block text-xs text-ink/50">
-                      {cardLabel}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
-                    {isOpen ? "Hide" : "Cards"}
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink/50">
+                    {cardCountLabel(order.card_count)}
                   </span>
                 </button>
-                {isOpen ? (
-                  <div className="border-x border-b border-ink/10 bg-ink/[0.02] px-3 pb-4 pt-1 sm:px-4">
-                    <QueueOrderCards
-                      detail={detail}
-                      loading={detailLoading}
-                      error={detailError}
-                    />
-                  </div>
-                ) : null}
               </li>
             );
           })}
@@ -158,6 +255,7 @@ function QueuePageInner() {
   const searchParams = useSearchParams();
   const orderParam = searchParams.get("order");
 
+  const [inProgress, setInProgress] = useState([]);
   const [priority, setPriority] = useState([]);
   const [regular, setRegular] = useState([]);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -177,10 +275,12 @@ function QueuePageInner() {
       const data = await fetchPublicQueue();
       if (!data) {
         setLoadError("Queue is unavailable right now.");
+        setInProgress([]);
         setPriority([]);
         setRegular([]);
         return;
       }
+      setInProgress(data.in_progress);
       setPriority(data.priority);
       setRegular(data.regular);
       setUpdatedAt(new Date());
@@ -219,9 +319,6 @@ function QueuePageInner() {
       .then((data) => {
         if (cancelled) return;
         setDetail(data);
-        if (!data) {
-          setDetailError("");
-        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -248,9 +345,24 @@ function QueuePageInner() {
   }
 
   const updatedLabel = formatUpdatedAt(updatedAt);
+  const selectedInTodoLane =
+    selectedId != null &&
+    (priority.some((order) => order.display_id === selectedId) ||
+      regular.some((order) => order.display_id === selectedId));
+  const selectedInTodo =
+    detail?.display_id === selectedId && detail?.status === "new";
+  const selectedTodoOrder =
+    priority.find((order) => order.display_id === selectedId) ??
+    regular.find((order) => order.display_id === selectedId) ??
+    null;
+  const selectedTodoLaneLabel = selectedTodoOrder
+    ? priority.some((order) => order.display_id === selectedId)
+      ? "Priority"
+      : "Standard"
+    : null;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-12 md:py-16">
+    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 sm:py-10 md:py-12">
       <ScrollReveal>
         <MarketingSectionHeading note="Workshop">
           Current queue
@@ -264,33 +376,52 @@ function QueuePageInner() {
       ) : loadError ? (
         <p className="text-sm text-error">{loadError}</p>
       ) : (
-        <div className="space-y-14 sm:space-y-16">
+        <div className="space-y-8 sm:space-y-10">
           <ScrollReveal>
-            <QueueLane
-              title="Priority queue"
-              note="Priority"
-              emptyLabel="No priority orders right now."
-              orders={priority}
+            <InProgressStrip
+              orders={inProgress}
               selectedId={selectedId}
               onSelect={handleSelect}
-              detail={detail?.display_id === selectedId ? detail : null}
-              detailLoading={detailLoading && selectedId != null}
+              detail={detail}
+              detailLoading={detailLoading}
               detailError={detailError}
             />
           </ScrollReveal>
 
           <ScrollReveal>
-            <QueueLane
-              title="Standard queue"
-              note="Standard"
-              emptyLabel="No standard orders right now."
-              orders={regular}
-              selectedId={selectedId}
-              onSelect={handleSelect}
-              detail={detail?.display_id === selectedId ? detail : null}
-              detailLoading={detailLoading && selectedId != null}
-              detailError={detailError}
-            />
+            <div className="grid gap-6 sm:grid-cols-2 sm:gap-8">
+              <QueueLaneColumn
+                title="Priority"
+                emptyLabel="No priority orders."
+                orders={priority}
+                selectedId={selectedId}
+                onSelect={handleSelect}
+              />
+              <QueueLaneColumn
+                title="Standard"
+                emptyLabel="No standard orders."
+                orders={regular}
+                selectedId={selectedId}
+                onSelect={handleSelect}
+              />
+            </div>
+
+            {selectedInTodoLane ? (
+              <div className="mt-4 rounded-lg border border-ink/10 bg-ink/[0.02] p-3">
+                <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
+                  {selectedTodoLaneLabel}
+                  {selectedTodoOrder?.lane_position != null
+                    ? ` · ${selectedTodoOrder.lane_position}`
+                    : ""}
+                </p>
+                <QueueOrderCards
+                  detail={selectedInTodo ? detail : null}
+                  loading={detailLoading}
+                  error={detailError}
+                  compact
+                />
+              </div>
+            ) : null}
           </ScrollReveal>
 
           {updatedLabel ? (
