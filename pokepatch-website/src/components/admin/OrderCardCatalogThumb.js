@@ -130,7 +130,7 @@ export default function OrderCardCatalogThumb({
         disabled={busy}
       />
 
-      <div className="flex flex-wrap items-center gap-3 border-t border-ink/10 pt-3">
+      <div className="border-t border-ink/10 pt-3">
         <input
           ref={fileInputRef}
           type="file"
@@ -146,9 +146,6 @@ export default function OrderCardCatalogThumb({
         >
           {uploading ? "Uploading…" : "Upload own image"}
         </button>
-        <p className="text-[11px] text-ink/40">
-          WebP, JPEG, or PNG — replaces API art on the queue page.
-        </p>
       </div>
     </div>
   );
