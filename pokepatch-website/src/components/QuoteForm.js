@@ -27,8 +27,12 @@ import {
 import {
   AccountFieldNote,
   copyFileList,
+  describeQuoteValidationErrors,
   emptyContactValues,
+  friendlySubmitError,
   hasAdditionalContact,
+  inlineFieldErrorMessage,
+  isLikelyImageFile,
   isQuoteCardComplete as isCardComplete,
   isQuoteCardEmpty as isCardEmpty,
 } from "@/lib/quoteDraftHelpers";
@@ -63,6 +67,13 @@ function initialCard() {
   };
 }
 
+function emailFieldError(email) {
+  const trimmed = email.trim();
+  if (trimmed === "") return "required";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "invalid";
+  return false;
+}
+
 function cardFieldErrors(card) {
   return {
     cardName: card.cardName.trim() === "",
@@ -82,11 +93,14 @@ function getFieldErrors({
   const errors = {
     firstName: firstName.trim() === "",
     lastName: lastName.trim() === "",
-    email: email.trim() === "" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    email: emailFieldError(email),
     deliveryMethod: deliveryMethod === "",
     contacts: !hasAdditionalContact(contactValues),
     cards: {},
-    noCards: !cards.some(isCardComplete),
+    // Only true when there are literally no card rows. Any card the visitor
+    // has started (or left blank) gets per-field errors below instead, so the
+    // "no cards" message can never show when something was entered.
+    noCards: cards.length === 0,
   };
 
   const incompleteCards = cards.filter(
@@ -97,6 +111,8 @@ function getFieldErrors({
     errors.cards[card.id] = cardFieldErrors(card);
   }
 
+  // No complete card and nothing partially filled: point at the first blank
+  // row so submit is still blocked (at least one finished card is required).
   if (!cards.some(isCardComplete) && incompleteCards.length === 0) {
     const firstEmpty = cards.find(isCardEmpty);
     if (firstEmpty) {
@@ -145,9 +161,7 @@ function getFirstErrorElement(errors, cards) {
     );
   }
   if (errors.noCards) {
-    const emptyEl = document.getElementById("cards_empty");
-    if (emptyEl) return emptyEl;
-    // Placeholder/incomplete card rows: fall through to per-card fields.
+    return document.getElementById("cards_empty");
   }
 
   for (const card of cards) {
@@ -417,16 +431,16 @@ export default function QuoteForm() {
     const selected = copyFileList(input.files);
     if (selected.length === 0) return;
 
-    // Accept any image; compression runs on submit. Reject only non-images.
-    const images = selected.filter(
-      (file) => file.type && file.type.startsWith("image/")
-    );
+    // Accept any image; compression runs on submit. Empty MIME is common on
+    // some mobile pickers — allow those when the filename looks like an image.
+    const images = selected.filter(isLikelyImageFile);
     const skipped = selected.length - images.length;
 
     if (images.length === 0) {
       setCardFileErrors((prev) => ({
         ...prev,
-        [cardId]: "Please choose image files (JPEG, PNG, or WebP).",
+        [cardId]:
+          "Those files aren't usable photos. Choose JPEG, PNG, WebP, or HEIC images.",
       }));
       input.value = "";
       return;
@@ -454,12 +468,12 @@ export default function QuoteForm() {
     if (skipped > 0) {
       setCardFileErrors((prev) => ({
         ...prev,
-        [cardId]: `${skipped} file${skipped === 1 ? "" : "s"} skipped (not an image). ${images.length} added.`,
+        [cardId]: `${skipped} file${skipped === 1 ? "" : "s"} skipped (not a photo). ${images.length} added.`,
       }));
     } else if (trimmed) {
       setCardFileErrors((prev) => ({
         ...prev,
-        [cardId]: `Only the first ${MAX_PHOTOS_PER_CARD} images were kept.`,
+        [cardId]: `Only the first ${MAX_PHOTOS_PER_CARD} photos were kept.`,
       }));
     } else {
       setCardFileErrors((prev) => {
@@ -569,7 +583,7 @@ export default function QuoteForm() {
       capture("quote_form_error", { error_type: "config_missing" });
       setStatus("error");
       setErrorMessage(
-        "Form is not configured. Missing Supabase environment variables."
+        "This form isn't connected right now. Please try again later or contact us directly."
       );
       return;
     }
@@ -671,8 +685,12 @@ export default function QuoteForm() {
         });
       }
 
+      // Validation already guaranteed a complete card, so this can only fire
+      // on an internal inconsistency — never tell the visitor they have no cards.
       if (cardsPayload.length < 1) {
-        throw new Error("Add at least one card before submitting.");
+        throw new Error(
+          "Something went wrong preparing your cards. Please refresh and try again."
+        );
       }
 
       setStatus("submitting");
@@ -787,9 +805,7 @@ export default function QuoteForm() {
             : "supabase_insert_failed",
       });
       setStatus("error");
-      setErrorMessage(
-        err?.message ?? "Something went wrong. Please try again in a moment."
-      );
+      setErrorMessage(friendlySubmitError(err, phase));
     }
   }
 
@@ -797,6 +813,7 @@ export default function QuoteForm() {
     status === "checking" || status === "uploading" || status === "submitting";
 
   const showValidationError = hasFieldErrors(fieldErrors);
+  const validationErrorLines = describeQuoteValidationErrors(fieldErrors, cards);
 
   return (
     <>
@@ -862,6 +879,11 @@ export default function QuoteForm() {
           {lockedName.firstName && (
             <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
           )}
+          {fieldErrors?.firstName ? (
+            <p className="mt-1 text-sm text-error" role="alert">
+              {inlineFieldErrorMessage("firstName")}
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -892,6 +914,11 @@ export default function QuoteForm() {
           {lockedName.lastName && (
             <AccountFieldNote>Your name comes from your account.</AccountFieldNote>
           )}
+          {fieldErrors?.lastName ? (
+            <p className="mt-1 text-sm text-error" role="alert">
+              {inlineFieldErrorMessage("lastName")}
+            </p>
+          ) : null}
         </div>
 
         <div>
@@ -946,8 +973,8 @@ export default function QuoteForm() {
             </p>
           )}
           {fieldErrors?.email && (
-            <p className="mt-1 text-sm text-error">
-              Please enter a valid email address
+            <p className="mt-1 text-sm text-error" role="alert">
+              {inlineFieldErrorMessage("email", fieldErrors.email)}
             </p>
           )}
         </div>
@@ -960,6 +987,11 @@ export default function QuoteForm() {
             If you choose local drop-off, we&apos;ll provide the address after we
             review your submission.
           </p>
+          {fieldErrors?.deliveryMethod ? (
+            <p className="text-sm text-error" role="alert">
+              {inlineFieldErrorMessage("deliveryMethod")}
+            </p>
+          ) : null}
           <label className={optionClassName(fieldErrors?.deliveryMethod)}>
             <input
               type="radio"
@@ -1009,7 +1041,7 @@ export default function QuoteForm() {
           </p>
           {fieldErrors?.contacts && (
             <p className="text-sm text-error" role="alert">
-              Please enter at least one additional contact method
+              {inlineFieldErrorMessage("contacts")}
             </p>
           )}
           {CONTACT_TYPES.map((type) => {
@@ -1099,7 +1131,7 @@ export default function QuoteForm() {
                 : "scroll-mt-24 text-sm text-ink/60"
             }
           >
-            No cards yet. Add a card to continue.
+            No cards yet. {inlineFieldErrorMessage("noCards")}
           </p>
         )}
 
@@ -1140,6 +1172,11 @@ export default function QuoteForm() {
                   className={fieldClassName(cardErrors?.cardName)}
                   aria-invalid={cardErrors?.cardName || undefined}
                 />
+                {cardErrors?.cardName ? (
+                  <p className="mt-1 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("cardName")}
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -1197,6 +1234,11 @@ export default function QuoteForm() {
                     );
                   })}
                 </div>
+                {cardErrors?.damageTags ? (
+                  <p className="mt-2 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("damageTags")}
+                  </p>
+                ) : null}
                 {(card.damageTags ?? []).includes("whitening") ? (
                   <p
                     className="mt-3 rounded-lg border border-ink/25 bg-ink/10 px-3 py-2.5 text-sm leading-relaxed text-ink/75"
@@ -1252,6 +1294,11 @@ export default function QuoteForm() {
                     {cardFileErrors[card.id]}
                   </p>
                 )}
+                {cardErrors?.files && !cardFileErrors[card.id] ? (
+                  <p className="mb-2 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("files")}
+                  </p>
+                ) : null}
                 <label
                   htmlFor={inputId}
                   className={
@@ -1372,12 +1419,19 @@ export default function QuoteForm() {
 
       <div className="space-y-2">
         {showValidationError && (
-          <p
-            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm font-semibold text-ink"
+          <div
+            className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm text-ink"
             role="alert"
           >
-            Please fill out all required fields
-          </p>
+            <p className="font-semibold">
+              Fix the following before submitting:
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {validationErrorLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <Button
