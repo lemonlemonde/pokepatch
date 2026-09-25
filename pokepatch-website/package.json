@@ -12,6 +12,7 @@
     "prodenv": "sh scripts/use-env.sh prod && npm run dev",
     "build": "next build",
     "start": "next start",
+    "sync-tcg-catalog": "node --env-file=.env.local.prod scripts/sync-tcg-catalog.mjs",
     "lint": "eslint ."
   },
   "dependencies": {

@@ -74,6 +74,7 @@ Repo **Settings → Secrets and variables → Actions**:
 | `NEXT_PUBLIC_POSTHOG_HOST` | Frontend build (optional) |
 | `NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS` | Frontend build (if used) |
 | `NEXT_PUBLIC_CUSTOMER_AUTH_ENABLED` | Frontend build (if used) |
+| `SUPABASE_SERVICE_ROLE_KEY` | [`sync-tcg-catalog.yml`](.github/workflows/sync-tcg-catalog.yml) upserts `tcg_cards` (weekly, after each Deploy, or on demand) |
 
 Edge-function **runtime** secrets (`ADMIN_ALLOWED_EMAILS`, Resend, Discord, Sheets, …) stay in the Supabase project dashboard; CI only redeploys function code.
 
@@ -333,12 +334,19 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 
 - Short-lived tokens for `/admin/` login (service role only)
 
+**`tcg_cards`** (card catalog mirror)
+
+- Local copy of [PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (same ids as `api.pokemontcg.io`, ~20k rows, a few MB). Admin card search and "Use card" read from here; nothing calls the public API at request time.
+- Refreshed by `scripts/sync-tcg-catalog.mjs` — CI runs it weekly, after every successful Deploy, and via **Actions → Sync TCG catalog → Run workflow**. Locally: `npm run sync-tcg-catalog` (needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local.prod`; point `SUPABASE_URL` at `http://127.0.0.1:54321` for the local stack).
+- New sets appear once the upstream dataset adds them; if search misses a just-released set, run the workflow manually.
+
 ### RPCs
 
 | Function | Caller | Role |
 |----------|--------|------|
 | `create_order(p_payload jsonb)` | `anon` | Public form; writes working + original in one transaction |
 | `update_order(...)` | `service_role` only | Admin edits to working tables; no notify |
+| `search_tcg_cards(p_name, p_set, p_number, p_page, p_page_size)` | `service_role` only | Ranked catalog search (substring, then `pg_trgm` similarity; newest set first) |
 
 RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
 

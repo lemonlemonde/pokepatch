@@ -1,0 +1,55 @@
+name: Sync TCG catalog
+
+# Mirrors PokemonTCG/pokemon-tcg-data into public.tcg_cards (admin card search).
+# Runs weekly, after every successful Deploy (so a fresh schema is populated),
+# and on demand. Idempotent upsert — a failed run leaves the old catalog intact.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: pokepatch-website
+
+concurrency:
+  group: sync-tcg-catalog
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Upsert tcg_cards
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: pokepatch-website/package-lock.json
+
+      - name: Require secrets
+        run: |
+          missing=
+          [ -n "$SUPABASE_URL" ] || missing="$missing NEXT_PUBLIC_SUPABASE_URL"
+          [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] || missing="$missing SUPABASE_SERVICE_ROLE_KEY"
+          if [ -n "$missing" ]; then
+            echo "Missing GitHub Actions secrets:$missing" >&2
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Sync catalog
+        run: node scripts/sync-tcg-catalog.mjs
