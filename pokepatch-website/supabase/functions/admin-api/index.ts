@@ -1605,7 +1605,7 @@ async function applyTcgCardThumbnail(
   itemId: string,
   cardId: string
 ) {
-  const card = await fetchPokemonTcgCard(cardId);
+  const card = await fetchPokemonTcgCard(supabase, cardId);
   if (!card) {
     throw new Error("card not found");
   }
@@ -2934,10 +2934,15 @@ Deno.serve(async (req) => {
         );
       }
 
+      const cardNumber = normalizeSearchText(
+        typeof body.number === "string" ? body.number : ""
+      );
+
       try {
-        const result = await searchPokemonTcgCatalog(cardName, setName, {
+        const result = await searchPokemonTcgCatalog(supabase, cardName, setName, {
           page,
           pageSize,
+          number: cardNumber,
         });
         return jsonResponse(req, {
           ok: true,
@@ -2945,17 +2950,15 @@ Deno.serve(async (req) => {
           total_count: result.totalCount,
           page: result.page,
           page_size: result.pageSize,
-          query_used: result.query_used,
+          query_used: result.queryUsed,
         });
       } catch (err) {
         console.error("gallery_tcg_search", err);
-        const raw = err instanceof Error ? err.message : String(err);
-        const error = /timed out|abort/i.test(raw)
-          ? "Card lookup timed out. Try again."
-          : /429/.test(raw)
-            ? "Card lookup is rate limited. Wait a moment and try again."
-            : "Card lookup failed. Try again.";
-        return jsonResponse(req, { ok: false, error }, 502);
+        return jsonResponse(
+          req,
+          { ok: false, error: "Card lookup failed. Try again." },
+          502
+        );
       }
     }
 
@@ -3018,7 +3021,7 @@ Deno.serve(async (req) => {
       }
 
       try {
-        const tcgCard = await fetchPokemonTcgCard(tcgId);
+        const tcgCard = await fetchPokemonTcgCard(supabase, tcgId);
         if (!tcgCard) {
           return jsonResponse(req, { ok: false, error: "card not found" }, 404);
         }
