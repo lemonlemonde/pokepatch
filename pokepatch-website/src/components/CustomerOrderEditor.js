@@ -34,8 +34,12 @@ import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import {
   AccountFieldNote,
   copyFileList,
+  describeQuoteValidationErrors,
   emptyContactValues,
+  friendlySubmitError,
   hasAdditionalContact,
+  inlineFieldErrorMessage,
+  isLikelyImageFile,
   isOrderEditCardComplete as isCardComplete,
   isOrderEditCardEmpty as isCardEmpty,
 } from "@/lib/quoteDraftHelpers";
@@ -274,16 +278,28 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
     const errors = {
       deliveryMethod: !draft.deliveryMethod,
       contacts: !hasAdditionalContact(draft.contactValues),
-      noCards: !draft.cards.some(isCardComplete),
+      // Only when there are literally no card rows; started or blank rows get
+      // per-field errors below so this never reads as "no cards" otherwise.
+      noCards: draft.cards.length === 0,
     };
+    const cardFieldErrors = (card) => ({
+      cardName: card.cardName.trim() === "",
+      damageTags: normalizeDamageTags(card.damageTags).length === 0,
+      files: card.existingImages.length + card.newFiles.length < 1,
+    });
     const cardErrors = {};
     for (const card of draft.cards) {
-      if (isCardEmpty(card)) continue;
-      cardErrors[card.id] = {
-        cardName: card.cardName.trim() === "",
-        damageTags: normalizeDamageTags(card.damageTags).length === 0,
-        files: card.existingImages.length + card.newFiles.length < 1,
-      };
+      if (isCardEmpty(card) || isCardComplete(card)) continue;
+      cardErrors[card.id] = cardFieldErrors(card);
+    }
+    // No complete card and nothing partially filled: flag the first blank row
+    // so save stays blocked (at least one finished card is required).
+    if (
+      !draft.cards.some(isCardComplete) &&
+      Object.keys(cardErrors).length === 0
+    ) {
+      const firstEmpty = draft.cards.find(isCardEmpty);
+      if (firstEmpty) cardErrors[firstEmpty.id] = cardFieldErrors(firstEmpty);
     }
     const hasCardFieldError = Object.values(cardErrors).some(
       (row) => row.cardName || row.damageTags || row.files
@@ -301,7 +317,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
     event.preventDefault();
     if (!supabase || status === "saving") return;
     if (!validate()) {
-      setErrorMessage("Please fill out all required fields");
+      // Banner + inline field copy come from fieldErrors; keep top error clear.
+      setErrorMessage("");
       return;
     }
 
@@ -324,6 +341,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       )
     );
 
+    let phase = "upload";
     try {
       const cardsPayload = [];
       for (const card of completeCards) {
@@ -365,8 +383,12 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         });
       }
 
+      // validate() already guaranteed a complete card; this only fires on an
+      // internal inconsistency, so never tell the customer they have no cards.
       if (cardsPayload.length < 1) {
-        throw new Error("Add at least one card before saving.");
+        throw new Error(
+          "Something went wrong preparing your cards. Please refresh and try again."
+        );
       }
 
       const keptPaths = new Set(
@@ -398,6 +420,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         cards: cardsPayload,
       };
 
+      phase = "submit";
       const { data, error } = await supabase.rpc("update_my_order", {
         p_order_id: order.id,
         p_payload: payload,
@@ -427,7 +450,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       onSaved?.(data);
     } catch (err) {
       setStatus("idle");
-      setErrorMessage(err.message || "Failed to save changes");
+      setErrorMessage(friendlySubmitError(err, phase));
     }
   }
 
@@ -444,7 +467,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
     } catch (err) {
       setStatus("idle");
       setConfirmCancel(false);
-      setErrorMessage(err.message || "Failed to cancel order");
+      setErrorMessage(
+        err?.message
+          ? `Couldn't cancel this order: ${err.message}`
+          : "Couldn't cancel this order. Please try again."
+      );
     }
   }
 
@@ -457,6 +484,10 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         Object.values(fieldErrors.cards ?? {}).some(
           (row) => row.cardName || row.damageTags || row.files
         ))
+  );
+  const validationErrorLines = describeQuoteValidationErrors(
+    fieldErrors,
+    draft.cards
   );
 
   return (
@@ -483,6 +514,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             If you choose local drop-off, we&apos;ll provide the address after we
             review your submission.
           </p>
+          {fieldErrors?.deliveryMethod ? (
+            <p className="text-sm text-error" role="alert">
+              {inlineFieldErrorMessage("deliveryMethod")}
+            </p>
+          ) : null}
           <label className={optionClassName(fieldErrors?.deliveryMethod)}>
             <input
               type="radio"
@@ -536,7 +572,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           </p>
           {fieldErrors?.contacts ? (
             <p className="text-sm text-error" role="alert">
-              Please enter at least one additional contact method
+              {inlineFieldErrorMessage("contacts")}
             </p>
           ) : null}
           {CONTACT_TYPES.map((type) => {
@@ -646,7 +682,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 : "scroll-mt-24 text-sm text-ink/60"
             }
           >
-            No cards yet. Add a card to continue.
+            No cards yet. {inlineFieldErrorMessage("noCards")}
           </p>
         ) : null}
 
@@ -730,6 +766,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                   className={fieldClassName(cardErrors?.cardName)}
                   aria-invalid={cardErrors?.cardName || undefined}
                 />
+                {cardErrors?.cardName ? (
+                  <p className="mt-1 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("cardName")}
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -788,6 +829,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                     );
                   })}
                 </div>
+                {cardErrors?.damageTags ? (
+                  <p className="mt-2 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("damageTags")}
+                  </p>
+                ) : null}
                 {(card.damageTags ?? []).includes("whitening") ? (
                   <p
                     className="mt-3 rounded-lg border border-ink/25 bg-ink/10 px-3 py-2.5 text-sm leading-relaxed text-ink/75"
@@ -838,18 +884,25 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                   multiple
                   disabled={busy || photoCount >= MAX_PHOTOS_PER_CARD}
                   onChange={(event) => {
-                    const incoming = copyFileList(event.target.files).filter(
-                      (file) => file.type.startsWith("image/")
-                    );
+                    const selected = copyFileList(event.target.files);
+                    const incoming = selected.filter(isLikelyImageFile);
+                    const skipped = selected.length - incoming.length;
                     if (incoming.length === 0) {
                       setCardFileErrors((prev) => ({
                         ...prev,
-                        [card.id]: "Please choose image files only.",
+                        [card.id]:
+                          "Those files aren't usable photos. Choose JPEG, PNG, WebP, or HEIC images.",
                       }));
                       event.target.value = "";
                       return;
                     }
                     setCardFileErrors((prev) => {
+                      if (skipped > 0) {
+                        return {
+                          ...prev,
+                          [card.id]: `${skipped} file${skipped === 1 ? "" : "s"} skipped (not a photo). ${incoming.length} added.`,
+                        };
+                      }
                       const next = { ...prev };
                       delete next[card.id];
                       return next;
@@ -871,6 +924,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 {cardFileErrors[card.id] ? (
                   <p className="mb-2 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm font-semibold text-ink">
                     {cardFileErrors[card.id]}
+                  </p>
+                ) : null}
+                {cardErrors?.files && !cardFileErrors[card.id] ? (
+                  <p className="mb-2 text-sm text-error" role="alert">
+                    {inlineFieldErrorMessage("files")}
                   </p>
                 ) : null}
                 {photoCount < MAX_PHOTOS_PER_CARD ? (
@@ -968,12 +1026,19 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           </p>
         ) : null}
         {showValidationError ? (
-          <p
+          <div
             className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error"
             role="alert"
           >
-            Please fill out all required fields
-          </p>
+            <p className="font-semibold text-ink">
+              Fix the following before saving:
+            </p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-5 text-ink">
+              {validationErrorLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
 
         <Button type="submit" fullWidth disabled={busy}>
