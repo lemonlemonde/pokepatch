@@ -462,14 +462,28 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   if (ordersError) throw ordersError;
   if (!orders?.length) return [];
 
-  // 1-based place among status=new, same order as list_queue_orders / get_my_orders.
+  // 1-based place among status=new — same order as admin To do column /
+  // sortOrdersForStatusColumn (priority, then status_changed_at).
   const queuePositionById = new Map<string, number>();
+  const statusChangedMs = (o: {
+    status_changed_at?: string | null;
+    created_at?: string | null;
+  }) => {
+    const primary = o.status_changed_at
+      ? new Date(o.status_changed_at).getTime()
+      : NaN;
+    if (!Number.isNaN(primary)) return primary;
+    const fallback = o.created_at ? new Date(o.created_at).getTime() : NaN;
+    return Number.isNaN(fallback) ? 0 : fallback;
+  };
   const newOrders = [...orders]
     .filter((o) => o.status === "new")
     .sort((a, b) => {
       const aPriority = Boolean(a.is_priority);
       const bPriority = Boolean(b.is_priority);
       if (aPriority !== bPriority) return aPriority ? -1 : 1;
+      const byChanged = statusChangedMs(a) - statusChangedMs(b);
+      if (byChanged !== 0) return byChanged;
       const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
       const bt = b.created_at ? new Date(b.created_at as string).getTime() : 0;
       if (at !== bt) return at - bt;
