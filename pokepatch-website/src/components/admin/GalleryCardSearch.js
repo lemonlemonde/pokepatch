@@ -14,6 +14,8 @@ const MIN_NAME_ONLY_LENGTH = 3;
  * Must exceed server catalog budget (~28s) plus cold-start / network slack.
  */
 const CLIENT_SEARCH_TIMEOUT_MS = 40_000;
+/** Debounce for auto-search so typing doesn't fire a request per keystroke. */
+const AUTO_SEARCH_DEBOUNCE_MS = 400;
 
 function fieldClassName() {
   return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
@@ -101,6 +103,11 @@ function CardResultButton({ card, selected, onSelect }) {
 
 /**
  * Search the full Pokémon TCG API catalog and pick one card for gallery thumbnails.
+ *
+ * Optional Studio-style mode:
+ * - `hideFields` — parent owns card/set inputs; pass `cardName`/`setName` (+ change handlers)
+ * - `autoSearch` — search after a short debounce when the query is valid
+ * - `collapseOnSelect` — hide the results grid once a card is selected
  */
 export default function GalleryCardSearch({
   selectedCard,
@@ -111,10 +118,32 @@ export default function GalleryCardSearch({
   confirming = false,
   initialCardName = "",
   initialSetName = "",
+  cardName: controlledCardName,
+  setName: controlledSetName,
+  onCardNameChange,
+  onSetNameChange,
+  hideFields = false,
+  autoSearch = false,
+  collapseOnSelect = false,
   disabled = false,
 }) {
-  const [cardName, setCardName] = useState(initialCardName);
-  const [setName, setSetName] = useState(initialSetName);
+  const isControlled =
+    controlledCardName !== undefined && controlledSetName !== undefined;
+  const [internalCardName, setInternalCardName] = useState(initialCardName);
+  const [internalSetName, setInternalSetName] = useState(initialSetName);
+  const cardName = isControlled ? controlledCardName : internalCardName;
+  const setName = isControlled ? controlledSetName : internalSetName;
+
+  function updateCardName(next) {
+    if (isControlled) onCardNameChange?.(next);
+    else setInternalCardName(next);
+  }
+
+  function updateSetName(next) {
+    if (isControlled) onSetNameChange?.(next);
+    else setInternalSetName(next);
+  }
+
   const [lastQuery, setLastQuery] = useState({ cardName: "", setName: "" });
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -220,15 +249,105 @@ export default function GalleryCardSearch({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Auto-search when the query becomes valid (Studio: type card + set, results appear).
+  useEffect(() => {
+    if (!autoSearch) return undefined;
+    if (disabled) return undefined;
+    if (collapseOnSelect && selectedCard?.id) return undefined;
+
+    const nameQuery = normalizeSearchInput(cardName);
+    const setQuery = normalizeSearchInput(setName);
+
+    if (!canSearch(nameQuery, setQuery)) {
+      // Don't clobber a "No cards found" from a prior valid query while the
+      // user is mid-edit below the minimum length — only clear when empty.
+      if (!nameQuery && !setQuery) {
+        const clearId = setTimeout(() => {
+          abortRef.current?.abort();
+          setResults([]);
+          setTotalCount(0);
+          setError("");
+          setLastQuery({ cardName: "", setName: "" });
+        }, 0);
+        return () => clearTimeout(clearId);
+      }
+      return undefined;
+    }
+
+    if (
+      nameQuery === lastQuery.cardName &&
+      setQuery === lastQuery.setName &&
+      (results.length > 0 || error === "No cards found." || loading)
+    ) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setLastQuery({ cardName: nameQuery, setName: setQuery });
+      runSearch(nameQuery, setQuery, 1, false);
+    }, AUTO_SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timeoutId);
+    // lastQuery/results/error/loading intentionally omitted — we only react to
+    // input + selection. The equality check above prevents repeat fetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autoSearch,
+    collapseOnSelect,
+    selectedCard?.id,
+    cardName,
+    setName,
+    disabled,
+    runSearch,
+  ]);
+
   const hasMore = results.length < totalCount;
+  const showResults = !(collapseOnSelect && selectedCard?.id);
+  const showStatus =
+    showResults &&
+    Boolean(error || (loading && results.length === 0) || results.length > 0);
+
+  function handleClear() {
+    abortRef.current?.abort();
+    setResults([]);
+    setTotalCount(0);
+    setError("");
+    setLastQuery({ cardName: "", setName: "" });
+    onClear?.();
+  }
+
+  function handleSelect(card) {
+    if (collapseOnSelect) {
+      abortRef.current?.abort();
+      setResults([]);
+      setTotalCount(0);
+      setError("");
+      setLoading(false);
+      setLoadingMore(false);
+    }
+    onSelect?.(card);
+  }
+
+  // Studio owns the inputs; render nothing until there is catalog feedback.
+  if (hideFields && !showStatus) {
+    return null;
+  }
 
   return (
-    <div className="rounded-lg border border-ink/10 bg-ink/[0.02] p-4">
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-        Find card
-      </p>
+    <div
+      className={
+        hideFields
+          ? "space-y-2 border-t border-ink/10 pt-3"
+          : "rounded-lg border border-ink/10 bg-ink/[0.02] p-4"
+      }
+    >
+      {!hideFields ? (
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          Find card
+        </p>
+      ) : null}
 
-      {selectedCard?.id && (
+      {selectedCard?.id && !hideFields && (
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-ink/15 bg-ink/[0.03] p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -259,7 +378,7 @@ export default function GalleryCardSearch({
             <button
               type="button"
               disabled={disabled || confirming}
-              onClick={onClear}
+              onClick={handleClear}
               className="rounded-lg px-2 py-1 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/45 transition hover:text-ink disabled:opacity-50"
             >
               Clear
@@ -275,65 +394,67 @@ export default function GalleryCardSearch({
         type="submit" — that would submit the *outer* form and kick off a
         Generate instead of a search. Enter-to-search is wired on the inputs.
       */}
-      <div
-        role="search"
-        className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 sm:gap-4"
-      >
-        <label className="block space-y-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-            Card name
-          </span>
-          <input
-            type="text"
-            value={cardName}
-            disabled={disabled}
-            onChange={(event) => setCardName(event.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            className={fieldClassName()}
-            placeholder="e.g. Pikachu ex, Sylveon-GX"
-            autoComplete="off"
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-            Set
-          </span>
-          <input
-            type="text"
-            value={setName}
-            disabled={disabled}
-            onChange={(event) => setSetName(event.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            className={fieldClassName()}
-            placeholder="e.g. Ascended Heroes, Guardians Rising"
-            autoComplete="off"
-          />
-        </label>
-        <div className="space-y-1">
-          <span
-            className="block font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 opacity-0 select-none"
-            aria-hidden="true"
-          >
-            Search
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              if (loading || loadingMore) {
-                abortRef.current?.abort();
-                return;
-              }
-              submitSearch();
-            }}
-            disabled={disabled}
-            className="w-full rounded-lg bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
-          >
-            {loading || loadingMore ? "Cancel" : "Search"}
-          </button>
+      {!hideFields ? (
+        <div
+          role="search"
+          className="mt-4 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-end gap-3 sm:gap-4"
+        >
+          <label className="block space-y-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+              Card name
+            </span>
+            <input
+              type="text"
+              value={cardName}
+              disabled={disabled}
+              onChange={(event) => updateCardName(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className={fieldClassName()}
+              placeholder="e.g. Pikachu ex, Sylveon-GX"
+              autoComplete="off"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+              Set
+            </span>
+            <input
+              type="text"
+              value={setName}
+              disabled={disabled}
+              onChange={(event) => updateSetName(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              className={fieldClassName()}
+              placeholder="e.g. Ascended Heroes, Guardians Rising"
+              autoComplete="off"
+            />
+          </label>
+          <div className="space-y-1">
+            <span
+              className="block font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 opacity-0 select-none"
+              aria-hidden="true"
+            >
+              Search
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                if (loading || loadingMore) {
+                  abortRef.current?.abort();
+                  return;
+                }
+                submitSearch();
+              }}
+              disabled={disabled}
+              className="w-full rounded-lg bg-ink px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-night transition hover:bg-ink/90 disabled:opacity-50 sm:w-auto sm:whitespace-nowrap"
+            >
+              {loading || loadingMore ? "Cancel" : "Search"}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      {error && !loading && !loadingMore && (
+      {showResults && error && !loading && !loadingMore && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <p className="text-xs font-semibold text-error">{error}</p>
           {lastQuery.cardName || lastQuery.setName ? (
@@ -351,11 +472,11 @@ export default function GalleryCardSearch({
         </div>
       )}
 
-      {loading && results.length === 0 ? (
+      {showResults && loading && results.length === 0 ? (
         <p className="mt-3 text-xs text-ink/45">Searching card catalog…</p>
       ) : null}
 
-      {results.length > 0 ? (
+      {showResults && results.length > 0 ? (
         <>
           <p className="mt-3 text-xs text-ink/45">
             {totalCount.toLocaleString()} match{totalCount === 1 ? "" : "es"}
@@ -369,7 +490,7 @@ export default function GalleryCardSearch({
                 <CardResultButton
                   card={card}
                   selected={selectedCard}
-                  onSelect={onSelect}
+                  onSelect={handleSelect}
                 />
               </li>
             ))}
