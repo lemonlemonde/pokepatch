@@ -98,8 +98,8 @@ function OrderEditorContent({
     items: preview.items,
     cards: preview.cards,
     adjustments: preview.adjustments,
-    isPriority: priorityCardCount > 0,
-    cardCount: priorityCardCount,
+    isPriority: priorityCardCount > 0 || Boolean(draft.is_priority),
+    cardCount: preview.cardCount,
   });
   const afterCompletionTotal = adminLedgerTotal(draft.after_completion_amounts);
   const costsTotal = adminLedgerTotal(draft.restoration_costs);
