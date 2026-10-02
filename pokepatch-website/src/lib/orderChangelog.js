@@ -185,6 +185,7 @@ function quoteTotalFromPayload(payload) {
             card_name: fromPayload.card_name,
             set_name: fromPayload.set_name,
             status: fromPayload.status,
+            is_priority: Boolean(fromPayload.is_priority),
           }
         : { id };
     }),

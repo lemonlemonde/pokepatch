@@ -191,6 +191,29 @@ export function hasPriorityAdjustment(adjustments) {
   return (adjustments ?? []).some(isPriorityAdjustmentRow);
 }
 
+/**
+ * How many billable cards the priority fee should cover.
+ * Prefer per-card flags; fall back to all billable / `cardCount` when the
+ * order-level flag or a stored Priority service adjustment says priority.
+ */
+export function resolvePriorityCardCount({
+  cards = null,
+  adjustments = null,
+  isPriority = false,
+  cardCount = null,
+} = {}) {
+  const wantsPriority =
+    Boolean(isPriority) || hasPriorityAdjustment(adjustments);
+  if (Array.isArray(cards) && cards.length > 0) {
+    const marked = priorityBillableCards(cards).length;
+    if (marked > 0) return marked;
+    if (wantsPriority) return billableQuoteCards(cards).length;
+    return 0;
+  }
+  if (wantsPriority) return Math.max(0, Number(cardCount) || 0);
+  return 0;
+}
+
 /** Editor/storage row for the order-level priority surcharge. */
 export function priorityQuoteAdjustment(cardCount) {
   const fee = priorityServiceFee(cardCount);
@@ -953,20 +976,12 @@ export function computeQuoteTotal({
     nonPriorityAdjustments,
     billableItems
   );
-  const wantsPriority =
-    Boolean(isPriority) || hasPriorityAdjustment(adjustments);
-  let priorityCount = 0;
-  if (Array.isArray(cards) && cards.length > 0) {
-    const marked = priorityBillableCards(cards).length;
-    if (marked > 0) {
-      priorityCount = marked;
-    } else if (wantsPriority) {
-      // Order-level priority without per-card flags (legacy / homogeneous).
-      priorityCount = billableCards.length;
-    }
-  } else if (wantsPriority) {
-    priorityCount = cardCount ?? 0;
-  }
+  const priorityCount = resolvePriorityCardCount({
+    cards,
+    adjustments,
+    isPriority,
+    cardCount,
+  });
   const priorityFee =
     priorityCount > 0 ? priorityServiceFee(priorityCount) : 0;
   return (

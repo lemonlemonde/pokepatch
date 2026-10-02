@@ -11,6 +11,7 @@ import {
   emptyQuoteAdjustment,
   formatMoney,
   isPriorityAdjustmentRow,
+  priorityBillableCards,
 } from "@/lib/servicePricing";
 import { moneyFieldToPayload, quoteItemIsReady } from "@/lib/adminOrderDraft";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
@@ -39,6 +40,7 @@ export function buildQuotePreview(draft) {
       card_name: card.card_name,
       set_name: card.set_name,
       status: card.status,
+      is_priority: Boolean(card.is_priority),
     })),
     draft.quote_card_hv ?? {}
   );
@@ -107,10 +109,14 @@ export default function QuoteSection() {
   const restorationCosts = draft.restoration_costs ?? [];
   const preview = buildQuotePreview(draft);
   const bulkPercent = bulkDiscountPercentForCardCount(preview.cardCount);
+  const showPriority =
+    priorityBillableCards(draft.cards).length > 0 ||
+    Boolean(draft.is_priority);
   const hasReceipt =
     preview.items.length > 0 ||
     preview.cards.some((card) => card.hv_amount) ||
-    adjustments.length > 0;
+    adjustments.length > 0 ||
+    showPriority;
   const afterCompletionTotal = adminLedgerTotal(afterCompletionRows);
   const costsTotal = adminLedgerTotal(restorationCosts);
 
@@ -320,16 +326,16 @@ export default function QuoteSection() {
             </p>
           ) : null}
 
-          {hasReceipt || draft.is_priority ? (
+          {hasReceipt ? (
             <QuoteReceipt
               items={preview.items}
               cards={preview.cards}
               adjustments={adjustments}
-              isPriority={Boolean(draft.is_priority)}
+              isPriority={showPriority}
               cardCount={preview.cardCount}
               title="Receipt"
               className={
-                draft.is_priority ? "border-ink/25 bg-ink/[0.07]" : ""
+                showPriority ? "border-ink/25 bg-ink/[0.07]" : ""
               }
             />
           ) : (

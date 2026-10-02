@@ -2,19 +2,17 @@
 
 import { useState } from "react";
 import {
-  billableQuoteCards,
   billableQuoteItems,
   computeQuoteTotal,
   formatMoney,
   groupQuoteItemsByCard,
-  hasPriorityAdjustment,
   isPriorityAdjustmentRow,
   normalizeServiceDisplayTitle,
-  priorityBillableCards,
   priorityServiceDescription,
   priorityServiceFee,
   quoteAdjustmentLines,
   quoteItemLineTotal,
+  resolvePriorityCardCount,
 } from "@/lib/servicePricing";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
@@ -41,26 +39,19 @@ export default function QuoteReceipt({
     (row) => !isPriorityAdjustmentRow(row)
   );
   const adjustmentLines = quoteAdjustmentLines(nonPriorityAdjustments, lines);
-  const resolvedCardCount =
-    Array.isArray(cards) && cards.length > 0
-      ? billableQuoteCards(cards).length
-      : cardCount ?? null;
-  const priorityCount =
-    Array.isArray(cards) && cards.length > 0
-      ? priorityBillableCards(cards).length
-      : Boolean(isPriority) || hasPriorityAdjustment(adjustments)
-        ? resolvedCardCount
-        : 0;
-  const showPriorityLine = priorityCount != null && priorityCount > 0;
-  const priorityFee = showPriorityLine
-    ? priorityServiceFee(priorityCount)
-    : 0;
+  const priorityCount = resolvePriorityCardCount({
+    cards,
+    adjustments,
+    isPriority,
+    cardCount,
+  });
+  const priorityFee = priorityServiceFee(priorityCount);
   const total = computeQuoteTotal({
     items,
     cards,
     adjustments,
-    isPriority: showPriorityLine,
-    cardCount: priorityCount,
+    isPriority,
+    cardCount,
   });
   const bodyOpen = !collapsible || open;
 
