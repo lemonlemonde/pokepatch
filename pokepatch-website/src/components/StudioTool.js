@@ -21,7 +21,6 @@ import { publishStudioPairsToGallery } from "@/lib/studioToGallery";
 import { buildStudioSeedFromGalleryItem } from "@/lib/galleryToStudio";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
-import useDebouncedValue from "@/lib/useDebouncedValue";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 import useStudioDraft from "@/lib/useStudioDraft";
 import { deleteDraft } from "@/lib/studioDraftDb";
@@ -30,10 +29,7 @@ import {
   canvasToBlob,
   stitchBeforeAfterPairRows,
 } from "@/lib/instagramStitch";
-import {
-  DEFAULT_PACKAGE_CAPTION,
-  downloadStudioPackageZip,
-} from "@/lib/studioPackageZip";
+import { downloadStudioPackageZip } from "@/lib/studioPackageZip";
 import {
   STUDIO_EXPORT_SCALE,
   getOutputCanvasSize,
@@ -96,6 +92,11 @@ function cardMetaToOverlayOptions(meta) {
 /**
  * `resolveDroppedItemFile` lets the front image accept a thumbnail dragged out
  * of the Before/After photo lists, not just an OS file drop.
+ *
+ * Card + set fields double as the TCG catalog query: typing auto-searches.
+ * Picking a result fills the front image and collapses the grid; editing the
+ * fields again clears the pick so a new search can run. No match is fine —
+ * keep the typed names and upload a front image manually.
  */
 function StudioCardMetaControls({
   value,
@@ -104,7 +105,6 @@ function StudioCardMetaControls({
 }) {
   const frontInputId = useId();
   const [uploadDragging, setUploadDragging] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [pickedCard, setPickedCard] = useState(null);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState("");
@@ -122,6 +122,8 @@ function StudioCardMetaControls({
 
   function setFrontFile(file) {
     if (!file || !file.type.startsWith("image/")) return;
+    setPickedCard(null);
+    setPickError("");
     patch({
       frontFile: file,
       frontPreviewUrl: URL.createObjectURL(file),
@@ -157,11 +159,24 @@ function StudioCardMetaControls({
   }
 
   function clearFront() {
+    setPickedCard(null);
+    setPickError("");
     patch({
       frontFile: null,
       frontPreviewUrl: null,
       ...CLEARED_TCG_FIELDS,
     });
+  }
+
+  function handleCardFieldChange(partial) {
+    // Editing after a catalog pick unlocks auto-search again.
+    if (pickedCard) {
+      setPickedCard(null);
+      setPickError("");
+      patch({ ...partial, ...CLEARED_TCG_FIELDS });
+      return;
+    }
+    patch(partial);
   }
 
   async function applySearchedCard(card) {
@@ -181,6 +196,7 @@ function StudioCardMetaControls({
         tcg_lookup_set_name: (card.set_name ?? "").trim(),
       });
     } catch {
+      setPickedCard(null);
       setPickError("Couldn't download that card's image. Try another, or upload one.");
     } finally {
       setPicking(false);
@@ -194,7 +210,7 @@ function StudioCardMetaControls({
           Card info overlay
         </p>
         <p className="mt-0.5 text-xs text-ink/50">
-          Front thumbnail, card name, and set on each generated post
+          Type a card and set to search the catalog, or upload a front image
         </p>
       </div>
 
@@ -274,7 +290,7 @@ function StudioCardMetaControls({
           />
         </div>
 
-        <div className="grid gap-3">
+        <div className="grid gap-3 content-start">
           <label className="block space-y-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
               Card
@@ -282,9 +298,12 @@ function StudioCardMetaControls({
             <input
               type="text"
               value={value.card}
-              onChange={(event) => patch({ card: event.target.value })}
+              onChange={(event) =>
+                handleCardFieldChange({ card: event.target.value })
+              }
               placeholder="Sylveon-GX (Secret Rare)"
               className={INPUT_CLASS}
+              autoComplete="off"
             />
           </label>
           <label className="block space-y-1.5">
@@ -294,47 +313,32 @@ function StudioCardMetaControls({
             <input
               type="text"
               value={value.set}
-              onChange={(event) => patch({ set: event.target.value })}
+              onChange={(event) =>
+                handleCardFieldChange({ set: event.target.value })
+              }
               placeholder="Guardians Rising"
               className={INPUT_CLASS}
+              autoComplete="off"
             />
           </label>
-          <button
-            type="button"
-            onClick={() => setSearchOpen((open) => !open)}
-            aria-expanded={searchOpen}
-            className="justify-self-start rounded-lg border border-ink/20 px-3 py-1.5 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink"
-          >
-            {searchOpen ? "Hide catalog search" : "Search TCG catalog"}
-          </button>
         </div>
       </div>
 
-      {searchOpen ? (
-        <div className="space-y-2 border-t border-ink/10 pt-3">
-          <GalleryCardSearch
-            selectedCard={pickedCard}
-            onSelect={applySearchedCard}
-            onClear={() => {
-              setPickedCard(null);
-              setPickError("");
-              clearFront();
-            }}
-            initialCardName={value.card}
-            initialSetName={value.set}
-            disabled={picking}
-          />
-          {picking ? (
-            <p className="text-xs text-ink/50">
-              Downloading card image…
-            </p>
-          ) : null}
-          {pickError ? (
-            <p className="text-xs font-semibold text-ink">
-              {pickError}
-            </p>
-          ) : null}
-        </div>
+      <GalleryCardSearch
+        selectedCard={pickedCard}
+        onSelect={applySearchedCard}
+        cardName={value.card}
+        setName={value.set}
+        hideFields
+        autoSearch
+        collapseOnSelect
+        disabled={picking}
+      />
+      {picking ? (
+        <p className="text-xs text-ink/50">Downloading card image…</p>
+      ) : null}
+      {pickError ? (
+        <p className="text-xs font-semibold text-ink">{pickError}</p>
       ) : null}
     </div>
   );
@@ -388,16 +392,8 @@ function hasCardMetaContent(cardMeta) {
 /**
  * Finalized-output grid. Per-post downloads and source-image downloads are
  * intentionally omitted — use "Download all" or the package zip at the bottom.
- *
- * `onAltTextChange`, when given, turns on a per-post alt text field under each
- * image — only the package download consumes alt text.
  */
-function OutputGrid({
-  outputs,
-  exportersRef: externalExportersRef = null,
-  altTextByKey = {},
-  onAltTextChange = null,
-}) {
+function OutputGrid({ outputs, exportersRef: externalExportersRef = null }) {
   const internalExportersRef = useRef(new Map());
   const exportersRef = externalExportersRef ?? internalExportersRef;
 
@@ -412,47 +408,23 @@ function OutputGrid({
   return (
     <div className="mt-10">
       <div className="grid gap-10 sm:grid-cols-2">
-        {outputs.map((output) => {
-          const altTextField = onAltTextChange ? (
-            <label className="block space-y-1.5 text-left">
-              <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                Alt text
-              </span>
-              <p className="text-[11px] leading-snug text-ink/40">
-                Optional Instagram accessibility text — not drawn on the image.
-                Included in the zip package below.
-              </p>
-              <textarea
-                value={altTextByKey[output.key] ?? ""}
-                onChange={(event) =>
-                  onAltTextChange(output.key, event.target.value)
-                }
-                rows={2}
-                placeholder="e.g. Before and after of a crease repair on Sylveon-GX"
-                className={`${INPUT_CLASS} resize-y`}
-              />
-            </label>
-          ) : null;
-          return (
-            <div key={output.key} className="space-y-4 text-center">
-              <p className="text-sm text-ink/60">
-                {output.sizeHint
-                  ? `${output.label} · ${output.sizeHint}`
-                  : output.label}
-              </p>
-              <StudioAnnotatedPreview
-                label={output.label}
-                url={output.url}
-                filename={output.filename}
-                onExporterChange={(exporter) =>
-                  setExporter(output.key, exporter)
-                }
-              >
-                {altTextField}
-              </StudioAnnotatedPreview>
-            </div>
-          );
-        })}
+        {outputs.map((output) => (
+          <div key={output.key} className="space-y-4 text-center">
+            <p className="text-sm text-ink/60">
+              {output.sizeHint
+                ? `${output.label} · ${output.sizeHint}`
+                : output.label}
+            </p>
+            <StudioAnnotatedPreview
+              label={output.label}
+              url={output.url}
+              filename={output.filename}
+              onExporterChange={(exporter) =>
+                setExporter(output.key, exporter)
+              }
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -561,14 +533,6 @@ function OutputFormatToggle({ value, onChange }) {
 const BEFORE_AFTER_PAIR_DRAFT_KEY = "photo:before-after-pair";
 const PHOTO_SHARED_DRAFT_KEY = "photo:shared";
 
-/**
- * The caption and alt text reach the draft this far behind the field, so a
- * burst of typing doesn't re-write a payload that carries every uploaded photo
- * and generated image with it. Photo edits still save on the draft's own
- * shorter debounce.
- */
-const TEXT_DRAFT_DEBOUNCE_MS = 2000;
-
 function BeforeAfterPairPhotoFormatter({
   outputFormat,
   onChangeOutputFormat,
@@ -586,8 +550,6 @@ function BeforeAfterPairPhotoFormatter({
   const [sendingToGalleryStatus, setSendingToGalleryStatus] = useState("");
   const sendingToGalleryRef = useRef(false);
   const [error, setError] = useState("");
-  const [caption, setCaption] = useState(DEFAULT_PACKAGE_CAPTION);
-  const [altTextByKey, setAltTextByKey] = useState({});
   const [packaging, setPackaging] = useState(false);
   const [downloadingImages, setDownloadingImages] = useState(false);
   const exportersRef = useRef(new Map());
@@ -613,32 +575,14 @@ function BeforeAfterPairPhotoFormatter({
     afterItems.length > 0 ||
     hasCardMetaContent(cardMeta);
 
-  const [draftCaption, flushDraftCaption] = useDebouncedValue(
-    caption,
-    TEXT_DRAFT_DEBOUNCE_MS,
-  );
-  const [draftAltText, flushDraftAltText] = useDebouncedValue(
-    altTextByKey,
-    TEXT_DRAFT_DEBOUNCE_MS,
-  );
-
   const draftPayload = useMemo(
     () => ({
       beforeItems,
       afterItems,
       pairs,
-      caption: draftCaption,
-      altTextByKey: draftAltText,
       outputs: outputs?.map(({ url, ...rest }) => rest) ?? null,
     }),
-    [
-      beforeItems,
-      afterItems,
-      pairs,
-      draftCaption,
-      draftAltText,
-      outputs,
-    ],
+    [beforeItems, afterItems, pairs, outputs],
   );
   const restored = useStudioDraft(
     BEFORE_AFTER_PAIR_DRAFT_KEY,
@@ -659,10 +603,6 @@ function BeforeAfterPairPhotoFormatter({
       setPairs(
         gallerySeed.pairs?.length ? gallerySeed.pairs : [createPair()],
       );
-      setCaption(DEFAULT_PACKAGE_CAPTION);
-      flushDraftCaption(DEFAULT_PACKAGE_CAPTION);
-      setAltTextByKey({});
-      flushDraftAltText({});
       setError("");
       return;
     }
@@ -671,15 +611,9 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems(restored.beforeItems ?? []);
     setAfterItems(restored.afterItems ?? []);
     setPairs(restored.pairs?.length ? restored.pairs : [createPair()]);
-    const restoredCaption = restored.caption ?? DEFAULT_PACKAGE_CAPTION;
-    const restoredAltText = restored.altTextByKey ?? {};
-    setCaption(restoredCaption);
-    flushDraftCaption(restoredCaption);
-    setAltTextByKey(restoredAltText);
-    flushDraftAltText(restoredAltText);
     const restoredOutputs = outputsFromDraft(restored.outputs);
     setOutputs(restoredOutputs.length ? restoredOutputs : null);
-  }, [restored, gallerySeed, flushDraftCaption, flushDraftAltText]);
+  }, [restored, gallerySeed]);
 
   function clearAll() {
     if (!window.confirm("Clear all photos and card info loaded here?")) {
@@ -688,10 +622,6 @@ function BeforeAfterPairPhotoFormatter({
     setBeforeItems([]);
     setAfterItems([]);
     setPairs([createPair()]);
-    setCaption(DEFAULT_PACKAGE_CAPTION);
-    flushDraftCaption(DEFAULT_PACKAGE_CAPTION);
-    setAltTextByKey({});
-    flushDraftAltText({});
     setOutputs((prev) => {
       prev?.forEach(({ url }) => URL.revokeObjectURL(url));
       return null;
@@ -859,8 +789,6 @@ function BeforeAfterPairPhotoFormatter({
       await downloadStudioPackageZip({
         outputs,
         exporters: exportersRef.current,
-        altTextByKey,
-        caption,
         cardMeta,
       });
     } catch (err) {
@@ -943,47 +871,16 @@ function BeforeAfterPairPhotoFormatter({
 
       {outputs && (
         <div ref={resultsRef} className="mx-auto max-w-3xl scroll-mt-28">
-          <OutputGrid
-            outputs={outputs}
-            exportersRef={exportersRef}
-            altTextByKey={altTextByKey}
-            onAltTextChange={(key, value) =>
-              setAltTextByKey((current) => ({ ...current, [key]: value }))
-            }
-          />
+          <OutputGrid outputs={outputs} exportersRef={exportersRef} />
 
           <div className="mt-10 space-y-4 rounded-xl border border-ink/15 bg-night/30 p-4">
             <div>
-              <p className="text-sm font-semibold text-ink">
-                Downloads
-              </p>
+              <p className="text-sm font-semibold text-ink">Downloads</p>
               <p className="mt-1 text-xs text-ink/50">
-                Images alone, or a zip with caption.txt, optional alt-text
-                files, and card name/set for posting.
+                Images alone, or a zip with card name/set text files for
+                posting.
               </p>
             </div>
-
-            <label className="block space-y-1.5">
-              <span className="flex items-center justify-between gap-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-ink/50">
-                  Post caption
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCaption(DEFAULT_PACKAGE_CAPTION)}
-                  disabled={caption === DEFAULT_PACKAGE_CAPTION}
-                  className="shrink-0 rounded-lg border border-ink/20 px-2 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/40 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Restore default
-                </button>
-              </span>
-              <textarea
-                value={caption}
-                onChange={(event) => setCaption(event.target.value)}
-                rows={6}
-                className={`${INPUT_CLASS} resize-y`}
-              />
-            </label>
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <button
