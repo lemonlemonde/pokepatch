@@ -256,19 +256,9 @@ function OrderEditorContent({
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
         <main className="min-w-0 space-y-4">
           <section className="space-y-2">
-            <div className="flex items-center justify-between gap-3 px-1">
-              <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-ink/45">
-                Cards · {cards.length}
-              </h2>
-              <button
-                type="button"
-                onClick={handleAddCard}
-                disabled={saving}
-                className="rounded-lg border border-ink/25 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/10 disabled:opacity-40"
-              >
-                + Add card
-              </button>
-            </div>
+            <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-ink/45">
+              Cards · {cards.length}
+            </h2>
 
             {cards.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-ink/15 px-4 py-10 text-center">
@@ -305,6 +295,14 @@ function OrderEditorContent({
                     />
                   </div>
                 ))}
+                <button
+                  type="button"
+                  onClick={handleAddCard}
+                  disabled={saving}
+                  className="rounded-lg border border-ink/25 px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-ink/10 disabled:opacity-40"
+                >
+                  + Add card
+                </button>
               </div>
             )}
           </section>
