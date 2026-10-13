@@ -4,10 +4,56 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import UnsavedChangesDialog from "@/components/UnsavedChangesDialog";
 
+function currentLocationUrl() {
+  return (
+    window.location.pathname + window.location.search + window.location.hash
+  );
+}
+
+function stripUnsavedGuardState() {
+  const state = window.history.state;
+  if (!state || !state.__unsavedGuard) return;
+  const rest = { ...state };
+  delete rest.__unsavedGuard;
+  window.history.replaceState(
+    Object.keys(rest).length ? rest : null,
+    "",
+    window.location.href
+  );
+}
+
+/**
+ * Drop the fake history entry used to intercept Back, or strip a leftover
+ * __unsavedGuard marker if the URL already moved. Never history.back() after
+ * the URL has changed — that bounces admin order switches to the previous id.
+ */
+function collapseHistoryTrap(bypassRef, dirtyUrlRef) {
+  if (typeof window === "undefined") return;
+  if (!window.history.state?.__unsavedGuard) {
+    dirtyUrlRef.current = "";
+    return;
+  }
+
+  bypassRef.current = true;
+  const dirtyUrl = dirtyUrlRef.current;
+  if (dirtyUrl && currentLocationUrl() === dirtyUrl) {
+    window.history.back();
+  } else {
+    stripUnsavedGuardState();
+  }
+  dirtyUrlRef.current = "";
+  window.setTimeout(() => {
+    bypassRef.current = false;
+  }, 0);
+}
+
 /**
  * Guard against losing in-progress edits:
  * - Native beforeunload for refresh / tab close (browsers block custom UI there)
  * - Styled dialog for in-app <a> clicks, browser back/forward, and requestLeave()
+ *
+ * Call disarmHistoryTrap() before programmatic navigations that leave a dirty
+ * page (e.g. switching ?edit= order ids).
  */
 export function useUnsavedChangesGuard(isDirty) {
   const router = useRouter();
@@ -26,8 +72,7 @@ export function useUnsavedChangesGuard(isDirty) {
 
   useEffect(() => {
     if (!isDirty || typeof window === "undefined") return;
-    dirtyUrlRef.current =
-      window.location.pathname + window.location.search + window.location.hash;
+    dirtyUrlRef.current = currentLocationUrl();
   }, [isDirty]);
 
   const closePending = useCallback((shouldLeave) => {
@@ -55,6 +100,10 @@ export function useUnsavedChangesGuard(isDirty) {
       resolverRef.current = resolve;
       setPending(true);
     });
+  }, []);
+
+  const disarmHistoryTrap = useCallback(() => {
+    collapseHistoryTrap(bypassRef, dirtyUrlRef);
   }, []);
 
   useEffect(() => {
@@ -135,13 +184,7 @@ export function useUnsavedChangesGuard(isDirty) {
 
       // Stay on the dirty URL (Next may have already moved).
       const dirtyUrl = dirtyUrlRef.current;
-      if (
-        dirtyUrl &&
-        dirtyUrl !==
-          window.location.pathname +
-            window.location.search +
-            window.location.hash
-      ) {
+      if (dirtyUrl && dirtyUrl !== currentLocationUrl()) {
         router.replace(dirtyUrl);
       }
       rearmHistoryTrap();
@@ -168,18 +211,8 @@ export function useUnsavedChangesGuard(isDirty) {
       document.removeEventListener("click", onDocumentClick, true);
       window.removeEventListener("popstate", onPopState);
 
-      // Collapse the trap entry if we're still sitting on it.
-      if (
-        !bypassRef.current &&
-        window.history.state?.__unsavedGuard &&
-        !isDirtyRef.current
-      ) {
-        bypassRef.current = true;
-        window.history.back();
-        window.setTimeout(() => {
-          bypassRef.current = false;
-        }, 0);
-      }
+      if (bypassRef.current || isDirtyRef.current) return;
+      collapseHistoryTrap(bypassRef, dirtyUrlRef);
     };
   }, [isDirty, openLeavePrompt, router]);
 
@@ -191,5 +224,5 @@ export function useUnsavedChangesGuard(isDirty) {
     />
   );
 
-  return { requestLeave, dialog };
+  return { requestLeave, disarmHistoryTrap, dialog };
 }

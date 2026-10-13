@@ -1313,7 +1313,7 @@ export default function AdminApp() {
   const [creatingOrder, setCreatingOrder] = useState(false);
 
   const unsavedOrderEdit = editorDirty && tab === "orders-edit";
-  const { requestLeave, dialog: unsavedChangesDialog } =
+  const { requestLeave, disarmHistoryTrap, dialog: unsavedChangesDialog } =
     useUnsavedChangesGuard(unsavedOrderEdit);
 
   const activeTab =
@@ -1489,8 +1489,15 @@ export default function AdminApp() {
     };
   }, [authed, tab, routeOrderId]);
 
+  async function confirmLeaveDirtyEditor() {
+    if (unsavedOrderEdit && !(await requestLeave())) return false;
+    disarmHistoryTrap();
+    setEditorDirty(false);
+    return true;
+  }
+
   async function handleLogout() {
-    if (unsavedOrderEdit && !(await requestLeave())) return;
+    if (!(await confirmLeaveDirtyEditor())) return;
     await adminLogout();
     setOrders([]);
     clearEditor();
@@ -1764,7 +1771,10 @@ export default function AdminApp() {
     }
   }
 
-  function openOrder(orderId, { from, cardId } = {}) {
+  async function openOrder(orderId, { from, cardId } = {}) {
+    // Disarm the unsaved history trap before changing ?edit=, or cleanup can
+    // history.back() onto the previous order after the new URL is pushed.
+    if (!(await confirmLeaveDirtyEditor())) return;
     setEditorDismissed(false);
     const params = new URLSearchParams({ edit: String(orderId) });
     if (from === "all") params.set("from", "all");
@@ -1790,18 +1800,24 @@ export default function AdminApp() {
   }
 
   async function leaveEditor({ skipConfirm = false } = {}) {
-    if (!skipConfirm && editorDirty && !(await requestLeave())) return;
+    if (skipConfirm) {
+      disarmHistoryTrap();
+      setEditorDirty(false);
+    } else if (!(await confirmLeaveDirtyEditor())) {
+      return;
+    }
     setEditorDismissed(true);
     // Same-path ?edit= clears can no-op in the static-export App Router; keep the
-    // address bar in sync while React state already shows the board.
+    // address bar in sync while React state already shows the board. Never reuse
+    // history.state here — it may still carry __unsavedGuard from the trap.
     if (typeof window !== "undefined" && editReturnPath === "/admin/orders/") {
-      window.history.replaceState(window.history.state, "", editReturnPath);
+      window.history.replaceState(null, "", editReturnPath);
     }
     router.replace(editReturnPath);
   }
 
   async function navigateAdmin(path) {
-    if (unsavedOrderEdit && !(await requestLeave())) return;
+    if (!(await confirmLeaveDirtyEditor())) return;
     if (tab === "orders-edit") {
       clearEditor();
       setEditorDismissed(true);
@@ -1982,7 +1998,7 @@ export default function AdminApp() {
         <CustomerInsights
           onOpenOrder={(orderId) => {
             if (!orderId) return;
-            router.push(`/admin/orders/?edit=${encodeURIComponent(orderId)}`);
+            openOrder(orderId);
           }}
         />
       )}
