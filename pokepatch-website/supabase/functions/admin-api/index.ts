@@ -3116,22 +3116,111 @@ Deno.serve(async (req) => {
       return jsonResponse(req, { ok: true, card: updated });
     }
 
-    if (action === "messages_list_orders") {
-      const rawLimit = Number(body.limit ?? 200);
+    if (action === "messages_list_unread") {
+      const rawLimit = Number(body.limit ?? 100);
       const limit = Number.isFinite(rawLimit)
         ? Math.min(Math.max(Math.floor(rawLimit), 1), 500)
-        : 200;
+        : 100;
 
-      const { data, error } = await supabase
+      const { data: unreadRows, error: unreadError } = await supabase
+        .from("customer_messages")
+        .select("id, order_id, subject, body, sent_at")
+        .eq("sender", "customer")
+        .is("admin_read_at", null)
+        .not("order_id", "is", null)
+        .order("sent_at", { ascending: false })
+        .limit(2000);
+      if (unreadError) throw unreadError;
+
+      const byOrder = new Map<
+        string,
+        {
+          unread_count: number;
+          latest_sent_at: string | null;
+          latest_subject: string;
+          latest_body: string;
+        }
+      >();
+      for (const row of unreadRows ?? []) {
+        const orderId = row.order_id as string;
+        if (!orderId) continue;
+        const existing = byOrder.get(orderId);
+        if (!existing) {
+          byOrder.set(orderId, {
+            unread_count: 1,
+            latest_sent_at: (row.sent_at as string) ?? null,
+            latest_subject: String(row.subject ?? ""),
+            latest_body: String(row.body ?? ""),
+          });
+        } else {
+          existing.unread_count += 1;
+        }
+      }
+
+      const orderIds = [...byOrder.keys()];
+      if (orderIds.length === 0) {
+        return jsonResponse(req, { ok: true, orders: [], total: 0 });
+      }
+
+      const { data: orders, error: ordersError } = await supabase
         .from("orders")
         .select(
-          "id, display_id, status, customer_name, customer_email, created_at"
+          "id, display_id, status, pending_kind, customer_name, customer_email, created_at"
         )
-        .order("created_at", { ascending: false })
-        .limit(limit);
+        .in("id", orderIds);
+      if (ordersError) throw ordersError;
+
+      const enriched = (orders ?? [])
+        .map((order) => {
+          const meta = byOrder.get(order.id as string);
+          if (!meta) return null;
+          return {
+            ...order,
+            unread_count: meta.unread_count,
+            latest_sent_at: meta.latest_sent_at,
+            latest_subject: meta.latest_subject,
+            latest_body: meta.latest_body,
+          };
+        })
+        .filter((order): order is NonNullable<typeof order> => order != null)
+        .sort((a, b) => {
+          const aTime = a.latest_sent_at
+            ? new Date(a.latest_sent_at).getTime()
+            : 0;
+          const bTime = b.latest_sent_at
+            ? new Date(b.latest_sent_at).getTime()
+            : 0;
+          return bTime - aTime;
+        });
+
+      const total = enriched.length;
+      return jsonResponse(req, {
+        ok: true,
+        orders: enriched.slice(0, limit),
+        total,
+      });
+    }
+
+    if (action === "messages_mark_admin_read") {
+      const orderId =
+        typeof body.order_id === "string" ? body.order_id.trim() : "";
+      if (!orderId) {
+        return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
+      }
+
+      const { data, error } = await supabase
+        .from("customer_messages")
+        .update({ admin_read_at: new Date().toISOString() })
+        .eq("order_id", orderId)
+        .eq("sender", "customer")
+        .is("admin_read_at", null)
+        .select("id");
       if (error) throw error;
 
-      return jsonResponse(req, { ok: true, orders: data ?? [] });
+      return jsonResponse(req, {
+        ok: true,
+        marked: (data ?? []).length,
+      });
     }
 
     if (action === "messages_history") {
@@ -3144,7 +3233,7 @@ Deno.serve(async (req) => {
         : 100;
 
       const messageColumnsWithSender =
-        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, sender, orders(display_id)";
+        "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, admin_read_at, batch_id, sender, orders(display_id)";
       const messageColumnsLegacy =
         "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, orders(display_id)";
 
@@ -3166,6 +3255,16 @@ Deno.serve(async (req) => {
       }
 
       let { data, error } = await runMessagesQuery(messageColumnsWithSender);
+      if (
+        error &&
+        (/admin_read_at/i.test(error.message || "") ||
+          /admin_read_at/i.test(error.details || "") ||
+          error.code === "PGRST204")
+      ) {
+        const withoutAdminRead =
+          "id, recipient_email, user_id, order_id, subject, body, changelog, sent_at, email_status, email_error, read_at, batch_id, sender, orders(display_id)";
+        ({ data, error } = await runMessagesQuery(withoutAdminRead));
+      }
       if (
         error &&
         (/sender/i.test(error.message || "") ||
