@@ -214,14 +214,15 @@ export default function QueueCatalogDialog({
                       tcgCardId={card.tcg_card_id}
                       catalogImageUrl={card.catalog_image_url}
                       onApplied={(updated) => {
+                        const nextTcg = updated.tcg_card_id ?? "";
+                        const nextUrl = updated.catalog_image_url ?? "";
                         setCards((current) =>
                           current.map((entry) =>
                             String(entry.id) === id
                               ? {
                                   ...entry,
-                                  tcg_card_id: updated.tcg_card_id ?? "",
-                                  catalog_image_url:
-                                    updated.catalog_image_url ?? "",
+                                  tcg_card_id: nextTcg,
+                                  catalog_image_url: nextUrl,
                                   catalog_card_name:
                                     updated.catalog_card_name ?? "",
                                   catalog_set_name:
@@ -230,6 +231,9 @@ export default function QueueCatalogDialog({
                               : entry
                           )
                         );
+                        if (String(nextTcg).trim() || String(nextUrl).trim()) {
+                          setExpandedId(null);
+                        }
                       }}
                     />
                   </div>
