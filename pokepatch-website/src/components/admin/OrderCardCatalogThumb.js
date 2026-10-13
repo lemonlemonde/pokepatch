@@ -29,14 +29,18 @@ export default function OrderCardCatalogThumb({
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
+  const applyInFlightRef = useRef(false);
 
   const previewUrl =
     catalogImageUrl ||
     (tcgCardId ? tcgCardImageUrl({ id: tcgCardId }) : "") ||
     (selectedCard ? tcgCardImageUrl(selectedCard) : "");
 
+  const busy = disabled || confirming || uploading || clearing;
+
   async function handleConfirm(card) {
-    if (!card?.id || disabled) return;
+    if (!card?.id || disabled || applyInFlightRef.current) return;
+    applyInFlightRef.current = true;
     setConfirming(true);
     setError("");
     try {
@@ -46,8 +50,15 @@ export default function OrderCardCatalogThumb({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not apply thumbnail.");
     } finally {
+      applyInFlightRef.current = false;
       setConfirming(false);
     }
+  }
+
+  function handleSelect(card) {
+    if (!card?.id || busy || applyInFlightRef.current) return;
+    setSelectedCard(card);
+    void handleConfirm(card);
   }
 
   async function handleClear() {
@@ -82,8 +93,6 @@ export default function OrderCardCatalogThumb({
     }
   }
 
-  const busy = disabled || confirming || uploading || clearing;
-
   return (
     <div className="space-y-3 rounded-lg border border-ink/10 bg-ink/[0.02] p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -116,13 +125,15 @@ export default function OrderCardCatalogThumb({
       </div>
 
       {error ? <p className="text-xs font-semibold text-error">{error}</p> : null}
+      {confirming ? (
+        <p className="text-xs text-ink/50">Applying catalog image…</p>
+      ) : null}
 
       <GalleryCardSearch
         key={`${cardId}-${cardName}-${setName}`}
         selectedCard={selectedCard}
         appliedCardId={tcgCardId}
-        onSelect={setSelectedCard}
-        onConfirm={handleConfirm}
+        onSelect={handleSelect}
         onClear={() => setSelectedCard(null)}
         confirming={confirming}
         initialCardName={cardName}
