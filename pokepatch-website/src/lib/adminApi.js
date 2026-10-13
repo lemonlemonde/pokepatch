@@ -694,6 +694,33 @@ export async function adminMessageHistory({ email, order_id, limit } = {}) {
   return payload.messages ?? [];
 }
 
+/** Orders that have customer messages the admin has not read yet. */
+export async function adminListUnreadMessages({ limit } = {}) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "messages_list_unread",
+      limit: limit || undefined,
+    },
+  });
+  return {
+    orders: payload.orders ?? [],
+    total: Number(payload.total) || (payload.orders?.length ?? 0),
+  };
+}
+
+/** Mark all unread customer messages on an order as read by admin. */
+export async function adminMarkMessagesRead(orderId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "messages_mark_admin_read",
+      order_id: orderId,
+    },
+  });
+  return { marked: Number(payload.marked) || 0 };
+}
+
 export async function adminSendMessages({
   order_ids = [],
   subject,

@@ -30,6 +30,7 @@ import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import OrdersAllSection from "@/components/admin/OrdersAllSection";
+import AdminMessagesInbox from "@/components/admin/AdminMessagesInbox";
 import CustomerInsights from "@/components/admin/CustomerInsights";
 import {
   AccountStatusBadge,
@@ -81,6 +82,14 @@ const ADMIN_TABS = [
     title: "Orders admin",
     subtitle:
      "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
+  },
+  {
+    id: "messages",
+    label: "Messages",
+    path: "/admin/messages/",
+    title: "Messages",
+    subtitle:
+      "Orders with new customer messages. Opening one marks those messages as read.",
   },
   {
     id: "gallery",
@@ -1958,6 +1967,14 @@ export default function AdminApp() {
         })}
       </div>
 
+      {tab === "messages" && (
+        <AdminMessagesInbox
+          onOpenOrder={(orderId) => {
+            if (!orderId) return;
+            openOrder(orderId);
+          }}
+        />
+      )}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
       {tab === "guide" && <RestorationGuide />}

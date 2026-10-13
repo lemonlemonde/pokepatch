@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ChangelogDiff } from "@/components/ChangelogDiff";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 import { Panel } from "@/components/admin/orderEditor/editorUi";
-import { adminMessageHistory } from "@/lib/adminApi";
+import {
+  adminMarkMessagesRead,
+  adminMessageHistory,
+} from "@/lib/adminApi";
 
 function formatMessageTime(value) {
   if (!value) return "";
@@ -31,6 +34,12 @@ export default function AdminOrderMessagesPanel({ orderId }) {
     try {
       const rows = await adminMessageHistory({ order_id: orderId, limit: 50 });
       setMessages(rows ?? []);
+      // Viewing the thread counts as reading for the Messages inbox.
+      try {
+        await adminMarkMessagesRead(orderId);
+      } catch (err) {
+        console.error("adminMarkMessagesRead failed", err);
+      }
     } catch (err) {
       setError(err.message || "Failed to load messages");
       setMessages([]);
@@ -40,25 +49,8 @@ export default function AdminOrderMessagesPanel({ orderId }) {
   }, [orderId]);
 
   useEffect(() => {
-    if (!orderId) return undefined;
-    let cancelled = false;
-    adminMessageHistory({ order_id: orderId, limit: 50 })
-      .then((rows) => {
-        if (cancelled) return;
-        setMessages(rows ?? []);
-        setError("");
-        setLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err.message || "Failed to load messages");
-        setMessages([]);
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orderId]);
+    load({ showSpinner: true });
+  }, [load]);
 
   return (
     <Panel

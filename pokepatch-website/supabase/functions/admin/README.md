@@ -130,7 +130,8 @@ JSON POST (requires `X-Admin-Token`):
 | `gallery_pair_delete` | `pair_id` |
 | `gallery_pair_reorder` | `item_id`, `ordered_ids` |
 | `gallery_pair_clear_side` | `pair_id`, `side` (`before` \| `after`) |
-| `messages_list_orders` | optional `limit` — recent orders (legacy/helper) |
+| `messages_list_unread` | optional `limit` — orders with unread customer messages (`admin_read_at` is null) |
+| `messages_mark_admin_read` | `order_id` — mark that order’s customer messages as read by admin |
 | `messages_history` | optional `email`, optional `order_id`, `limit` (includes `order_display_id`) |
 | `messages_send` | `subject`, `body`, `order_ids[]` (required; typically one order from the editor) |
 
