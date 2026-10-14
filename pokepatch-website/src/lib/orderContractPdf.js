@@ -52,6 +52,12 @@ const AGREEMENT_TAIL = [
   "Once a card has been handed directly back to Customer, PokéPatch's responsibility and coverage for that card under this Agreement ends. After a card has been returned to Customer, it is no longer covered or insured by PokéPatch.",
 ];
 
+const RESULTS_AND_ALTERATION_PARAS = [
+  "PokéPatch does not guarantee that a restored card will be considered unaltered by a grading company, marketplace, collector, or any other third party. There is always a risk that a restored card may be identified, labeled, or graded as altered. Customer accepts that risk and agrees that PokéPatch is not responsible for any such determination, or for any resulting loss in value, salability, or collectibility.",
+  "Customer accepts that restoration may not perfectly repair every form of damage on a card. Some damage may remain visible or incompletely corrected after restoration.",
+  "The Restoration Fee is payment for a reasonable attempt to restore the card(s) and for reasonable results, not for perfect or guaranteed results. Payment remains due on that basis even if the outcome is not perfect, or if a card is later graded or otherwise treated as altered.",
+];
+
 /** Parse a money field without rounding. Empty → null. */
 export function parseExactMoney(value) {
   if (value === "" || value == null) return null;
@@ -631,6 +637,11 @@ export async function buildOrderContractPdf(payload) {
     drawWrappedParagraph(ctx, item, { bullet: true, indent: 10 });
   }
   for (const para of AGREEMENT_TAIL) {
+    drawWrappedParagraph(ctx, para);
+  }
+
+  drawSectionTitle(ctx, "RESTORATION RESULTS & ALTERATION RISK");
+  for (const para of RESULTS_AND_ALTERATION_PARAS) {
     drawWrappedParagraph(ctx, para);
   }
 

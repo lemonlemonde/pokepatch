@@ -331,6 +331,18 @@ export default function CardDetailSection({
       );
     }
 
+    // Hide non-custom services already chosen on this card; Custom stays available.
+    const takenServiceKeys = new Set(
+      quoteItems
+        .filter((_, i) => i !== index)
+        .map((entry) => entry.service_key)
+        .filter((key) => key && key !== SERVICE_KEYS.CUSTOM)
+    );
+    const serviceOptions = QUOTE_SERVICES.filter(
+      (service) =>
+        service.key === SERVICE_KEYS.CUSTOM || !takenServiceKeys.has(service.key)
+    );
+
     return (
       <div
         key={lineId}
@@ -373,7 +385,7 @@ export default function CardDetailSection({
             }}
           >
             <option value="">Select a service…</option>
-            {QUOTE_SERVICES.map((service) => (
+            {serviceOptions.map((service) => (
               <option key={service.key} value={service.key}>
                 {serviceSelectLabel(service)}
               </option>

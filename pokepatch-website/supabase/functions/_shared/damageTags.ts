@@ -8,7 +8,7 @@ export const DAMAGE_TAGS = [
   { id: "scratching", label: "Scratching" },
   { id: "dent", label: "Dent" },
   { id: "edge_lift", label: "Edge lift" },
-  { id: "edge_peeling", label: "Edge peeling" },
+  { id: "edge_peeling", label: "Peeling" },
   { id: "dirt", label: "Dirt" },
   { id: "water_damage", label: "Water damage" },
   { id: "warping", label: "Warping" },

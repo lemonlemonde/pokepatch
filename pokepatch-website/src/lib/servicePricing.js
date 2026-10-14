@@ -48,7 +48,7 @@ export const QUOTE_SERVICES = [
     title: "Major Damage",
     listPrice: 50,
     priceSuffix: "+",
-    features: ["Creases", "Dents", "Edge peeling", "Water damage"],
+    features: ["Creases", "Dents", "Peeling", "Water damage"],
     accent: "peach",
   },
   {
