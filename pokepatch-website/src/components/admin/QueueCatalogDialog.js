@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import OrderCardCatalogThumb from "@/components/admin/OrderCardCatalogThumb";
 import {
@@ -32,6 +32,31 @@ function displaySetName(card) {
   return (card?.set_name ?? "").trim();
 }
 
+function catalogFieldsFromPick(picked) {
+  return {
+    tcg_card_id: picked.id,
+    catalog_image_url: tcgCardImageUrl(picked),
+    catalog_card_name: picked.name ?? "",
+    catalog_set_name: picked.set_name ?? "",
+  };
+}
+
+function catalogFieldsFromApplied(updated) {
+  return {
+    tcg_card_id: updated.tcg_card_id ?? "",
+    catalog_image_url: updated.catalog_image_url ?? "",
+    catalog_card_name: updated.catalog_card_name ?? "",
+    catalog_set_name: updated.catalog_set_name ?? "",
+  };
+}
+
+function omitCardError(errors, id) {
+  if (!errors[id]) return errors;
+  const next = { ...errors };
+  delete next[id];
+  return next;
+}
+
 /**
  * Catalog art + official titles for the public queue.
  * `mode="move"` — before dragging into To do (Continue → move/notify).
@@ -49,6 +74,8 @@ export default function QueueCatalogDialog({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [cardErrors, setCardErrors] = useState({});
+  const revertByIdRef = useRef({});
 
   const { mounted, visible } = useOverlayPresence(open);
   const publishOnly = mode === "publish";
@@ -74,6 +101,8 @@ export default function QueueCatalogDialog({
           }));
         setCards(next);
         setExpandedId(next.length === 1 ? String(next[0].id) : null);
+        setCardErrors({});
+        revertByIdRef.current = {};
         setError("");
         setLoading(false);
       })
@@ -81,6 +110,8 @@ export default function QueueCatalogDialog({
         if (cancelled) return;
         setCards([]);
         setExpandedId(null);
+        setCardErrors({});
+        revertByIdRef.current = {};
         setError(
           err instanceof Error ? err.message : "Could not load order cards."
         );
@@ -205,35 +236,75 @@ export default function QueueCatalogDialog({
                   </span>
                 </button>
 
+                {cardErrors[id] && !expanded ? (
+                  <p className="border-t border-error/20 px-3 py-2 text-xs font-semibold text-error">
+                    {cardErrors[id]}
+                  </p>
+                ) : null}
+
                 {expanded ? (
                   <div className="border-t border-ink/10 px-3 pb-3 pt-3">
+                    {cardErrors[id] ? (
+                      <p className="mb-3 text-xs font-semibold text-error">
+                        {cardErrors[id]}
+                      </p>
+                    ) : null}
                     <OrderCardCatalogThumb
                       cardId={card.id}
                       cardName={card.card_name}
                       setName={card.set_name}
                       tcgCardId={card.tcg_card_id}
                       catalogImageUrl={card.catalog_image_url}
+                      onSelecting={(picked) => {
+                        setCards((current) => {
+                          const entry = current.find(
+                            (row) => String(row.id) === id
+                          );
+                          if (entry) revertByIdRef.current[id] = entry;
+                          return current.map((row) =>
+                            String(row.id) === id
+                              ? { ...row, ...catalogFieldsFromPick(picked) }
+                              : row
+                          );
+                        });
+                        setCardErrors((current) => omitCardError(current, id));
+                        setExpandedId(null);
+                      }}
                       onApplied={(updated) => {
-                        const nextTcg = updated.tcg_card_id ?? "";
-                        const nextUrl = updated.catalog_image_url ?? "";
+                        delete revertByIdRef.current[id];
+                        const fields = catalogFieldsFromApplied(updated);
                         setCards((current) =>
                           current.map((entry) =>
                             String(entry.id) === id
-                              ? {
-                                  ...entry,
-                                  tcg_card_id: nextTcg,
-                                  catalog_image_url: nextUrl,
-                                  catalog_card_name:
-                                    updated.catalog_card_name ?? "",
-                                  catalog_set_name:
-                                    updated.catalog_set_name ?? "",
-                                }
+                              ? { ...entry, ...fields }
                               : entry
                           )
                         );
-                        if (String(nextTcg).trim() || String(nextUrl).trim()) {
+                        setCardErrors((current) => omitCardError(current, id));
+                        // Search picks already collapsed in onSelecting;
+                        // upload still needs this path.
+                        if (
+                          String(fields.tcg_card_id).trim() ||
+                          String(fields.catalog_image_url).trim()
+                        ) {
                           setExpandedId(null);
                         }
+                      }}
+                      onApplyFailed={(message) => {
+                        const snapshot = revertByIdRef.current[id];
+                        delete revertByIdRef.current[id];
+                        if (snapshot) {
+                          setCards((current) =>
+                            current.map((entry) =>
+                              String(entry.id) === id ? snapshot : entry
+                            )
+                          );
+                        }
+                        setCardErrors((current) => ({
+                          ...current,
+                          [id]: message,
+                        }));
+                        setExpandedId(id);
                       }}
                     />
                   </div>
