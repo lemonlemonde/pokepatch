@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import {
   adminApplyOrderCardTcg,
@@ -21,7 +21,10 @@ export default function OrderCardCatalogThumb({
   tcgCardId = "",
   catalogImageUrl = "",
   disabled = false,
+  /** Parent can collapse / preview immediately; apply still runs in the background. */
+  onSelecting,
   onApplied,
+  onApplyFailed,
 }) {
   const [selectedCard, setSelectedCard] = useState(null);
   const [confirming, setConfirming] = useState(false);
@@ -30,6 +33,15 @@ export default function OrderCardCatalogThumb({
   const [error, setError] = useState("");
   const fileInputRef = useRef(null);
   const applyInFlightRef = useRef(false);
+  // Parent may unmount us on select (optimistic collapse); guard local setState.
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const previewUrl =
     catalogImageUrl ||
@@ -41,23 +53,29 @@ export default function OrderCardCatalogThumb({
   async function handleConfirm(card) {
     if (!card?.id || disabled || applyInFlightRef.current) return;
     applyInFlightRef.current = true;
-    setConfirming(true);
-    setError("");
+    if (mountedRef.current) {
+      setConfirming(true);
+      setError("");
+    }
     try {
       const updated = await adminApplyOrderCardTcg(cardId, card.id);
       onApplied?.(updated);
-      setSelectedCard(null);
+      if (mountedRef.current) setSelectedCard(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not apply thumbnail.");
+      const message =
+        err instanceof Error ? err.message : "Could not apply thumbnail.";
+      if (mountedRef.current) setError(message);
+      onApplyFailed?.(message);
     } finally {
       applyInFlightRef.current = false;
-      setConfirming(false);
+      if (mountedRef.current) setConfirming(false);
     }
   }
 
   function handleSelect(card) {
     if (!card?.id || busy || applyInFlightRef.current) return;
     setSelectedCard(card);
+    onSelecting?.(card);
     void handleConfirm(card);
   }
 
@@ -138,6 +156,7 @@ export default function OrderCardCatalogThumb({
         confirming={confirming}
         initialCardName={cardName}
         initialSetName={setName}
+        collapseOnSelect
         disabled={busy}
       />
 
