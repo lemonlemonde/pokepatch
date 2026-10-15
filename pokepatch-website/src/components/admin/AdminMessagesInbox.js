@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   adminListUnreadMessages,
   adminMarkMessagesRead,
@@ -24,11 +24,24 @@ function truncateText(value, max = 160) {
   return `${text.slice(0, max - 1)}…`;
 }
 
-export default function AdminMessagesInbox({ onOpenOrder }) {
+export default function AdminMessagesInbox({
+  onOpenOrder,
+  onStatsChange,
+  refreshToken = 0,
+}) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [openingId, setOpeningId] = useState(null);
+  const onStatsChangeRef = useRef(onStatsChange);
+
+  useEffect(() => {
+    onStatsChangeRef.current = onStatsChange;
+  }, [onStatsChange]);
+
+  useEffect(() => {
+    onStatsChangeRef.current?.({ count: orders.length, loading });
+  }, [orders.length, loading]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -46,7 +59,7 @@ export default function AdminMessagesInbox({ onOpenOrder }) {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   async function handleOpen(orderId) {
     if (!orderId || openingId) return;
@@ -69,24 +82,6 @@ export default function AdminMessagesInbox({ onOpenOrder }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-ink/60">
-          {orders.length === 0
-            ? "No new messages."
-            : `${orders.length} ${
-                orders.length === 1 ? "order has" : "orders have"
-              } new messages.`}
-        </p>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading || Boolean(openingId)}
-          className="rounded-lg border border-ink/15 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink/60 transition hover:border-ink/30 hover:text-ink disabled:opacity-40"
-        >
-          {loading ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
-
       {error ? (
         <p className="rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
           {error}
@@ -94,9 +89,10 @@ export default function AdminMessagesInbox({ onOpenOrder }) {
       ) : null}
 
       {orders.length === 0 && !error ? (
-        <div className="rounded-2xl border border-dashed border-ink/15 px-4 py-12 text-center">
-          <p className="text-sm text-ink/45">
-            Inbox is clear. Customer messages show up here until you open them.
+        <div className="rounded-xl border border-dashed border-ink/15 px-4 py-12 text-center">
+          <p className="text-sm font-semibold text-ink/70">Inbox is clear</p>
+          <p className="mt-1 text-sm text-ink/45">
+            Customer messages show up here until you open them.
           </p>
         </div>
       ) : (
