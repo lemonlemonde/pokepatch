@@ -40,7 +40,6 @@ import {
   deliveryShortLabel,
   formatDate,
 } from "@/components/admin/adminShared";
-import RestorationGuide from "@/components/admin/RestorationGuide";
 import {
   useUnsavedChangesGuard,
 } from "@/lib/useUnsavedChangesGuard";
@@ -106,14 +105,6 @@ const ADMIN_TABS = [
     title: "Studio",
     subtitle:
       "Upload before & after folders, drag into pairs, then generate Instagram posts.",
-  },
-  {
-    id: "guide",
-    label: "Restoration Guide",
-    path: "/admin/guide/",
-    title: "Restoration guide",
-    subtitle:
-     "Restoration tree: dirt and scratches first, then any damage branches that apply, cool press when needed, and wrap up.",
   },
   {
     id: "insights",
@@ -1993,7 +1984,6 @@ export default function AdminApp() {
       )}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
-      {tab === "guide" && <RestorationGuide />}
       {tab === "insights" && (
         <CustomerInsights
           onOpenOrder={(orderId) => {
