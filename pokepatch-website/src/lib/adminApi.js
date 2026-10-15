@@ -219,41 +219,6 @@ export async function adminListOrders() {
   return (payload.orders ?? []).map(stabilizeOrderSummary);
 }
 
-/** Aggregated "how did you hear about us?" counts for the Insights tab. */
-export async function adminHeardAboutInsights() {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: { action: "insights_heard_about" },
-  });
-  return {
-    total: payload.total ?? 0,
-    answered: payload.answered ?? 0,
-    slices: payload.slices ?? [],
-    other_details: payload.other_details ?? [],
-  };
-}
-
-/** Card quote / market price / order quote range pies for the Insights tab. */
-function normalizeValueRangeMetric(metric) {
-  return {
-    average: metric?.average ?? null,
-    counted: metric?.counted ?? 0,
-    slices: metric?.slices ?? [],
-  };
-}
-
-export async function adminValueRangeInsights() {
-  const payload = await adminRequest(apiUrl(), {
-    token: getStoredAdminToken(),
-    body: { action: "insights_value_ranges" },
-  });
-  return {
-    card_quote: normalizeValueRangeMetric(payload.card_quote),
-    card_market: normalizeValueRangeMetric(payload.card_market),
-    order_quote: normalizeValueRangeMetric(payload.order_quote),
-  };
-}
-
 /** Search cards by name/set/description; optionally scope to order statuses. */
 export async function adminSearchOrders(query, { statuses } = {}) {
   const payload = await adminRequest(apiUrl(), {

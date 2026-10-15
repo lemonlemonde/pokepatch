@@ -31,7 +31,6 @@ import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import OrdersAllSection from "@/components/admin/OrdersAllSection";
 import AdminMessagesInbox from "@/components/admin/AdminMessagesInbox";
-import CustomerInsights from "@/components/admin/CustomerInsights";
 import {
   AccountStatusBadge,
   KanbanThumbImg,
@@ -105,14 +104,6 @@ const ADMIN_TABS = [
     title: "Studio",
     subtitle:
       "Upload before & after folders, drag into pairs, then generate Instagram posts.",
-  },
-  {
-    id: "insights",
-    label: "Insights",
-    path: "/admin/insights/",
-    title: "Customer insights",
-    subtitle:
-      "Where customers say they heard about us — from the quote form.",
   },
 ];
 
@@ -1984,14 +1975,6 @@ export default function AdminApp() {
       )}
       {tab === "gallery" && <GalleryManager />}
       {tab === "studio" && <StudioTool />}
-      {tab === "insights" && (
-        <CustomerInsights
-          onOpenOrder={(orderId) => {
-            if (!orderId) return;
-            openOrder(orderId);
-          }}
-        />
-      )}
       {ordersSectionActive && (
         <>
           {listError && tab !== "orders-edit" && (
