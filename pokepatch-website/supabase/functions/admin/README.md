@@ -91,7 +91,7 @@ supabase functions deploy admin-api --no-verify-jwt
 
 ## Frontend
 
-- Route: `/admin/` — Orders, Gallery, Messages, Studio tabs; **Admin** appears in the main navbar for allowlisted signed-in emails
+- Route: `/admin/` — Orders, Gallery, Tasks, Studio tabs; **Admin** appears in the main navbar for allowlisted signed-in emails
 - Client: [`src/lib/adminApi.js`](../../src/lib/adminApi.js)
 - UI: [`src/components/admin/AdminApp.js`](../../src/components/admin/AdminApp.js)
 - Gallery UI: [`src/components/admin/GalleryManager.js`](../../src/components/admin/GalleryManager.js)

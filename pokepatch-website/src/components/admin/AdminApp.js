@@ -30,7 +30,7 @@ import OrderEditorShell from "@/components/admin/orderEditor/OrderEditorShell";
 import { buildCardThumbById } from "@/lib/orderChangelog";
 import StudioTool from "@/components/StudioTool";
 import OrdersAllSection from "@/components/admin/OrdersAllSection";
-import AdminMessagesInbox from "@/components/admin/AdminMessagesInbox";
+import AdminTasksBoard from "@/components/admin/tasks/AdminTasksBoard";
 import {
   AccountStatusBadge,
   KanbanThumbImg,
@@ -82,12 +82,12 @@ const ADMIN_TABS = [
      "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
-    id: "messages",
-    label: "Messages",
-    path: "/admin/messages/",
-    title: "Messages",
+    id: "tasks",
+    label: "Tasks",
+    path: "/admin/tasks/",
+    title: "Tasks",
     subtitle:
-      "Orders with new customer messages. Opening one marks those messages as read.",
+      "Open work that needs attention. Each box is its own checklist — add more task types later.",
   },
   {
     id: "gallery",
@@ -123,6 +123,8 @@ const ORDERS_EDIT_META = {
 function tabFromPathname(pathname) {
   const path = pathname?.replace(/\/$/, "") ?? "";
   if (path.endsWith("/admin/orders/all")) return "orders-all";
+  // Legacy Messages URL → Tasks board.
+  if (path.endsWith("/admin/messages")) return "tasks";
   const match = ADMIN_TABS.find((entry) =>
     path.startsWith(entry.path.replace(/\/$/, ""))
   );
@@ -1441,6 +1443,14 @@ export default function AdminApp() {
     if (!searchEditId) setEditorDismissed(false);
   }, [searchEditId]);
 
+  // Keep old /admin/messages/ bookmarks working after the Tasks rename.
+  useEffect(() => {
+    const path = pathname?.replace(/\/$/, "") ?? "";
+    if (path.endsWith("/admin/messages")) {
+      router.replace("/admin/tasks/");
+    }
+  }, [pathname, router]);
+
   useEffect(() => {
     if (!authed || tab !== "orders-edit" || !routeOrderId) return undefined;
 
@@ -1965,8 +1975,8 @@ export default function AdminApp() {
         })}
       </div>
 
-      {tab === "messages" && (
-        <AdminMessagesInbox
+      {tab === "tasks" && (
+        <AdminTasksBoard
           onOpenOrder={(orderId) => {
             if (!orderId) return;
             openOrder(orderId);
