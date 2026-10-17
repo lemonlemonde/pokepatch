@@ -69,6 +69,7 @@ import {
   filterClosedColumnOrders,
   pendingKindShortLabel,
   pendingKindBadgeClass,
+  tracksOrderContract,
 } from "@/lib/orderStatus";
 import { formatMoney, orderEarnedTotalFromStored } from "@/lib/servicePricing";
 
@@ -188,7 +189,24 @@ function orderToKanbanSummary(order) {
       ? order.preview_paths.filter(Boolean)
       : [],
     quote_total: orderAmount(order),
+    contract_signed: Boolean(order.contract_signed),
   };
+}
+
+function ContractSignedChip({ signed }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+        signed
+          ? "bg-status-green/20 text-status-green"
+          : "bg-status-yellow/25 text-night"
+      }`}
+      title={signed ? "Contract signed" : "Contract not signed"}
+      aria-label={signed ? "Contract signed" : "Contract not signed"}
+    >
+      {signed ? "Signed" : "Unsigned"}
+    </span>
+  );
 }
 
 function OrderRevenueSummary({ completedTotal, pipelineTotal }) {
@@ -439,6 +457,7 @@ function KanbanCard({
   const metaChip = showCardProgress
     ? `${cardsCompleted}/${cardCount} done · ${deliveryShortLabel(order.delivery_method)}`
     : `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
+  const showContractChip = tracksOrderContract(order.status);
 
   const clearTimers = useCallback(() => {
     if (openTimerRef.current) {
@@ -552,6 +571,9 @@ function KanbanCard({
           disabled={dragging}
         />
       ) : null}
+      {showContractChip ? (
+        <ContractSignedChip signed={Boolean(order.contract_signed)} />
+      ) : null}
       <button
         type="button"
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -631,8 +653,11 @@ function KanbanCard({
           <p className="mt-1 text-sm font-semibold text-ink">
             {order.customer_name}
           </p>
-          <div className="mt-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <AccountStatusBadge hasAccount={order.has_account} />
+            {showContractChip ? (
+              <ContractSignedChip signed={Boolean(order.contract_signed)} />
+            ) : null}
           </div>
           <p className="mt-1 text-xs text-ink/60">
             {showCardProgress
@@ -1330,6 +1355,11 @@ export default function AdminApp() {
           ...order,
           ...summary,
           is_priority: Boolean(refreshed.is_priority ?? summary.is_priority),
+          // Preserve list value when a detail payload omits contract_signed.
+          contract_signed:
+            typeof refreshed.contract_signed === "boolean"
+              ? refreshed.contract_signed
+              : order.contract_signed,
         };
       })
     );

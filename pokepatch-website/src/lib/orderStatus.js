@@ -125,6 +125,21 @@ export const ACTIVE_ORDER_STATUSES = ORDER_STATUSES.filter(
     status.id === "ready"
 );
 
+/**
+ * Order statuses where admin tracks contract signed state
+ * (to-do / in-progress / ready-for-customer — not pending).
+ */
+export const CONTRACT_TRACKING_STATUSES = ORDER_STATUSES.filter(
+  (status) =>
+    status.id === "new" ||
+    status.id === "in_progress" ||
+    status.id === "ready"
+);
+
+const CONTRACT_TRACKING_STATUS_IDS = new Set(
+  CONTRACT_TRACKING_STATUSES.map((status) => status.id)
+);
+
 /** Closed statuses (completed + canceled). */
 export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
   (status) => status.id === "completed" || status.id === "canceled"
@@ -263,6 +278,10 @@ export function normalizeOrderStatus(statusId) {
   if (statusId === "delivered") return "completed";
   if (statusId === "cancelled") return "canceled";
   return DEFAULT_ORDER_STATUS;
+}
+
+export function tracksOrderContract(statusId) {
+  return CONTRACT_TRACKING_STATUS_IDS.has(normalizeOrderStatus(statusId));
 }
 
 export function isPendingOrderStatus(statusId) {

@@ -421,6 +421,37 @@ async function signPathsThumbsOnly(
   return result;
 }
 
+/** True when the customer uploaded a signed PDF (`status=signed` + path). */
+function isOrderContractSigned(
+  row:
+    | {
+        status?: string | null;
+        signed_path?: string | null;
+      }
+    | null
+    | undefined
+) {
+  return row?.status === "signed" && Boolean(row?.signed_path);
+}
+
+async function fetchContractSignedByOrderId(
+  supabase: ReturnType<typeof getServiceClient>,
+  orderIds: string[]
+) {
+  const byOrder = new Map<string, boolean>();
+  if (orderIds.length === 0) return byOrder;
+  const { data, error } = await supabase
+    .from("order_contracts")
+    .select("order_id, status, signed_path")
+    .in("order_id", orderIds);
+  // Match quote_items: missing table / select errors → treat as empty.
+  if (error) return byOrder;
+  for (const row of data ?? []) {
+    byOrder.set(row.order_id as string, isOrderContractSigned(row));
+  }
+  return byOrder;
+}
+
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
     "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
@@ -494,6 +525,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     { data: cards, error: cardsError },
     quoteItemsResult,
     authUsers,
+    contractSignedByOrder,
   ] = await Promise.all([
     supabase
       .from("cards")
@@ -506,6 +538,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       .select("order_id, quote_base_amount, card_name, set_name")
       .in("order_id", orderIds),
     listAllAuthUsers(supabase),
+    fetchContractSignedByOrderId(supabase, orderIds),
   ]);
   if (cardsError) throw cardsError;
   const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
@@ -596,6 +629,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       queue_position: queuePositionById.get(orderId) ?? null,
       preview_paths: preview.map((row) => row.path),
       preview_urls: preview.map((row) => row.url),
+      contract_signed: contractSignedByOrder.get(orderId) ?? false,
     };
   });
 }
@@ -923,6 +957,7 @@ async function fetchOrderGraph(
     cardsResult,
     quoteItemsResult,
     authUsers,
+    contractSignedByOrder,
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -974,6 +1009,7 @@ async function fetchOrderGraph(
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true }),
     listAllAuthUsers(supabase),
+    fetchContractSignedByOrderId(supabase, orderIds),
   ]);
   const { data: cards, error: cardsError } = cardsResult;
   if (contactsError) throw contactsError;
@@ -1033,20 +1069,24 @@ async function fetchOrderGraph(
     imagesByCard.set(img.card_id, list);
   }
 
-  const enriched = orders.map((order) => ({
-    ...withAccountName(order, emailToUserId, namesByUserId),
-    has_account: orderHasAccount(order, emailSet),
-    contacts: contactsByOrder.get(order.id as string) ?? [],
-    cards: (cardsByOrder.get(order.id as string) ?? []).map((card) => ({
-      ...card,
-      images: (imagesByCard.get(card.id as string) ?? []).map((img) => ({
-        ...img,
-        signed_url: signedMap.get(img.storage_path) ?? null,
-        signed_thumb_url: thumbSignedMap.get(img.storage_path) ?? null,
+  const enriched = orders.map((order) => {
+    const id = order.id as string;
+    return {
+      ...withAccountName(order, emailToUserId, namesByUserId),
+      has_account: orderHasAccount(order, emailSet),
+      contacts: contactsByOrder.get(id) ?? [],
+      cards: (cardsByOrder.get(id) ?? []).map((card) => ({
+        ...card,
+        images: (imagesByCard.get(card.id as string) ?? []).map((img) => ({
+          ...img,
+          signed_url: signedMap.get(img.storage_path) ?? null,
+          signed_thumb_url: thumbSignedMap.get(img.storage_path) ?? null,
+        })),
       })),
-    })),
-    quote_items: quoteItemsByOrder.get(order.id as string) ?? [],
-  }));
+      quote_items: quoteItemsByOrder.get(id) ?? [],
+      contract_signed: contractSignedByOrder.get(id) ?? false,
+    };
+  });
 
   return orderId ? enriched[0] ?? null : enriched;
 }
