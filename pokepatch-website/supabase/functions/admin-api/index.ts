@@ -423,11 +423,11 @@ async function signPathsThumbsOnly(
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
   const listSelectNoQuote =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, queue_priority, is_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, completed_at, status_changed_at, queue_priority, is_priority";
   const listSelectLegacy =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, queue_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
 
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
