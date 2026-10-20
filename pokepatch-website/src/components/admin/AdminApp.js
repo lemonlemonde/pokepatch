@@ -36,7 +36,6 @@ import {
   KanbanThumbImg,
   LoadingIndicator,
   deliveryLabel,
-  deliveryShortLabel,
   formatDate,
 } from "@/components/admin/adminShared";
 import {
@@ -193,18 +192,52 @@ function orderToKanbanSummary(order) {
   };
 }
 
-function ContractSignedChip({ signed }) {
+function ContractSignedIcon({ signed }) {
+  const label = signed ? "Contract signed" : "Contract not signed";
   return (
     <span
-      className={`inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+      className={`group relative inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${
         signed
-          ? "bg-status-green/20 text-status-green"
-          : "bg-status-yellow/25 text-night"
+          ? "border-status-green/55 bg-status-green/15 text-status-green"
+          : "border-status-yellow/55 bg-status-yellow/20 text-night"
       }`}
-      title={signed ? "Contract signed" : "Contract not signed"}
-      aria-label={signed ? "Contract signed" : "Contract not signed"}
+      aria-label={label}
     >
-      {signed ? "Signed" : "Unsigned"}
+      {signed ? (
+        <svg
+          viewBox="0 0 24 24"
+          className="h-2.5 w-2.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          className="h-2.5 w-2.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          <path d="M14 3v5h5" />
+          <path d="M9 13h6M9 17h4" />
+        </svg>
+      )}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 font-mono text-[10px] font-semibold normal-case tracking-normal text-cream opacity-0 shadow-sm transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {label}
+      </span>
     </span>
   );
 }
@@ -454,10 +487,7 @@ function KanbanCard({
     order.status === "in_progress" &&
     cardsCompleted != null &&
     cardCount > 0;
-  const metaChip = showCardProgress
-    ? `${cardsCompleted}/${cardCount} done · ${deliveryShortLabel(order.delivery_method)}`
-    : `${cardCount} · ${deliveryShortLabel(order.delivery_method)}`;
-  const showContractChip = tracksOrderContract(order.status);
+  const showContractIcon = tracksOrderContract(order.status);
 
   const clearTimers = useCallback(() => {
     if (openTimerRef.current) {
@@ -571,8 +601,8 @@ function KanbanCard({
           disabled={dragging}
         />
       ) : null}
-      {showContractChip ? (
-        <ContractSignedChip signed={Boolean(order.contract_signed)} />
+      {showContractIcon ? (
+        <ContractSignedIcon signed={Boolean(order.contract_signed)} />
       ) : null}
       <button
         type="button"
@@ -592,9 +622,6 @@ function KanbanCard({
       >
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
           {order.customer_name}
-        </span>
-        <span className="shrink-0 whitespace-nowrap text-[11px] font-semibold text-ink/55">
-          {metaChip}
         </span>
         <span className="relative aspect-[3/4] w-7 shrink-0 overflow-hidden rounded bg-night/50">
           {thumbUrl ? (
@@ -655,8 +682,8 @@ function KanbanCard({
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <AccountStatusBadge hasAccount={order.has_account} />
-            {showContractChip ? (
-              <ContractSignedChip signed={Boolean(order.contract_signed)} />
+            {showContractIcon ? (
+              <ContractSignedIcon signed={Boolean(order.contract_signed)} />
             ) : null}
           </div>
           <p className="mt-1 text-xs text-ink/60">
