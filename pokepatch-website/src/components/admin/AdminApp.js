@@ -1821,6 +1821,18 @@ export default function AdminApp() {
     }
   }
 
+  // Static-export App Router often no-ops same-path ?edit= clears, and can
+  // restore the stale query when router.* runs after replaceState. Pin the
+  // address bar (again after paint) so the board URL sticks. Never reuse
+  // history.state — it may still carry __unsavedGuard.
+  function pinAdminPath(path) {
+    if (typeof window === "undefined") return;
+    window.history.replaceState(null, "", path);
+    requestAnimationFrame(() => {
+      window.history.replaceState(null, "", path);
+    });
+  }
+
   async function leaveEditor({ skipConfirm = false } = {}) {
     if (skipConfirm) {
       disarmHistoryTrap();
@@ -1829,13 +1841,8 @@ export default function AdminApp() {
       return;
     }
     setEditorDismissed(true);
-    // Same-path ?edit= clears can no-op in the static-export App Router; keep the
-    // address bar in sync while React state already shows the board. Never reuse
-    // history.state here — it may still carry __unsavedGuard from the trap.
-    if (typeof window !== "undefined" && editReturnPath === "/admin/orders/") {
-      window.history.replaceState(null, "", editReturnPath);
-    }
     router.replace(editReturnPath);
+    pinAdminPath(editReturnPath);
   }
 
   async function navigateAdmin(path) {
@@ -1843,6 +1850,9 @@ export default function AdminApp() {
     if (tab === "orders-edit") {
       clearEditor();
       setEditorDismissed(true);
+      router.push(path);
+      pinAdminPath(path);
+      return;
     }
     router.push(path);
   }
