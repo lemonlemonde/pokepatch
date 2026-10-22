@@ -479,61 +479,16 @@ function drawLabeledLine(ctx, label, value = "", { lineWidth = 280 } = {}) {
   ctx.y -= 20;
 }
 
-function drawSignatureBlock(ctx, payload, signatureImage = null) {
-  drawSectionTitle(ctx, "ACKNOWLEDGMENT & SIGNATURES");
-  drawWrappedParagraph(
-    ctx,
-    "By signing below, Customer confirms that the card information is accurate, each card has been photographed before restoration, and all Restoration Fees and Near Mint Raw Market Values have been reviewed and mutually accepted."
-  );
-  drawWrappedParagraph(
-    ctx,
-    "Customer confirms that they have read and understood this Agreement and agree to all of its terms."
-  );
-
-  const customerName = String(payload.customer_name ?? "").trim();
-  const repName =
-    String(payload.representative_name ?? "").trim() ||
-    POKEPATCH_REPRESENTATIVE_NAME;
-  const agreementDate =
-    String(payload.agreement_date ?? "").trim() || formatContractDate();
-
-  ensureSpace(ctx, 200);
-  ctx.y -= 4;
-
-  ctx.page.drawText("Customer", {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: 8,
-    font: ctx.bold,
-    color: INK_MUTED,
-  });
-  ctx.y -= 14;
-  drawLabeledLine(ctx, "Name:", customerName, { lineWidth: 320 });
-  drawLabeledLine(ctx, "Signature:", "", { lineWidth: 300 });
-  drawLabeledLine(ctx, "Date:", "", { lineWidth: 160 });
-
-  ctx.y -= 8;
-  ctx.page.drawText("PokéPatch", {
-    x: MARGIN_X,
-    y: ctx.y,
-    size: 8,
-    font: ctx.bold,
-    color: INK_MUTED,
-  });
-  ctx.y -= 14;
-  drawLabeledLine(ctx, "Representative:", repName, { lineWidth: 260 });
-
-  // Signature row — image sits fully below the label baseline.
-  ensureSpace(ctx, 70);
-  const sigLabel = "Signature:";
-  ctx.page.drawText(sigLabel, {
+function drawInkSignature(ctx, label, signatureImage) {
+  ensureSpace(ctx, signatureImage ? 70 : 22);
+  ctx.page.drawText(label, {
     x: MARGIN_X,
     y: ctx.y,
     size: FONT_SIZE,
     font: ctx.font,
     color: INK,
   });
-  const labelWidth = ctx.font.widthOfTextAtSize(sigLabel, FONT_SIZE);
+  const labelWidth = ctx.font.widthOfTextAtSize(label, FONT_SIZE);
   const sigX = MARGIN_X + labelWidth + 8;
 
   if (signatureImage) {
@@ -545,7 +500,7 @@ function drawSignatureBlock(ctx, payload, signatureImage = null) {
     );
     const drawWidth = signatureImage.width * scale;
     const drawHeight = signatureImage.height * scale;
-    // Drop below the label so the image never intersects "Representative".
+    // Drop below the label so the image never intersects text above.
     ctx.y -= 8;
     ctx.page.drawImage(signatureImage, {
       x: sigX,
@@ -563,7 +518,58 @@ function drawSignatureBlock(ctx, payload, signatureImage = null) {
     });
     ctx.y -= 22;
   }
+}
 
+function drawSignatureBlock(
+  ctx,
+  payload,
+  { repSignatureImage = null, customerSignatureImage = null } = {}
+) {
+  drawSectionTitle(ctx, "ACKNOWLEDGMENT & SIGNATURES");
+  drawWrappedParagraph(
+    ctx,
+    "By signing below, Customer confirms that the card information is accurate, each card has been photographed before restoration, and all Restoration Fees and Near Mint Raw Market Values have been reviewed and mutually accepted."
+  );
+  drawWrappedParagraph(
+    ctx,
+    "Customer confirms that they have read and understood this Agreement and agree to all of its terms."
+  );
+
+  const customerName = String(payload.customer_name ?? "").trim();
+  const customerDate = String(payload.customer_signed_date ?? "").trim();
+  const repName =
+    String(payload.representative_name ?? "").trim() ||
+    POKEPATCH_REPRESENTATIVE_NAME;
+  const agreementDate =
+    String(payload.agreement_date ?? "").trim() || formatContractDate();
+
+  // Name/signature/date × 2 parties; ink images need extra vertical room.
+  ensureSpace(ctx, customerSignatureImage || repSignatureImage ? 260 : 200);
+  ctx.y -= 4;
+
+  ctx.page.drawText("Customer", {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: 8,
+    font: ctx.bold,
+    color: INK_MUTED,
+  });
+  ctx.y -= 14;
+  drawLabeledLine(ctx, "Name:", customerName, { lineWidth: 320 });
+  drawInkSignature(ctx, "Signature:", customerSignatureImage);
+  drawLabeledLine(ctx, "Date:", customerDate, { lineWidth: 160 });
+
+  ctx.y -= 8;
+  ctx.page.drawText("PokéPatch", {
+    x: MARGIN_X,
+    y: ctx.y,
+    size: 8,
+    font: ctx.bold,
+    color: INK_MUTED,
+  });
+  ctx.y -= 14;
+  drawLabeledLine(ctx, "Representative:", repName, { lineWidth: 260 });
+  drawInkSignature(ctx, "Signature:", repSignatureImage);
   drawLabeledLine(ctx, "Date:", agreementDate, { lineWidth: 160 });
 }
 
@@ -588,9 +594,11 @@ function drawPageNumbers(doc, font) {
 /**
  * Build a filled liability-agreement PDF for the given payload.
  * Table grows with card count (no 6-row cap).
+ * @param {object} payload
+ * @param {{ customerSignaturePngBytes?: Uint8Array|null }} [options]
  * @returns {Promise<Uint8Array>}
  */
-export async function buildOrderContractPdf(payload) {
+export async function buildOrderContractPdf(payload, options = {}) {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -603,15 +611,19 @@ export async function buildOrderContractPdf(payload) {
     y: PAGE_HEIGHT - MARGIN_TOP,
   };
 
-  let signatureImage = null;
-  const signatureBytes = await loadRepSignaturePngBytes();
-  if (signatureBytes?.length) {
+  async function embedPngOrNull(bytes) {
+    if (!bytes?.length) return null;
     try {
-      signatureImage = await doc.embedPng(signatureBytes);
+      return await doc.embedPng(bytes);
     } catch {
-      signatureImage = null;
+      return null;
     }
   }
+
+  const [repSignatureImage, customerSignatureImage] = await Promise.all([
+    embedPngOrNull(await loadRepSignaturePngBytes()),
+    embedPngOrNull(options.customerSignaturePngBytes),
+  ]);
 
   drawHeader(ctx);
 
@@ -645,7 +657,10 @@ export async function buildOrderContractPdf(payload) {
     drawWrappedParagraph(ctx, para);
   }
 
-  drawSignatureBlock(ctx, payload ?? {}, signatureImage);
+  drawSignatureBlock(ctx, payload ?? {}, {
+    repSignatureImage,
+    customerSignatureImage,
+  });
   drawPageNumbers(doc, font);
 
   return doc.save();
@@ -666,7 +681,7 @@ export function defaultContractNotifyBody(displayId) {
   return [
     `Your property & liability agreement${orderLine} is ready on My Orders.`,
     "",
-    "Please download the PDF, sign it, and upload the signed copy back on that order page.",
+    "Open that order page to review the agreement, sign your name on the page, and submit — or download the PDF if you prefer.",
     "",
     "Thanks,",
     "PokéPatch",
