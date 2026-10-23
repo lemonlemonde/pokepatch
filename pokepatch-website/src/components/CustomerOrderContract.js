@@ -3,14 +3,154 @@
 import { useEffect, useRef, useState } from "react";
 import SignaturePad from "@/components/SignaturePad";
 import {
+  ACKNOWLEDGMENT_PARAS,
+  AGREEMENT_DAMAGE_CHOICES,
+  AGREEMENT_PARAS,
+  AGREEMENT_TAIL,
+  CONTRACT_AGREEMENT_INTRO,
+  DAMAGES,
   ORDER_CONTRACTS_BUCKET,
+  RESULTS_AND_ALTERATION_PARAS,
   buildOrderContractPdf,
   formatContractDate,
+  formatExactMoneyAmount,
   signedContractPath,
 } from "@/lib/orderContractPdf";
 import { supabase } from "@/lib/supabaseClient";
 
 const SIGNED_URL_EXPIRES_IN = 60 * 60;
+
+function moneyLabel(value) {
+  if (value === "" || value == null) return "—";
+  const formatted = formatExactMoneyAmount(value);
+  return formatted ? `$${formatted}` : "—";
+}
+
+function AgreementReview({ payload }) {
+  const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-lg border border-ink/15 bg-white text-night">
+      <div className="border-b border-night/10 bg-night/5 px-3 py-2 sm:px-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-night/55">
+          Review the agreement
+        </p>
+        <p className="mt-0.5 text-xs text-night/70">
+          Read the full terms below before signing. Scroll to review everything.
+        </p>
+      </div>
+
+      <div className="max-h-[min(28rem,70vh)] space-y-5 overflow-y-auto px-3 py-4 text-sm leading-relaxed text-night sm:px-4">
+        <div>
+          <p className="text-base font-bold tracking-wide">POKÉPATCH</p>
+          <p className="mt-0.5 text-xs font-semibold text-night/65">
+            Pokémon Card Restoration — Customer Property &amp; Liability
+            Agreement
+          </p>
+          <p className="mt-3 text-[13px]">{CONTRACT_AGREEMENT_INTRO}</p>
+        </div>
+
+        <section>
+          <h3 className="border-b border-night/15 pb-1 text-xs font-bold uppercase tracking-wide">
+            Restoration order
+          </h3>
+          {cards.length === 0 ? (
+            <p className="mt-2 text-[13px] text-night/55">No cards listed.</p>
+          ) : (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[28rem] border-collapse text-left text-[12px]">
+                <thead>
+                  <tr className="border-b border-night/15 text-[10px] uppercase tracking-wide text-night/55">
+                    <th className="py-1.5 pr-2 font-semibold">Card</th>
+                    <th className="py-1.5 pr-2 font-semibold">Set</th>
+                    <th className="py-1.5 pr-2 text-right font-semibold">
+                      Restoration fee
+                    </th>
+                    <th className="py-1.5 text-right font-semibold">
+                      NM raw market value
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cards.map((row, index) => (
+                    <tr
+                      key={row?.id ?? `card-${index}`}
+                      className="border-b border-night/10"
+                    >
+                      <td className="py-1.5 pr-2 font-medium">
+                        {String(row?.card_name ?? "").trim() || "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 text-night/70">
+                        {String(row?.set_name ?? "").trim() || "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">
+                        {moneyLabel(row?.restoration_fee)}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums">
+                        {moneyLabel(row?.market_value_raw_nm)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-2.5">
+          <h3 className="border-b border-night/15 pb-1 text-xs font-bold uppercase tracking-wide">
+            Agreement
+          </h3>
+          {AGREEMENT_PARAS.map((para, i) => (
+            <p key={`agreement-${i}`} className="text-[13px]">
+              {para}
+            </p>
+          ))}
+          <ul className="space-y-1.5 pl-1 text-[13px]">
+            {AGREEMENT_DAMAGE_CHOICES.map((choice, i) => (
+              <li key={`damage-choice-${i}`} className="pl-2">
+                {choice}
+              </li>
+            ))}
+          </ul>
+          <p className="text-[13px]">Covered damage includes:</p>
+          <ul className="list-disc space-y-0.5 pl-5 text-[13px]">
+            {DAMAGES.map((item, i) => (
+              <li key={`damage-${i}`}>{item}</li>
+            ))}
+          </ul>
+          {AGREEMENT_TAIL.map((para, i) => (
+            <p key={`agreement-tail-${i}`} className="text-[13px]">
+              {para}
+            </p>
+          ))}
+        </section>
+
+        <section className="space-y-2.5">
+          <h3 className="border-b border-night/15 pb-1 text-xs font-bold uppercase tracking-wide">
+            Restoration results &amp; alteration risk
+          </h3>
+          {RESULTS_AND_ALTERATION_PARAS.map((para, i) => (
+            <p key={`results-${i}`} className="text-[13px]">
+              {para}
+            </p>
+          ))}
+        </section>
+
+        <section className="space-y-2.5">
+          <h3 className="border-b border-night/15 pb-1 text-xs font-bold uppercase tracking-wide">
+            Acknowledgment
+          </h3>
+          {ACKNOWLEDGMENT_PARAS.map((para, i) => (
+            <p key={`ack-${i}`} className="text-[13px]">
+              {para}
+            </p>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
 
 export default function CustomerOrderContract({ orderId }) {
   const [contract, setContract] = useState(null);
@@ -194,7 +334,7 @@ export default function CustomerOrderContract({ orderId }) {
           <p className="mt-1 text-xs text-ink/55">
             {isSigned
               ? "Your signed agreement is on file."
-              : "Review the agreement, type your name, and sign below — or download and upload a signed PDF."}
+              : "Review the full agreement below, type your name, and sign — or download and upload a signed PDF."}
           </p>
         </div>
         <span
@@ -243,56 +383,60 @@ export default function CustomerOrderContract({ orderId }) {
       </div>
 
       {canSignOnPage ? (
-        <form onSubmit={handleSignSubmit} className="mt-4 space-y-3">
-          <label className="block">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
-              Full name
-            </span>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              disabled={busy}
-              autoComplete="name"
-              placeholder="Type your legal name"
-              className="mt-1 w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/35 disabled:opacity-50"
-            />
-          </label>
+        <>
+          <AgreementReview payload={contract.payload} />
 
-          <div>
-            <div className="flex items-center justify-between gap-2">
+          <form onSubmit={handleSignSubmit} className="mt-4 space-y-3">
+            <label className="block">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
-                Signature
+                Full name
               </span>
-              <button
-                type="button"
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
                 disabled={busy}
-                onClick={() => padRef.current?.clear()}
-                className="text-[11px] font-semibold text-ink/55 transition hover:text-ink disabled:opacity-40"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="mt-1 overflow-hidden rounded-lg border border-dashed border-ink/25">
-              <SignaturePad ref={padRef} disabled={busy} />
-            </div>
-            <p className="mt-1 text-[11px] text-ink/45">
-              Draw your signature with a finger or mouse.
-            </p>
-          </div>
+                autoComplete="name"
+                placeholder="Type your legal name"
+                className="mt-1 w-full rounded-lg border border-ink/15 bg-white px-3 py-2 text-sm text-night placeholder:text-night/40 outline-none transition focus:border-ink/35 disabled:opacity-50"
+              />
+            </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="rounded-lg bg-ink px-3 py-2 text-xs font-bold text-night transition hover:brightness-110 disabled:opacity-40"
-          >
-            {signing
-              ? "Submitting…"
-              : isSigned
-                ? "Re-sign & submit"
-                : "Sign & submit agreement"}
-          </button>
-        </form>
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink/50">
+                  Signature
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => padRef.current?.clear()}
+                  className="text-[11px] font-semibold text-ink/55 transition hover:text-ink disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="mt-1 overflow-hidden rounded-lg border border-dashed border-ink/25">
+                <SignaturePad ref={padRef} disabled={busy} />
+              </div>
+              <p className="mt-1 text-[11px] text-ink/45">
+                Draw your signature with a finger or mouse.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-lg bg-ink px-3 py-2 text-xs font-bold text-night transition hover:brightness-110 disabled:opacity-40"
+            >
+              {signing
+                ? "Submitting…"
+                : isSigned
+                  ? "Re-sign & submit"
+                  : "Sign & submit agreement"}
+            </button>
+          </form>
+        </>
       ) : null}
 
       <div className="mt-4 border-t border-ink/10 pt-3">

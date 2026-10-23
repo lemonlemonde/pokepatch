@@ -28,7 +28,11 @@ const RULE = rgb(0.72, 0.72, 0.74);
 const RULE_SOFT = rgb(0.86, 0.86, 0.87);
 const HEADER_BAND = rgb(0.95, 0.95, 0.96);
 
-const AGREEMENT_PARAS = [
+/** Shared agreement copy for the PDF and on-page customer review. */
+export const CONTRACT_AGREEMENT_INTRO =
+  'This Agreement is between PokéPatch ("Restorer") and the undersigned customer ("Customer") regarding the Pokémon card(s) submitted for restoration under this Agreement.';
+
+export const AGREEMENT_PARAS = [
   "Customer agrees to pay PokéPatch the Restoration Fee listed for each card for the restoration services described or agreed upon. Restoration Fees are separate from the Near Mint Raw Market Values.",
   "Customer provides the card(s) to PokéPatch for restoration. Customer retains ownership of the card(s) while they are in PokéPatch's possession.",
   "Before restoration, PokéPatch will photograph each card. These photographs will document the card's condition when received and may be used to determine whether damage occurred while in PokéPatch's possession. PokéPatch will also photograph each card after restoration and before returning it to Customer.",
@@ -37,7 +41,12 @@ const AGREEMENT_PARAS = [
   "If PokéPatch damages a card so that its condition is materially worse than shown in the photographs taken before restoration, Customer may choose either:",
 ];
 
-const DAMAGES = [
+export const AGREEMENT_DAMAGE_CHOICES = [
+  "1. Receive the damaged card back, with no payment from PokéPatch;",
+  "2. Receive the Near Mint Raw Market Value, in which case PokéPatch will retain the damaged card.",
+];
+
+export const DAMAGES = [
   "New creases",
   "Deep scratches",
   "Whitening or edge damage",
@@ -47,15 +56,20 @@ const DAMAGES = [
   "Dents",
 ];
 
-const AGREEMENT_TAIL = [
+export const AGREEMENT_TAIL = [
   "The Near Mint Raw Market Value is the mutually agreed market value of each card in raw Near Mint condition at the time this Agreement is signed. The parties may use recent eBay sold listings or another mutually agreed source to determine this amount. Once agreed upon and entered above, the Near Mint Raw Market Value will control regardless of future changes in market value.",
   "Once a card has been handed directly back to Customer, PokéPatch's responsibility and coverage for that card under this Agreement ends. After a card has been returned to Customer, it is no longer covered or insured by PokéPatch.",
 ];
 
-const RESULTS_AND_ALTERATION_PARAS = [
+export const RESULTS_AND_ALTERATION_PARAS = [
   "PokéPatch does not guarantee that a restored card will be considered unaltered by a grading company, marketplace, collector, or any other third party. There is always a risk that a restored card may be identified, labeled, or graded as altered. Customer accepts that risk and agrees that PokéPatch is not responsible for any such determination, or for any resulting loss in value, salability, or collectibility.",
   "Customer accepts that restoration may not perfectly repair every form of damage on a card. Some damage may remain visible or incompletely corrected after restoration.",
   "The Restoration Fee is payment for a reasonable attempt to restore the card(s) and for reasonable results, not for perfect or guaranteed results. Payment remains due on that basis even if the outcome is not perfect, or if a card is later graded or otherwise treated as altered.",
+];
+
+export const ACKNOWLEDGMENT_PARAS = [
+  "By signing below, Customer confirms that the card information is accurate, each card has been photographed before restoration, and all Restoration Fees and Near Mint Raw Market Values have been reviewed and mutually accepted.",
+  "Customer confirms that they have read and understood this Agreement and agree to all of its terms.",
 ];
 
 /** Parse a money field without rounding. Empty → null. */
@@ -253,9 +267,12 @@ function drawHeader(ctx) {
   drawRule(ctx);
   ctx.y -= 14;
 
-  const intro =
-    'This Agreement is between PokéPatch ("Restorer") and the undersigned customer ("Customer") regarding the Pokémon card(s) submitted for restoration under this Agreement.';
-  for (const line of wrapText(intro, ctx.font, FONT_SIZE, CONTENT_WIDTH)) {
+  for (const line of wrapText(
+    CONTRACT_AGREEMENT_INTRO,
+    ctx.font,
+    FONT_SIZE,
+    CONTENT_WIDTH
+  )) {
     ensureSpace(ctx, LINE_HEIGHT + 2);
     ctx.page.drawText(line, {
       x: MARGIN_X,
@@ -526,14 +543,9 @@ function drawSignatureBlock(
   { repSignatureImage = null, customerSignatureImage = null } = {}
 ) {
   drawSectionTitle(ctx, "ACKNOWLEDGMENT & SIGNATURES");
-  drawWrappedParagraph(
-    ctx,
-    "By signing below, Customer confirms that the card information is accurate, each card has been photographed before restoration, and all Restoration Fees and Near Mint Raw Market Values have been reviewed and mutually accepted."
-  );
-  drawWrappedParagraph(
-    ctx,
-    "Customer confirms that they have read and understood this Agreement and agree to all of its terms."
-  );
+  for (const para of ACKNOWLEDGMENT_PARAS) {
+    drawWrappedParagraph(ctx, para);
+  }
 
   const customerName = String(payload.customer_name ?? "").trim();
   const customerDate = String(payload.customer_signed_date ?? "").trim();
@@ -634,16 +646,9 @@ export async function buildOrderContractPdf(payload, options = {}) {
   for (const para of AGREEMENT_PARAS) {
     drawWrappedParagraph(ctx, para);
   }
-  drawWrappedParagraph(
-    ctx,
-    "1. Receive the damaged card back, with no payment from PokéPatch;",
-    { indent: 10 }
-  );
-  drawWrappedParagraph(
-    ctx,
-    "2. Receive the Near Mint Raw Market Value, in which case PokéPatch will retain the damaged card.",
-    { indent: 10 }
-  );
+  for (const choice of AGREEMENT_DAMAGE_CHOICES) {
+    drawWrappedParagraph(ctx, choice, { indent: 10 });
+  }
   drawWrappedParagraph(ctx, "Covered damage includes:");
   for (const item of DAMAGES) {
     drawWrappedParagraph(ctx, item, { bullet: true, indent: 10 });
