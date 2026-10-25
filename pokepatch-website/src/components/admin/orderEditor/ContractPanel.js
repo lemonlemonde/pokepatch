@@ -268,7 +268,7 @@ export default function ContractPanel({ orderId, displayId }) {
               {loading
                 ? "Loading…"
                 : contract?.notified_at
-                  ? "Waiting for the customer to upload a signed agreement."
+                  ? "Waiting for the customer to sign the agreement on My Orders."
                   : "Notify the customer to send the agreement on My Orders."}
             </p>
           )}
