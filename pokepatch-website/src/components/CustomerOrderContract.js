@@ -245,12 +245,13 @@ export default function CustomerOrderContract({ orderId }) {
     }
   }
 
-  if (loading || !contract?.notified_at) return null;
+  const hasPayload =
+    contract?.payload != null && typeof contract.payload === "object";
+  if (loading || !contract?.unsigned_path || !contract.notified_at || !hasPayload) {
+    return null;
+  }
 
   const isSigned = contract.status === "signed" && Boolean(contract.signed_path);
-  const hasPayload =
-    contract.payload != null && typeof contract.payload === "object";
-  if (!hasPayload) return null;
 
   return (
     <section className="rounded-xl border border-ink/10 bg-night/25 px-4 py-4 sm:px-5">
@@ -348,12 +349,6 @@ export default function CustomerOrderContract({ orderId }) {
           </div>
         )}
       </form>
-
-      {isSigned && error ? (
-        <p className="mt-3 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
-          {error}
-        </p>
-      ) : null}
     </section>
   );
 }
