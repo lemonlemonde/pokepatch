@@ -54,7 +54,7 @@ export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.WHITENING,
     title: "Card Whitening",
-    listPrice: 25,
+    listPrice: 35,
     features: [
       "Tiny edge & corner dots only",
       "Not for heavy or widespread whitening",
