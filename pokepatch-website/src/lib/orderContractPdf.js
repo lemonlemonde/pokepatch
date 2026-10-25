@@ -686,7 +686,7 @@ export function defaultContractNotifyBody(displayId) {
   return [
     `Your property & liability agreement${orderLine} is ready on My Orders.`,
     "",
-    "Open that order page to review the agreement, sign your name on the page, and submit — or download the PDF if you prefer.",
+    "Open that order page to read the agreement and sign it at the bottom.",
     "",
     "Thanks,",
     "PokéPatch",
