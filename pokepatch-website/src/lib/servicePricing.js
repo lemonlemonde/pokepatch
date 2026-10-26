@@ -408,14 +408,13 @@ export function serviceAccentDotClass(accent) {
 function whiteningMarketingCard() {
   const minor = serviceByKey(SERVICE_KEYS.WHITENING);
   const major = serviceByKey(SERVICE_KEYS.WHITENING_MAJOR);
-  if (!minor || !major) return null;
   return {
     title: "Card Whitening",
     price: `${servicePriceDisplay(minor)}–${servicePriceDisplay(major)}`,
     unit: SERVICE_UNIT,
     features: [
-      `Minor: ${minor.features[0].toLowerCase()}`,
-      `Major: ${major.features[0].toLowerCase()}`,
+      ...minor.features.map((feature) => `Minor — ${feature}`),
+      ...major.features.map((feature) => `Major — ${feature}`),
     ],
     featuresLabel: "Includes",
     warning: CARD_WHITENING_WARNING,
@@ -427,28 +426,25 @@ function whiteningMarketingCard() {
   };
 }
 
-/** Homepage restoration-tier cards (excludes slab add-on and custom). */
+/**
+ * Homepage restoration-tier cards (excludes slab add-on and custom).
+ * The two whitening tiers share a single card.
+ */
 export function marketingServices() {
-  const cards = [];
-  for (const service of QUOTE_SERVICES) {
-    if (service.key === SERVICE_KEYS.CUSTOM || service.key === SERVICE_KEYS.SLAB) {
-      continue;
-    }
-    if (service.key === SERVICE_KEYS.WHITENING) {
-      cards.push(whiteningMarketingCard());
-      continue;
-    }
-    if (service.key === SERVICE_KEYS.WHITENING_MAJOR) continue;
-    cards.push({
-      title: service.title,
-      price: servicePriceDisplay(service),
-      unit: SERVICE_UNIT,
-      features: service.features,
-      featuresLabel: "Includes",
-      warning: service.warning ?? null,
-    });
-  }
-  return cards.filter(Boolean);
+  const singleTierCards = QUOTE_SERVICES.filter(
+    (s) =>
+      s.key !== SERVICE_KEYS.CUSTOM &&
+      s.key !== SERVICE_KEYS.SLAB &&
+      !isWhiteningServiceKey(s.key)
+  ).map((service) => ({
+    title: service.title,
+    price: servicePriceDisplay(service),
+    unit: SERVICE_UNIT,
+    features: service.features,
+    featuresLabel: "Includes",
+    warning: service.warning ?? null,
+  }));
+  return [...singleTierCards, whiteningMarketingCard()];
 }
 
 function slabMarketingPanel() {
