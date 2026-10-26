@@ -40,10 +40,17 @@ const steps = [
 const services = marketingServices();
 const extras = marketingExtras();
 const highValue = marketingHighValue();
-const whiteningService = QUOTE_SERVICES.find(
+const minorWhitening = QUOTE_SERVICES.find(
   (service) => service.key === SERVICE_KEYS.WHITENING
 );
-const whiteningPrice = servicePriceDisplay(whiteningService);
+const majorWhitening = QUOTE_SERVICES.find(
+  (service) => service.key === SERVICE_KEYS.WHITENING_MAJOR
+);
+const whiteningPricingSentence = `${minorWhitening.title} is ${servicePriceDisplay(
+  minorWhitening
+)} per card and ${majorWhitening.title} is ${servicePriceDisplay(
+  majorWhitening
+)} per card.`;
 
 const faqs = [
   {
@@ -67,7 +74,7 @@ const faqs = [
   },
   {
     question: "Can whitening on cards be fixed?",
-    answer: `${CARD_WHITENING_WARNING} Card Whitening is ${whiteningPrice} per card.`,
+    answer: `${CARD_WHITENING_WARNING} ${whiteningPricingSentence}`,
   },
   {
     question: "Is shipping covered?",

@@ -11,6 +11,7 @@ export const SERVICE_KEYS = {
   PRESSING: "precision_pressing",
   ADVANCED: "advanced_restoration",
   WHITENING: "card_whitening",
+  WHITENING_MAJOR: "card_whitening_major",
   SLAB: "slab_cracking",
   CUSTOM: "custom",
 };
@@ -24,9 +25,18 @@ const SERVICE_UNIT = "/ card";
 export const CARD_WHITENING_WARNING =
   "Only for very small whitening dots on edges and corners. Grading companies like PSA may potentially detect added ink and mark the card as altered.";
 
+/** True for either Card Whitening tier (shared risk copy applies to both). */
+export function isWhiteningServiceKey(serviceKey) {
+  return (
+    serviceKey === SERVICE_KEYS.WHITENING ||
+    serviceKey === SERVICE_KEYS.WHITENING_MAJOR
+  );
+}
+
 /**
  * Customer-facing service names. PRESSING / ADVANCED must stay
- * "Minor Damage" / "Major Damage" in titles — keys stay for DB compatibility.
+ * "Minor Damage" / "Major Damage" in titles, and WHITENING stays
+ * "Minor Whitening" — keys stay for DB compatibility.
  */
 export const QUOTE_SERVICES = [
   {
@@ -53,12 +63,17 @@ export const QUOTE_SERVICES = [
   },
   {
     key: SERVICE_KEYS.WHITENING,
-    title: "Card Whitening",
+    title: "Minor Whitening",
     listPrice: 25,
-    features: [
-      "Tiny edge & corner dots only",
-      "Not for heavy or widespread whitening",
-    ],
+    features: ["Tiny edge & corner dots"],
+    warning: CARD_WHITENING_WARNING,
+    accent: "ink",
+  },
+  {
+    key: SERVICE_KEYS.WHITENING_MAJOR,
+    title: "Major Whitening",
+    listPrice: 40,
+    features: ["Larger areas of whitening, or whitening across the whole card"],
     warning: CARD_WHITENING_WARNING,
     accent: "ink",
   },
@@ -84,6 +99,7 @@ const LEGACY_SERVICE_DISPLAY_TITLES = {
   Flattening: "Minor Damage",
   "Advanced Restoration": "Major Damage",
   "Heavy Damage": "Major Damage",
+  "Card Whitening": "Minor Whitening",
 };
 
 /** Normalize a quote line label for display (receipts, changelog). */
@@ -388,10 +404,38 @@ export function serviceAccentDotClass(accent) {
   return SERVICE_ACCENT_DOT[accent] ?? SERVICE_ACCENT_DOT.mint;
 }
 
-/** Homepage restoration-tier cards (excludes slab add-on and custom). */
+/** Both whitening tiers as one homepage card: price range + per-tier rows. */
+function whiteningMarketingCard() {
+  const minor = serviceByKey(SERVICE_KEYS.WHITENING);
+  const major = serviceByKey(SERVICE_KEYS.WHITENING_MAJOR);
+  return {
+    title: "Card Whitening",
+    price: `${servicePriceDisplay(minor)}–${servicePriceDisplay(major)}`,
+    unit: SERVICE_UNIT,
+    features: [
+      ...minor.features.map((feature) => `Minor — ${feature}`),
+      ...major.features.map((feature) => `Major — ${feature}`),
+    ],
+    featuresLabel: "Includes",
+    warning: CARD_WHITENING_WARNING,
+    bulk: [
+      { label: minor.title, value: servicePriceDisplay(minor) },
+      { label: major.title, value: servicePriceDisplay(major) },
+    ],
+    bulkLabel: "Pricing",
+  };
+}
+
+/**
+ * Homepage restoration-tier cards (excludes slab add-on and custom).
+ * The two whitening tiers share a single card.
+ */
 export function marketingServices() {
-  return QUOTE_SERVICES.filter(
-    (s) => s.key !== SERVICE_KEYS.CUSTOM && s.key !== SERVICE_KEYS.SLAB
+  const singleTierCards = QUOTE_SERVICES.filter(
+    (s) =>
+      s.key !== SERVICE_KEYS.CUSTOM &&
+      s.key !== SERVICE_KEYS.SLAB &&
+      !isWhiteningServiceKey(s.key)
   ).map((service) => ({
     title: service.title,
     price: servicePriceDisplay(service),
@@ -400,6 +444,7 @@ export function marketingServices() {
     featuresLabel: "Includes",
     warning: service.warning ?? null,
   }));
+  return [...singleTierCards, whiteningMarketingCard()];
 }
 
 function slabMarketingPanel() {
