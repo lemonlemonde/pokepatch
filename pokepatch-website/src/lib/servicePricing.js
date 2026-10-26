@@ -73,7 +73,7 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.WHITENING_MAJOR,
     title: "Major Whitening",
     listPrice: 40,
-    features: ["Heavier or more widespread whitening"],
+    features: ["Larger areas of whitening, or whitening across the whole card"],
     warning: CARD_WHITENING_WARNING,
     accent: "ink",
   },
