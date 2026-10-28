@@ -42,7 +42,7 @@ export const QUOTE_SERVICES = [
   {
     key: SERVICE_KEYS.SURFACE,
     title: "Surface Cleaning",
-    listPrice: 15,
+    listPrice: 20,
     features: ["Dirt", "Scratches"],
     accent: "ink",
   },
@@ -120,7 +120,7 @@ export function servicePriceDisplay(service) {
   return formatListPrice(service.listPrice, service.priceSuffix ?? "");
 }
 
-/** Admin/customer-facing service picker label, e.g. "Surface Cleaning ($15)". */
+/** Admin/customer-facing service picker label, e.g. "Surface Cleaning ($20)". */
 export function serviceSelectLabel(service) {
   const price = servicePriceDisplay(service);
   return price ? `${service.title} (${price})` : service.title;
