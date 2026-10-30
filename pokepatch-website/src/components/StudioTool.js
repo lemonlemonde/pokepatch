@@ -19,6 +19,7 @@ import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 import { publishStudioPairsToGallery } from "@/lib/studioToGallery";
 import { buildStudioSeedFromGalleryItem } from "@/lib/galleryToStudio";
+import { buildStudioSeedFromOrderCard } from "@/lib/orderCardToStudio";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
@@ -915,10 +916,17 @@ export default function StudioTool() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromGalleryParam = searchParams.get("fromGallery");
+  const fromOrderCardParam = searchParams.get("fromOrderCard");
+  const orderIdParam = searchParams.get("orderId");
+  const importKey = fromGalleryParam
+    ? `gallery:${fromGalleryParam}`
+    : fromOrderCardParam
+      ? `orderCard:${orderIdParam ?? ""}:${fromOrderCardParam}`
+      : "";
   const [outputFormat, setOutputFormat] = useState("reel");
   const [cardMeta, setCardMeta] = useState(createEmptyCardMeta);
   const [gallerySeed, setGallerySeed] = useState(null);
-  const [galleryImporting, setGalleryImporting] = useState(Boolean(fromGalleryParam));
+  const [galleryImporting, setGalleryImporting] = useState(Boolean(importKey));
   const [galleryImportError, setGalleryImportError] = useState("");
   const galleryImportStartedRef = useRef(null);
 
@@ -943,10 +951,9 @@ export default function StudioTool() {
   }, [restored, gallerySeed, galleryImporting]);
 
   useEffect(() => {
-    const itemId = (fromGalleryParam ?? "").trim();
-    if (!itemId) return undefined;
-    if (galleryImportStartedRef.current === itemId) return undefined;
-    galleryImportStartedRef.current = itemId;
+    if (!importKey) return undefined;
+    if (galleryImportStartedRef.current === importKey) return undefined;
+    galleryImportStartedRef.current = importKey;
 
     let cancelled = false;
     setGalleryImporting(true);
@@ -954,7 +961,12 @@ export default function StudioTool() {
 
     (async () => {
       try {
-        const seed = await buildStudioSeedFromGalleryItem(itemId);
+        const seed = fromGalleryParam
+          ? await buildStudioSeedFromGalleryItem(fromGalleryParam.trim())
+          : await buildStudioSeedFromOrderCard({
+              orderId: (orderIdParam ?? "").trim(),
+              cardId: (fromOrderCardParam ?? "").trim(),
+            });
         if (cancelled) return;
 
         await Promise.all([
@@ -970,7 +982,9 @@ export default function StudioTool() {
           setGalleryImportError(
             err instanceof Error
               ? err.message
-              : "Could not load that gallery item into Studio.",
+              : fromGalleryParam
+                ? "Could not load that gallery item into Studio."
+                : "Could not load that order card into Studio.",
           );
         }
       } finally {
@@ -984,17 +998,25 @@ export default function StudioTool() {
     return () => {
       cancelled = true;
       // React Strict Mode remounts effects; clear the guard so the retry can run.
-      if (galleryImportStartedRef.current === itemId) {
+      if (galleryImportStartedRef.current === importKey) {
         galleryImportStartedRef.current = null;
       }
     };
-  }, [fromGalleryParam, router]);
+  }, [
+    importKey,
+    fromGalleryParam,
+    fromOrderCardParam,
+    orderIdParam,
+    router,
+  ]);
 
   if (galleryImporting) {
     return (
       <div className="py-16 text-center">
         <p className="animate-soft-bounce text-sm font-semibold text-ink/70">
-          Loading gallery images into Studio…
+          {fromOrderCardParam
+            ? "Loading order card photos into Studio…"
+            : "Loading gallery images into Studio…"}
         </p>
       </div>
     );

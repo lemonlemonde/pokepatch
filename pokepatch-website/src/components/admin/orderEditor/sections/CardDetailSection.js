@@ -102,7 +102,7 @@ export default function CardDetailSection({
   onExpandedChange,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
-  const { draft, updateDraft, saving } = useOrderEditor();
+  const { draft, updateDraft, saving, orderId } = useOrderEditor();
 
   const section = useMemo(() => pickCardSection(cardId, draft), [cardId, draft]);
   const card = section?.card;
@@ -615,7 +615,7 @@ export default function CardDetailSection({
                       })
               }
             />
-            <div>
+            <div className="flex flex-wrap items-center gap-2">
               <input
                 id={photoInputId}
                 type="file"
@@ -638,6 +638,17 @@ export default function CardDetailSection({
               >
                 Add photos
               </label>
+              {orderId &&
+              !String(card.id ?? "").startsWith("tmp-") &&
+              (card.images ?? []).some((image) => image?.image_type === "before") &&
+              (card.images ?? []).some((image) => image?.image_type === "after") ? (
+                <a
+                  href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
+                  className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
+                >
+                  Open in Studio
+                </a>
+              ) : null}
             </div>
           </div>
 

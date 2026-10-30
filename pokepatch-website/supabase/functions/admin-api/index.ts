@@ -73,6 +73,8 @@ const ADMIN_IMAGE_TYPES = new Set([
   "final_front",
   "final_back",
   "admin",
+  "before",
+  "after",
 ]);
 
 const GALLERY_SIDES = new Set(["before", "after"]);
@@ -585,17 +587,25 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
   const previewPathsByOrder = new Map<string, string[]>();
+  const beforeCards = new Set<string>();
+  const afterCards = new Set<string>();
   if (cardIds.length > 0) {
     const { data: imageRows, error: imagesError } = await supabase
       .from("card_images")
-      .select("id, card_id, storage_path")
+      .select("id, card_id, storage_path, image_type")
       .in("card_id", cardIds)
-      .eq("image_type", "customer")
+      .in("image_type", ["customer", "before", "after"])
       .order("id", { ascending: true });
     if (imagesError) throw imagesError;
 
     for (const image of imageRows ?? []) {
-      const orderId = cardOrderById.get(image.card_id as string);
+      const cardId = image.card_id as string;
+      const imageType = String(image.image_type ?? "");
+      if (imageType === "before") beforeCards.add(cardId);
+      if (imageType === "after") afterCards.add(cardId);
+      if (imageType !== "customer") continue;
+
+      const orderId = cardOrderById.get(cardId);
       if (!orderId) continue;
       const paths = previewPathsByOrder.get(orderId) ?? [];
       // Kanban only needs one preview thumb per order.
@@ -619,17 +629,28 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
         return url ? { path, url } : null;
       })
       .filter((row): row is { path: string; url: string } => Boolean(row));
+    const orderCards = cardsByOrder.get(orderId) ?? [];
+    const activeCards = orderCards.filter(
+      (card) => String(card.status ?? "") !== "canceled"
+    );
+    const has_restoration_album =
+      activeCards.length > 0 &&
+      activeCards.every((card) => {
+        const id = String(card.id ?? "");
+        return beforeCards.has(id) && afterCards.has(id);
+      });
     return {
       ...withAccountName(order, emailToUserId, namesByUserId),
       has_account: orderHasAccount(order, emailSet),
       quote_items: quoteItemsByOrder.get(orderId) ?? [],
-      cards: cardsByOrder.get(orderId) ?? [],
+      cards: orderCards,
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
       queue_position: queuePositionById.get(orderId) ?? null,
       preview_paths: preview.map((row) => row.path),
       preview_urls: preview.map((row) => row.url),
       contract_signed: contractSignedByOrder.get(orderId) ?? false,
+      has_restoration_album,
     };
   });
 }
