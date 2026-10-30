@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   downloadRestorationZip,
   restorationFolderName,
-} from "@/lib/downloadRestorationZip";
+  saveRestorationToFolder,
+  supportsFolderSave,
+} from "@/lib/restorationDownload";
 
 function DownloadIcon() {
   return (
@@ -25,9 +27,39 @@ function DownloadIcon() {
   );
 }
 
+function FolderIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+    </svg>
+  );
+}
+
+const noopSubscribe = () => () => {};
+
+/** Capability is browser-only; render the zip label on the server to avoid hydration drift. */
+function useFolderSaveSupport() {
+  return useSyncExternalStore(noopSubscribe, supportsFolderSave, () => false);
+}
+
+function failureNote(failures) {
+  if (failures.length === 0) return null;
+  return `${failures.length} photo${failures.length === 1 ? "" : "s"} couldn't be included. Try again later.`;
+}
+
 /**
- * "Download before & after" → `<order>-<card>.zip` with `before/` + `after/`.
- * Shared by My Orders and the admin order editor.
+ * Save a card's before/after photos as `<order>-<card>/before|after/...`.
+ * Writes directly into a chosen folder where the browser allows it; otherwise
+ * downloads a zip with the same layout. Shared by My Orders and the admin editor.
  */
 export default function RestorationDownloadButton({
   orderDisplayId,
@@ -38,6 +70,7 @@ export default function RestorationDownloadButton({
   disabled = false,
   className = "",
 }) {
+  const canSaveToFolder = useFolderSaveSupport();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null);
   const total = before.length + after.length;
@@ -46,22 +79,27 @@ export default function RestorationDownloadButton({
     if (busy || total === 0) return;
     setBusy(true);
     setMessage(null);
+    const params = {
+      folderName: restorationFolderName({ orderDisplayId, cardIndex, cardName }),
+      before,
+      after,
+    };
     try {
-      const failures = await downloadRestorationZip({
-        folderName: restorationFolderName({
-          orderDisplayId,
-          cardIndex,
-          cardName,
-        }),
-        before,
-        after,
-      });
-      if (failures.length > 0) {
-        setMessage({
-          tone: "warn",
-          text: `${failures.length} photo${failures.length === 1 ? "" : "s"} couldn't be included. Try again later.`,
-        });
+      if (canSaveToFolder) {
+        const result = await saveRestorationToFolder(params);
+        if (result.cancelled) return;
+        if (!result.unavailable) {
+          setMessage({
+            tone: result.failures.length > 0 ? "warn" : "ok",
+            text:
+              failureNote(result.failures) ?? `Saved to ${result.location}/`,
+          });
+          return;
+        }
       }
+      const { failures } = await downloadRestorationZip(params);
+      const note = failureNote(failures);
+      if (note) setMessage({ tone: "warn", text: note });
     } catch (err) {
       setMessage({
         tone: "error",
@@ -72,6 +110,11 @@ export default function RestorationDownloadButton({
     }
   }
 
+  const idleLabel = canSaveToFolder
+    ? "Save before & after"
+    : "Download before & after";
+  const busyLabel = canSaveToFolder ? "Saving…" : "Preparing zip…";
+
   return (
     <div className={className}>
       <button
@@ -80,13 +123,17 @@ export default function RestorationDownloadButton({
         disabled={disabled || busy || total === 0}
         className="inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-night transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/30"
       >
-        <DownloadIcon />
-        {busy ? "Preparing zip…" : "Download before & after"}
+        {canSaveToFolder ? <FolderIcon /> : <DownloadIcon />}
+        {busy ? busyLabel : idleLabel}
       </button>
       {message ? (
         <p
           className={`mt-1.5 text-[11px] ${
-            message.tone === "error" ? "text-peach" : "text-ink/55"
+            message.tone === "error"
+              ? "text-peach"
+              : message.tone === "ok"
+                ? "text-mint"
+                : "text-ink/55"
           }`}
         >
           {message.text}
