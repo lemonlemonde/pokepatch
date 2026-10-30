@@ -140,10 +140,6 @@ function RestorationSection({
               <span className="mx-1.5 text-ink/30">·</span>
               <span className="font-semibold text-ink">{after.length}</span>{" "}
               after
-              <span className="ml-2 text-xs text-ink/45">
-                Zip with a <code className="text-ink/60">before/</code> and{" "}
-                <code className="text-ink/60">after/</code> folder.
-              </span>
             </p>
           ) : (
             <p className="mt-1 text-sm text-ink/55">
