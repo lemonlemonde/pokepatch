@@ -1,16 +1,8 @@
-import { groupCardImages } from "@/lib/cardPhotoGroups";
-
-function filenameFromStoragePath(path) {
-  const base = path.split("/").pop() ?? path;
-  return base.replace(
-    /^(customer|progress_front|progress_back|final_front|final_back|admin|before|after)-\d+-/,
-    ""
-  );
-}
+import { photoFilename } from "@/lib/cardPhotoGroups";
 
 export function savedPhotoItems(images) {
   return (images ?? []).map((image) => {
-    const label = filenameFromStoragePath(image.storage_path);
+    const label = photoFilename(image.storage_path);
     const full = image.signed_url ?? "";
     const thumb = image.signed_thumb_url || full;
     return {
@@ -24,14 +16,4 @@ export function savedPhotoItems(images) {
       removeAriaLabel: `Remove ${label}`,
     };
   });
-}
-
-/** Saved photo items split into customer / before / after strips. */
-export function groupedSavedPhotoItems(images) {
-  const groups = groupCardImages(images);
-  return {
-    customer: savedPhotoItems(groups.customer),
-    before: savedPhotoItems(groups.before),
-    after: savedPhotoItems(groups.after),
-  };
 }

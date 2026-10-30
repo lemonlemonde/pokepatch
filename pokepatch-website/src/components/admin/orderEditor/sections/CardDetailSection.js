@@ -47,7 +47,9 @@ import {
   RemoveButton,
   editorFieldClass,
 } from "@/components/admin/orderEditor/editorUi";
-import { groupedSavedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
+import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
+import RestorationDownloadButton from "@/components/RestorationDownloadButton";
+import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
 function DamageTagChips({ tags, className }) {
@@ -97,6 +99,7 @@ function applyCardSection(full, section, cardId) {
 export default function CardDetailSection({
   cardId,
   cardIndex,
+  displayId,
   onRemoveCard,
   expanded,
   onExpandedChange,
@@ -141,7 +144,10 @@ export default function CardDetailSection({
   const cardIdStr = String(card.id);
   const pendingFiles = card.pending_files ?? [];
   const photoInputId = `admin-card-photos-${card.id}`;
-  const photoGroups = groupedSavedPhotoItems(card.images ?? []);
+  const photoGroups = groupCardImages(card.images);
+  const customerPhotoItems = savedPhotoItems(photoGroups.customer);
+  const restorationCount =
+    photoGroups.before.length + photoGroups.after.length;
   const canOpenInStudio =
     Boolean(orderId) &&
     !cardIdStr.startsWith("tmp-") &&
@@ -608,7 +614,7 @@ export default function CardDetailSection({
           <div className="space-y-3">
             <AdminOrderCardPhotoGroups
               title="Customer photos"
-              items={photoGroups.customer}
+              items={customerPhotoItems}
               pendingFiles={pendingFiles}
               onRemove={saving ? undefined : removePhoto}
               onRemovePending={
@@ -648,35 +654,45 @@ export default function CardDetailSection({
             </div>
           </div>
 
-          <EditorDivider label="Restoration" />
-          <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <AdminOrderCardPhotoGroups
-                title="Before"
-                items={photoGroups.before}
-                onRemove={saving ? undefined : removePhoto}
-                emptyText="None yet — upload via Discord /wooper."
-              />
-              <AdminOrderCardPhotoGroups
-                title="After"
-                items={photoGroups.after}
-                onRemove={saving ? undefined : removePhoto}
-                emptyText="None yet — upload via Discord /wooper."
-              />
+          <EditorDivider label="Restoration photos" />
+          <div className="rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+              <div className="min-w-0">
+                <p className="text-sm text-ink/80">
+                  <span className="font-semibold text-ink">
+                    {photoGroups.before.length}
+                  </span>{" "}
+                  before
+                  <span className="mx-1.5 text-ink/30">·</span>
+                  <span className="font-semibold text-ink">
+                    {photoGroups.after.length}
+                  </span>{" "}
+                  after
+                </p>
+                <p className="mt-0.5 text-[11px] text-ink/45">
+                  {restorationCount > 0
+                    ? "Zip has a before/ and after/ folder. Add more via Discord /wooper."
+                    : "None yet — upload via Discord /wooper."}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <RestorationDownloadButton
+                  orderDisplayId={displayId}
+                  cardIndex={cardIndex + 1}
+                  cardName={card.card_name}
+                  before={photoGroups.before}
+                  after={photoGroups.after}
+                />
+                {canOpenInStudio ? (
+                  <a
+                    href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
+                    className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
+                  >
+                    Open in Studio
+                  </a>
+                ) : null}
+              </div>
             </div>
-            {canOpenInStudio ? (
-              <a
-                href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
-                className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
-              >
-                Open in Studio
-              </a>
-            ) : (
-              <p className="text-[11px] text-ink/40">
-                Open in Studio unlocks once this card has a before and an after
-                photo.
-              </p>
-            )}
           </div>
 
           <EditorDivider label="Services" />

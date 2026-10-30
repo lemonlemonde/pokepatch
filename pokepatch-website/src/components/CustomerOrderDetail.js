@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import CustomerOrderEditor from "@/components/CustomerOrderEditor";
 import CustomerOrderContract from "@/components/CustomerOrderContract";
@@ -8,6 +8,7 @@ import CustomerOrderMessages from "@/components/CustomerOrderMessages";
 import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
 import MediaLightbox from "@/components/MediaLightbox";
 import QuoteReceipt from "@/components/QuoteReceipt";
+import RestorationDownloadButton from "@/components/RestorationDownloadButton";
 import {
   resolveFullAfterBadThumb,
   signPaths,
@@ -49,17 +50,16 @@ function deliveryLabel(method) {
     : { text: "Shipping", sub: "Mailed to you" };
 }
 
-const PHOTO_GROUP_LABELS = {
-  customer: "Your photos",
-  before: "Before",
-  after: "After",
-};
+/** Only quote photos render inline; before/after ship as a zip download. */
+function customerImages(card) {
+  return groupCardImages(card?.images).customer;
+}
 
 function lightboxTarget(order, lightbox) {
   if (!lightbox) return null;
   const card = (order.cards ?? []).find((row) => row.id === lightbox.cardId);
   if (!card) return null;
-  const list = groupCardImages(card.images)[lightbox.group] ?? [];
+  const list = customerImages(card);
   return { card, list, image: list[lightbox.index] ?? null };
 }
 
@@ -114,290 +114,54 @@ function Photo({ url, alt, onOpen, onThumbError }) {
   );
 }
 
-function CompareIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="h-4 w-4"
-      aria-hidden="true"
-    >
-      <path d="M8 9l-4 3 4 3" />
-      <path d="M16 9l4 3-4 3" />
-    </svg>
-  );
-}
-
-/** Drag-to-compare: `before` is clipped on top of `after`. */
-function CompareSlider({ beforeUrl, afterUrl, alt, onOpenBefore, onOpenAfter }) {
-  const [position, setPosition] = useState(50);
-  const frameRef = useRef(null);
-  const draggingRef = useRef(false);
-
-  const setFromClientX = useCallback((clientX) => {
-    const rect = frameRef.current?.getBoundingClientRect();
-    if (!rect || rect.width === 0) return;
-    const next = ((clientX - rect.left) / rect.width) * 100;
-    setPosition(Math.min(100, Math.max(0, next)));
-  }, []);
-
-  function handlePointerDown(event) {
-    if (event.button != null && event.button !== 0) return;
-    draggingRef.current = true;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setFromClientX(event.clientX);
-  }
-
-  function handlePointerMove(event) {
-    if (!draggingRef.current) return;
-    setFromClientX(event.clientX);
-  }
-
-  function endDrag(event) {
-    draggingRef.current = false;
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
-
-  const pillClass =
-    "absolute top-2 z-10 rounded-full bg-night/75 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ink backdrop-blur transition hover:bg-night";
-
-  return (
-    <figure className="space-y-1.5">
-      <div
-        ref={frameRef}
-        className="relative aspect-[3/4] w-full cursor-ew-resize select-none overflow-hidden rounded-xl bg-night/40 ring-1 ring-ink/10 [touch-action:pan-y]"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
-        {afterUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={afterUrl}
-            src={afterUrl}
-            alt={`${alt} after restoration`}
-            draggable={false}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 animate-pulse bg-ink/5" />
-        )}
-        <div
-          className="absolute inset-0"
-          style={{ clipPath: `inset(0 ${100 - position}% 0 0)` }}
-        >
-          {beforeUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={beforeUrl}
-              src={beforeUrl}
-              alt={`${alt} before restoration`}
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : null}
-        </div>
-
-        <div
-          className="pointer-events-none absolute inset-y-0 w-0.5 bg-ink shadow-[0_0_0_1px_rgba(11,16,32,0.5)]"
-          style={{ left: `calc(${position}% - 1px)` }}
-        />
-        <div
-          className="pointer-events-none absolute top-1/2 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-ink text-night shadow-lg ring-2 ring-night/40"
-          style={{ left: `${position}%` }}
-        >
-          <CompareIcon />
-        </div>
-
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={onOpenBefore}
-          className={`${pillClass} left-2`}
-        >
-          Before
-        </button>
-        <button
-          type="button"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={onOpenAfter}
-          className={`${pillClass} right-2`}
-        >
-          After
-        </button>
-
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(position)}
-          onChange={(event) => setPosition(Number(event.target.value))}
-          aria-label={`Compare before and after for ${alt}`}
-          className="sr-only"
-        />
-      </div>
-      <figcaption className="text-center text-[11px] text-ink/45">
-        Drag to compare
-      </figcaption>
-    </figure>
-  );
-}
-
-function PhotoColumn({
-  label,
-  images,
-  cardName,
-  group,
-  thumbUrls,
-  fullUrls,
-  setFullUrls,
-  setThumbUrls,
-  openLightbox,
-  placeholder,
-  accentClass,
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="flex items-baseline gap-1.5">
-        <span className={`inline-block h-1.5 w-1.5 rounded-full ${accentClass}`} />
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ink/70">
-          {label}
-        </p>
-        {images.length > 0 ? (
-          <span className="text-[11px] text-ink/40">{images.length}</span>
-        ) : null}
-      </div>
-      {images.length > 0 ? (
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-          {images.map((image, index) => {
-            const path = image.storage_path;
-            return (
-              <Photo
-                key={image.id ?? path}
-                url={thumbUrls[path] ?? fullUrls[path] ?? null}
-                alt={`${cardName} ${label.toLowerCase()} photo ${index + 1}`}
-                onOpen={() => openLightbox(group, index)}
-                onThumbError={() =>
-                  resolveFullAfterBadThumb(path, setFullUrls, setThumbUrls)
-                }
-              />
-            );
-          })}
-        </div>
-      ) : (
-        <div className="mt-2 flex min-h-[6.5rem] items-center justify-center rounded-lg border border-dashed border-ink/15 bg-night/20 px-3 text-center text-xs leading-snug text-ink/45">
-          {placeholder}
-        </div>
-      )}
-    </div>
-  );
-}
-
+/** Counts + zip download; photos themselves are not rendered inline. */
 function RestorationSection({
-  card,
+  orderDisplayId,
+  cardIndex,
+  cardName,
   groups,
   expectPhotos,
-  thumbUrls,
-  fullUrls,
-  setFullUrls,
-  setThumbUrls,
-  openLightbox,
 }) {
-  const [pairIndex, setPairIndex] = useState(0);
   const before = groups.before;
   const after = groups.after;
-  const pairCount = Math.min(before.length, after.length);
-  const hasPair = pairCount > 0;
-  const activePair = Math.min(pairIndex, Math.max(0, pairCount - 1));
+  const total = before.length + after.length;
 
-  if (before.length === 0 && after.length === 0 && !expectPhotos) {
-    return null;
-  }
-
-  const cardName = card.card_name || "Card";
-  const columnProps = {
-    cardName,
-    thumbUrls,
-    fullUrls,
-    setFullUrls,
-    setThumbUrls,
-    openLightbox,
-  };
-
-  const columns = (
-    <div className="grid grid-cols-2 gap-3">
-      <PhotoColumn
-        {...columnProps}
-        label="Before"
-        group="before"
-        images={before}
-        accentClass="bg-lavender"
-        placeholder="Before photos are added when we start on this card."
-      />
-      <PhotoColumn
-        {...columnProps}
-        label="After"
-        group="after"
-        images={after}
-        accentClass="bg-mint"
-        placeholder="After photos are added once restoration is done."
-      />
-    </div>
-  );
-
-  const beforePath = before[activePair]?.storage_path;
-  const afterPath = after[activePair]?.storage_path;
+  if (total === 0 && !expectPhotos) return null;
 
   return (
-    <section className="rounded-xl border border-lavender/20 bg-lavender/[0.05] p-3 sm:p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className={`${LABEL_CLS} text-lavender`}>Restoration</p>
-        {hasPair ? (
-          <p className="text-[11px] text-ink/45">
-            {pairCount} before &amp; after {pairCount === 1 ? "pair" : "pairs"}
-          </p>
+    <section className="rounded-xl border border-lavender/20 bg-lavender/[0.05] px-3 py-3 sm:px-4">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <p className={`${LABEL_CLS} text-lavender`}>Restoration photos</p>
+          {total > 0 ? (
+            <p className="mt-1 text-sm text-ink/80">
+              <span className="font-semibold text-ink">{before.length}</span>{" "}
+              before
+              <span className="mx-1.5 text-ink/30">·</span>
+              <span className="font-semibold text-ink">{after.length}</span>{" "}
+              after
+              <span className="ml-2 text-xs text-ink/45">
+                Zip with a <code className="text-ink/60">before/</code> and{" "}
+                <code className="text-ink/60">after/</code> folder.
+              </span>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-ink/55">
+              Before photos are added when we start on this card; after photos
+              once restoration is done.
+            </p>
+          )}
+        </div>
+        {total > 0 ? (
+          <RestorationDownloadButton
+            orderDisplayId={orderDisplayId}
+            cardIndex={cardIndex}
+            cardName={cardName}
+            before={before}
+            after={after}
+          />
         ) : null}
       </div>
-
-      {hasPair ? (
-        <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-          <div className="mx-auto w-full max-w-[16rem] sm:mx-0 sm:max-w-none">
-            <CompareSlider
-              beforeUrl={thumbUrls[beforePath] ?? fullUrls[beforePath] ?? null}
-              afterUrl={thumbUrls[afterPath] ?? fullUrls[afterPath] ?? null}
-              alt={cardName}
-              onOpenBefore={() => openLightbox("before", activePair)}
-              onOpenAfter={() => openLightbox("after", activePair)}
-            />
-            {pairCount > 1 ? (
-              <div className="mt-2 flex justify-center gap-1.5">
-                {Array.from({ length: pairCount }).map((_, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => setPairIndex(index)}
-                    aria-label={`Show pair ${index + 1}`}
-                    aria-pressed={index === activePair}
-                    className={`h-1.5 rounded-full transition ${
-                      index === activePair
-                        ? "w-5 bg-ink"
-                        : "w-1.5 bg-ink/30 hover:bg-ink/55"
-                    }`}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
-          {columns}
-        </div>
-      ) : (
-        <div className="mt-3">{columns}</div>
-      )}
     </section>
   );
 }
@@ -417,9 +181,9 @@ function ReadOnlyCards({
     ? {
         type: "image",
         src: fullUrls[lightboxPath] ?? thumbUrls[lightboxPath] ?? null,
-        alt: `${target.card.card_name || "Card"} ${PHOTO_GROUP_LABELS[lightbox.group].toLowerCase()} ${lightbox.index + 1}`,
+        alt: `${target.card.card_name || "Card"} photo ${lightbox.index + 1}`,
         sectionTitle: target.card.card_name || "Card",
-        label: PHOTO_GROUP_LABELS[lightbox.group],
+        label: "Your photos",
       }
     : null;
   const lightboxCount = target?.list.length ?? 0;
@@ -433,8 +197,8 @@ function ReadOnlyCards({
         const damage = labeledDamageTags(card.damage_tags);
         const groups = groupCardImages(card.images);
         const cardName = card.card_name || `Card ${index + 1}`;
-        const openLightbox = (group, imageIndex) =>
-          setLightbox({ cardId: card.id, group, index: imageIndex });
+        const openLightbox = (imageIndex) =>
+          setLightbox({ cardId: card.id, index: imageIndex });
         return (
           <article
             key={card.id}
@@ -490,14 +254,11 @@ function ReadOnlyCards({
               ) : null}
 
               <RestorationSection
-                card={card}
+                orderDisplayId={order.display_id}
+                cardIndex={index + 1}
+                cardName={card.card_name}
                 groups={groups}
                 expectPhotos={expectPhotos && card.status !== "canceled"}
-                thumbUrls={thumbUrls}
-                fullUrls={fullUrls}
-                setFullUrls={setFullUrls}
-                setThumbUrls={setThumbUrls}
-                openLightbox={openLightbox}
               />
 
               {groups.customer.length > 0 ? (
@@ -516,7 +277,7 @@ function ReadOnlyCards({
                           key={image.id ?? path}
                           url={thumbUrls[path] ?? fullUrls[path] ?? null}
                           alt={`${cardName} photo ${imageIndex + 1}`}
-                          onOpen={() => openLightbox("customer", imageIndex)}
+                          onOpen={() => openLightbox(imageIndex)}
                           onThumbError={() =>
                             resolveFullAfterBadThumb(
                               path,
@@ -575,7 +336,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
     () =>
       (order.cards ?? [])
         .flatMap((card) =>
-          (card.images ?? []).map((image) => image.storage_path)
+          customerImages(card).map((image) => image.storage_path)
         )
         .join("|"),
     [order]

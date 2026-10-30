@@ -107,5 +107,5 @@ Apply via CLI locally / CI `db push` on merge — do not hand-apply DDL on live.
 
 ## 6. Customer + Studio
 
-- Customers see a **Restoration** block on My Orders: drag-to-compare slider plus Before / After columns (Drive link only if `photos_drive_url` was already set).
-- Admin order card shows **Customer photos** and a **Restoration** section with Before / After strips → **Open in Studio** when the card has at least one of each.
+- Before/after photos are not rendered inline. Customers (My Orders) and admins (order editor) get a **Download before & after** button per card → `order-<n>-card-<i>-<name>.zip` containing `before/` and `after/` folders. Drive link only shows if `photos_drive_url` was already set.
+- Admin order card also offers **Open in Studio** when the card has at least one before and one after photo.
