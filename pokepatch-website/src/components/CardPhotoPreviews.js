@@ -260,6 +260,8 @@ export function AdminOrderCardPhotoGroups({
   pendingFiles = [],
   onRemove,
   onRemovePending,
+  title = "Photos",
+  emptyText = "No photos yet.",
   className = "",
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -329,12 +331,19 @@ export function AdminOrderCardPhotoGroups({
   const lightboxItem =
     lightbox != null ? allItems[lightbox.index] ?? null : null;
   const lightboxMedia = lightboxItem
-    ? toLightboxMedia(lightboxItem, "Photos")
+    ? toLightboxMedia(lightboxItem, title)
     : null;
 
   if (totalCount === 0) {
     return (
-      <p className={`text-xs text-ink/50 ${className}`.trim()}>No photos yet.</p>
+      <div
+        className={`rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10 ${className}`.trim()}
+      >
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
+          {title}
+        </p>
+        <p className="mt-1.5 text-xs text-ink/45">{emptyText}</p>
+      </div>
     );
   }
 
@@ -354,7 +363,7 @@ export function AdminOrderCardPhotoGroups({
         >
           <div className="flex min-w-0 flex-1 items-end overflow-hidden">
             <AdminPhotoCluster
-              title="Photos"
+              title={title}
               items={allItems.slice(0, shownCount)}
               onRemove={canRemove ? handleRemove : undefined}
               onOpenItem={openLightbox}
@@ -381,7 +390,7 @@ export function AdminOrderCardPhotoGroups({
         <div className="rounded-xl bg-night/25 ring-1 ring-ink/10">
           <div className="space-y-2 px-3 py-3">
             <AdminPhotoCluster
-              title="Photos"
+              title={title}
               items={allItems}
               onRemove={canRemove ? handleRemove : undefined}
               onOpenItem={openLightbox}

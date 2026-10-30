@@ -6,28 +6,25 @@ function filenameFromStoragePath(path) {
   );
 }
 
-function imageTypeLabel(type) {
+/** Legacy progress/final types fold into before/after so there are only 3 groups. */
+export function photoGroup(type) {
   switch (type) {
     case "before":
-      return "Before";
-    case "after":
-      return "After";
     case "progress_front":
     case "progress_back":
-      return "Progress";
+      return "before";
+    case "after":
     case "final_front":
     case "final_back":
-      return "Final";
+      return "after";
     default:
-      return null;
+      return "customer";
   }
 }
 
 export function savedPhotoItems(images) {
   return (images ?? []).map((image) => {
-    const filename = filenameFromStoragePath(image.storage_path);
-    const typeLabel = imageTypeLabel(image.image_type);
-    const label = typeLabel ? `${typeLabel} · ${filename}` : filename;
+    const label = filenameFromStoragePath(image.storage_path);
     const full = image.signed_url ?? "";
     const thumb = image.signed_thumb_url || full;
     return {
@@ -41,4 +38,17 @@ export function savedPhotoItems(images) {
       removeAriaLabel: `Remove ${label}`,
     };
   });
+}
+
+/** Saved photo items split into customer / before / after strips. */
+export function groupedSavedPhotoItems(images) {
+  const groups = { customer: [], before: [], after: [] };
+  for (const image of images ?? []) {
+    groups[photoGroup(image.image_type)].push(image);
+  }
+  return {
+    customer: savedPhotoItems(groups.customer),
+    before: savedPhotoItems(groups.before),
+    after: savedPhotoItems(groups.after),
+  };
 }
