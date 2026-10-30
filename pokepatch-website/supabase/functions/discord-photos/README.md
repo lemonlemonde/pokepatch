@@ -11,6 +11,8 @@ onto order cards (`card_images` + private `card-photos` bucket).
 
 Up to **20 photos per side** per card. Files over 15MB are rejected.
 
+**Each upload replaces that side.** Uploading `before` for a card deletes its existing before photos (DB rows + storage) and saves the new set; `after` is untouched. To fix a mistake, just re-upload the full set.
+
 Only Discord user IDs listed in `DISCORD_ADMIN_USER_IDS` may run the command.
 
 ---

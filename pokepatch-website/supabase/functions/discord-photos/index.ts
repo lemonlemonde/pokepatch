@@ -3,7 +3,7 @@
  * restoration photos onto an order card in Supabase Storage.
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
- * (order / card / side).
+ * (order / card / side). Each upload replaces that side's existing photos.
  *
  * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS
  * Injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -19,7 +19,11 @@ const MAX_PHOTOS_PER_SIDE = 20;
 const IMMUTABLE_CACHE_CONTROL = "604800";
 const EPHEMERAL = 1 << 6;
 
-const SIDE_TYPES = new Set(["before", "after"]);
+/** Uploading to a side replaces everything in that group, legacy types included. */
+const SIDE_IMAGE_TYPES: Record<string, string[]> = {
+  before: ["before", "progress_front", "progress_back"],
+  after: ["after", "final_front", "final_back"],
+};
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -99,6 +103,48 @@ function adminUserIds(): Set<string> {
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+}
+
+/** Storage objects to remove for a photo: the original plus any derived thumb. */
+function storagePathsFor(storagePath: string): string[] {
+  if (storagePath.endsWith(".thumb.webp")) return [storagePath];
+  return [storagePath, `${storagePath}.thumb.webp`];
+}
+
+/** Delete every existing photo on this side of the card. Returns how many were removed. */
+async function clearSide(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: number,
+  side: string
+): Promise<number> {
+  const { data: existing, error: selectError } = await supabase
+    .from("card_images")
+    .select("id, storage_path")
+    .eq("card_id", cardId)
+    .in("image_type", SIDE_IMAGE_TYPES[side]);
+  if (selectError) throw selectError;
+  if (!existing || existing.length === 0) return 0;
+
+  const { error: deleteError } = await supabase
+    .from("card_images")
+    .delete()
+    .in(
+      "id",
+      existing.map((row) => row.id)
+    );
+  if (deleteError) throw deleteError;
+
+  const paths = existing.flatMap((row) =>
+    storagePathsFor(String(row.storage_path))
+  );
+  const { error: removeError } = await supabase.storage
+    .from(BUCKET)
+    .remove(paths);
+  if (removeError) {
+    // Rows are gone; orphaned objects are harmless. Log so they can be swept.
+    console.error("wooper storage remove failed", removeError, paths);
+  }
+  return existing.length;
 }
 
 function interactionUserId(interaction: Record<string, unknown>): string {
@@ -309,7 +355,7 @@ async function uploadAttachments(params: {
       );
       return;
     }
-    if (!SIDE_TYPES.has(side)) {
+    if (!(side in SIDE_IMAGE_TYPES)) {
       await editOriginal(
         applicationId,
         token,
@@ -357,30 +403,16 @@ async function uploadAttachments(params: {
       return;
     }
 
-    const { count: existingCount, error: countError } = await supabase
-      .from("card_images")
-      .select("id", { count: "exact", head: true })
-      .eq("card_id", card.id)
-      .eq("image_type", side);
-    if (countError) throw countError;
-
-    const slotsLeft = MAX_PHOTOS_PER_SIDE - (existingCount ?? 0);
-    if (slotsLeft <= 0) {
-      await editOriginal(
-        applicationId,
-        token,
-        `This card already has ${MAX_PHOTOS_PER_SIDE} ${side} photos (max).`
-      );
-      return;
-    }
-
-    let nextIndex = (existingCount ?? 0) + 1;
+    // Old photos are cleared lazily, once the first new one has downloaded,
+    // so a dead CDN link can't leave the side empty.
+    let replaced: number | null = null;
+    let nextIndex = 1;
     let uploaded = 0;
     const errors: string[] = [];
-    const toUpload = files.slice(0, slotsLeft);
+    const toUpload = files.slice(0, MAX_PHOTOS_PER_SIDE);
     if (files.length > toUpload.length) {
       errors.push(
-        `only ${slotsLeft} more ${side} slot(s) available (max ${MAX_PHOTOS_PER_SIDE}); skipped ${files.length - toUpload.length}`
+        `max ${MAX_PHOTOS_PER_SIDE} ${side} photos; skipped ${files.length - toUpload.length}`
       );
     }
 
@@ -411,6 +443,10 @@ async function uploadAttachments(params: {
           continue;
         }
 
+        if (replaced === null) {
+          replaced = await clearSide(supabase, card.id, side);
+        }
+
         const path =
           `order-${order.id}/card-${card.id}/${side}-${nextIndex}-${sanitizeFilename(filename)}`;
         const contentType =
@@ -421,7 +457,8 @@ async function uploadAttachments(params: {
         const { error: uploadError } = await supabase.storage
           .from(BUCKET)
           .upload(path, bytes, {
-            upsert: false,
+            // Side was just cleared; overwrite in case an old object lingered.
+            upsert: true,
             contentType,
             cacheControl: IMMUTABLE_CACHE_CONTROL,
           });
@@ -451,6 +488,9 @@ async function uploadAttachments(params: {
         ? `Uploaded **${uploaded}** ${side} photo(s) → Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`
         : `No photos uploaded for Order **#${orderDisplayId}** · ${cardLabel}.`,
     ];
+    if (replaced) {
+      lines.push(`Replaced ${replaced} previous ${side} photo(s).`);
+    }
     if (errors.length > 0) {
       lines.push(`Issues: ${errors.join("; ")}`);
     }
