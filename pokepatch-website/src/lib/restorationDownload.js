@@ -14,6 +14,8 @@ import { signPaths } from "@/lib/customerOrderMedia";
 import { photoFilename } from "@/lib/cardPhotoGroups";
 
 const SIDES = ["before", "after"];
+/** Give the browser time to start the download before the blob URL is released. */
+const REVOKE_OBJECT_URL_DELAY_MS = 1000;
 
 function slug(value) {
   return String(value ?? "")
@@ -53,28 +55,31 @@ function entryName(image, index, total) {
   return `${String(index + 1).padStart(width, "0")}-${photoFilename(image.storage_path)}`;
 }
 
+async function fetchBlob(url) {
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    return res.ok ? await res.blob() : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Fetch one side's photos. Resolves to `{ files: [{ name, blob }], failures: [name] }`;
- * a fetch failure never rejects, it just lands in `failures`.
+ * Fetch one side's photos, preserving upload order.
+ * Resolves to `{ files: [{ name, blob }], failures: [name] }`; a failed fetch
+ * never rejects, it just lands in `failures`.
  */
 async function fetchSide(images) {
   const urls = await resolveUrls(images);
+  const blobs = await Promise.all(urls.map(fetchBlob));
   const files = [];
   const failures = [];
-  await Promise.all(
-    images.map(async (image, index) => {
-      const name = entryName(image, index, images.length);
-      const url = urls[index];
-      try {
-        if (!url) throw new Error("unsigned");
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(String(res.status));
-        files.push({ name, blob: await res.blob() });
-      } catch {
-        failures.push(name);
-      }
-    })
-  );
+  images.forEach((image, index) => {
+    const name = entryName(image, index, images.length);
+    if (blobs[index]) files.push({ name, blob: blobs[index] });
+    else failures.push(name);
+  });
   return { files, failures };
 }
 
@@ -104,7 +109,7 @@ function triggerDownload(blob, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_OBJECT_URL_DELAY_MS);
 }
 
 /**

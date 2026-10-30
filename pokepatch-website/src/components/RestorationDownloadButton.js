@@ -46,6 +46,12 @@ function FolderIcon() {
 
 const noopSubscribe = () => () => {};
 
+const MESSAGE_TONE_CLASS = {
+  ok: "text-mint",
+  warn: "text-ink/55",
+  error: "text-peach",
+};
+
 /** Capability is browser-only; render the zip label on the server to avoid hydration drift. */
 function useFolderSaveSupport() {
   return useSyncExternalStore(noopSubscribe, supportsFolderSave, () => false);
@@ -127,15 +133,7 @@ export default function RestorationDownloadButton({
         {busy ? busyLabel : idleLabel}
       </button>
       {message ? (
-        <p
-          className={`mt-1.5 text-[11px] ${
-            message.tone === "error"
-              ? "text-peach"
-              : message.tone === "ok"
-                ? "text-mint"
-                : "text-ink/55"
-          }`}
-        >
+        <p className={`mt-1.5 text-[11px] ${MESSAGE_TONE_CLASS[message.tone]}`}>
           {message.text}
         </p>
       ) : null}
