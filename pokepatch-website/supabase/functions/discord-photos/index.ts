@@ -30,8 +30,7 @@ type DiscordAttachment = {
   filename: string;
   url: string;
   content_type?: string | null;
-  contentType?: string | null;
-  size?: number;
+  size?: number | null;
 };
 
 function json(data: unknown, status = 200): Response {
@@ -163,13 +162,9 @@ function imageAttachmentsFromMessage(
 ): DiscordAttachment[] {
   const raw = (message?.attachments ?? []) as DiscordAttachment[];
   return raw.filter((attachment) => {
-    const type = String(
-      attachment.content_type ?? attachment.contentType ?? ""
-    ).toLowerCase();
-    const name = String(attachment.filename ?? "").toLowerCase();
-    if (type.startsWith("image/")) return true;
-    if (!type && /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(name)) return true;
-    return false;
+    const type = String(attachment.content_type ?? "").toLowerCase();
+    if (type) return type.startsWith("image/");
+    return /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(attachment.filename ?? "");
   });
 }
 
@@ -241,7 +236,7 @@ async function savePendingAttachments(
       id: file.id,
       filename: file.filename,
       url: file.url,
-      content_type: file.content_type ?? file.contentType ?? null,
+      content_type: file.content_type ?? null,
       size: file.size ?? null,
     })),
   });
@@ -369,8 +364,8 @@ async function uploadAttachments(params: {
       .eq("image_type", side);
     if (countError) throw countError;
 
-    let nextIndex = (existingCount ?? 0) + 1;
-    if (nextIndex > MAX_PHOTOS_PER_SIDE) {
+    const slotsLeft = MAX_PHOTOS_PER_SIDE - (existingCount ?? 0);
+    if (slotsLeft <= 0) {
       await editOriginal(
         applicationId,
         token,
@@ -379,9 +374,9 @@ async function uploadAttachments(params: {
       return;
     }
 
+    let nextIndex = (existingCount ?? 0) + 1;
     let uploaded = 0;
     const errors: string[] = [];
-    const slotsLeft = MAX_PHOTOS_PER_SIDE - (existingCount ?? 0);
     const toUpload = files.slice(0, slotsLeft);
     if (files.length > toUpload.length) {
       errors.push(
@@ -392,9 +387,7 @@ async function uploadAttachments(params: {
     for (const attachment of toUpload) {
       const filename = attachment.filename || `photo-${nextIndex}.jpg`;
       try {
-        const declaredType = String(
-          attachment.content_type ?? attachment.contentType ?? ""
-        );
+        const declaredType = String(attachment.content_type ?? "");
         if (declaredType && !declaredType.startsWith("image/")) {
           errors.push(`${filename}: not an image`);
           continue;
@@ -484,18 +477,10 @@ async function handleModalSubmit(interaction: Record<string, unknown>) {
       return;
     }
 
-    const orderDisplayId = Number(modalFieldValue(
-      data.components as Array<Record<string, unknown>>,
-      "order"
-    ));
-    const cardIndex = Number(modalFieldValue(
-      data.components as Array<Record<string, unknown>>,
-      "card"
-    ));
-    const side = modalFieldValue(
-      data.components as Array<Record<string, unknown>>,
-      "side"
-    ).toLowerCase();
+    const components = data.components as Array<Record<string, unknown>>;
+    const orderDisplayId = Number(modalFieldValue(components, "order"));
+    const cardIndex = Number(modalFieldValue(components, "card"));
+    const side = modalFieldValue(components, "side").toLowerCase();
 
     const files = await loadPendingAttachments(pendingId);
     await clearPending(pendingId);

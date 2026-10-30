@@ -1,25 +1,11 @@
+import { groupCardImages } from "@/lib/cardPhotoGroups";
+
 function filenameFromStoragePath(path) {
   const base = path.split("/").pop() ?? path;
   return base.replace(
     /^(customer|progress_front|progress_back|final_front|final_back|admin|before|after)-\d+-/,
     ""
   );
-}
-
-/** Legacy progress/final types fold into before/after so there are only 3 groups. */
-export function photoGroup(type) {
-  switch (type) {
-    case "before":
-    case "progress_front":
-    case "progress_back":
-      return "before";
-    case "after":
-    case "final_front":
-    case "final_back":
-      return "after";
-    default:
-      return "customer";
-  }
 }
 
 export function savedPhotoItems(images) {
@@ -42,10 +28,7 @@ export function savedPhotoItems(images) {
 
 /** Saved photo items split into customer / before / after strips. */
 export function groupedSavedPhotoItems(images) {
-  const groups = { customer: [], before: [], after: [] };
-  for (const image of images ?? []) {
-    groups[photoGroup(image.image_type)].push(image);
-  }
+  const groups = groupCardImages(images);
   return {
     customer: savedPhotoItems(groups.customer),
     before: savedPhotoItems(groups.before),

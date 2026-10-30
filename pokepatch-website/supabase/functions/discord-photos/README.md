@@ -107,5 +107,5 @@ Apply via CLI locally / CI `db push` on merge — do not hand-apply DDL on live.
 
 ## 6. Customer + Studio
 
-- Customers see before/after badges on My Orders (Drive link only if `photos_drive_url` was already set).
-- Admin order card → **Open in Studio** when the card has at least one before and one after photo.
+- Customers see a **Restoration** block on My Orders: drag-to-compare slider plus Before / After columns (Drive link only if `photos_drive_url` was already set).
+- Admin order card shows **Customer photos** and a **Restoration** section with Before / After strips → **Open in Studio** when the card has at least one of each.

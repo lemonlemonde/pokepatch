@@ -12,6 +12,7 @@ import {
   resolveFullAfterBadThumb,
   signPaths,
 } from "@/lib/customerOrderMedia";
+import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { labeledDamageTags } from "@/lib/gallery";
 import {
   billableQuoteCards,
@@ -48,35 +49,11 @@ function deliveryLabel(method) {
     : { text: "Shipping", sub: "Mailed to you" };
 }
 
-const PHOTO_GROUPS = {
-  customer: { label: "Your photos" },
-  before: { label: "Before" },
-  after: { label: "After" },
+const PHOTO_GROUP_LABELS = {
+  customer: "Your photos",
+  before: "Before",
+  after: "After",
 };
-
-/** Legacy progress/final types fold into before/after so there are only 3 groups. */
-function photoGroup(type) {
-  switch (type) {
-    case "before":
-    case "progress_front":
-    case "progress_back":
-      return "before";
-    case "after":
-    case "final_front":
-    case "final_back":
-      return "after";
-    default:
-      return "customer";
-  }
-}
-
-function groupCardImages(images) {
-  const groups = { customer: [], before: [], after: [] };
-  for (const image of images ?? []) {
-    groups[photoGroup(image.image_type)].push(image);
-  }
-  return groups;
-}
 
 function lightboxTarget(order, lightbox) {
   if (!lightbox) return null;
@@ -338,7 +315,7 @@ function RestorationSection({
   const hasPair = pairCount > 0;
   const activePair = Math.min(pairIndex, Math.max(0, pairCount - 1));
 
-  if (!hasPair && before.length === 0 && after.length === 0 && !expectPhotos) {
+  if (before.length === 0 && after.length === 0 && !expectPhotos) {
     return null;
   }
 
@@ -440,9 +417,9 @@ function ReadOnlyCards({
     ? {
         type: "image",
         src: fullUrls[lightboxPath] ?? thumbUrls[lightboxPath] ?? null,
-        alt: `${target.card.card_name || "Card"} ${PHOTO_GROUPS[lightbox.group].label.toLowerCase()} ${lightbox.index + 1}`,
+        alt: `${target.card.card_name || "Card"} ${PHOTO_GROUP_LABELS[lightbox.group].toLowerCase()} ${lightbox.index + 1}`,
         sectionTitle: target.card.card_name || "Card",
-        label: PHOTO_GROUPS[lightbox.group].label,
+        label: PHOTO_GROUP_LABELS[lightbox.group],
       }
     : null;
   const lightboxCount = target?.list.length ?? 0;
