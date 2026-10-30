@@ -283,6 +283,7 @@ function OrderEditorContent({
                     <CardDetailSection
                       cardId={String(card.id)}
                       cardIndex={index}
+                      displayId={displayId}
                       expanded={expandedCardId === String(card.id)}
                       onExpandedChange={(open) =>
                         setManualExpandId(open ? String(card.id) : null)

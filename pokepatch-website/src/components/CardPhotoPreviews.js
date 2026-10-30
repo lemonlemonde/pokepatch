@@ -261,7 +261,6 @@ export function AdminOrderCardPhotoGroups({
   onRemove,
   onRemovePending,
   title = "Photos",
-  emptyText = "No photos yet.",
   className = "",
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -342,7 +341,7 @@ export function AdminOrderCardPhotoGroups({
         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
           {title}
         </p>
-        <p className="mt-1.5 text-xs text-ink/45">{emptyText}</p>
+        <p className="mt-1.5 text-xs text-ink/45">No photos yet.</p>
       </div>
     );
   }

@@ -24,3 +24,12 @@ export function groupCardImages(images) {
   }
   return groups;
 }
+
+/** Original upload filename, minus the `<type>-<n>-` prefix added on upload. */
+export function photoFilename(storagePath) {
+  const base = String(storagePath ?? "").split("/").pop() ?? "";
+  return base.replace(
+    /^(customer|progress_front|progress_back|final_front|final_back|admin|before|after)-\d+-/,
+    ""
+  );
+}
