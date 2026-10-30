@@ -299,7 +299,7 @@ export function OrderPanel() {
               {driveUrl}
             </p>
             <p className="mt-1 text-[11px] text-ink/40">
-              Kept for older orders. New photos go through Discord /cardphoto.
+              Kept for older orders. New photos go through Discord /wooper.
             </p>
           </div>
         ) : null}

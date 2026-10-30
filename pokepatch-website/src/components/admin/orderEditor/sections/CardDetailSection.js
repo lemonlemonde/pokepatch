@@ -47,7 +47,7 @@ import {
   RemoveButton,
   editorFieldClass,
 } from "@/components/admin/orderEditor/editorUi";
-import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
+import { groupedSavedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
 function DamageTagChips({ tags, className }) {
@@ -141,6 +141,12 @@ export default function CardDetailSection({
   const cardIdStr = String(card.id);
   const pendingFiles = card.pending_files ?? [];
   const photoInputId = `admin-card-photos-${card.id}`;
+  const photoGroups = groupedSavedPhotoItems(card.images ?? []);
+  const canOpenInStudio =
+    Boolean(orderId) &&
+    !cardIdStr.startsWith("tmp-") &&
+    photoGroups.before.length > 0 &&
+    photoGroups.after.length > 0;
 
   function updateCard(patch) {
     updateCardSection((current) => {
@@ -598,10 +604,11 @@ export default function CardDetailSection({
             </div>
           </div>
 
-          <EditorDivider label="Photos" />
+          <EditorDivider label="Customer photos" />
           <div className="space-y-3">
             <AdminOrderCardPhotoGroups
-              items={savedPhotoItems(card.images ?? [])}
+              title="Customer photos"
+              items={photoGroups.customer}
               pendingFiles={pendingFiles}
               onRemove={saving ? undefined : removePhoto}
               onRemovePending={
@@ -615,7 +622,7 @@ export default function CardDetailSection({
                       })
               }
             />
-            <div className="flex flex-wrap items-center gap-2">
+            <div>
               <input
                 id={photoInputId}
                 type="file"
@@ -638,18 +645,38 @@ export default function CardDetailSection({
               >
                 Add photos
               </label>
-              {orderId &&
-              !String(card.id ?? "").startsWith("tmp-") &&
-              (card.images ?? []).some((image) => image?.image_type === "before") &&
-              (card.images ?? []).some((image) => image?.image_type === "after") ? (
-                <a
-                  href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
-                  className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
-                >
-                  Open in Studio
-                </a>
-              ) : null}
             </div>
+          </div>
+
+          <EditorDivider label="Restoration" />
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <AdminOrderCardPhotoGroups
+                title="Before"
+                items={photoGroups.before}
+                onRemove={saving ? undefined : removePhoto}
+                emptyText="None yet — upload via Discord /wooper."
+              />
+              <AdminOrderCardPhotoGroups
+                title="After"
+                items={photoGroups.after}
+                onRemove={saving ? undefined : removePhoto}
+                emptyText="None yet — upload via Discord /wooper."
+              />
+            </div>
+            {canOpenInStudio ? (
+              <a
+                href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
+                className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
+              >
+                Open in Studio
+              </a>
+            ) : (
+              <p className="text-[11px] text-ink/40">
+                Open in Studio unlocks once this card has a before and an after
+                photo.
+              </p>
+            )}
           </div>
 
           <EditorDivider label="Services" />
