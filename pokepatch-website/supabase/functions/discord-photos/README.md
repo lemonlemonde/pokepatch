@@ -109,5 +109,5 @@ Apply via CLI locally / CI `db push` on merge — do not hand-apply DDL on live.
 
 ## 6. Customer + Studio
 
-- Before/after photos are not rendered inline. Customers (My Orders) and admins (order editor) get a **Save before & after** button per card that writes `order-<n>-card-<i>-<name>/before/` + `/after/` into a folder they pick (File System Access API — Chromium desktop). Browsers without that API get a `.zip` with the same layout instead. Drive link only shows if `photos_drive_url` was already set.
+- Before/after photos are not rendered inline. Customers (My Orders) and admins (order editor) get a **Download before & after** button per card → `order-<n>-card-<i>-<name>.zip` containing `before/` and `after/` folders. Drive link only shows if `photos_drive_url` was already set.
 - Admin order card also offers **Open in Studio** when the card has at least one before and one after photo.

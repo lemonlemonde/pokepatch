@@ -671,7 +671,7 @@ export default function CardDetailSection({
                 </p>
                 <p className="mt-0.5 text-[11px] text-ink/45">
                   {restorationCount > 0
-                    ? "Saves a folder with before/ and after/ inside. Re-uploading a side via Discord /wooper replaces it."
+                    ? "Re-uploading a side via Discord /wooper replaces it."
                     : "None yet — upload via Discord /wooper."}
                 </p>
               </div>
