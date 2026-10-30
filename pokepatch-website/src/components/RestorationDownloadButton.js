@@ -25,8 +25,17 @@ function DownloadIcon() {
   );
 }
 
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-4 w-4 animate-spin rounded-full border-2 border-night/40 border-t-night"
+    />
+  );
+}
+
 /**
- * "Download before & after" → `<order>-<card>.zip` with `before/` + `after/`.
+ * Icon-only download → `<order>-<card>.zip` with `before/` + `after/`.
  * Shared by My Orders and the admin order editor.
  */
 export default function RestorationDownloadButton({
@@ -78,10 +87,12 @@ export default function RestorationDownloadButton({
         type="button"
         onClick={handleClick}
         disabled={disabled || busy || total === 0}
-        className="inline-flex items-center gap-2 rounded-lg bg-ink px-3 py-1.5 text-sm font-semibold text-night transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/30"
+        aria-label={busy ? "Preparing download" : "Download before & after photos"}
+        title="Download before & after photos"
+        aria-busy={busy}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-ink text-night transition hover:bg-ink/90 disabled:cursor-not-allowed disabled:bg-ink/30"
       >
-        <DownloadIcon />
-        {busy ? "Preparing zip…" : "Download before & after"}
+        {busy ? <Spinner /> : <DownloadIcon />}
       </button>
       {message ? (
         <p
