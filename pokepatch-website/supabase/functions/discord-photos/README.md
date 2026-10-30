@@ -3,7 +3,7 @@
 Discord **Interactions Endpoint** for uploading restoration before/after photos
 onto order cards (`card_images` + private `card-photos` bucket).
 
-Slash command: **`/cardphoto`**
+Slash command: **`/wooper`**
 
 | Option | Type | Meaning |
 |--------|------|---------|
@@ -12,7 +12,7 @@ Slash command: **`/cardphoto`**
 | `side` | `before` \| `after` | Which album |
 | `image1`…`image10` | attachment | Photo files (`image1` required) |
 
-Example: `/cardphoto order:42 card:3 side:after` + attach after photos.
+Example: `/wooper order:42 card:3 side:after` + attach after photos.
 
 Up to **20 photos per side** per card (before and after each). Files over 15MB are rejected.
 
@@ -66,7 +66,7 @@ Discord sends a PING; the function responds with `{ "type": 1 }`. Save only afte
 
 ---
 
-## 4. Register `/cardphoto`
+## 4. Register `/wooper`
 
 Needs the app’s **Application ID** and a bot token (Bot → Reset Token).
 
@@ -80,7 +80,7 @@ curl -s -X PUT \
   -H "Content-Type: application/json" \
   -d '[
     {
-      "name": "cardphoto",
+      "name": "wooper",
       "description": "Upload before/after restoration photos for an order card",
       "options": [
         {

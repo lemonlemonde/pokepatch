@@ -1,5 +1,5 @@
 /**
- * Discord Interactions endpoint for /cardphoto — upload before/after
+ * Discord Interactions endpoint for /wooper — upload before/after
  * restoration photos onto an order card in Supabase Storage.
  *
  * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS
@@ -314,7 +314,7 @@ async function handleCardPhoto(interaction: Record<string, unknown>) {
     }
     await editOriginal(applicationId, token, lines.join("\n"));
   } catch (err) {
-    console.error("cardphoto failed", err);
+    console.error("wooper failed", err);
     const message = err instanceof Error ? err.message : String(err);
     await editOriginal(
       applicationId,
@@ -382,7 +382,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (commandName !== "cardphoto") {
+    if (commandName !== "wooper") {
       return json({
         type: 4,
         data: {
@@ -395,7 +395,7 @@ Deno.serve(async (req) => {
     // Defer immediately (Discord 3s limit), finish upload via waitUntil.
     EdgeRuntime.waitUntil(
       handleCardPhoto(interaction).catch((err) => {
-        console.error("cardphoto background failed", err);
+        console.error("wooper background failed", err);
       })
     );
 

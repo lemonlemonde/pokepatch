@@ -137,7 +137,7 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
                             "Customer"}
                         </span>
                         <span className="mt-1 block text-sm text-ink/55">
-                          Missing before/after photos (Discord /cardphoto)
+                          Missing before/after photos (Discord /wooper)
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-ink/45 sm:pt-0.5 sm:text-right">
