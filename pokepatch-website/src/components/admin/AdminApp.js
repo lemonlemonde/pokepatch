@@ -737,7 +737,10 @@ function KanbanCard({
 
 function filenameFromStoragePath(path) {
   const base = path.split("/").pop() ?? path;
-  return base.replace(/^(customer|progress_front|progress_back|final_front|final_back|admin)-\d+-/, "");
+  return base.replace(
+    /^(customer|progress_front|progress_back|final_front|final_back|admin|before|after)-\d+-/,
+    ""
+  );
 }
 
 function savedPhotoItems(images) {

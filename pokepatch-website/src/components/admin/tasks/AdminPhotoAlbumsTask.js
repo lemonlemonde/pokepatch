@@ -17,8 +17,8 @@ import AdminTaskModule, {
 
 const ALBUM_STATUSES = new Set(["in_progress", "ready"]);
 
-function hasDriveAlbum(order) {
-  return Boolean(String(order?.photos_drive_url ?? "").trim());
+function hasRestorationAlbum(order) {
+  return Boolean(order?.has_restoration_album);
 }
 
 function sortMissingAlbumOrders(a, b) {
@@ -44,7 +44,7 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
       const missing = (rows ?? [])
         .filter((order) => {
           const status = normalizeOrderStatus(order.status);
-          return ALBUM_STATUSES.has(status) && !hasDriveAlbum(order);
+          return ALBUM_STATUSES.has(status) && !hasRestorationAlbum(order);
         })
         .sort(sortMissingAlbumOrders);
       setOrders(missing);
@@ -64,10 +64,10 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
     <AdminTaskModule
       eyebrow="Uploads"
       title="Photo albums"
-      description="In progress and ready-for-customer orders still missing a Google Drive folder link."
+      description="In progress and ready-for-customer orders that still need before and after photos on every active card."
       accent="peach"
       count={loading && orders.length === 0 ? null : orders.length}
-      countLabel="Orders missing a Drive album"
+      countLabel="Orders missing before/after photos"
       actions={
         <button
           type="button"
@@ -95,8 +95,8 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
                 All caught up
               </p>
               <p className="mt-1 max-w-sm text-sm text-ink/45">
-                Every in-progress and ready order has a Drive photo album
-                linked.
+                Every in-progress and ready order has before and after photos
+                on each active card.
               </p>
             </div>
           ) : (
@@ -137,7 +137,7 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
                             "Customer"}
                         </span>
                         <span className="mt-1 block text-sm text-ink/55">
-                          Missing Google Drive album link
+                          Missing before/after photos (Discord /cardphoto)
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-ink/45 sm:pt-0.5 sm:text-right">

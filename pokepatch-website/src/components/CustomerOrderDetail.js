@@ -49,6 +49,10 @@ function deliveryLabel(method) {
 
 function imageBadge(type) {
   switch (type) {
+    case "before":
+      return { label: "Before", cls: "bg-lavender text-night" };
+    case "after":
+      return { label: "After", cls: "bg-ink text-night" };
     case "progress_front":
     case "progress_back":
       return { label: "Progress", cls: "bg-lavender text-night" };

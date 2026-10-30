@@ -282,10 +282,10 @@ export function OrderPanel() {
           </select>
         </label>
 
-        <div>
-          <div className="flex items-baseline justify-between gap-2">
-            <EditorLabel>Drive folder</EditorLabel>
-            {driveUrl ? (
+        {driveUrl ? (
+          <div>
+            <div className="flex items-baseline justify-between gap-2">
+              <EditorLabel>Drive folder (legacy)</EditorLabel>
               <a
                 href={driveUrl}
                 target="_blank"
@@ -294,20 +294,15 @@ export function OrderPanel() {
               >
                 Open ↗
               </a>
-            ) : null}
+            </div>
+            <p className="mt-1 break-all rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2 text-xs text-ink/70">
+              {driveUrl}
+            </p>
+            <p className="mt-1 text-[11px] text-ink/40">
+              Kept for older orders. New photos go through Discord /cardphoto.
+            </p>
           </div>
-          <input
-            className={editorFieldClass()}
-            type="url"
-            inputMode="url"
-            placeholder="https://drive.google.com/…"
-            value={draft.photos_drive_url}
-            disabled={saving}
-            onChange={(event) =>
-              updateDraft({ photos_drive_url: event.target.value })
-            }
-          />
-        </div>
+        ) : null}
 
         <AdminNoteField
           label="Notes from PokePatch"
