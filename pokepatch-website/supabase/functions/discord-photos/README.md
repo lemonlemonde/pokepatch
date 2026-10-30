@@ -3,18 +3,13 @@
 Discord **Interactions Endpoint** for uploading restoration before/after photos
 onto order cards (`card_images` + private `card-photos` bucket).
 
-Slash command: **`/wooper`**
+## How to use
 
-| Option | Type | Meaning |
-|--------|------|---------|
-| `order` | integer | Order `#` (`orders.display_id`) |
-| `card` | integer | **1-based** card index within the order (`sort_order` ascending) |
-| `side` | `before` \| `after` | Which album |
-| `image1`…`image10` | attachment | Photo files (`image1` required) |
+1. Post your photos in a Discord channel (up to 10 attachments on one message).
+2. **Right-click that message** → **Apps** → **wooper**.
+3. Fill in **order number**, **card number** (1 = first card in the order), and **side** (`before` or `after`).
 
-Example: `/wooper order:42 card:3 side:after` + attach after photos.
-
-Up to **20 photos per side** per card (before and after each). Files over 15MB are rejected.
+Up to **20 photos per side** per card. Files over 15MB are rejected.
 
 Only Discord user IDs listed in `DISCORD_ADMIN_USER_IDS` may run the command.
 
@@ -23,9 +18,9 @@ Only Discord user IDs listed in `DISCORD_ADMIN_USER_IDS` may run the command.
 ## 1. Discord application (once)
 
 1. Open [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
-2. **Bot** → Add Bot (optional presence; Interactions URL does not require the bot online).
+2. **Bot** → Add Bot (needed to register commands).
 3. **General Information** → copy **Public Key** → this is `DISCORD_PUBLIC_KEY`.
-4. **OAuth2 → URL Generator**: scopes `applications.commands` (+ `bot` if you want the bot user in the server). Invite that URL into your PokePatch Discord server.
+4. **OAuth2 → URL Generator**: scopes `applications.commands` + `bot`. Invite into your PokePatch Discord server.
 5. Copy your Discord user ID (Developer Mode → right-click yourself → Copy User ID) for `DISCORD_ADMIN_USER_IDS`.
 
 ---
@@ -66,63 +61,40 @@ Discord sends a PING; the function responds with `{ "type": 1 }`. Save only afte
 
 ---
 
-## 4. Register `/wooper`
+## 4. Register message command `wooper`
 
 Needs the app’s **Application ID** and a bot token (Bot → Reset Token).
+
+Guild command (instant in one server) — replace `GUILD_ID`:
 
 ```bash
 export DISCORD_APP_ID="your-application-id"
 export DISCORD_BOT_TOKEN="your-bot-token"
+export GUILD_ID="your-server-id"
 
 curl -s -X PUT \
-  "https://discord.com/api/v10/applications/${DISCORD_APP_ID}/commands" \
+  "https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands" \
   -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '[
     {
       "name": "wooper",
-      "description": "Upload before/after restoration photos for an order card",
-      "options": [
-        {
-          "name": "order",
-          "description": "Order number (display id)",
-          "type": 4,
-          "required": true
-        },
-        {
-          "name": "card",
-          "description": "Card number within the order (1 = first card)",
-          "type": 4,
-          "required": true
-        },
-        {
-          "name": "side",
-          "description": "Before or after album",
-          "type": 3,
-          "required": true,
-          "choices": [
-            { "name": "before", "value": "before" },
-            { "name": "after", "value": "after" }
-          ]
-        },
-        { "name": "image1", "description": "Photo 1", "type": 11, "required": true },
-        { "name": "image2", "description": "Photo 2", "type": 11, "required": false },
-        { "name": "image3", "description": "Photo 3", "type": 11, "required": false },
-        { "name": "image4", "description": "Photo 4", "type": 11, "required": false },
-        { "name": "image5", "description": "Photo 5", "type": 11, "required": false },
-        { "name": "image6", "description": "Photo 6", "type": 11, "required": false },
-        { "name": "image7", "description": "Photo 7", "type": 11, "required": false },
-        { "name": "image8", "description": "Photo 8", "type": 11, "required": false },
-        { "name": "image9", "description": "Photo 9", "type": 11, "required": false },
-        { "name": "image10", "description": "Photo 10", "type": 11, "required": false }
-      ]
+      "type": 3
     }
   ]'
 ```
 
-Global commands can take up to ~1 hour to appear; for faster testing, register as a guild command:
+`type: 3` = message command (right-click a message → Apps).
 
-`PUT /applications/{app.id}/guilds/{guild.id}/commands`
+Global (can take up to ~1 hour):
+
+```bash
+curl -s -X PUT \
+  "https://discord.com/api/v10/applications/${DISCORD_APP_ID}/commands" \
+  -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '[{ "name": "wooper", "type": 3 }]'
+```
 
 ---
 
