@@ -13,6 +13,7 @@ import {
   POKEPATCH_REPRESENTATIVE_NAME,
   RESULTS_AND_ALTERATION_PARAS,
   buildOrderContractPdf,
+  contractTotalRestorationFee,
   formatContractDate,
   formatExactMoneyAmount,
   signedContractPath,
@@ -35,34 +36,45 @@ function CardRows({ cards }) {
   if (cards.length === 0) {
     return <p className={`mt-2 ${PARA_CLS} text-night/55`}>No cards listed.</p>;
   }
+  const totalFee = contractTotalRestorationFee(cards);
   return (
-    <ul className="mt-2 divide-y divide-night/10 rounded-md border border-night/10">
-      {cards.map((row, index) => (
-        <li
-          key={row?.id ?? `card-${index}`}
-          className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 px-3 py-2 text-[13px]"
-        >
-          <p className="font-medium text-night">
-            {String(row?.card_name ?? "").trim() || "Untitled card"}
+    <div className="mt-2 overflow-hidden rounded-md border border-night/10">
+      <ul className="divide-y divide-night/10">
+        {cards.map((row, index) => (
+          <li
+            key={row?.id ?? `card-${index}`}
+            className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 px-3 py-2 text-[13px]"
+          >
+            <p className="font-medium text-night">
+              {String(row?.card_name ?? "").trim() || "Untitled card"}
+            </p>
+            <p className="text-right tabular-nums text-night">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-night/50">
+                Fee
+              </span>{" "}
+              {moneyLabel(row?.restoration_fee)}
+            </p>
+            <p className="text-night/60">
+              {String(row?.set_name ?? "").trim() || "—"}
+            </p>
+            <p className="text-right tabular-nums text-night">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-night/50">
+                NM value
+              </span>{" "}
+              {moneyLabel(row?.market_value_raw_nm)}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {totalFee != null ? (
+        <div className="flex items-center justify-between gap-3 border-t border-night/15 px-3 py-2 text-[13px]">
+          <p className="font-semibold text-night">Total restoration fee</p>
+          <p className="tabular-nums font-semibold text-night">
+            {moneyLabel(totalFee)}
           </p>
-          <p className="text-right tabular-nums text-night">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-night/50">
-              Fee
-            </span>{" "}
-            {moneyLabel(row?.restoration_fee)}
-          </p>
-          <p className="text-night/60">
-            {String(row?.set_name ?? "").trim() || "—"}
-          </p>
-          <p className="text-right tabular-nums text-night">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-night/50">
-              NM value
-            </span>{" "}
-            {moneyLabel(row?.market_value_raw_nm)}
-          </p>
-        </li>
-      ))}
-    </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -13,6 +13,7 @@ import {
 import {
   buildContractPrefillFromDraft,
   buildOrderContractPdf,
+  contractTotalRestorationFee,
   defaultContractNotifyBody,
   formatContractDate,
   formatExactMoneyAmount,
@@ -148,6 +149,7 @@ export default function ContractPanel({ orderId, displayId }) {
   }
 
   const cards = preview.cards ?? [];
+  const totalRestorationFee = contractTotalRestorationFee(cards);
   const signedAtLabel = formatSignedAt(contract?.signed_at);
   const hasSignedPdf = Boolean(signedUrl);
   const signedStatusLabel = hasSignedPdf
@@ -188,22 +190,32 @@ export default function ContractPanel({ orderId, displayId }) {
             {cards.length === 0 ? (
               <p className="text-xs text-ink/45">No active cards on this order.</p>
             ) : (
-              <ul className="divide-y divide-ink/10 overflow-hidden rounded-md border border-ink/10">
-                {cards.map((row) => (
-                  <li key={row.id} className="bg-night/25 px-2 py-1.5">
-                    <p className="text-sm font-medium text-ink">
-                      {row.card_name || "Untitled card"}
-                    </p>
-                    {row.set_name ? (
-                      <p className="text-[11px] text-ink/50">{row.set_name}</p>
-                    ) : null}
-                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-ink/65">
-                      <span>Fee {moneyLabel(row.restoration_fee)}</span>
-                      <span>NM {moneyLabel(row.market_value_raw_nm)}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-hidden rounded-md border border-ink/10">
+                <ul className="divide-y divide-ink/10">
+                  {cards.map((row) => (
+                    <li key={row.id} className="bg-night/25 px-2 py-1.5">
+                      <p className="text-sm font-medium text-ink">
+                        {row.card_name || "Untitled card"}
+                      </p>
+                      {row.set_name ? (
+                        <p className="text-[11px] text-ink/50">{row.set_name}</p>
+                      ) : null}
+                      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-ink/65">
+                        <span>Fee {moneyLabel(row.restoration_fee)}</span>
+                        <span>NM {moneyLabel(row.market_value_raw_nm)}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {totalRestorationFee != null ? (
+                  <div className="flex justify-between gap-2 border-t border-ink/15 bg-night/40 px-2 py-1.5 text-[11px] font-semibold text-ink">
+                    <span>Total restoration fee</span>
+                    <span className="tabular-nums">
+                      {moneyLabel(totalRestorationFee)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
 
