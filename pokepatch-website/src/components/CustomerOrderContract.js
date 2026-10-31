@@ -67,9 +67,9 @@ function CardRows({ cards }) {
         ))}
       </ul>
       {totalFee != null ? (
-        <div className="flex items-center justify-between gap-3 border-t border-night/15 px-3 py-2 text-[13px]">
+        <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-t border-night/15 bg-night/5 px-3 py-2 text-[13px]">
           <p className="font-semibold text-night">Total restoration fee</p>
-          <p className="tabular-nums font-semibold text-night">
+          <p className="text-right tabular-nums font-semibold text-night">
             {moneyLabel(totalFee)}
           </p>
         </div>
