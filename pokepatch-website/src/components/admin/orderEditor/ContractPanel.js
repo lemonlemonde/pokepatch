@@ -86,7 +86,7 @@ export default function ContractPanel({ orderId, displayId }) {
   async function handleDownload() {
     // A new PDF supersedes any existing signature (server resets to unsigned).
     if (
-      Boolean(signedUrl) &&
+      signedUrl &&
       !window.confirm(
         "This order already has a signed agreement. Preparing a new PDF will mark it unsigned and the customer will need to be notified and sign again. Continue?"
       )
@@ -107,9 +107,7 @@ export default function ContractPanel({ orderId, displayId }) {
       setContract(result.contract);
       setSignedUrl(result.signed_url ?? null);
       // Keep the orders list/detail "contract signed" icon in sync.
-      if (order) {
-        onOrderUpdated?.({ ...order, contract_signed: false });
-      }
+      onOrderUpdated({ ...order, contract_signed: false });
       const url = result.unsigned_url;
       if (!url) {
         popup?.close();
