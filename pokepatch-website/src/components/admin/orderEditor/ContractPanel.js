@@ -40,7 +40,7 @@ function formatSignedAt(value) {
 }
 
 export default function ContractPanel({ orderId, displayId }) {
-  const { draft } = useOrderEditor();
+  const { draft, order, onOrderUpdated } = useOrderEditor();
   const [contract, setContract] = useState(null);
   const [signedUrl, setSignedUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -84,6 +84,15 @@ export default function ContractPanel({ orderId, displayId }) {
   }, [contract, preview]);
 
   async function handleDownload() {
+    // A new PDF supersedes any existing signature (server resets to unsigned).
+    if (
+      Boolean(signedUrl) &&
+      !window.confirm(
+        "This order already has a signed agreement. Preparing a new PDF will mark it unsigned and the customer will need to be notified and sign again. Continue?"
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setError("");
     // Open synchronously so the browser allows the tab after awaits.
@@ -97,6 +106,10 @@ export default function ContractPanel({ orderId, displayId }) {
       const result = await adminPrepareOrderContract(orderId, payload, file);
       setContract(result.contract);
       setSignedUrl(result.signed_url ?? null);
+      // Keep the orders list/detail "contract signed" icon in sync.
+      if (order) {
+        onOrderUpdated?.({ ...order, contract_signed: false });
+      }
       const url = result.unsigned_url;
       if (!url) {
         popup?.close();
