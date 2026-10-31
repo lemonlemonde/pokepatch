@@ -421,8 +421,17 @@ function drawTable(ctx, cards) {
           },
         ];
 
+  const totalFee = contractTotalRestorationFee(cards);
+
   rows.forEach((row, rowIndex) => {
-    ensureSpace(ctx, TABLE_ROW_HEIGHT + 4);
+    // Keep the total row on the same page as the last card row.
+    const isLastRow = rowIndex === rows.length - 1;
+    ensureSpace(
+      ctx,
+      isLastRow && totalFee != null
+        ? TABLE_ROW_HEIGHT * 2 + 8
+        : TABLE_ROW_HEIGHT + 4
+    );
     if (rowIndex % 2 === 1) {
       ctx.page.drawRectangle({
         x: MARGIN_X,
@@ -476,46 +485,46 @@ function drawTable(ctx, cards) {
     ctx.y -= TABLE_ROW_HEIGHT - 4;
   });
 
-  const totalFee = contractTotalRestorationFee(cards);
-  if (totalFee == null) {
-    ctx.y -= 8;
-    return;
+  if (totalFee != null) {
+    drawTableTotalRow(ctx, cols, totalFee);
   }
 
-  ensureSpace(ctx, TABLE_ROW_HEIGHT + 10);
-  ctx.y -= 2;
-  drawRule(ctx);
-  ctx.y -= TABLE_ROW_HEIGHT;
+  ctx.y -= 8;
+}
 
-  const totalLabel = "Total Restoration Fee";
-  const totalValue = `$${formatExactMoneyAmount(totalFee)}`;
+/** Shaded footer row inside the card table: label beside the fee column, total in it. */
+function drawTableTotalRow(ctx, cols, totalFee) {
+  ctx.page.drawRectangle({
+    x: MARGIN_X,
+    y: ctx.y - 4,
+    width: CONTENT_WIDTH,
+    height: TABLE_ROW_HEIGHT,
+    color: HEADER_BAND,
+  });
+
+  const label = "Total Restoration Fee";
+  const value = `$${formatExactMoneyAmount(totalFee)}`;
   const feeColStart = MARGIN_X + cols[0].width + cols[1].width;
-  const feeColWidth = cols[2].width;
+  const feeColEnd = feeColStart + cols[2].width;
 
-  ctx.page.drawText(totalLabel, {
-    x:
-      feeColStart -
-      6 -
-      ctx.bold.widthOfTextAtSize(totalLabel, FONT_SIZE),
+  ctx.page.drawText(label, {
+    x: feeColStart - 6 - ctx.bold.widthOfTextAtSize(label, FONT_SIZE),
     y: ctx.y,
     size: FONT_SIZE,
     font: ctx.bold,
     color: INK,
   });
-  ctx.page.drawText(totalValue, {
-    x:
-      feeColStart +
-      feeColWidth -
-      6 -
-      ctx.bold.widthOfTextAtSize(totalValue, FONT_SIZE),
+  ctx.page.drawText(value, {
+    x: feeColEnd - 6 - ctx.bold.widthOfTextAtSize(value, FONT_SIZE),
     y: ctx.y,
     size: FONT_SIZE,
     font: ctx.bold,
     color: INK,
   });
+
   ctx.y -= 4;
   drawRule(ctx);
-  ctx.y -= 8;
+  ctx.y -= TABLE_ROW_HEIGHT - 4;
 }
 
 function drawLabeledLine(ctx, label, value = "", { lineWidth = 280 } = {}) {
