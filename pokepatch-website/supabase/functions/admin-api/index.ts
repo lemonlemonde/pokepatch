@@ -1155,34 +1155,6 @@ function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
   };
 }
 
-function roundMoneyForCompare(value: unknown): number | null {
-  if (value === "" || value == null) return null;
-  const n = Number(value);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n * 100) / 100;
-}
-
-/**
- * Stable key of the payload fields that affect the agreement text (excludes
- * date/name). Mirrors `contractOrderSnapshot` in src/lib/orderContractPdf.js.
- */
-function contractPayloadSnapshotKey(raw: unknown): string {
-  const payload = sanitizeContractPayload(raw);
-  const cards = (payload.cards as Record<string, unknown>[])
-    .map((row) => ({
-      id: String(row.id ?? ""),
-      card_name: String(row.card_name ?? ""),
-      set_name: String(row.set_name ?? ""),
-      restoration_fee: roundMoneyForCompare(row.restoration_fee),
-      market_value_raw_nm: roundMoneyForCompare(row.market_value_raw_nm),
-    }))
-    .sort((a, b) => a.id.localeCompare(b.id));
-  return JSON.stringify({
-    representative_name: payload.representative_name,
-    cards,
-  });
-}
-
 /** Keep the previous signed PDF under a timestamped name before it is superseded. */
 async function archiveSignedContract(
   supabase: ReturnType<typeof getServiceClient>,
@@ -1303,22 +1275,16 @@ async function handleOrderContractUpload(
   const now = new Date().toISOString();
   const { data: existing, error: existingError } = await supabase
     .from("order_contracts")
-    .select("signed_path, status, payload")
+    .select("signed_path, status")
     .eq("order_id", orderId)
     .maybeSingle();
   if (existingError) throw existingError;
 
+  // A signature is only valid for the exact PDF it was made on. Any newly
+  // prepared PDF supersedes it: the old signed copy is archived, the contract
+  // goes back to "ready", and the customer has to be notified again to re-sign.
   const wasSigned = isOrderContractSigned(existing);
-  const agreementChanged =
-    wasSigned &&
-    contractPayloadSnapshotKey(existing?.payload) !==
-      contractPayloadSnapshotKey(payload);
-
-  // A signature only stays valid for the agreement text it was made on. If the
-  // cards/fees changed, the customer has to be notified again and re-sign.
-  const keepSigned = wasSigned && !agreementChanged;
-
-  if (agreementChanged && existing?.signed_path) {
+  if (wasSigned && existing?.signed_path) {
     await archiveSignedContract(
       supabase,
       String(existing.signed_path),
@@ -1329,17 +1295,15 @@ async function handleOrderContractUpload(
 
   const row: Record<string, unknown> = {
     order_id: orderId,
-    status: keepSigned ? "signed" : "ready",
+    status: "ready",
     payload,
     unsigned_path: unsignedPath,
-    signed_path: keepSigned ? existing?.signed_path ?? null : null,
+    signed_path: null,
+    signed_at: null,
     prepared_at: now,
     updated_at: now,
   };
-  if (!keepSigned) {
-    row.signed_at = null;
-  }
-  if (agreementChanged) {
+  if (wasSigned) {
     row.notified_at = null;
   }
 
