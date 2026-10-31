@@ -94,6 +94,19 @@ export function formatExactMoneyAmount(value) {
   return n.toFixed(2);
 }
 
+/** Sum of per-card restoration fees. Null when no parseable fees. */
+export function contractTotalRestorationFee(cards) {
+  let cents = 0;
+  let hasAny = false;
+  for (const row of cards ?? []) {
+    const n = parseExactMoney(row?.restoration_fee);
+    if (n == null) continue;
+    cents += Math.round(n * 100);
+    hasAny = true;
+  }
+  return hasAny ? cents / 100 : null;
+}
+
 function wrapText(text, font, size, maxWidth) {
   const words = String(text ?? "").split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
@@ -463,6 +476,45 @@ function drawTable(ctx, cards) {
     ctx.y -= TABLE_ROW_HEIGHT - 4;
   });
 
+  const totalFee = contractTotalRestorationFee(cards);
+  if (totalFee == null) {
+    ctx.y -= 8;
+    return;
+  }
+
+  ensureSpace(ctx, TABLE_ROW_HEIGHT + 10);
+  ctx.y -= 2;
+  drawRule(ctx);
+  ctx.y -= TABLE_ROW_HEIGHT;
+
+  const totalLabel = "Total Restoration Fee";
+  const totalValue = `$${formatExactMoneyAmount(totalFee)}`;
+  const feeColStart = MARGIN_X + cols[0].width + cols[1].width;
+  const feeColWidth = cols[2].width;
+
+  ctx.page.drawText(totalLabel, {
+    x:
+      feeColStart -
+      6 -
+      ctx.bold.widthOfTextAtSize(totalLabel, FONT_SIZE),
+    y: ctx.y,
+    size: FONT_SIZE,
+    font: ctx.bold,
+    color: INK,
+  });
+  ctx.page.drawText(totalValue, {
+    x:
+      feeColStart +
+      feeColWidth -
+      6 -
+      ctx.bold.widthOfTextAtSize(totalValue, FONT_SIZE),
+    y: ctx.y,
+    size: FONT_SIZE,
+    font: ctx.bold,
+    color: INK,
+  });
+  ctx.y -= 4;
+  drawRule(ctx);
   ctx.y -= 8;
 }
 
