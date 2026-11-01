@@ -409,6 +409,9 @@ verify_jwt = false
 [functions.discord-interactions]
 verify_jwt = false
 
+[functions.discord-photos]
+verify_jwt = false
+
 [functions.account-signup-notice]
 verify_jwt = false
 

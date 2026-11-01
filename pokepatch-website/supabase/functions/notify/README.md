@@ -20,7 +20,7 @@ For new orders it:
 
 Message rendering lives in [`_shared/discordOrderMessages.ts`](../_shared/discordOrderMessages.ts) so card and wrap-up messages can be re-rendered after a quote is saved or the customer is notified from Discord.
 
-If `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout posted flat into the channel (webhooks can't open threads or carry buttons), so the quote / notify flows are unavailable.
+If `DISCORD_QUOTES_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout posted flat into the channel (webhooks can't open threads or carry buttons), so the quote / notify flows are unavailable.
 
 The service role key never touches the frontend — only this server-side function.
 
@@ -56,8 +56,9 @@ From `pokepatch-website/`:
 supabase login
 supabase link --project-ref tmdbqymvjphhfvgyimnb
 
-# Discord bot (one message per card + quote buttons)
-supabase secrets set DISCORD_BOT_TOKEN="bot-token"
+# Quotes Discord app (one message per card + quote buttons)
+supabase secrets set DISCORD_QUOTES_BOT_TOKEN="bot-token"
+supabase secrets set DISCORD_QUOTES_PUBLIC_KEY="hex-public-key"
 supabase secrets set DISCORD_QUOTES_CHANNEL_ID="channel-id"
 
 # Existing secret (legacy quote_requests + fallback when no bot token)
@@ -76,8 +77,9 @@ supabase functions deploy notify --no-verify-jwt
 
 | Secret | Purpose |
 |--------|---------|
-| `DISCORD_BOT_TOKEN` | Bot token — posts order/card messages with buttons (shared with `discord-interactions`) |
-| `DISCORD_QUOTES_CHANNEL_ID` | Channel the bot posts quote requests into |
+| `DISCORD_QUOTES_BOT_TOKEN` | Quotes Discord bot — posts order/card messages with buttons |
+| `DISCORD_QUOTES_PUBLIC_KEY` | Quotes app Interactions signature (`discord-interactions`) |
+| `DISCORD_QUOTES_CHANNEL_ID` | Channel the quotes bot posts into |
 | `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured (no buttons) |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Customer confirmation email |
 

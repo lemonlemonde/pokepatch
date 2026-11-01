@@ -1,10 +1,11 @@
 /**
- * Discord helpers shared by `notify` (posts order/card messages) and
- * `discord-interactions` (handles button / modal / command interactions).
+ * Discord helpers shared by `notify` (posts quote-request messages),
+ * `discord-interactions` (quotes app buttons/modals), and `discord-photos`
+ * (wooper app command/modals).
  *
- * REST calls use the bot token (`DISCORD_BOT_TOKEN`). Channel messages fall
- * back to the legacy webhook (`DISCORD_WEBHOOK_URL`) when no bot is configured;
- * webhooks cannot carry interactive components, so buttons are dropped there.
+ * Quote posts use `DISCORD_QUOTES_BOT_TOKEN`, with `DISCORD_WEBHOOK_URL` as a
+ * non-interactive fallback. Wooper verifies with `DISCORD_PUBLIC_KEY` and does
+ * not need the quotes bot token.
  */
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -133,11 +134,55 @@ export function deniedResponse(): Response {
   return ephemeralReply("You are not allowed to use this command.");
 }
 
+/**
+ * Shared Interactions entry: method check, Ed25519 verify, JSON parse, PING,
+ * and admin allow-list. Callers handle the remaining interaction types.
+ */
+export async function openDiscordInteraction(
+  req: Request,
+  publicKeyEnv: string
+): Promise<{ interaction: Interaction } | { response: Response }> {
+  if (req.method !== "POST") {
+    return { response: new Response("Method not allowed", { status: 405 }) };
+  }
+
+  const publicKey = Deno.env.get(publicKeyEnv) ?? "";
+  if (!publicKey) {
+    console.error(`${publicKeyEnv} not set`);
+    return { response: new Response("Server misconfigured", { status: 500 }) };
+  }
+
+  const signature = req.headers.get("X-Signature-Ed25519") ?? "";
+  const timestamp = req.headers.get("X-Signature-Timestamp") ?? "";
+  const body = await req.text();
+
+  if (!(await verifyDiscordRequest(publicKey, signature, timestamp, body))) {
+    return { response: new Response("Invalid request signature", { status: 401 }) };
+  }
+
+  let interaction: Interaction;
+  try {
+    interaction = JSON.parse(body) as Interaction;
+  } catch {
+    return { response: new Response("Bad JSON", { status: 400 }) };
+  }
+
+  if (Number(interaction.type) === InteractionType.PING) {
+    return { response: json({ type: CallbackType.PONG }) };
+  }
+
+  if (!isAllowedUser(interactionUserId(interaction))) {
+    return { response: deniedResponse() };
+  }
+
+  return { interaction };
+}
+
 // ---------------------------------------------------------------------------
 // REST
 
 function botToken(): string {
-  return (Deno.env.get("DISCORD_BOT_TOKEN") ?? "").trim();
+  return (Deno.env.get("DISCORD_QUOTES_BOT_TOKEN") ?? "").trim();
 }
 
 export function hasBotToken(): boolean {
@@ -165,7 +210,7 @@ export async function discordRequest(
   }
   if (auth) {
     const token = botToken();
-    if (!token) throw new Error("DISCORD_BOT_TOKEN not set");
+    if (!token) throw new Error("DISCORD_QUOTES_BOT_TOKEN not set");
     headers.set("Authorization", `Bot ${token}`);
   }
   const url = path.startsWith("http") ? path : `${DISCORD_API}${path}`;

@@ -454,7 +454,7 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 | `orders` INSERT | `New Order #N` header → thread with **one message per card** (tags, description, photos, **Add quote** button) and a **wrap-up** | "We received your quote request" confirmation |
 | `quote_requests` INSERT (legacy) | `New Quote Request #N` | — |
 
-**Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist, market value for the high-value fee, price overrides, custom services, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md), which also hosts the `wooper` before/after upload command.
+**Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist, market value for the high-value fee, price overrides, custom services, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md) (quotes Discord app). Before/after photo uploads stay on a separate app → [`discord-photos`](pokepatch-website/supabase/functions/discord-photos/README.md).
 
 **Important:** only **INSERT** webhooks are configured. Admin `update_order` must stay silent (no `orders` UPDATE webhook).
 
@@ -462,8 +462,8 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 
 | Secret | Purpose |
 |--------|---------|
-| `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` | Bot posts quote requests (header + thread with per-card messages and wrap-up, with buttons) |
-| `DISCORD_PUBLIC_KEY` / `DISCORD_ADMIN_USER_IDS` | `discord-interactions`: request signature + who may quote / notify / upload |
+| `DISCORD_QUOTES_BOT_TOKEN` / `DISCORD_QUOTES_PUBLIC_KEY` / `DISCORD_QUOTES_CHANNEL_ID` | Quotes Discord app: posts header + thread + buttons (`discord-interactions`) |
+| `DISCORD_PUBLIC_KEY` / `DISCORD_ADMIN_USER_IDS` | Wooper Discord app (`discord-photos`) + shared who may use Discord admin actions |
 | `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured |
 | `ADMIN_PASSWORD` | Admin login (server-side only) |
 
@@ -561,7 +561,8 @@ pokepatch-website/
     functions/
       _shared/                   # discord.ts, discordOrderMessages.ts, servicePricing.ts + outreach.ts (mirrors), …
       notify/                    # Discord (header → thread: per-card messages + wrap-up) + email on INSERT
-      discord-interactions/      # Discord endpoint: quote modal, Save & notify, wooper photo uploads
+      discord-interactions/      # Quotes Discord app: quote modal + Save & notify
+      discord-photos/             # Wooper Discord app: before/after photo uploads
       admin-auth/
       admin-api/
   scripts/
