@@ -18,7 +18,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 2. Bot loads that card’s before/after photos (sorted by upload id).
 3. Skips the first **two** overview pairs.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
-5. Replies ephemerally with PNG attachments you can download.
+5. Replies in-channel with PNG attachments anyone can download.
 
 ---
 
