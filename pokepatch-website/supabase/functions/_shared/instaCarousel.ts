@@ -60,11 +60,6 @@ export type CarouselOverlay = {
   frontBytes?: Uint8Array | null;
 };
 
-export type CarouselPairInput = {
-  beforeBytes: Uint8Array;
-  afterBytes: Uint8Array;
-};
-
 type Assets = {
   font: Uint8Array;
   fontItalic: Uint8Array;
@@ -611,31 +606,4 @@ export async function stitchCarouselPairPng(
   }
 
   return await canvas.encodePNG();
-}
-
-/**
- * Stitch pairs one at a time. ImageScript hangs/OOMs on Edge when two
- * 1080×1350 stitches run concurrently — keep this strictly sequential.
- */
-export async function stitchCarouselPairs(
-  pairs: CarouselPairInput[],
-  overlay: CarouselOverlay = {}
-): Promise<{ key: string; label: string; png: Uint8Array }[]> {
-  const solo = pairs.length === 1;
-  const out: { key: string; label: string; png: Uint8Array }[] = [];
-  for (let index = 0; index < pairs.length; index += 1) {
-    const pair = pairs[index];
-    const png = await stitchCarouselPairPng(
-      pair.beforeBytes,
-      pair.afterBytes,
-      overlay
-    );
-    const n = index + 1;
-    out.push({
-      key: `pair-${n}`,
-      label: solo ? "Post" : `Pair ${n}`,
-      png,
-    });
-  }
-  return out;
 }

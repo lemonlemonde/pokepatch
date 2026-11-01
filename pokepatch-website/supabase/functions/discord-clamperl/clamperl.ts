@@ -160,7 +160,12 @@ async function generateForCard(params: {
   multiCard: boolean;
   applicationId: string;
   token: string;
-  onPairProgress: (done: number, total: number) => Promise<void>;
+  /** pair = 1-based index about to start; postedInCard = uploads so far on this card. */
+  onPairProgress: (state: {
+    pair: number;
+    total: number;
+    postedInCard: number;
+  }) => Promise<void>;
 }): Promise<CardGenerateResult> {
   const {
     supabase,
@@ -226,15 +231,20 @@ async function generateForCard(params: {
 
   for (let offset = 0; offset < workCount; offset += 1) {
     const i = SKIP_OVERVIEW_PAIRS + offset;
-    await onPairProgress(offset, workCount);
+    const pairNum = offset + 1;
+    await onPairProgress({
+      pair: pairNum,
+      total: workCount,
+      postedInCard: posted,
+    });
 
     const [beforeBytes, afterBytes] = await Promise.all([
       downloadStorageBytes(supabase, beforeRows[i].storage_path),
       downloadStorageBytes(supabase, afterRows[i].storage_path),
     ]);
 
+    // One stitch at a time — concurrent ImageScript freezes on Edge.
     const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
-    const pairNum = offset + 1;
     const filename = multiCard
       ? `pokepatch-card${cardIndex}-pair-${pairNum}.png`
       : `pokepatch-pair-${pairNum}.png`;
@@ -365,15 +375,15 @@ export async function runClamperlJob(params: {
         multiCard,
         applicationId,
         token,
-        onPairProgress: async (done, total) => {
+        onPairProgress: async ({ pair, total, postedInCard }) => {
           await editOriginal(
             applicationId,
             token,
             [
               `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
               multiCard
-                ? `Card **${target.cardIndex}/${targets.length}** · pair **${done + 1}/${total}** · **${postedFiles}** posted`
-                : `Card ${target.cardIndex} · pair **${done + 1}/${total}** · **${postedFiles}** posted`,
+                ? `Card **${target.cardIndex}/${targets.length}** · pair **${pair}/${total}** · **${postedFiles + postedInCard}** posted`
+                : `Card ${target.cardIndex} · pair **${pair}/${total}** · **${postedFiles + postedInCard}** posted`,
               okCards.length > 0
                 ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
                 : "",
