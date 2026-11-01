@@ -7,7 +7,7 @@ Discord **Interactions Endpoint** for the **quotes** Discord app (separate from 
 | **Quote a card** | **Add quote** / **Edit quote** on a card message in the order thread ([`notify`](../notify/README.md)) | [`quote.ts`](./quote.ts) |
 | **Save & notify** / **Refresh** | Buttons on the wrap-up message (last in the thread) | [`notifyCustomer.ts`](./notifyCustomer.ts) |
 
-Before/after photo uploads use a **separate** Discord app → [`discord-photos`](../discord-photos/README.md).
+Before/after photo uploads use a **separate** Discord app → [`discord-photos`](../discord-photos/README.md). Instagram carousel PNGs use [`discord-clamperl`](../discord-clamperl/README.md).
 
 Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use these buttons.
 

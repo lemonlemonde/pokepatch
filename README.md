@@ -454,7 +454,7 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 | `orders` INSERT | `New Order #N` header → thread with **one message per card** (tags, description, photos, **Add quote** button) and a **wrap-up** | "We received your quote request" confirmation |
 | `quote_requests` INSERT (legacy) | `New Quote Request #N` | — |
 
-**Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist at list price, market value for the high-value fee, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md) (quotes Discord app). Before/after photo uploads stay on a separate app → [`discord-photos`](pokepatch-website/supabase/functions/discord-photos/README.md).
+**Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist at list price, market value for the high-value fee, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md) (quotes Discord app). Before/after photo uploads stay on a separate app → [`discord-photos`](pokepatch-website/supabase/functions/discord-photos/README.md). Instagram carousel PNG generation is a third app → [`discord-clamperl`](pokepatch-website/supabase/functions/discord-clamperl/README.md) (`/clamperl`).
 
 **Important:** only **INSERT** webhooks are configured. Admin `update_order` must stay silent (no `orders` UPDATE webhook).
 
@@ -464,6 +464,7 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 |--------|---------|
 | `DISCORD_QUOTES_BOT_TOKEN` / `DISCORD_QUOTES_PUBLIC_KEY` / `DISCORD_QUOTES_CHANNEL_ID` | Quotes Discord app: posts header + thread + buttons (`discord-interactions`) |
 | `DISCORD_PUBLIC_KEY` / `DISCORD_ADMIN_USER_IDS` | Wooper Discord app (`discord-photos`) + shared who may use Discord admin actions |
+| `DISCORD_CLAMPERL_PUBLIC_KEY` | Clamperl Discord app (`discord-clamperl`) for `/clamperl` carousel PNG generation |
 | `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured |
 | `ADMIN_PASSWORD` | Admin login (server-side only) |
 
@@ -563,6 +564,7 @@ pokepatch-website/
       notify/                    # Discord (header → thread: per-card messages + wrap-up) + email on INSERT
       discord-interactions/      # Quotes Discord app: quote modal + Save & notify
       discord-photos/             # Wooper Discord app: before/after photo uploads
+      discord-clamperl/           # Clamperl Discord app: /clamperl carousel PNG generation
       admin-auth/
       admin-api/
   scripts/
