@@ -2,9 +2,10 @@
  * Quote a card from Discord.
  *
  * `notify` posts one message per card with an **Add quote** button. Clicking
- * it opens a modal (services checklist, market value, price overrides, custom
- * services, note to customer). Submitting writes through `update_order` —
- * the same RPC the admin editor uses — then re-renders the card message.
+ * it opens a modal (services checklist, market value, note to customer).
+ * Submitting writes through `update_order` — the same RPC the admin editor
+ * uses — then re-renders the card message. Non-list prices / custom lines
+ * stay in the admin editor.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -44,18 +45,14 @@ import {
 import {
   HV_TIER_RANGES_LABEL,
   QUOTE_SERVICES,
-  SERVICE_KEYS,
   serviceByKey,
   servicePriceDisplay,
   withCardHvFromMarket,
-  type QuoteService,
 } from "../_shared/servicePricing.ts";
 
 const FIELD = {
   SERVICES: "services",
   MARKET: "market",
-  OVERRIDES: "overrides",
-  CUSTOM: "custom",
   NOTE: "note",
 } as const;
 
@@ -67,11 +64,6 @@ type QuoteLine = {
   quote_base_amount: number;
 };
 
-// ---------------------------------------------------------------------------
-// Text parsing
-
-const ENTRY_RE = /^(.*?)\s*[:=\-–—]?\s*\$?\s*(\d+(?:[.,]\d{1,2})?)\s*$/;
-
 function parseMoneyText(raw: string): number | null {
   const cleaned = raw.replace(/[$,\s]/g, "");
   if (!cleaned) return null;
@@ -79,143 +71,19 @@ function parseMoneyText(raw: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-function normalizeName(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/\bprice\b/g, "")
-    .replace(/[^a-z ]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** Short names that map to two services; prefer whichever one is selected. */
-const AMBIGUOUS_ALIASES: Record<string, string[]> = {
-  minor: [SERVICE_KEYS.PRESSING, SERVICE_KEYS.WHITENING],
-  major: [SERVICE_KEYS.ADVANCED, SERVICE_KEYS.WHITENING_MAJOR],
-  whitening: [SERVICE_KEYS.WHITENING, SERVICE_KEYS.WHITENING_MAJOR],
-};
-
-function resolveService(name: string, selectedKeys: Set<string>): QuoteService | null {
-  const normalized = normalizeName(name);
-  if (!normalized) return null;
-
-  const ambiguous = AMBIGUOUS_ALIASES[normalized];
-  if (ambiguous) {
-    const selected = ambiguous.filter((key) => selectedKeys.has(key));
-    return serviceByKey(selected.length === 1 ? selected[0] : ambiguous[0]);
-  }
-
-  const exact = QUOTE_SERVICES.filter((service) =>
-    service.aliases.includes(normalized) || service.title.toLowerCase() === normalized
-  );
-  if (exact.length === 1) return exact[0];
-
-  if (normalized.length >= 3) {
-    const prefixed = QUOTE_SERVICES.filter((service) =>
-      service.aliases.some((alias) => alias.startsWith(normalized)) ||
-      service.title.toLowerCase().startsWith(normalized)
-    );
-    if (prefixed.length === 1) return prefixed[0];
-  }
-  return null;
-}
-
-export function parseOverrides(
-  text: string,
-  selectedKeys: Set<string>
-): { overrides: Map<string, number>; errors: string[] } {
-  const overrides = new Map<string, number>();
-  const errors: string[] = [];
-  for (const rawEntry of text.split(/[,;\n]+/)) {
-    const entry = rawEntry.trim();
-    if (!entry) continue;
-    const match = entry.match(ENTRY_RE);
-    const amount = match ? parseMoneyText(match[2]) : null;
-    if (!match || amount == null || amount < 0) {
-      errors.push(`Price override "${entry}" — use \`service amount\`, e.g. \`major 70\`.`);
-      continue;
-    }
-    const service = resolveService(match[1], selectedKeys);
-    if (!service) {
-      errors.push(
-        `Price override "${entry}" — unknown service. Try: ${QUOTE_SERVICES.map(
-          (s) => s.aliases[0]
-        ).join(", ")}.`
-      );
-      continue;
-    }
-    overrides.set(service.key, amount);
-  }
-  return { overrides, errors };
-}
-
-export function parseCustomLines(
-  text: string
-): { customs: { label: string; amount: number }[]; errors: string[] } {
-  const customs: { label: string; amount: number }[] = [];
-  const errors: string[] = [];
-  for (const rawEntry of text.split(/[;\n]+/)) {
-    const entry = rawEntry.trim();
-    if (!entry) continue;
-    const match = entry.match(ENTRY_RE);
-    const amount = match ? parseMoneyText(match[2]) : null;
-    const label = match ? match[1].replace(/[\s:=\-–—]+$/, "").trim() : "";
-    if (!match || amount == null || amount < 0 || !label) {
-      errors.push(`Custom service "${entry}" — use \`name amount\`, e.g. \`Holo re-foil 45\`.`);
-      continue;
-    }
-    customs.push({ label: label.slice(0, 120), amount });
-  }
-  return { customs, errors };
-}
-
-/** Assemble quote lines: checked services (list price unless overridden) + overrides + customs. */
-export function buildQuoteLines(params: {
-  selectedKeys: string[];
-  overrides: Map<string, number>;
-  customs: { label: string; amount: number }[];
-}): QuoteLine[] {
-  const { selectedKeys, overrides, customs } = params;
-  const wanted = new Set([...selectedKeys, ...overrides.keys()]);
+/** Checked services at list price. */
+export function buildQuoteLines(selectedKeys: string[]): QuoteLine[] {
+  const wanted = new Set(selectedKeys);
   const lines: QuoteLine[] = [];
   for (const service of QUOTE_SERVICES) {
     if (!wanted.has(service.key)) continue;
     lines.push({
       service_key: service.key,
       service_label: service.title,
-      quote_base_amount: overrides.get(service.key) ?? service.listPrice ?? 0,
-    });
-  }
-  for (const custom of customs) {
-    lines.push({
-      service_key: SERVICE_KEYS.CUSTOM,
-      service_label: custom.label,
-      quote_base_amount: custom.amount,
+      quote_base_amount: service.listPrice ?? 0,
     });
   }
   return lines;
-}
-
-// ---------------------------------------------------------------------------
-// Modal
-
-function overridesPrefill(items: QuoteItemRow[]): string {
-  const parts: string[] = [];
-  for (const item of items) {
-    const service = serviceByKey(item.service_key);
-    if (!service || service.listPrice == null) continue;
-    const amount = Number(item.quote_base_amount);
-    if (!Number.isFinite(amount) || amount === service.listPrice) continue;
-    parts.push(`${service.aliases[0]} ${amount}`);
-  }
-  return parts.join(", ");
-}
-
-function customPrefill(items: QuoteItemRow[]): string {
-  return items
-    .filter((item) => item.service_key === SERVICE_KEYS.CUSTOM)
-    .map((item) => `${item.service_label} ${Number(item.quote_base_amount)}`)
-    .join("\n");
 }
 
 function moneyPrefill(value: unknown): string {
@@ -231,7 +99,11 @@ function quoteModal(params: {
   cardLabel: string;
 }): Json {
   const { customId, card, cardQuoteItems, cardLabel } = params;
-  const selectedKeys = new Set(cardQuoteItems.map((item) => item.service_key));
+  const selectedKeys = new Set(
+    cardQuoteItems
+      .map((item) => item.service_key)
+      .filter((key) => Boolean(serviceByKey(key)))
+  );
 
   return {
     type: CallbackType.MODAL,
@@ -250,7 +122,7 @@ function quoteModal(params: {
               default: selectedKeys.has(service.key),
             })),
           }),
-          "List price unless overridden below"
+          "List prices — custom amounts in admin"
         ),
         labeled(
           "Market value (Raw NM, $)",
@@ -261,27 +133,6 @@ function quoteModal(params: {
             maxLength: 12,
           }),
           `High-value fee: ${HV_TIER_RANGES_LABEL}`
-        ),
-        labeled(
-          "Price overrides",
-          textInput({
-            customId: FIELD.OVERRIDES,
-            placeholder: "major 70, surface 15",
-            value: overridesPrefill(cardQuoteItems),
-            maxLength: 200,
-          }),
-          "Only when a service isn't list price. Also adds the service."
-        ),
-        labeled(
-          "Custom services",
-          textInput({
-            customId: FIELD.CUSTOM,
-            style: TextInputStyle.PARAGRAPH,
-            placeholder: "Holo re-foil 45 (one per line: name amount)",
-            value: customPrefill(cardQuoteItems),
-            maxLength: 600,
-          }),
-          "One per line: name amount"
         ),
         labeled(
           "Note to customer",
@@ -432,35 +283,22 @@ async function processQuoteModal(interaction: Interaction): Promise<void> {
       Boolean(serviceByKey(key))
     );
     const marketRaw = fieldValue(fields, FIELD.MARKET);
-    const overridesRaw = fieldValue(fields, FIELD.OVERRIDES);
-    const customRaw = fieldValue(fields, FIELD.CUSTOM);
     const note = fieldValue(fields, FIELD.NOTE).slice(0, MAX_NOTE_CHARS);
 
-    const errors: string[] = [];
     let marketValue: number | null = null;
     if (marketRaw) {
       marketValue = parseMoneyText(marketRaw);
       if (marketValue == null || marketValue < 0) {
-        errors.push(`Market value "${marketRaw}" isn't a valid dollar amount.`);
+        await editOriginal(
+          applicationId,
+          token,
+          `**Nothing saved.** Market value "${marketRaw}" isn't a valid dollar amount.`
+        );
+        return;
       }
     }
-    const { overrides, errors: overrideErrors } = parseOverrides(
-      overridesRaw,
-      new Set(selectedKeys)
-    );
-    const { customs, errors: customErrors } = parseCustomLines(customRaw);
-    errors.push(...overrideErrors, ...customErrors);
 
-    if (errors.length > 0) {
-      await editOriginal(
-        applicationId,
-        token,
-        ["**Nothing saved.** Fix these and press the button again:", ...errors.map((e) => `• ${e}`)].join("\n")
-      );
-      return;
-    }
-
-    const lines = buildQuoteLines({ selectedKeys, overrides, customs });
+    const lines = buildQuoteLines(selectedKeys);
 
     const supabase = getServiceClient();
     const context = await loadCardContext(supabase, parsed.id);

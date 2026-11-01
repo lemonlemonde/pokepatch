@@ -27,11 +27,11 @@ Press **Add quote** → modal:
 
 | Field | What it does |
 |-------|--------------|
-| **Services** (checkboxes) | Surface Cleaning, Minor Damage, Major Damage, Minor Whitening, Major Whitening, Slab Cracking — list price unless overridden |
+| **Services** (checkboxes) | Surface Cleaning, Minor Damage, Major Damage, Minor Whitening, Major Whitening, Slab Cracking — always list price |
 | **Market value (Raw NM, $)** | Sets `cards.market_value_raw_nm`; HV fee from admin tiers ($200–$499 → 4%, $500+ → 8%) |
-| **Price overrides** | `major 70, surface 15` — also adds the service |
-| **Custom services** | One per line, `name amount` |
 | **Note to customer** | `cards.admin_note` |
+
+Custom amounts / one-off services stay in the admin order editor.
 
 Submit → `update_order` (same RPC as admin), re-renders the card + wrap-up. When every active card is quoted, the order flips to **pending drop-off**.
 

@@ -21,7 +21,7 @@ export type QuoteService = {
   title: string;
   listPrice: number | null;
   priceSuffix?: string;
-  /** Short names accepted in the Discord "price overrides" field. */
+  /** Short names (kept for parity with the frontend service list). */
   aliases: string[];
 };
 
