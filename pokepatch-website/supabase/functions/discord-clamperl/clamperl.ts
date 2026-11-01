@@ -382,24 +382,25 @@ export async function runClamperlJob(params: {
         }
       }
 
-      await editOriginal(
-        applicationId,
-        token,
-        [
-          `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
-          multiCard
-            ? `Progress **${t + 1}/${targets.length}** · **${postedFiles}** post(s) so far`
-            : `Card ${target.cardIndex} · **${postedFiles}** post(s)`,
-          okCards.length > 0
-            ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
-            : "",
-          skippedCards.length > 0
-            ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
-            : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
+      // Skip the last progress edit — the final summary follows immediately.
+      if (t + 1 < targets.length) {
+        await editOriginal(
+          applicationId,
+          token,
+          [
+            `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
+            `Progress **${t + 1}/${targets.length}** · **${postedFiles}** post(s) so far`,
+            okCards.length > 0
+              ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
+              : "",
+            skippedCards.length > 0
+              ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+              : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+      }
     }
 
     if (postedFiles === 0) {
