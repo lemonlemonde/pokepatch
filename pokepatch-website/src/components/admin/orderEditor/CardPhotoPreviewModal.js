@@ -43,7 +43,7 @@ export default function CardPhotoPreviewModal({
   open,
   onClose,
   title,
-  groups,
+  groups = [],
 }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [fitToScreen, setFitToScreen] = useState(false);
@@ -51,8 +51,8 @@ export default function CardPhotoPreviewModal({
 
   const flatItems = useMemo(
     () =>
-      (groups ?? []).flatMap((group) =>
-        (group.items ?? []).map((item) => ({
+      groups.flatMap((group) =>
+        group.items.map((item) => ({
           ...item,
           groupTitle: group.title,
         }))
@@ -162,8 +162,8 @@ export default function CardPhotoPreviewModal({
       {total === 0 ? (
         <p className="text-sm text-ink/50">No photos on this card yet.</p>
       ) : null}
-      {(groups ?? []).map((group) => {
-        const items = group.items ?? [];
+      {groups.map((group) => {
+        const { items } = group;
         if (items.length === 0) return null;
         return (
           <section key={group.key}>
@@ -215,7 +215,18 @@ export default function CardPhotoPreviewModal({
   const expandedBody = expandedItem ? (
     <div className="relative min-h-0 flex-1">
       <div className="h-full w-full overflow-auto">
-        <div className="flex min-h-full min-w-full p-4">
+        {/*
+          Original: natural pixels, auto margins center small images and keep
+          large ones scrollable from the top-left. Fit: wrapper takes the full
+          viewport box so max-h/max-w resolve against a definite size.
+        */}
+        <div
+          className={
+            fitToScreen
+              ? "flex h-full w-full items-center justify-center p-4"
+              : "flex min-h-full min-w-full p-4"
+          }
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             key={expandedItem.fullSrc || expandedItem.src}
@@ -226,7 +237,7 @@ export default function CardPhotoPreviewModal({
             title={fitToScreen ? "Show original size" : "Fit to screen"}
             className={
               fitToScreen
-                ? "m-auto max-h-full max-w-full cursor-zoom-in object-contain"
+                ? "max-h-full max-w-full cursor-zoom-in object-contain"
                 : "m-auto block max-w-none cursor-zoom-out"
             }
           />
