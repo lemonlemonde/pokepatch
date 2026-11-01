@@ -13,7 +13,7 @@ cd pokepatch-website
 npm install
 cp .env.local.example .env.local.prod
 # edit .env.local.prod: NEXT_PUBLIC_* plus any edge secrets you want locally
-# (DISCORD_WEBHOOK_URL, ADMIN_ALLOWED_EMAILS / NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS, Resend, Sheets, …)
+# (DISCORD_WEBHOOK_URL, ADMIN_ALLOWED_EMAILS / NEXT_PUBLIC_ADMIN_ALLOWED_EMAILS, Resend, …)
 ```
 
 Daily — only this:
@@ -23,7 +23,7 @@ cd pokepatch-website
 npm run local
 ```
 
-That starts Supabase (if needed), syncs edge secrets from `.env.local.prod` into the local function runtime, retargets order/quote INSERT triggers at **local** `notify` (so Discord/Sheets don’t hit production), points the app at the local API, and runs Next.js.
+That starts Supabase (if needed), syncs edge secrets from `.env.local.prod` into the local function runtime, retargets order/quote INSERT triggers at **local** `notify` (so Discord doesn’t hit production), points the app at the local API, and runs Next.js.
 
 Open [http://localhost:3000](http://localhost:3000). Studio is usually at [http://127.0.0.1:54323](http://127.0.0.1:54323).
 
@@ -76,7 +76,7 @@ Repo **Settings → Secrets and variables → Actions**:
 | `NEXT_PUBLIC_CUSTOMER_AUTH_ENABLED` | Frontend build (if used) |
 | `SUPABASE_SERVICE_ROLE_KEY` | [`sync-tcg-catalog.yml`](.github/workflows/sync-tcg-catalog.yml) upserts `tcg_cards` (weekly, after each Deploy, or on demand) |
 
-Edge-function **runtime** secrets (`ADMIN_ALLOWED_EMAILS`, Resend, Discord, Sheets, …) stay in the Supabase project dashboard; CI only redeploys function code.
+Edge-function **runtime** secrets (`ADMIN_ALLOWED_EMAILS`, Resend, Discord, …) stay in the Supabase project dashboard; CI only redeploys function code.
 
 In **Settings → Pages**, source should be the `gh-pages` branch (root). `.nojekyll` is written by CI so `_next` assets are served correctly.
 
@@ -94,7 +94,7 @@ Uses `.env.local.prod` via `use-env.sh prod`. Prefer fixing/re-running the Actio
 - React / Next.js (static export)
 - Tailwind CSS
 - Supabase (Postgres, Storage, Edge Functions, Database Webhooks)
-- Discord bot (per-card quote messages + interactions) + Google Sheets (via Apps Script)
+- Discord bot (per-card quote messages + interactions)
 - PostHog (page analytics + quote form funnel)
 - gh-pages
 
@@ -254,7 +254,7 @@ Schema CLI workflow details: [Schema changes (CLI-managed)](#schema-changes-cli-
 
 ## Public quote form
 
-The contact form creates a structured **order** with contacts, cards, and photos. On submit, Discord and the Google Sheets **Orders** tab are notified.
+The contact form creates a structured **order** with contacts, cards, and photos. On submit, Discord is notified and the customer gets a confirmation email.
 
 ### Flow
 
@@ -267,7 +267,6 @@ Browser (QuoteForm)
   → DB webhook: orders INSERT
   → Edge Function: notify
       → Discord (order header → thread: one message per card with Add quote, then wrap-up with contacts + Save & notify)
-      → Google Sheets Orders tab (via Apps Script)
       → customer confirmation email
   → redirect to /thank-you
 ```
@@ -319,7 +318,7 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 | Column | Notes |
 |--------|-------|
 | `id` | Client-generated UUID |
-| `display_id` | Bigint identity — shown in Discord/Sheets as `#42` |
+| `display_id` | Bigint identity — shown in Discord as `#42` |
 | `customer_name`, `delivery_method` | From public form |
 | `general_notes` | Admin-only (not on public form) |
 | `status` | Admin kanban: `pending` (Pending), `new` (To do), `in_progress`, `completed`, `canceled` |
@@ -450,25 +449,14 @@ Edge function: [`pokepatch-website/supabase/functions/notify/`](pokepatch-websit
 
 Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pokepatch-website/supabase/functions/notify/README.md)
 
-| Trigger | Discord | Sheets |
-|---------|---------|--------|
-| `orders` INSERT | `New Order #N` header, then **one message per card** (tags, description, photos, **Add quote** button) | **Orders** tab via `ORDERS_SHEETS_*` |
-| `quote_requests` INSERT | `New Quote Request #N` + link to Requests tab | **Requests** tab via `SHEETS_*` |
-
-Contacts formatting: semicolons in Discord, newlines in Sheets.
+| Trigger | Discord | Email |
+|---------|---------|-------|
+| `orders` INSERT | `New Order #N` header → thread with **one message per card** (tags, description, photos, **Add quote** button) and a **wrap-up** | "We received your quote request" confirmation |
+| `quote_requests` INSERT (legacy) | `New Quote Request #N` | — |
 
 **Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist, market value for the high-value fee, price overrides, custom services, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md), which also hosts the `wooper` before/after upload command.
 
 **Important:** only **INSERT** webhooks are configured. Admin `update_order` must stay silent (no `orders` UPDATE webhook).
-
-### Google Sheets / Apps Script
-
-| Script | Tab |
-|--------|-----|
-| [`scripts/google-sheets-webhook.gs`](pokepatch-website/scripts/google-sheets-webhook.gs) | Legacy **Requests** (bound to sheet) |
-| [`scripts/google-sheets-webhook-orders.gs`](pokepatch-website/scripts/google-sheets-webhook-orders.gs) | **Orders** (standalone Apps Script + `SPREADSHEET_ID`) |
-
-Google allows only one bound script per spreadsheet, so Orders uses a standalone project at [script.google.com](https://script.google.com).
 
 ### Supabase secrets
 
@@ -477,8 +465,6 @@ Google allows only one bound script per spreadsheet, so Orders uses a standalone
 | `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` | Bot posts quote requests (header + thread with per-card messages and wrap-up, with buttons) |
 | `DISCORD_PUBLIC_KEY` / `DISCORD_ADMIN_USER_IDS` | `discord-interactions`: request signature + who may quote / notify / upload |
 | `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured |
-| `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` / `SHEET_VIEW_URL` | Legacy Requests path |
-| `ORDERS_SHEETS_WEBHOOK_URL` / `ORDERS_SHEETS_SECRET` / `ORDERS_SHEET_VIEW_URL` | Orders path |
 | `ADMIN_PASSWORD` | Admin login (server-side only) |
 
 ---
@@ -502,7 +488,7 @@ Browser (/admin)
       → read/write working order tables
       → Storage uploads for card photos (same pool as customer uploads)
       → gallery_items CRUD + gallery bucket uploads
-  → no notify / Discord / Sheets
+  → no notify / Discord
 ```
 
 ### UI behavior
@@ -574,12 +560,10 @@ pokepatch-website/
     migrations/                  # CLI deltas; versions must match remote (see Schema changes)
     functions/
       _shared/                   # discord.ts, discordOrderMessages.ts, servicePricing.ts + outreach.ts (mirrors), …
-      notify/                    # Discord (header → thread: per-card messages + wrap-up) + Sheets + email on INSERT
+      notify/                    # Discord (header → thread: per-card messages + wrap-up) + email on INSERT
       discord-interactions/      # Discord endpoint: quote modal, Save & notify, wooper photo uploads
       admin-auth/
       admin-api/
   scripts/
     seed-gallery.mjs             # One-time upload of public/gallery → Supabase
-    google-sheets-webhook.gs     # Legacy Requests tab
-    google-sheets-webhook-orders.gs  # Orders tab
 ```

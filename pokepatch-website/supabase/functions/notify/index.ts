@@ -11,7 +11,6 @@ import {
 import {
   BUCKET,
   QUOTE_CONFIRMATION_SUBJECT,
-  SIGNED_URL_EXPIRES_IN,
   buildCardMessage,
   buildOrderHeaderMessage,
   buildWrapupMessage,
@@ -73,7 +72,7 @@ Deno.serve(async (req) => {
     const record = (body.record ?? body) as Record<string, unknown>;
 
     if (isOrdersRecord(record)) {
-      // Discord posts one message per card plus Sheets + email — longer than
+      // Discord posts one message per card plus the email — longer than
       // the DB webhook waits. ACK now and finish in the background.
       EdgeRuntime.waitUntil(
         handleOrdersInsert(record).catch((err) => {
@@ -104,27 +103,20 @@ async function handleLegacyInsert(record: Record<string, unknown>) {
     ? (record.image_paths as string[])
     : [];
 
-  const photoUrls = await signThumbPaths(paths);
-  const folderId = extractFolderId(paths);
-
   await notifyDiscordLegacy({
     id,
     delivery,
     contact,
     details,
     photoCount: paths.length,
-    folderId,
+    folderId: extractFolderId(paths),
   });
-  await notifySheetLegacy({ record, delivery, photoUrls, folderId });
 }
 
 async function handleOrdersInsert(record: Record<string, unknown>) {
   const orderUuid = String(record.id ?? "");
   const displayId = (record.display_id as number | string | null) ?? "?";
   const customerName = String(record.customer_name ?? "").trim();
-  const delivery =
-    deliveryLabels[String(record.delivery_method)] ??
-    String(record.delivery_method ?? "unknown");
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -159,8 +151,6 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     return;
   }
 
-  const storagePrefix = orderUuid ? `order-${orderUuid}` : extractFolderId(paths);
-
   // Discord: header → thread → one message per card → wrap-up.
   const order: OrderRow = (await loadOrder(supabase, orderUuid)) ?? {
     id: orderUuid,
@@ -180,19 +170,6 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     photoPathsByCard,
     contacts: contactsList,
     contactsText: formatContacts(contactsList, "; "),
-  });
-
-  const photoUrls = await signThumbPaths(paths, supabase);
-  await notifySheetOrder({
-    displayId,
-    orderUuid,
-    createdAt: record.created_at,
-    customerName,
-    delivery,
-    cardCount: cards.length,
-    contactsText: formatContacts(contactsList, "\n"),
-    storagePrefix,
-    photoUrls,
   });
 
   await sendQuoteConfirmationEmail({
@@ -234,7 +211,6 @@ async function notifyDiscordOrder(params: {
       cardCount: cards.length,
       photoCount,
       contactsText,
-      sheetUrl: Deno.env.get("ORDERS_SHEET_VIEW_URL") ?? undefined,
     })
   );
   if (!header) {
@@ -399,72 +375,6 @@ function formatContacts(
     .join(separator);
 }
 
-/** Thumbnail signed URLs for the Sheets rows (falls back to full size). */
-async function signThumbPaths(
-  paths: string[],
-  client?: SupabaseClient
-): Promise<string[]> {
-  if (paths.length === 0) return [];
-
-  let supabase = client;
-  if (!supabase) {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceKey) return [];
-    supabase = createClient(supabaseUrl, serviceKey);
-  }
-
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(
-      paths.map((p) =>
-        p.endsWith(".thumb.webp") || p.endsWith(".poster.webp")
-          ? p
-          : `${p}.thumb.webp`
-      ),
-      SIGNED_URL_EXPIRES_IN
-    );
-  if (error) {
-    console.error("createSignedUrls error", error);
-    // Fall back to full-size signed URLs.
-    const fallback = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrls(paths, SIGNED_URL_EXPIRES_IN);
-    if (fallback.error) return [];
-    return (fallback.data ?? [])
-      .map((d) => d.signedUrl)
-      .filter((u): u is string => Boolean(u));
-  }
-
-  const thumbUrls = (data ?? [])
-    .map((d, i) => ({ url: d.signedUrl, err: (d as { error?: string }).error, path: paths[i] }))
-    .filter((row) => row.url && !row.err);
-
-  if (thumbUrls.length === paths.length) {
-    return thumbUrls.map((row) => row.url as string);
-  }
-
-  // Mix: use thumbs where available, full for the rest.
-  const missing = paths.filter(
-    (_, i) => !(data?.[i]?.signedUrl) || (data?.[i] as { error?: string })?.error
-  );
-  const fallback = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(missing, SIGNED_URL_EXPIRES_IN);
-  const fullByPath = new Map<string, string>();
-  for (const item of fallback.data ?? []) {
-    if (item.path && item.signedUrl) fullByPath.set(item.path, item.signedUrl);
-  }
-
-  return paths.map((path, i) => {
-    const thumb = data?.[i];
-    if (thumb?.signedUrl && !(thumb as { error?: string }).error) {
-      return thumb.signedUrl;
-    }
-    return fullByPath.get(path) ?? "";
-  }).filter(Boolean);
-}
-
 async function notifyDiscordLegacy({
   id,
   delivery,
@@ -483,11 +393,9 @@ async function notifyDiscordLegacy({
   const channelId = quotesChannelId();
   if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
 
-  const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
-
   const safeDetails = details
     ? details.length > 1200
-      ? `${details.slice(0, 1200)}… (see spreadsheet)`
+      ? `${details.slice(0, 1200)}… (see admin)`
       : details
     : "—";
 
@@ -501,115 +409,8 @@ async function notifyDiscordLegacy({
   if (folderId) {
     lines.push(`- **Storage folder:** \`${BUCKET}/${folderId}\``);
   }
-  if (sheetUrl) {
-    lines.push(`**Spreadsheet link:** ${sheetUrl}`);
-  }
-
   await postChannelMessage(channelId, {
     content: lines.join("\n").slice(0, 2000),
     allowed_mentions: { parse: [] },
   });
-}
-
-async function notifySheetLegacy({
-  record,
-  delivery,
-  photoUrls,
-  folderId,
-}: {
-  record: Record<string, unknown>;
-  delivery: string;
-  photoUrls: string[];
-  folderId: string;
-}) {
-  const url = Deno.env.get("SHEETS_WEBHOOK_URL");
-  if (!url) return;
-
-  const secret = Deno.env.get("SHEETS_SECRET") ?? "";
-  const baseRecord = {
-    id: record.id,
-    created_at: record.created_at,
-    delivery,
-    contact: record.contact,
-    restoration_details: record.restoration_details,
-    folder_id: folderId,
-  };
-
-  const ok = await postToSheet(url, { secret, record: baseRecord, photos: photoUrls });
-  if (!ok && photoUrls.length > 0) {
-    console.error("Sheets error with photo URLs, retrying without URLs");
-    await postToSheet(url, { secret, record: baseRecord, photos: [] });
-  }
-}
-
-async function notifySheetOrder({
-  displayId,
-  orderUuid,
-  createdAt,
-  customerName,
-  delivery,
-  cardCount,
-  contactsText,
-  storagePrefix,
-  photoUrls,
-}: {
-  displayId: number | string;
-  orderUuid: string;
-  createdAt: unknown;
-  customerName: string;
-  delivery: string;
-  cardCount: number;
-  contactsText: string;
-  storagePrefix: string;
-  photoUrls: string[];
-}) {
-  const url = Deno.env.get("ORDERS_SHEETS_WEBHOOK_URL");
-  if (!url) return;
-
-  const secret = Deno.env.get("ORDERS_SHEETS_SECRET") ?? "";
-  const baseRecord = {
-    id: displayId,
-    order_uuid: orderUuid,
-    created_at: createdAt,
-    customer_name: customerName,
-    delivery,
-    card_count: cardCount,
-    contacts: contactsText,
-    storage_prefix: storagePrefix,
-  };
-
-  const ok = await postToSheet(url, { secret, record: baseRecord, photos: photoUrls });
-  if (!ok && photoUrls.length > 0) {
-    console.error("Orders sheets error with photo URLs, retrying without URLs");
-    await postToSheet(url, { secret, record: baseRecord, photos: [] });
-  }
-}
-
-async function postToSheet(
-  url: string,
-  body: { secret: string; record: Record<string, unknown>; photos: string[] }
-): Promise<boolean> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  if (!res.ok || text.includes("<!DOCTYPE html>")) {
-    console.error("Sheets error", res.status, text.slice(0, 500));
-    return false;
-  }
-
-  try {
-    const data = JSON.parse(text);
-    if (!data.ok) {
-      console.error("Sheets error", data);
-      return false;
-    }
-    return true;
-  } catch {
-    console.error("Sheets error: non-JSON response", text.slice(0, 500));
-    return false;
-  }
 }

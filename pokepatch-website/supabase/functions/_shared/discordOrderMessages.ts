@@ -467,9 +467,8 @@ export function buildOrderHeaderMessage(params: {
   cardCount: number;
   photoCount: number;
   contactsText: string;
-  sheetUrl?: string;
 }): Json {
-  const { order, cardCount, photoCount, contactsText, sheetUrl } = params;
+  const { order, cardCount, photoCount, contactsText } = params;
   const delivery =
     deliveryLabels[String(order.delivery_method)] ??
     String(order.delivery_method ?? "unknown");
@@ -482,9 +481,7 @@ export function buildOrderHeaderMessage(params: {
     `**Contact:** ${contactsText ? escapeMarkdown(contactsText) : "—"}`,
     `**Cards:** ${cardCount} · **Photos:** ${photoCount}`,
   ];
-  const links = [`[Open in admin](${adminOrderUrl(order.id)})`];
-  if (sheetUrl) links.push(`[Spreadsheet](${sheetUrl})`);
-  lines.push(links.join(" · "));
+  lines.push(`[Open in admin](${adminOrderUrl(order.id)})`);
   lines.push(
     "-# Cards are in this thread — quote each one, then **Save & notify** on the last message."
   );
