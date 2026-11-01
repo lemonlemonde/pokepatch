@@ -7,7 +7,15 @@ onto order cards (`card_images` + private `card-photos` bucket).
 
 1. Post your photos in a Discord channel (up to 10 attachments on one message).
 2. **Right-click that message** → **Apps** → **wooper**.
-3. Fill in **order number**, **card number** (1 = first card in the order), and **side** (`before` or `after`).
+3. Fill in **order number**, **card number** (1 = first card in the order), and optionally **side** (`before` or `after`).
+
+**Side defaults** when left blank:
+
+- Card has no `before` photos → `before`.
+- Card has `before` but no `after` → `after`.
+- Both sides already have photos → nothing is uploaded; the reply asks you to type `before` or `after` explicitly to replace that side.
+
+Typing `before` or `after` always wins over the default.
 
 Up to **20 photos per side** per card. Files over 15MB are rejected.
 
@@ -110,4 +118,5 @@ Apply via CLI locally / CI `db push` on merge — do not hand-apply DDL on live.
 ## 6. Customer + Studio
 
 - Before/after photos are not rendered inline. Customers (My Orders) and admins (order editor) get a **Download before & after** button per card → `order-<n>-card-<i>-<name>.zip` containing `before/` and `after/` folders. Drive link only shows if `photos_drive_url` was already set.
+- Admin order card also has a **Preview** button that opens every photo on the card (customer / before / after) in a modal, with click-to-expand at original size. Admin-only so customer pages never pull full-resolution files.
 - Admin order card also offers **Open in Studio** when the card has at least one before and one after photo.
