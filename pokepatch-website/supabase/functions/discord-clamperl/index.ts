@@ -1,7 +1,7 @@
 /**
  * Discord Interactions endpoint for the **clamperl** Discord app.
  *
- * Slash command `/clamperl order:<n> card:<n>` → carousel 4:5 before/after PNGs.
+ * Slash command `/clamperl order:<n> [card:<n>]` → carousel 4:5 before/after PNGs.
  *
  * Quotes → `discord-interactions`. Wooper uploads → `discord-photos`.
  *

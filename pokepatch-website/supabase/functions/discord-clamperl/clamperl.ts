@@ -1,5 +1,6 @@
 /**
- * `/clamperl` — generate Instagram carousel (4:5) before/after PNGs for an order card.
+ * `/clamperl` — generate Instagram carousel (4:5) before/after PNGs for an
+ * order card (or every card in the order when `card` is omitted).
  *
  * Loads before/after photos (sorted by id), skips the first two overview pairs,
  * index-pairs the rest, stitches lossless PNGs matching Studio's carousel layout,
@@ -38,6 +39,15 @@ type CardImageRow = {
   id: number;
   storage_path: string;
   image_type: string;
+};
+
+type CardRow = {
+  id: string;
+  card_name: string | null;
+  set_name: string | null;
+  catalog_card_name?: string | null;
+  catalog_set_name?: string | null;
+  catalog_image_url?: string | null;
 };
 
 function optionValue(
@@ -103,10 +113,168 @@ function chunk<T>(items: T[], size: number): T[][] {
   return out;
 }
 
+async function loadOrderCards(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<CardRow[]> {
+  const full = await supabase
+    .from("cards")
+    .select(
+      "id, card_name, set_name, sort_order, catalog_card_name, catalog_set_name, catalog_image_url"
+    )
+    .eq("order_id", orderId)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (
+    full.error &&
+    /catalog_card_name|catalog_set_name|catalog_image_url|42703/i.test(
+      full.error.message ?? ""
+    )
+  ) {
+    const basic = await supabase
+      .from("cards")
+      .select("id, card_name, set_name, sort_order")
+      .eq("order_id", orderId)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true });
+    if (basic.error) throw basic.error;
+    return (basic.data ?? []) as CardRow[];
+  }
+  if (full.error) throw full.error;
+  return (full.data ?? []) as CardRow[];
+}
+
+type CardGenerateResult =
+  | {
+      ok: true;
+      cardIndex: number;
+      cardLabel: string;
+      files: DiscordUploadFile[];
+      skippedLarge: string[];
+      postCount: number;
+    }
+  | {
+      ok: false;
+      cardIndex: number;
+      cardLabel: string;
+      reason: string;
+    };
+
+async function generateForCard(params: {
+  supabase: SupabaseClient;
+  card: CardRow;
+  cardIndex: number;
+  sizeLimit: number;
+  /** Prefix filenames when generating multiple cards in one job. */
+  multiCard: boolean;
+}): Promise<CardGenerateResult> {
+  const { supabase, card, cardIndex, sizeLimit, multiCard } = params;
+  const cardId = String(card.id);
+  const cardLabel = (
+    card.catalog_card_name ||
+    card.card_name ||
+    `Card ${cardIndex}`
+  ).trim();
+  const setLabel = (card.catalog_set_name || card.set_name || "").trim();
+
+  const [beforeRows, afterRows] = await Promise.all([
+    loadSideImages(supabase, cardId, "before"),
+    loadSideImages(supabase, cardId, "after"),
+  ]);
+
+  if (beforeRows.length === 0 || afterRows.length === 0) {
+    return {
+      ok: false,
+      cardIndex,
+      cardLabel,
+      reason: `before **${beforeRows.length}**, after **${afterRows.length}** (need both sides)`,
+    };
+  }
+
+  const pairCount = Math.min(beforeRows.length, afterRows.length);
+  if (pairCount <= SKIP_OVERVIEW_PAIRS) {
+    return {
+      ok: false,
+      cardIndex,
+      cardLabel,
+      reason: `only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview`,
+    };
+  }
+
+  const pairBytes = await Promise.all(
+    Array.from({ length: pairCount - SKIP_OVERVIEW_PAIRS }, async (_, offset) => {
+      const i = SKIP_OVERVIEW_PAIRS + offset;
+      const [beforeBytes, afterBytes] = await Promise.all([
+        downloadStorageBytes(supabase, beforeRows[i].storage_path),
+        downloadStorageBytes(supabase, afterRows[i].storage_path),
+      ]);
+      return { beforeBytes, afterBytes };
+    })
+  );
+
+  const overlay: CarouselOverlay = {
+    card: cardLabel,
+    set: setLabel,
+    frontBytes: null,
+  };
+  if (card.catalog_image_url) {
+    try {
+      const res = await fetch(String(card.catalog_image_url));
+      if (res.ok) {
+        overlay.frontBytes = new Uint8Array(await res.arrayBuffer());
+      }
+    } catch {
+      overlay.frontBytes = null;
+    }
+  }
+
+  const outputs = await stitchCarouselPairs(pairBytes, overlay);
+  const files: DiscordUploadFile[] = [];
+  const skippedLarge: string[] = [];
+  for (const output of outputs) {
+    const filename = multiCard
+      ? `pokepatch-card${cardIndex}-${output.key}.png`
+      : `pokepatch-${output.key}.png`;
+    if (output.png.byteLength > sizeLimit) {
+      skippedLarge.push(
+        `${filename} (${Math.ceil(output.png.byteLength / (1024 * 1024))}MB > limit)`
+      );
+      continue;
+    }
+    files.push({
+      filename,
+      bytes: output.png,
+      contentType: "image/png",
+    });
+  }
+
+  if (files.length === 0) {
+    return {
+      ok: false,
+      cardIndex,
+      cardLabel,
+      reason:
+        skippedLarge.length > 0
+          ? `generated but all over Discord size limit`
+          : `no posts generated`,
+    };
+  }
+
+  return {
+    ok: true,
+    cardIndex,
+    cardLabel,
+    files,
+    skippedLarge,
+    postCount: files.length,
+  };
+}
+
 export async function runClamperlJob(params: {
   interaction: Interaction;
   orderDisplayId: number;
-  cardIndex: number;
+  /** 1-based card index, or null to generate every card in the order. */
+  cardIndex: number | null;
 }): Promise<void> {
   const { interaction, orderDisplayId, cardIndex } = params;
   const applicationId = String(interaction.application_id ?? "");
@@ -131,138 +299,64 @@ export async function runClamperlJob(params: {
       return;
     }
 
-    type CardRow = {
-      id: string;
-      card_name: string | null;
-      set_name: string | null;
-      catalog_card_name?: string | null;
-      catalog_set_name?: string | null;
-      catalog_image_url?: string | null;
-    };
+    const cards = await loadOrderCards(supabase, String(order.id));
+    if (cards.length === 0) {
+      await editOriginal(
+        applicationId,
+        token,
+        `Order #${orderDisplayId} has no cards.`
+      );
+      return;
+    }
 
-    let cards: CardRow[] | null = null;
-    {
-      const full = await supabase
-        .from("cards")
-        .select(
-          "id, card_name, set_name, sort_order, catalog_card_name, catalog_set_name, catalog_image_url"
-        )
-        .eq("order_id", order.id)
-        .order("sort_order", { ascending: true })
-        .order("id", { ascending: true });
-      if (
-        full.error &&
-        /catalog_card_name|catalog_set_name|catalog_image_url|42703/i.test(
-          full.error.message ?? ""
-        )
-      ) {
-        const basic = await supabase
-          .from("cards")
-          .select("id, card_name, set_name, sort_order")
-          .eq("order_id", order.id)
-          .order("sort_order", { ascending: true })
-          .order("id", { ascending: true });
-        if (basic.error) throw basic.error;
-        cards = (basic.data ?? []) as CardRow[];
-      } else if (full.error) {
-        throw full.error;
-      } else {
-        cards = (full.data ?? []) as CardRow[];
+    const targets: { card: CardRow; cardIndex: number }[] = [];
+    if (cardIndex == null) {
+      for (let i = 0; i < cards.length; i += 1) {
+        targets.push({ card: cards[i], cardIndex: i + 1 });
       }
-    }
-
-    const card = cards[cardIndex - 1];
-    if (!card) {
-      await editOriginal(
-        applicationId,
-        token,
-        `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
-      );
-      return;
-    }
-
-    const cardId = String(card.id);
-    const cardLabel = (
-      card.catalog_card_name ||
-      card.card_name ||
-      `Card ${cardIndex}`
-    ).trim();
-    const setLabel = (card.catalog_set_name || card.set_name || "").trim();
-
-    const [beforeRows, afterRows] = await Promise.all([
-      loadSideImages(supabase, cardId, "before"),
-      loadSideImages(supabase, cardId, "after"),
-    ]);
-
-    if (beforeRows.length === 0 || afterRows.length === 0) {
-      await editOriginal(
-        applicationId,
-        token,
-        [
-          `Nothing to generate — Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`,
-          `Before: **${beforeRows.length}**, after: **${afterRows.length}**. Need photos on both sides.`,
-        ].join("\n")
-      );
-      return;
-    }
-
-    const pairCount = Math.min(beforeRows.length, afterRows.length);
-    if (pairCount <= SKIP_OVERVIEW_PAIRS) {
-      await editOriginal(
-        applicationId,
-        token,
-        [
-          `Nothing to generate — Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`,
-          `Found **${pairCount}** index-paired photo(s); the first **${SKIP_OVERVIEW_PAIRS}** are overview and are skipped.`,
-        ].join("\n")
-      );
-      return;
-    }
-
-    const pairBytes = await Promise.all(
-      Array.from({ length: pairCount - SKIP_OVERVIEW_PAIRS }, async (_, offset) => {
-        const i = SKIP_OVERVIEW_PAIRS + offset;
-        const [beforeBytes, afterBytes] = await Promise.all([
-          downloadStorageBytes(supabase, beforeRows[i].storage_path),
-          downloadStorageBytes(supabase, afterRows[i].storage_path),
-        ]);
-        return { beforeBytes, afterBytes };
-      })
-    );
-
-    const overlay: CarouselOverlay = {
-      card: cardLabel,
-      set: setLabel,
-      frontBytes: null,
-    };
-    if (card.catalog_image_url) {
-      try {
-        const res = await fetch(String(card.catalog_image_url));
-        if (res.ok) {
-          overlay.frontBytes = new Uint8Array(await res.arrayBuffer());
-        }
-      } catch {
-        overlay.frontBytes = null;
+    } else {
+      const card = cards[cardIndex - 1];
+      if (!card) {
+        await editOriginal(
+          applicationId,
+          token,
+          `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
+        );
+        return;
       }
+      targets.push({ card, cardIndex });
     }
 
-    const outputs = await stitchCarouselPairs(pairBytes, overlay);
+    const multiCard = targets.length > 1;
+    const results: CardGenerateResult[] = [];
+    for (const target of targets) {
+      results.push(
+        await generateForCard({
+          supabase,
+          card: target.card,
+          cardIndex: target.cardIndex,
+          sizeLimit,
+          multiCard,
+        })
+      );
+    }
 
     const files: DiscordUploadFile[] = [];
-    const skipped: string[] = [];
-    for (const output of outputs) {
-      const filename = `pokepatch-${output.key}.png`;
-      if (output.png.byteLength > sizeLimit) {
-        skipped.push(
-          `${filename} (${Math.ceil(output.png.byteLength / (1024 * 1024))}MB > limit)`
+    const skippedLarge: string[] = [];
+    const skippedCards: string[] = [];
+    const okCards: string[] = [];
+    for (const result of results) {
+      if (!result.ok) {
+        skippedCards.push(
+          `card ${result.cardIndex} · ${result.cardLabel}: ${result.reason}`
         );
         continue;
       }
-      files.push({
-        filename,
-        bytes: output.png,
-        contentType: "image/png",
-      });
+      okCards.push(
+        `card ${result.cardIndex} · ${result.cardLabel} (**${result.postCount}**)`
+      );
+      files.push(...result.files);
+      skippedLarge.push(...result.skippedLarge);
     }
 
     if (files.length === 0) {
@@ -270,8 +364,13 @@ export async function runClamperlJob(params: {
         applicationId,
         token,
         [
-          `Generated **${outputs.length}** carousel PNG(s) for Order **#${orderDisplayId}** · ${cardLabel}, but none fit Discord's attachment limit.`,
-          skipped.length > 0 ? skipped.join("\n") : "",
+          `Nothing to generate — Order **#${orderDisplayId}**.`,
+          skippedCards.length > 0
+            ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+            : "",
+          skippedLarge.length > 0
+            ? `Too large:\n${skippedLarge.join("\n")}`
+            : "",
         ]
           .filter(Boolean)
           .join("\n")
@@ -279,11 +378,20 @@ export async function runClamperlJob(params: {
       return;
     }
 
+    const scope =
+      cardIndex == null
+        ? `all cards (${okCards.length}/${targets.length} generated)`
+        : okCards[0] ?? `card ${cardIndex}`;
     const batches = chunk(files, FILES_PER_MESSAGE);
     const header = [
-      `Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex})`,
+      `Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
       `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${files.length}** post(s)`,
-      skipped.length > 0 ? `Omitted (too large):\n${skipped.join("\n")}` : "",
+      skippedCards.length > 0
+        ? `Skipped cards:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+        : "",
+      skippedLarge.length > 0
+        ? `Omitted (too large):\n${skippedLarge.join("\n")}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -318,7 +426,11 @@ export function handleClamperlCommandDeferred(
 ): Response {
   const data = (interaction.data ?? {}) as Json;
   const orderDisplayId = parsePositiveInt(optionValue(data.options, "order"));
-  const cardIndex = parsePositiveInt(optionValue(data.options, "card"));
+  const cardRaw = optionValue(data.options, "card");
+  const cardIndex =
+    cardRaw == null || String(cardRaw).trim() === ""
+      ? null
+      : parsePositiveInt(cardRaw);
 
   if (orderDisplayId == null) {
     return json({
@@ -329,12 +441,12 @@ export function handleClamperlCommandDeferred(
       },
     });
   }
-  if (cardIndex == null) {
+  if (cardRaw != null && String(cardRaw).trim() !== "" && cardIndex == null) {
     return json({
       type: CallbackType.CHANNEL_MESSAGE,
       data: {
         content:
-          "Card must be a 1-based index within the order (1, 2, 3…).",
+          "Card must be a 1-based index within the order (1, 2, 3…), or leave blank for every card.",
         flags: EPHEMERAL,
       },
     });
