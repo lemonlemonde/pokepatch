@@ -49,6 +49,7 @@ import {
 } from "@/components/admin/orderEditor/editorUi";
 import { savedPhotoItems } from "@/components/admin/orderEditor/photoUtils";
 import RestorationDownloadButton from "@/components/RestorationDownloadButton";
+import CardPhotoPreviewModal from "@/components/admin/orderEditor/CardPhotoPreviewModal";
 import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
@@ -105,6 +106,7 @@ export default function CardDetailSection({
   onExpandedChange,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const { draft, updateDraft, saving, orderId } = useOrderEditor();
 
   const section = useMemo(() => pickCardSection(cardId, draft), [cardId, draft]);
@@ -148,6 +150,12 @@ export default function CardDetailSection({
   const customerPhotoItems = savedPhotoItems(photoGroups.customer);
   const restorationCount =
     photoGroups.before.length + photoGroups.after.length;
+  const previewGroups = [
+    { key: "customer", title: "Customer photos", items: customerPhotoItems },
+    { key: "before", title: "Before", items: savedPhotoItems(photoGroups.before) },
+    { key: "after", title: "After", items: savedPhotoItems(photoGroups.after) },
+  ];
+  const previewCount = customerPhotoItems.length + restorationCount;
   const canOpenInStudio =
     Boolean(orderId) &&
     !cardIdStr.startsWith("tmp-") &&
@@ -676,6 +684,15 @@ export default function CardDetailSection({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={previewCount === 0}
+                  onClick={() => setPreviewOpen(true)}
+                  title="Preview every photo on this card"
+                  className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10 disabled:cursor-not-allowed disabled:border-ink/10 disabled:text-ink/35"
+                >
+                  Preview
+                </button>
                 <RestorationDownloadButton
                   orderDisplayId={displayId}
                   cardIndex={cardIndex + 1}
@@ -746,6 +763,12 @@ export default function CardDetailSection({
             </p>
           </div>
       </ExpandPanel>
+      <CardPhotoPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={`${cardName}${cardSet ? ` · ${cardSet}` : ""}`}
+        groups={previewGroups}
+      />
     </section>
   );
 }
