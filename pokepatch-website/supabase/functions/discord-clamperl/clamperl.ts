@@ -292,7 +292,7 @@ export async function runClamperlJob(params: {
     await editOriginalWithFiles(
       applicationId,
       token,
-      { content: header, flags: EPHEMERAL },
+      { content: header },
       first
     );
 
@@ -300,10 +300,7 @@ export async function runClamperlJob(params: {
       await followupWithFiles(
         applicationId,
         token,
-        {
-          content: `Carousel batch ${i + 2}/${batches.length}`,
-          flags: EPHEMERAL,
-        },
+        { content: `Carousel batch ${i + 2}/${batches.length}` },
         rest[i]
       );
     }
@@ -351,8 +348,8 @@ export function handleClamperlCommandDeferred(
     })
   );
 
+  // Public channel reply so PNGs stay visible for download by anyone.
   return json({
     type: CallbackType.DEFERRED_CHANNEL_MESSAGE,
-    data: { flags: EPHEMERAL },
   });
 }
