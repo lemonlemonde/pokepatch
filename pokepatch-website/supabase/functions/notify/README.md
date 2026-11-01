@@ -7,10 +7,18 @@ Handles notifications for both:
 
 For new orders it:
 
-1. Loads related `contacts`, `cards`, and `card_images` with the service role key
-2. Creates **signed URLs** for customer photos
-3. Posts a **Discord** message (`New Order #42`) with link to `ORDERS_SHEET_VIEW_URL`
-4. Appends a summary row to the **Orders** Google Sheet tab via Apps Script
+1. ACKs the webhook immediately and finishes in the background (`EdgeRuntime.waitUntil`) — one message per card takes longer than the DB webhook waits
+2. Loads related `contacts`, `cards`, and `card_images` with the service role key
+3. Creates **signed URLs** for customer photos (1 year)
+4. Posts to **Discord** via the bot into `DISCORD_QUOTES_CHANNEL_ID`:
+   - a header (`New Order #42`: customer, delivery, contacts, card/photo counts, admin + sheet links)
+   - **one message per card**: name/set, damage tags, description, all customer photos, and an **Add quote** button handled by [`discord-interactions`](../discord-interactions/README.md)
+5. Appends a summary row to the **Orders** Google Sheet tab via Apps Script
+6. Sends the customer a "we received your quote request" email
+
+Message rendering lives in [`_shared/discordOrderMessages.ts`](../_shared/discordOrderMessages.ts) so the card message can be re-rendered after a quote is saved from Discord.
+
+If `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout, but webhooks cannot carry buttons, so the quote flow is unavailable.
 
 The service role key never touches the frontend — only this server-side function.
 
@@ -46,13 +54,17 @@ From `pokepatch-website/`:
 supabase login
 supabase link --project-ref tmdbqymvjphhfvgyimnb
 
-# Existing secrets (leave unchanged for legacy quote_requests)
+# Discord bot (one message per card + quote buttons)
+supabase secrets set DISCORD_BOT_TOKEN="bot-token"
+supabase secrets set DISCORD_QUOTES_CHANNEL_ID="channel-id"
+
+# Existing secrets (legacy quote_requests + fallback when no bot token)
 # DISCORD_WEBHOOK_URL
 # SHEETS_WEBHOOK_URL
 # SHEETS_SECRET
 # SHEET_VIEW_URL
 
-# New secrets for the orders pipeline
+# Secrets for the orders sheet
 supabase secrets set ORDERS_SHEETS_WEBHOOK_URL="https://script.google.com/macros/s/XXXX/exec"
 supabase secrets set ORDERS_SHEETS_SECRET="new-long-random-string-matching-orders-gs-SHARED_SECRET"
 supabase secrets set ORDERS_SHEET_VIEW_URL="https://docs.google.com/spreadsheets/d/XXXX/edit#gid=ORDERS_TAB"
@@ -67,7 +79,9 @@ supabase functions deploy notify --no-verify-jwt
 
 | Secret | Purpose |
 |--------|---------|
-| `DISCORD_WEBHOOK_URL` | Shared Discord webhook (legacy + orders) |
+| `DISCORD_BOT_TOKEN` | Bot token — posts order/card messages with buttons (shared with `discord-interactions`) |
+| `DISCORD_QUOTES_CHANNEL_ID` | Channel the bot posts quote requests into |
+| `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured (no buttons) |
 | `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` | Legacy Requests tab (do **not** change) |
 | `SHEET_VIEW_URL` | Legacy Discord spreadsheet link |
 | `ORDERS_SHEETS_WEBHOOK_URL` | New Orders Apps Script `/exec` URL |
@@ -122,7 +136,8 @@ Submit a quote on `/quote/`, then confirm:
 - Rows in `orders`, `contacts`, `cards`, `card_images`
 - Matching rows in `*_original` tables
 - Photos under `card-photos/order-<uuid>/card-<uuid>/...`
-- Discord: `New Order #N` with `ORDERS_SHEET_VIEW_URL`
+- Discord: `New Order #N` header, then one message per card with photos + **Add quote**
+- Press **Add quote** on a card → modal → submit → card message shows the quote; order flips to pending drop-off once all cards are quoted
 - New row on the **Orders** sheet tab
 
 Admin `update_order` (service role) should change working tables only and **not** post to Discord/Sheets.

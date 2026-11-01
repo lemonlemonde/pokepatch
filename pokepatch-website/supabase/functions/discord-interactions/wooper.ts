@@ -1,17 +1,27 @@
 /**
- * Discord Interactions endpoint for "wooper" — upload before/after
- * restoration photos onto an order card in Supabase Storage.
+ * "wooper" — upload before/after restoration photos onto an order card.
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
  * (order / card / side). Each upload replaces that side's existing photos.
  * Side is optional: blank → `before` when the card has no before photos,
  * otherwise `after`; if both sides are filled the upload is rejected.
- *
- * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS
- * Injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  CallbackType,
+  EPHEMERAL,
+  TextInputStyle,
+  collectModalFields,
+  editOriginal,
+  ephemeralReply,
+  fieldValue,
+  json,
+  labeled,
+  textInput,
+  type Interaction,
+  type Json,
+} from "../_shared/discord.ts";
 
 const BUCKET = "card-photos";
 const PENDING_PREFIX = "wooper-pending/";
@@ -19,16 +29,13 @@ const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 /** Match admin MAX_ADMIN_PHOTOS_PER_CARD — per side (before or after). */
 const MAX_PHOTOS_PER_SIDE = 20;
 const IMMUTABLE_CACHE_CONTROL = "604800";
-const EPHEMERAL = 1 << 6;
+
+export const WOOPER_MODAL_PREFIX = "wooper:";
 
 /** Uploading to a side replaces everything in that group, legacy types included. */
 const SIDE_IMAGE_TYPES: Record<string, string[]> = {
   before: ["before", "progress_front", "progress_back"],
   after: ["after", "final_front", "final_back"],
-};
-
-declare const EdgeRuntime: {
-  waitUntil: (promise: Promise<unknown>) => void;
 };
 
 type DiscordAttachment = {
@@ -39,51 +46,6 @@ type DiscordAttachment = {
   size?: number | null;
 };
 
-function json(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const normalized = hex.trim().toLowerCase();
-  if (!/^[0-9a-f]*$/.test(normalized) || normalized.length % 2 !== 0) {
-    throw new Error("invalid hex");
-  }
-  const out = new Uint8Array(normalized.length / 2);
-  for (let i = 0; i < out.length; i += 1) {
-    out[i] = parseInt(normalized.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
-
-async function verifyDiscordRequest(
-  publicKeyHex: string,
-  signatureHex: string,
-  timestamp: string,
-  body: string
-): Promise<boolean> {
-  try {
-    const key = await crypto.subtle.importKey(
-      "raw",
-      hexToBytes(publicKeyHex),
-      { name: "Ed25519", namedCurve: "Ed25519" },
-      false,
-      ["verify"]
-    );
-    const message = new TextEncoder().encode(timestamp + body);
-    return await crypto.subtle.verify(
-      "Ed25519",
-      key,
-      hexToBytes(signatureHex),
-      message
-    );
-  } catch {
-    return false;
-  }
-}
-
 function getServiceClient() {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -91,16 +53,6 @@ function getServiceClient() {
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-}
-
-function adminUserIds(): Set<string> {
-  const raw = Deno.env.get("DISCORD_ADMIN_USER_IDS") ?? "";
-  return new Set(
-    raw
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean)
-  );
 }
 
 function sanitizeFilename(name: string): string {
@@ -116,7 +68,7 @@ function storagePathsFor(storagePath: string): string[] {
 /** Delete every existing photo on this side of the card. Returns how many were removed. */
 async function clearSide(
   supabase: ReturnType<typeof getServiceClient>,
-  cardId: number,
+  cardId: string,
   side: string
 ): Promise<number> {
   const { data: existing, error: selectError } = await supabase
@@ -156,7 +108,7 @@ async function clearSide(
  */
 async function defaultSideForCard(
   supabase: ReturnType<typeof getServiceClient>,
-  cardId: number
+  cardId: string
 ): Promise<{ side: string | null; beforeCount: number; afterCount: number }> {
   const { data, error } = await supabase
     .from("card_images")
@@ -180,64 +132,8 @@ async function defaultSideForCard(
   return { side: null, beforeCount, afterCount };
 }
 
-function interactionUserId(interaction: Record<string, unknown>): string {
-  const member = interaction.member as Record<string, unknown> | undefined;
-  const user =
-    (member?.user as Record<string, unknown> | undefined) ??
-    (interaction.user as Record<string, unknown> | undefined);
-  return String(user?.id ?? "");
-}
-
-function isAllowedUser(userId: string): boolean {
-  const allowed = adminUserIds();
-  return Boolean(userId) && allowed.size > 0 && allowed.has(userId);
-}
-
-function deniedResponse(): Response {
-  return json({
-    type: 4,
-    data: {
-      content: "You are not allowed to use this command.",
-      flags: EPHEMERAL,
-    },
-  });
-}
-
-async function editOriginal(
-  applicationId: string,
-  token: string,
-  content: string
-): Promise<void> {
-  const url =
-    `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error("discord edit failed", res.status, text);
-  }
-}
-
-function modalFieldValue(
-  components: Array<Record<string, unknown>> | undefined,
-  customId: string
-): string {
-  for (const row of components ?? []) {
-    const inner = (row.components ?? []) as Array<Record<string, unknown>>;
-    for (const field of inner) {
-      if (String(field.custom_id ?? "") === customId) {
-        return String(field.value ?? "").trim();
-      }
-    }
-  }
-  return "";
-}
-
 function imageAttachmentsFromMessage(
-  message: Record<string, unknown> | undefined
+  message: Json | undefined
 ): DiscordAttachment[] {
   const raw = (message?.attachments ?? []) as DiscordAttachment[];
   return raw.filter((attachment) => {
@@ -247,58 +143,42 @@ function imageAttachmentsFromMessage(
   });
 }
 
-function wooperModal(pendingId: string, imageCount: number) {
+function wooperModal(pendingId: string, imageCount: number): Json {
   return {
-    type: 9,
+    type: CallbackType.MODAL,
     data: {
-      custom_id: `wooper:${pendingId}`,
+      custom_id: `${WOOPER_MODAL_PREFIX}${pendingId}`,
       title: `Upload ${imageCount} photo(s)`,
       components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 4,
-              custom_id: "order",
-              label: "Order number",
-              style: 1,
-              placeholder: "e.g. 42",
-              required: true,
-              min_length: 1,
-              max_length: 10,
-            },
-          ],
-        },
-        {
-          type: 1,
-          components: [
-            {
-              type: 4,
-              custom_id: "card",
-              label: "Card number in order",
-              style: 1,
-              placeholder: "1 = first card",
-              required: true,
-              min_length: 1,
-              max_length: 4,
-            },
-          ],
-        },
-        {
-          type: 1,
-          components: [
-            {
-              type: 4,
-              custom_id: "side",
-              label: "Side (optional: before or after)",
-              style: 1,
-              placeholder: "Blank = before, or after once before is filled",
-              required: false,
-              min_length: 0,
-              max_length: 6,
-            },
-          ],
-        },
+        labeled(
+          "Order number",
+          textInput({
+            customId: "order",
+            required: true,
+            placeholder: "e.g. 42",
+            maxLength: 10,
+          })
+        ),
+        labeled(
+          "Card number in order",
+          textInput({
+            customId: "card",
+            required: true,
+            placeholder: "1 = first card",
+            maxLength: 4,
+          }),
+          "1 = first card in the order"
+        ),
+        labeled(
+          "Side (optional)",
+          textInput({
+            customId: "side",
+            required: false,
+            placeholder: "before or after",
+            maxLength: 6,
+          }),
+          "Blank = before, or after once before is filled"
+        ),
       ],
     },
   };
@@ -438,11 +318,12 @@ async function uploadAttachments(params: {
     }
 
     const cardLabel = (card.card_name || `Card ${cardIndex}`).trim();
+    const cardId = String(card.id);
 
     let side = requestedSide;
     let sideWasDefaulted = false;
     if (!side) {
-      const picked = await defaultSideForCard(supabase, card.id);
+      const picked = await defaultSideForCard(supabase, cardId);
       if (!picked.side) {
         await editOriginal(
           applicationId,
@@ -499,7 +380,7 @@ async function uploadAttachments(params: {
         }
 
         if (replaced === null) {
-          replaced = await clearSide(supabase, card.id, side);
+          replaced = await clearSide(supabase, cardId, side);
         }
 
         const path =
@@ -559,13 +440,45 @@ async function uploadAttachments(params: {
   }
 }
 
-async function handleModalSubmit(interaction: Record<string, unknown>) {
+/** Message command (right-click message → Apps → wooper) or legacy slash. */
+export async function handleWooperCommand(interaction: Interaction): Promise<Response> {
+  const data = (interaction.data ?? {}) as Json;
+  const commandType = Number(data.type ?? 1);
+
+  if (commandType !== 3) {
+    return ephemeralReply(
+      "Post your photos in chat, then **right-click the message → Apps → wooper** and enter order / card / side."
+    );
+  }
+
+  const targetId = String(data.target_id ?? "");
+  const resolved = (data.resolved ?? {}) as Json;
+  const messages = (resolved.messages ?? {}) as Record<string, Json>;
+  const message = messages[targetId];
+  const files = imageAttachmentsFromMessage(message);
+
+  if (files.length === 0) {
+    return ephemeralReply(
+      "That message has no images. Attach photos in chat first, then right-click → Apps → wooper."
+    );
+  }
+
+  try {
+    const pendingId = await savePendingAttachments(files);
+    return json(wooperModal(pendingId, files.length));
+  } catch (err) {
+    console.error("wooper pending save failed", err);
+    return ephemeralReply("Couldn't start upload. Try again.");
+  }
+}
+
+async function processWooperModal(interaction: Interaction): Promise<void> {
   const applicationId = String(interaction.application_id ?? "");
   const token = String(interaction.token ?? "");
-  const data = (interaction.data ?? {}) as Record<string, unknown>;
+  const data = (interaction.data ?? {}) as Json;
   const customId = String(data.custom_id ?? "");
-  const pendingId = customId.startsWith("wooper:")
-    ? customId.slice("wooper:".length)
+  const pendingId = customId.startsWith(WOOPER_MODAL_PREFIX)
+    ? customId.slice(WOOPER_MODAL_PREFIX.length)
     : "";
 
   try {
@@ -574,10 +487,10 @@ async function handleModalSubmit(interaction: Record<string, unknown>) {
       return;
     }
 
-    const components = data.components as Array<Record<string, unknown>>;
-    const orderDisplayId = Number(modalFieldValue(components, "order"));
-    const cardIndex = Number(modalFieldValue(components, "card"));
-    const side = modalFieldValue(components, "side").toLowerCase();
+    const fields = collectModalFields(data.components);
+    const orderDisplayId = Number(fieldValue(fields, "order"));
+    const cardIndex = Number(fieldValue(fields, "card"));
+    const side = fieldValue(fields, "side").toLowerCase();
 
     const files = await loadPendingAttachments(pendingId);
     await clearPending(pendingId);
@@ -597,139 +510,18 @@ async function handleModalSubmit(interaction: Record<string, unknown>) {
   }
 }
 
-Deno.serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
-
-  const publicKey = Deno.env.get("DISCORD_PUBLIC_KEY") ?? "";
-  if (!publicKey) {
-    console.error("DISCORD_PUBLIC_KEY not set");
-    return new Response("Server misconfigured", { status: 500 });
-  }
-
-  const signature = req.headers.get("X-Signature-Ed25519") ?? "";
-  const timestamp = req.headers.get("X-Signature-Timestamp") ?? "";
-  const body = await req.text();
-
-  const valid = await verifyDiscordRequest(
-    publicKey,
-    signature,
-    timestamp,
-    body
+/** Modal submit: ACK now, upload in the background. */
+export function handleWooperModal(
+  interaction: Interaction,
+  waitUntil: (promise: Promise<unknown>) => void
+): Response {
+  waitUntil(
+    processWooperModal(interaction).catch((err) => {
+      console.error("wooper modal background failed", err);
+    })
   );
-  if (!valid) {
-    return new Response("Invalid request signature", { status: 401 });
-  }
-
-  let interaction: Record<string, unknown>;
-  try {
-    interaction = JSON.parse(body) as Record<string, unknown>;
-  } catch {
-    return new Response("Bad JSON", { status: 400 });
-  }
-
-  // PING
-  if (interaction.type === 1) {
-    return json({ type: 1 });
-  }
-
-  // APPLICATION_COMMAND
-  if (interaction.type === 2) {
-    if (!isAllowedUser(interactionUserId(interaction))) {
-      return deniedResponse();
-    }
-
-    const data = (interaction.data ?? {}) as Record<string, unknown>;
-    const commandName = String(data.name ?? "");
-    const commandType = Number(data.type ?? 1);
-
-    if (commandName !== "wooper") {
-      return json({
-        type: 4,
-        data: {
-          content: `Unknown command \`${commandName}\`.`,
-          flags: EPHEMERAL,
-        },
-      });
-    }
-
-    // Message command (right-click message → Apps → wooper)
-    if (commandType === 3) {
-      const targetId = String(data.target_id ?? "");
-      const resolved = (data.resolved ?? {}) as Record<string, unknown>;
-      const messages = (resolved.messages ?? {}) as Record<
-        string,
-        Record<string, unknown>
-      >;
-      const message = messages[targetId];
-      const files = imageAttachmentsFromMessage(message);
-
-      if (files.length === 0) {
-        return json({
-          type: 4,
-          data: {
-            content:
-              "That message has no images. Attach photos in chat first, then right-click → Apps → wooper.",
-            flags: EPHEMERAL,
-          },
-        });
-      }
-
-      try {
-        const pendingId = await savePendingAttachments(files);
-        return json(wooperModal(pendingId, files.length));
-      } catch (err) {
-        console.error("wooper pending save failed", err);
-        return json({
-          type: 4,
-          data: {
-            content: "Couldn't start upload. Try again.",
-            flags: EPHEMERAL,
-          },
-        });
-      }
-    }
-
-    // Legacy chat slash command — point people at the message flow.
-    return json({
-      type: 4,
-      data: {
-        content:
-          "Post your photos in chat, then **right-click the message → Apps → wooper** and enter order / card / side.",
-        flags: EPHEMERAL,
-      },
-    });
-  }
-
-  // MODAL_SUBMIT
-  if (interaction.type === 5) {
-    if (!isAllowedUser(interactionUserId(interaction))) {
-      return deniedResponse();
-    }
-
-    const data = (interaction.data ?? {}) as Record<string, unknown>;
-    if (!String(data.custom_id ?? "").startsWith("wooper:")) {
-      return json({
-        type: 4,
-        data: { content: "Unknown form.", flags: EPHEMERAL },
-      });
-    }
-
-    EdgeRuntime.waitUntil(
-      handleModalSubmit(interaction).catch((err) => {
-        console.error("wooper modal background failed", err);
-      })
-    );
-
-    return json({
-      type: 5,
-      data: { flags: EPHEMERAL },
-    });
-  }
-
   return json({
-    type: 4,
-    data: { content: "Unsupported interaction.", flags: EPHEMERAL },
+    type: CallbackType.DEFERRED_CHANNEL_MESSAGE,
+    data: { flags: EPHEMERAL },
   });
-});
+}

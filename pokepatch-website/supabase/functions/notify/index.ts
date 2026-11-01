@@ -3,6 +3,20 @@ import {
   buildStoredMessageBody,
   sendResendEmail,
 } from "../_shared/resend.ts";
+import { postChannelMessage } from "../_shared/discord.ts";
+import {
+  BUCKET,
+  SIGNED_URL_EXPIRES_IN,
+  buildCardMessage,
+  buildOrderHeaderMessage,
+  customerPhotoPaths,
+  deliveryLabels,
+  loadOrder,
+  loadOrderCards,
+  signPhotoUrls,
+  type CardRow,
+  type OrderRow,
+} from "../_shared/discordOrderMessages.ts";
 
 const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
@@ -11,13 +25,8 @@ const CONTACT_DISCORD = "pokepatch.cards";
 const MY_ORDERS_TRACK_URL =
   "https://pokepatch.cards/login?redirect=/my-orders";
 
-const BUCKET = "card-photos";
-// Signed URLs expire. 1 year keeps links working in Discord history / the Sheet.
-const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
-
-const deliveryLabels: Record<string, string> = {
-  local_dropoff: "Local Drop-Off",
-  shipping: "Shipping",
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<unknown>) => void;
 };
 
 const contactTypeLabels: Record<string, string> = {
@@ -46,13 +55,24 @@ function isLegacyRecord(record: Record<string, unknown>): boolean {
   return record.restoration_details != null;
 }
 
+/** Channel the bot posts quote requests into. Empty → legacy webhook fallback. */
+function quotesChannelId(): string {
+  return (Deno.env.get("DISCORD_QUOTES_CHANNEL_ID") ?? "").trim();
+}
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const record = (body.record ?? body) as Record<string, unknown>;
 
     if (isOrdersRecord(record)) {
-      await handleOrdersInsert(record);
+      // Discord posts one message per card plus Sheets + email — longer than
+      // the DB webhook waits. ACK now and finish in the background.
+      EdgeRuntime.waitUntil(
+        handleOrdersInsert(record).catch((err) => {
+          console.error("notify: orders insert failed", err);
+        })
+      );
     } else if (isLegacyRecord(record)) {
       await handleLegacyInsert(record);
     } else {
@@ -67,7 +87,7 @@ Deno.serve(async (req) => {
 });
 
 async function handleLegacyInsert(record: Record<string, unknown>) {
-  const id = record.id ?? "?";
+  const id = (record.id as number | string | null) ?? "?";
   const delivery =
     deliveryLabels[String(record.delivery_method)] ??
     String(record.delivery_method ?? "unknown");
@@ -77,7 +97,7 @@ async function handleLegacyInsert(record: Record<string, unknown>) {
     ? (record.image_paths as string[])
     : [];
 
-  const photoUrls = await signPaths(paths);
+  const photoUrls = await signThumbPaths(paths);
   const folderId = extractFolderId(paths);
 
   await notifyDiscordLegacy({
@@ -93,7 +113,7 @@ async function handleLegacyInsert(record: Record<string, unknown>) {
 
 async function handleOrdersInsert(record: Record<string, unknown>) {
   const orderUuid = String(record.id ?? "");
-  const displayId = record.display_id ?? "?";
+  const displayId = (record.display_id as number | string | null) ?? "?";
   const customerName = String(record.customer_name ?? "").trim();
   const delivery =
     deliveryLabels[String(record.delivery_method)] ??
@@ -113,28 +133,15 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     .eq("order_id", orderUuid);
   if (contactsError) throw contactsError;
 
-  const { data: cards, error: cardsError } = await supabase
-    .from("cards")
-    .select("id")
-    .eq("order_id", orderUuid);
-  if (cardsError) throw cardsError;
-
-  const cardIds = (cards ?? []).map((c) => c.id as string);
-  if (cardIds.length < 1) {
+  const cards = await loadOrderCards(supabase, orderUuid);
+  if (cards.length < 1) {
     console.log("notify: skipping order with no cards", orderUuid);
     return;
   }
 
-  const { data: images, error: imagesError } = await supabase
-    .from("card_images")
-    .select("storage_path")
-    .in("card_id", cardIds);
-  if (imagesError) throw imagesError;
-  const paths = (images ?? [])
-    .map((img) => img.storage_path as string)
-    .filter(Boolean);
-
-  const photoUrls = await signPaths(paths, supabase);
+  const cardIds = cards.map((card) => String(card.id));
+  const photoPathsByCard = await customerPhotoPaths(supabase, cardIds);
+  const paths = cardIds.flatMap((id) => photoPathsByCard.get(id) ?? []);
   const contactsList = contacts ?? [];
 
   // Admin "create order" seeds a blank card with no photos/contacts — don't
@@ -146,23 +153,32 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
 
   const storagePrefix = orderUuid ? `order-${orderUuid}` : extractFolderId(paths);
 
+  // Discord: header, then one message per card (each with its quote button).
+  const order: OrderRow = (await loadOrder(supabase, orderUuid)) ?? {
+    id: orderUuid,
+    display_id: displayId,
+    customer_name: customerName,
+    delivery_method: String(record.delivery_method ?? ""),
+    status: String(record.status ?? "pending"),
+    pending_kind: (record.pending_kind as string | null) ?? null,
+    quote_bulk_counts: null,
+  };
   await notifyDiscordOrder({
-    displayId,
-    customerName,
-    delivery,
-    cardCount: cardIds.length,
+    supabase,
+    order,
+    cards,
+    photoPathsByCard,
     contactsText: formatContacts(contactsList, "; "),
-    photoCount: paths.length,
-    storagePrefix,
   });
 
+  const photoUrls = await signThumbPaths(paths, supabase);
   await notifySheetOrder({
     displayId,
     orderUuid,
     createdAt: record.created_at,
     customerName,
     delivery,
-    cardCount: cardIds.length,
+    cardCount: cards.length,
     contactsText: formatContacts(contactsList, "\n"),
     storagePrefix,
     photoUrls,
@@ -176,6 +192,61 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     userId: (record.user_id as string | null) ?? null,
     customerName,
   });
+}
+
+async function notifyDiscordOrder(params: {
+  supabase: SupabaseClient;
+  order: OrderRow;
+  cards: CardRow[];
+  photoPathsByCard: Map<string, string[]>;
+  contactsText: string;
+}) {
+  const { supabase, order, cards, photoPathsByCard, contactsText } = params;
+  const channelId = quotesChannelId();
+  if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
+
+  const photoCount = [...photoPathsByCard.values()].reduce(
+    (sum, list) => sum + list.length,
+    0
+  );
+
+  const header = await postChannelMessage(
+    channelId,
+    buildOrderHeaderMessage({
+      order,
+      cardCount: cards.length,
+      photoCount,
+      contactsText,
+      sheetUrl: Deno.env.get("ORDERS_SHEET_VIEW_URL") ?? undefined,
+    })
+  );
+  if (!header) {
+    console.error("notify: discord header post failed; skipping card messages");
+    return;
+  }
+
+  for (const [index, card] of cards.entries()) {
+    const imageUrls = await signPhotoUrls(
+      supabase,
+      photoPathsByCard.get(String(card.id)) ?? []
+    );
+    const posted = await postChannelMessage(
+      channelId,
+      buildCardMessage({
+        order,
+        card,
+        cardIndex: index,
+        cardCount: cards.length,
+        imageUrls,
+        cardQuoteItems: [],
+        hvAmount: 0,
+        interactive: true,
+      })
+    );
+    if (!posted) {
+      console.error("notify: discord card post failed", order.id, card.id);
+    }
+  }
 }
 
 function buildQuoteConfirmationBody(customerName: string): string {
@@ -293,7 +364,8 @@ function formatContacts(
     .join(separator);
 }
 
-async function signPaths(
+/** Thumbnail signed URLs for the Sheets rows (falls back to full size). */
+async function signThumbPaths(
   paths: string[],
   client?: SupabaseClient
 ): Promise<string[]> {
@@ -373,8 +445,8 @@ async function notifyDiscordLegacy({
   photoCount: number;
   folderId: string;
 }) {
-  const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
+  const channelId = quotesChannelId();
+  if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
 
   const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
 
@@ -398,59 +470,10 @@ async function notifyDiscordLegacy({
     lines.push(`**Spreadsheet link:** ${sheetUrl}`);
   }
 
-  await postDiscord(webhook, lines.join("\n").slice(0, 2000));
-}
-
-async function notifyDiscordOrder({
-  displayId,
-  customerName,
-  delivery,
-  cardCount,
-  contactsText,
-  photoCount,
-  storagePrefix,
-}: {
-  displayId: number | string;
-  customerName: string;
-  delivery: string;
-  cardCount: number;
-  contactsText: string;
-  photoCount: number;
-  storagePrefix: string;
-}) {
-  const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
-
-  const sheetUrl = Deno.env.get("ORDERS_SHEET_VIEW_URL");
-
-  const lines = [
-    `<<--<<-- **New Order #${displayId}:** -->>-->>`,
-    `- **Customer:** ${customerName || "—"}`,
-    `- **Delivery:** ${delivery}`,
-    `- **Cards:** ${cardCount}`,
-    `- **Contact:** ${contactsText || "—"}`,
-    `- **Photos:** ${photoCount} image${photoCount === 1 ? "" : "s"}`,
-  ];
-  if (storagePrefix) {
-    lines.push(`- **Storage:** \`${BUCKET}/${storagePrefix}/\``);
-  }
-  if (sheetUrl) {
-    lines.push(`**Spreadsheet:** ${sheetUrl}`);
-  }
-
-  await postDiscord(webhook, lines.join("\n").slice(0, 2000));
-}
-
-async function postDiscord(webhook: string, content: string) {
-  const res = await fetch(webhook, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+  await postChannelMessage(channelId, {
+    content: lines.join("\n").slice(0, 2000),
+    allowed_mentions: { parse: [] },
   });
-
-  if (!res.ok) {
-    console.error("Discord error", res.status, await res.text());
-  }
 }
 
 async function notifySheetLegacy({

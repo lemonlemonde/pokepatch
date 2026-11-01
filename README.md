@@ -94,7 +94,7 @@ Uses `.env.local.prod` via `use-env.sh prod`. Prefer fixing/re-running the Actio
 - React / Next.js (static export)
 - Tailwind CSS
 - Supabase (Postgres, Storage, Edge Functions, Database Webhooks)
-- Discord webhooks + Google Sheets (via Apps Script)
+- Discord bot (per-card quote messages + interactions) + Google Sheets (via Apps Script)
 - PostHog (page analytics + quote form funnel)
 - gh-pages
 
@@ -266,8 +266,9 @@ Browser (QuoteForm)
       → original backup: orders_original, contacts_original, ...
   → DB webhook: orders INSERT
   → Edge Function: notify
-      → Discord (summary + ORDERS_SHEET_VIEW_URL)
+      → Discord (order header + one message per card with Add quote button)
       → Google Sheets Orders tab (via Apps Script)
+      → customer confirmation email
   → redirect to /thank-you
 ```
 
@@ -451,10 +452,12 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 
 | Trigger | Discord | Sheets |
 |---------|---------|--------|
-| `orders` INSERT | `New Order #N` + link to Orders tab | **Orders** tab via `ORDERS_SHEETS_*` |
+| `orders` INSERT | `New Order #N` header, then **one message per card** (tags, description, photos, **Add quote** button) | **Orders** tab via `ORDERS_SHEETS_*` |
 | `quote_requests` INSERT | `New Quote Request #N` + link to Requests tab | **Requests** tab via `SHEETS_*` |
 
 Contacts formatting: semicolons in Discord, newlines in Sheets.
+
+**Quoting from Discord:** the **Add quote** button on each card message opens a modal (service checklist, market value for the high-value fee, price overrides, custom services, note to customer). Submitting writes through `update_order` and re-renders the card message. Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md), which also hosts the `wooper` before/after upload command.
 
 **Important:** only **INSERT** webhooks are configured. Admin `update_order` must stay silent (no `orders` UPDATE webhook).
 
@@ -471,7 +474,9 @@ Google allows only one bound script per spreadsheet, so Orders uses a standalone
 
 | Secret | Purpose |
 |--------|---------|
-| `DISCORD_WEBHOOK_URL` | Shared Discord webhook |
+| `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` | Bot posts quote requests (one message per card, with buttons) |
+| `DISCORD_PUBLIC_KEY` / `DISCORD_ADMIN_USER_IDS` | `discord-interactions`: request signature + who may quote / upload |
+| `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured |
 | `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` / `SHEET_VIEW_URL` | Legacy Requests path |
 | `ORDERS_SHEETS_WEBHOOK_URL` / `ORDERS_SHEETS_SECRET` / `ORDERS_SHEET_VIEW_URL` | Orders path |
 | `ADMIN_PASSWORD` | Admin login (server-side only) |
@@ -568,7 +573,9 @@ pokepatch-website/
     schema.sql                   # Schema reference (may lag live)
     migrations/                  # CLI deltas; versions must match remote (see Schema changes)
     functions/
-      notify/                    # Discord + Sheets on INSERT
+      _shared/                   # discord.ts, discordOrderMessages.ts, servicePricing.ts (mirror), …
+      notify/                    # Discord (header + per-card messages) + Sheets + email on INSERT
+      discord-interactions/      # Discord endpoint: quote buttons/modal + wooper photo uploads
       admin-auth/
       admin-api/
   scripts/

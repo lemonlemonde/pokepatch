@@ -3,7 +3,9 @@
  *
  * Per-card list rates, bulk discounts, and high-value surcharges all live here.
  * Homepage marketing cards, admin quote defaults, HV auto-fill, and receipt math
- * read from these constants — update prices here only.
+ * read from these constants — update prices here only, then mirror keys /
+ * titles / list prices / HV tiers in supabase/functions/_shared/servicePricing.ts
+ * (Discord quote flow).
  */
 
 export const SERVICE_KEYS = {

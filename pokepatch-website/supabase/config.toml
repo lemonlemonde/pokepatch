@@ -406,7 +406,7 @@ verify_jwt = false
 [functions.notify]
 verify_jwt = false
 
-[functions.discord-photos]
+[functions.discord-interactions]
 verify_jwt = false
 
 [functions.account-signup-notice]
