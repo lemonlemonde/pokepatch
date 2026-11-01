@@ -414,6 +414,9 @@ async function uploadAttachments(params: {
         ? `Uploaded **${uploaded}** ${side} photo(s) → Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`
         : `No photos uploaded for Order **#${orderDisplayId}** · ${cardLabel}.`,
     ];
+    if (uploaded > 0 && side === "after") {
+      lines.push("Card marked **completed** (after photos uploaded).");
+    }
     if (sideWasDefaulted) {
       lines.push(`Side left blank → defaulted to **${side}**.`);
     }
