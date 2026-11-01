@@ -1,8 +1,10 @@
 /**
- * Discord messages for quote requests: one header per order, then one
- * message per card (tags, description, photos, quote button). `notify` posts
- * them on INSERT; `discord-interactions` re-renders a card message after a
- * quote is saved from Discord.
+ * Discord messages for quote requests. Per order: a header in the quotes
+ * channel, a thread off that header, one message per card inside the thread,
+ * and a wrap-up (contacts, quote overview, outreach text, Save & notify) as
+ * the last message. `notify` posts them on INSERT; `discord-interactions`
+ * re-renders card / wrap-up messages after quotes are saved or the customer
+ * is notified.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -13,17 +15,28 @@ import {
   actionRow,
   button,
   container,
+  editChannelMessage,
+  listChannelMessages,
   mediaGallery,
+  messageHasCustomId,
   separator,
   textDisplay,
   type Json,
 } from "./discord.ts";
 import {
+  CONTACT_TYPE_LABELS,
+  DEFAULT_OUTREACH_MESSAGE,
+  instagramProfileUrl,
+  normalizeDiscordUserId,
+} from "./outreach.ts";
+import {
   SERVICE_KEYS,
   formatMoney,
+  orderQuoteTotal,
   roundMoney,
   storedCardHvAmount,
 } from "./servicePricing.ts";
+import type { ChangelogPayload } from "./resend.ts";
 
 export const BUCKET = "card-photos";
 /** Signed URLs expire; 1 year keeps Discord history browsable. */
@@ -32,6 +45,11 @@ const SITE_URL = "https://pokepatch.cards";
 const MAX_GALLERY_ITEMS = 10;
 const MAX_DESCRIPTION_CHARS = 900;
 
+/** Subject of the automatic "we received your request" email (excluded from "last notified"). */
+export const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
+/** Default subject for the Save & notify email — matches the admin summary wording. */
+export const DEFAULT_NOTIFY_SUBJECT = "Your order quote has been updated";
+
 /** Customer-uploaded photo pool (admin adds share it). Not before/after. */
 const CUSTOMER_IMAGE_TYPES = ["customer", "admin"];
 
@@ -39,13 +57,18 @@ const ACCENT_UNQUOTED = 0xf2a65a; // peach
 const ACCENT_QUOTED = 0x7dd3a0; // mint
 const ACCENT_CANCELED = 0x8b8b8b;
 const ACCENT_ORDER = 0xb8a9f5; // lavender
+const ACCENT_WRAPUP = 0x9ecbff; // sky
 
 export const QUOTE_BUTTON_PREFIX = "quote:";
+export const NOTIFY_BUTTON_PREFIX = "notify:";
+export const WRAPUP_REFRESH_PREFIX = "wrapup:";
 
 export type OrderRow = {
   id: string;
   display_id: number | string;
   customer_name: string | null;
+  customer_email: string | null;
+  user_id: string | null;
   delivery_method: string | null;
   status: string | null;
   pending_kind: string | null;
@@ -77,6 +100,18 @@ export type QuoteItemRow = {
   high_value_surcharge?: number | string | null;
 };
 
+export type ContactRow = {
+  id: number | string;
+  contact_type: string;
+  value: string | null;
+};
+
+export type LastNotification = {
+  subject: string;
+  sent_at: string;
+  recipient_email: string;
+};
+
 export const deliveryLabels: Record<string, string> = {
   local_dropoff: "Local Drop-Off",
   shipping: "Shipping",
@@ -103,6 +138,13 @@ export function quoteItemsForCard(items: QuoteItemRow[], card: CardRow): QuoteIt
   );
 }
 
+/** First card (by sort order) matching an item's name + set, else null. */
+function cardIdForQuoteItem(item: QuoteItemRow, cards: CardRow[]): string | null {
+  const key = normalizeCardKey(item.card_name, item.set_name);
+  const match = cards.find((card) => normalizeCardKey(card.card_name, card.set_name) === key);
+  return match ? String(match.id) : null;
+}
+
 export function cardIsCanceled(card: CardRow): boolean {
   const status = String(card.status ?? "").trim().toLowerCase();
   return status === "canceled" || status === "cancelled";
@@ -125,6 +167,22 @@ function escapeMarkdown(text: string): string {
     .replace(/([\\*_~`|])/g, "\\$1")
     // Headings / subtext / quotes / lists only trigger at line start.
     .replace(/(^|\n)([#>-])/g, "$1\\$2");
+}
+
+/** "Charizard (Base Set)" / "Charizard" / "Card 2" — same as the admin changelog. */
+export function cardLabel(card: CardRow, index: number): string {
+  const name = String(card.card_name ?? "").trim();
+  const set = String(card.set_name ?? "").trim();
+  if (name && set) return `${name} (${set})`;
+  if (name) return name;
+  return `Card ${index + 1}`;
+}
+
+function serviceLabel(item: QuoteItemRow): string {
+  return (
+    String(item.service_label ?? "").trim() ||
+    (item.service_key === SERVICE_KEYS.CUSTOM ? "Custom" : item.service_key)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +269,7 @@ export async function loadOrder(
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, display_id, customer_name, delivery_method, status, pending_kind, quote_bulk_counts"
+      "id, display_id, customer_name, customer_email, user_id, delivery_method, status, pending_kind, quote_bulk_counts"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -219,12 +277,72 @@ export async function loadOrder(
   return (data as OrderRow | null) ?? null;
 }
 
-export type CardContext = {
+export async function loadContacts(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<ContactRow[]> {
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("id, contact_type, value")
+    .eq("order_id", orderId)
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as ContactRow[];
+}
+
+/** Most recent admin email for the order (ignores the automatic confirmation). */
+export async function loadLastNotification(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<LastNotification | null> {
+  const { data, error } = await supabase
+    .from("customer_messages")
+    .select("subject, sent_at, recipient_email, sender")
+    .eq("order_id", orderId)
+    .eq("email_status", "sent")
+    .neq("subject", QUOTE_CONFIRMATION_SUBJECT)
+    .order("sent_at", { ascending: false })
+    .limit(5);
+  if (error) {
+    // Pre-migration deploys may lack `sender`; treat as none rather than fail.
+    console.error("loadLastNotification", error);
+    return null;
+  }
+  const row = (data ?? []).find((entry) => entry.sender !== "customer");
+  if (!row) return null;
+  return {
+    subject: String(row.subject ?? ""),
+    sent_at: String(row.sent_at ?? ""),
+    recipient_email: String(row.recipient_email ?? ""),
+  };
+}
+
+export type OrderContext = {
   order: OrderRow;
-  card: CardRow;
   cards: CardRow[];
-  cardIndex: number;
   quoteItems: QuoteItemRow[];
+  contacts: ContactRow[];
+  lastNotification: LastNotification | null;
+};
+
+export async function loadOrderContext(
+  supabase: SupabaseClient,
+  orderId: string
+): Promise<OrderContext | null> {
+  const [order, cards, quoteItems, contacts, lastNotification] = await Promise.all([
+    loadOrder(supabase, orderId),
+    loadOrderCards(supabase, orderId),
+    loadOrderQuoteItems(supabase, orderId),
+    loadContacts(supabase, orderId),
+    loadLastNotification(supabase, orderId),
+  ]);
+  if (!order) return null;
+  return { order, cards, quoteItems, contacts, lastNotification };
+}
+
+export type CardContext = OrderContext & {
+  card: CardRow;
+  cardIndex: number;
   cardQuoteItems: QuoteItemRow[];
   hvAmount: number;
 };
@@ -241,29 +359,108 @@ export async function loadCardContext(
   if (cardError) throw cardError;
   if (!cardRow) return null;
 
-  const orderId = String(cardRow.order_id);
-  const [order, cards, quoteItems] = await Promise.all([
-    loadOrder(supabase, orderId),
-    loadOrderCards(supabase, orderId),
-    loadOrderQuoteItems(supabase, orderId),
-  ]);
-  if (!order) return null;
-  const cardIndex = cards.findIndex((card) => String(card.id) === String(cardId));
+  const context = await loadOrderContext(supabase, String(cardRow.order_id));
+  if (!context) return null;
+  const cardIndex = context.cards.findIndex((card) => String(card.id) === String(cardId));
   if (cardIndex < 0) return null;
-  const card = cards[cardIndex];
+  const card = context.cards[cardIndex];
   return {
-    order,
+    ...context,
     card,
-    cards,
     cardIndex,
-    quoteItems,
-    cardQuoteItems: quoteItemsForCard(quoteItems, card),
-    hvAmount: storedCardHvAmount(order.quote_bulk_counts, String(card.id)),
+    cardQuoteItems: quoteItemsForCard(context.quoteItems, card),
+    hvAmount: storedCardHvAmount(context.order.quote_bulk_counts, String(card.id)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Quote math over a context
+
+export type CardQuote = {
+  card: CardRow;
+  index: number;
+  items: QuoteItemRow[];
+  hvAmount: number;
+  subtotal: number;
+  quoted: boolean;
+  canceled: boolean;
+};
+
+export function cardQuotes(context: OrderContext): CardQuote[] {
+  return context.cards.map((card, index) => {
+    const items = quoteItemsForCard(context.quoteItems, card);
+    const hvAmount = storedCardHvAmount(context.order.quote_bulk_counts, String(card.id));
+    const services = items.reduce((sum, item) => sum + (Number(item.quote_base_amount) || 0), 0);
+    const canceled = cardIsCanceled(card);
+    return {
+      card,
+      index,
+      items,
+      hvAmount,
+      subtotal: canceled ? 0 : roundMoney(services + hvAmount),
+      quoted: !canceled && (items.length > 0 || hvAmount > 0),
+      canceled,
+    };
+  });
+}
+
+export function orderTotals(context: OrderContext) {
+  return orderQuoteTotal({
+    cards: context.cards.map((card) => ({
+      id: String(card.id),
+      status: card.status,
+      is_priority: card.is_priority,
+    })),
+    items: context.quoteItems.map((item) => ({
+      card_id: cardIdForQuoteItem(item, context.cards),
+      quote_base_amount: item.quote_base_amount,
+    })),
+    quoteBulkCounts: context.order.quote_bulk_counts,
+  });
+}
+
+/**
+ * Email changelog built from the stored quote (no "before" snapshot exists in
+ * Discord). Uses the same line wording as the admin editor's changelog so the
+ * Resend template renders it identically.
+ */
+export function buildQuoteChangelog(context: OrderContext): ChangelogPayload {
+  const cardGroups: NonNullable<ChangelogPayload["cardGroups"]> = [];
+  for (const entry of cardQuotes(context)) {
+    if (entry.canceled) continue;
+    const changes: string[] = entry.items.map(
+      (item) => `Added: ${serviceLabel(item)}: ${formatMoney(item.quote_base_amount)}`
+    );
+    if (entry.hvAmount > 0) {
+      changes.push(`Added: High-value fee: ${formatMoney(entry.hvAmount)}`);
+    }
+    const note = String(entry.card.admin_note ?? "").trim();
+    if (note) changes.push(`Note: ${note}`);
+    if (changes.length === 0) continue;
+    cardGroups.push({
+      cardId: String(entry.card.id),
+      label: cardLabel(entry.card, entry.index),
+      status: "modified",
+      changes,
+    });
+  }
+  const totals = orderTotals(context);
+  const orderChanges: string[] = [];
+  if (totals.priorityFee > 0) orderChanges.push("Added: Priority service");
+  return {
+    cardGroups,
+    orderChanges,
+    quoteSummary: `Quote total: ${formatMoney(totals.total)}`,
   };
 }
 
 // ---------------------------------------------------------------------------
 // Message builders
+
+export function threadName(order: OrderRow): string {
+  const customer = String(order.customer_name ?? "").trim();
+  return `#${order.display_id}${customer ? ` · ${customer}` : ""}`.slice(0, 100);
+}
 
 export function buildOrderHeaderMessage(params: {
   order: OrderRow;
@@ -288,7 +485,9 @@ export function buildOrderHeaderMessage(params: {
   const links = [`[Open in admin](${adminOrderUrl(order.id)})`];
   if (sheetUrl) links.push(`[Spreadsheet](${sheetUrl})`);
   lines.push(links.join(" · "));
-  lines.push("-# Each card below has its own message — use **Add quote** on each.");
+  lines.push(
+    "-# Cards are in this thread — quote each one, then **Save & notify** on the last message."
+  );
 
   return {
     flags: IS_COMPONENTS_V2,
@@ -306,12 +505,9 @@ export function quoteSummaryLines(params: {
   if (cardIsCanceled(card)) {
     return { lines: ["**Quote:** card canceled — not in quote"], subtotal: 0, quoted: false };
   }
-  const serviceLines = cardQuoteItems.map((item) => {
-    const label =
-      String(item.service_label ?? "").trim() ||
-      (item.service_key === SERVICE_KEYS.CUSTOM ? "Custom" : item.service_key);
-    return `• ${escapeMarkdown(label)} — ${formatMoney(item.quote_base_amount)}`;
-  });
+  const serviceLines = cardQuoteItems.map(
+    (item) => `• ${escapeMarkdown(serviceLabel(item))} — ${formatMoney(item.quote_base_amount)}`
+  );
   const servicesTotal = cardQuoteItems.reduce(
     (sum, item) => sum + (Number(item.quote_base_amount) || 0),
     0
@@ -417,6 +613,149 @@ export function buildCardMessage(params: {
   };
 }
 
+function contactLine(contact: ContactRow): string {
+  const type = String(contact.contact_type ?? "");
+  const label = CONTACT_TYPE_LABELS[type] ?? "Contact";
+  const value = String(contact.value ?? "").trim();
+  if (!value) return "";
+  if (type === "instagram") {
+    const url = instagramProfileUrl(value);
+    return url ? `• ${label}: [${escapeMarkdown(value)}](${url})` : `• ${label}: ${escapeMarkdown(value)}`;
+  }
+  if (type === "discord") {
+    const id = normalizeDiscordUserId(value);
+    // Mention renders a clickable profile; allowed_mentions keeps it silent.
+    return id ? `• ${label}: <@${id}> (${escapeMarkdown(value)})` : `• ${label}: ${escapeMarkdown(value)}`;
+  }
+  return `• ${label}: ${escapeMarkdown(value)}`;
+}
+
+function discordTimestamp(iso: string): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso;
+  return `<t:${Math.floor(ms / 1000)}:f>`;
+}
+
+/** Last message in the order thread: contacts, quote overview, outreach text, notify. */
+export function buildWrapupMessage(params: {
+  context: OrderContext;
+  interactive: boolean;
+}): Json {
+  const { context, interactive } = params;
+  const { order, contacts, lastNotification } = context;
+  const customer = String(order.customer_name ?? "").trim();
+  const email = String(order.customer_email ?? "").trim();
+  const delivery =
+    deliveryLabels[String(order.delivery_method)] ??
+    String(order.delivery_method ?? "unknown");
+
+  const headerLines = [
+    `## Order #${order.display_id} · wrap-up`,
+    `**Customer:** ${customer ? escapeMarkdown(customer) : "—"} · ${delivery}`,
+  ];
+
+  const contactLines = contacts.map(contactLine).filter(Boolean);
+  if (email) contactLines.push(`• Email: ${escapeMarkdown(email)}`);
+  const contactsBlock = [
+    "**Contacts**",
+    ...(contactLines.length > 0 ? contactLines : ["_none on file_"]),
+  ];
+
+  const quotes = cardQuotes(context);
+  const totals = orderTotals(context);
+  const overviewLines = quotes.map((entry) => {
+    const label = escapeMarkdown(cardLabel(entry.card, entry.index));
+    if (entry.canceled) return `• ${entry.index + 1} · ${label} — canceled`;
+    if (!entry.quoted) return `• ${entry.index + 1} · ${label} — _not quoted_`;
+    const parts = [
+      entry.items.length > 0 ? `${entry.items.length} service${entry.items.length === 1 ? "" : "s"}` : "",
+      entry.hvAmount > 0 ? `HV +${formatMoney(entry.hvAmount)}` : "",
+    ].filter(Boolean);
+    return `• ${entry.index + 1} · ${label} — **${formatMoney(entry.subtotal)}**${
+      parts.length ? ` (${parts.join(", ")})` : ""
+    }`;
+  });
+  const extras: string[] = [];
+  if (totals.priorityFee > 0) extras.push(`priority +${formatMoney(totals.priorityFee)}`);
+  if (totals.adjustmentsTotal !== 0) {
+    extras.push(
+      `adjustments ${totals.adjustmentsTotal > 0 ? "+" : "−"}${formatMoney(Math.abs(totals.adjustmentsTotal))}`
+    );
+  }
+  const active = quotes.filter((entry) => !entry.canceled);
+  const quotedCount = active.filter((entry) => entry.quoted).length;
+  const status = String(order.status ?? "");
+  const pendingKind = String(order.pending_kind ?? "");
+  const statusText =
+    status === "pending"
+      ? pendingKind === "drop_off"
+        ? "pending drop-off"
+        : "pending quote"
+      : status.replace(/_/g, " ");
+  const overviewBlock = [
+    "**Quote overview**",
+    ...overviewLines,
+    `**Total ${formatMoney(totals.total)}**${extras.length ? ` (${extras.join(", ")})` : ""}`,
+    `-# ${quotedCount}/${active.length} cards quoted · order ${statusText}`,
+  ];
+
+  const outreachBlock = [
+    "**Quote message (copy & paste)**",
+    "```text",
+    DEFAULT_OUTREACH_MESSAGE,
+    "```",
+  ];
+
+  const notifyLine = lastNotification
+    ? `✅ Emailed ${escapeMarkdown(lastNotification.recipient_email)} ${discordTimestamp(
+        lastNotification.sent_at
+      )} — “${escapeMarkdown(truncate(lastNotification.subject, 80))}”`
+    : email
+      ? "-# Customer not emailed yet. **Save & notify** sends the quote summary like the admin editor does."
+      : "-# No email on this order — notify via a contact above.";
+
+  const components: Json[] = [
+    textDisplay(headerLines.join("\n")),
+    textDisplay(contactsBlock.join("\n")),
+    separator(1),
+    textDisplay(overviewBlock.join("\n")),
+    separator(1),
+    textDisplay(outreachBlock.join("\n")),
+    separator(1),
+    textDisplay(notifyLine),
+  ];
+
+  if (interactive) {
+    components.push(
+      actionRow([
+        button({
+          customId: `${NOTIFY_BUTTON_PREFIX}${order.id}`,
+          label: lastNotification ? "Save & notify again" : "Save & notify",
+          style: ButtonStyle.SUCCESS,
+          emoji: "📨",
+          disabled: !email,
+        }),
+        button({
+          customId: `${WRAPUP_REFRESH_PREFIX}${order.id}`,
+          label: "Refresh",
+          style: ButtonStyle.SECONDARY,
+          emoji: "🔄",
+        }),
+        button({ label: "Open in admin", url: adminOrderUrl(order.id) }),
+      ])
+    );
+  }
+
+  return {
+    flags: IS_COMPONENTS_V2,
+    allowed_mentions: { parse: [] },
+    components: [container(components, ACCENT_WRAPUP)],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Re-render from DB
+
 /** Re-render a card message straight from the DB (after a quote save). */
 export async function renderCardMessageFromDb(
   supabase: SupabaseClient,
@@ -437,4 +776,38 @@ export async function renderCardMessageFromDb(
     interactive: true,
   });
   return { payload, context };
+}
+
+/** Find the wrap-up message in an order thread by its notify button id. */
+export async function findWrapupMessageId(
+  threadId: string,
+  orderId: string
+): Promise<string | null> {
+  const messages = await listChannelMessages(threadId, 50);
+  const customId = `${NOTIFY_BUTTON_PREFIX}${orderId}`;
+  const match = messages.find((message) => messageHasCustomId(message, customId));
+  return match ? String(match.id) : null;
+}
+
+/** Re-render the wrap-up in its thread from the DB. Best effort; returns success. */
+export async function refreshWrapupInThread(
+  supabase: SupabaseClient,
+  threadId: string,
+  orderId: string,
+  context?: OrderContext | null
+): Promise<boolean> {
+  try {
+    const messageId = await findWrapupMessageId(threadId, orderId);
+    if (!messageId) return false;
+    const fresh = context ?? (await loadOrderContext(supabase, orderId));
+    if (!fresh) return false;
+    return await editChannelMessage(
+      threadId,
+      messageId,
+      buildWrapupMessage({ context: fresh, interactive: true })
+    );
+  } catch (err) {
+    console.error("wrap-up refresh failed", err);
+    return false;
+  }
 }

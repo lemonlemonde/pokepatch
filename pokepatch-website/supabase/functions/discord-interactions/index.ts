@@ -4,6 +4,8 @@
  * Routes:
  * - `wooper` message command → before/after photo upload (wooper.ts)
  * - `quote:<cardId>` button → per-card quote modal (quote.ts)
+ * - `notify:<orderId>` button → Save & notify modal (notifyCustomer.ts)
+ * - `wrapup:<orderId>` button → re-render the order wrap-up (notifyCustomer.ts)
  *
  * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS, DISCORD_BOT_TOKEN
  * Injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -21,7 +23,16 @@ import {
   type Interaction,
   type Json,
 } from "../_shared/discord.ts";
-import { QUOTE_BUTTON_PREFIX } from "../_shared/discordOrderMessages.ts";
+import {
+  NOTIFY_BUTTON_PREFIX,
+  QUOTE_BUTTON_PREFIX,
+  WRAPUP_REFRESH_PREFIX,
+} from "../_shared/discordOrderMessages.ts";
+import {
+  handleNotifyButton,
+  handleNotifyModal,
+  handleWrapupRefresh,
+} from "./notifyCustomer.ts";
 import { handleQuoteButton, handleQuoteModal } from "./quote.ts";
 import {
   WOOPER_MODAL_PREFIX,
@@ -87,6 +98,12 @@ Deno.serve(async (req) => {
     if (customId.startsWith(QUOTE_BUTTON_PREFIX)) {
       return await handleQuoteButton(interaction);
     }
+    if (customId.startsWith(NOTIFY_BUTTON_PREFIX)) {
+      return await handleNotifyButton(interaction);
+    }
+    if (customId.startsWith(WRAPUP_REFRESH_PREFIX)) {
+      return await handleWrapupRefresh(interaction);
+    }
     return ephemeralReply("Unknown button.");
   }
 
@@ -96,6 +113,9 @@ Deno.serve(async (req) => {
     }
     if (customId.startsWith(QUOTE_BUTTON_PREFIX)) {
       return handleQuoteModal(interaction, waitUntil);
+    }
+    if (customId.startsWith(NOTIFY_BUTTON_PREFIX)) {
+      return handleNotifyModal(interaction, waitUntil);
     }
     return ephemeralReply("Unknown form.");
   }

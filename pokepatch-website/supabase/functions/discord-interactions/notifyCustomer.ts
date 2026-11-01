@@ -1,0 +1,308 @@
+/**
+ * Wrap-up message actions: "Save & notify" (email the customer the stored
+ * quote, same `customer_messages` + Resend path as the admin editor) and
+ * "Refresh" (re-render the wrap-up from the DB).
+ *
+ * custom_ids:
+ * - `notify:<orderId>` button → modal `notify:<orderId>:<channelId>:<messageId>`
+ * - `wrapup:<orderId>` button → UPDATE_MESSAGE with a fresh render
+ */
+
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  CallbackType,
+  EPHEMERAL,
+  TextInputStyle,
+  collectModalFields,
+  editChannelMessage,
+  editOriginal,
+  ephemeralReply,
+  fieldValue,
+  json,
+  labeled,
+  textDisplay,
+  textInput,
+  type Interaction,
+  type Json,
+} from "../_shared/discord.ts";
+import {
+  DEFAULT_NOTIFY_SUBJECT,
+  NOTIFY_BUTTON_PREFIX,
+  WRAPUP_REFRESH_PREFIX,
+  buildQuoteChangelog,
+  buildWrapupMessage,
+  cardQuotes,
+  loadOrderContext,
+  type OrderContext,
+} from "../_shared/discordOrderMessages.ts";
+import {
+  buildStoredMessageBody,
+  formatChangelogPlainText,
+  sendResendEmail,
+} from "../_shared/resend.ts";
+
+const FIELD = { SUBJECT: "subject", MESSAGE: "message" } as const;
+const MAX_SUBJECT_CHARS = 120;
+const MAX_MESSAGE_CHARS = 2000;
+const MAX_PREVIEW_CHARS = 1500;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getServiceClient(): SupabaseClient {
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) throw new Error("missing Supabase env");
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
+export function parseOrderCustomId(
+  prefix: string,
+  customId: string
+): { orderId: string; channelId: string; messageId: string } | null {
+  if (!customId.startsWith(prefix)) return null;
+  const [orderId = "", channelId = "", messageId = ""] = customId
+    .slice(prefix.length)
+    .split(":");
+  if (!UUID_RE.test(orderId)) return null;
+  return { orderId, channelId, messageId };
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+/** Unquoted active cards, for the modal warning. */
+function unquotedLabels(context: OrderContext): string[] {
+  return cardQuotes(context)
+    .filter((entry) => !entry.canceled && !entry.quoted)
+    .map((entry) => `${entry.index + 1}`);
+}
+
+function notifyModal(params: {
+  customId: string;
+  context: OrderContext;
+}): Json {
+  const { customId, context } = params;
+  const email = String(context.order.customer_email ?? "").trim();
+  const changelog = buildQuoteChangelog(context);
+  const preview = formatChangelogPlainText(changelog) || "(no quote lines yet)";
+  const unquoted = unquotedLabels(context);
+
+  const previewLines = [
+    `**To:** ${email}`,
+    "**Quote summary that will be emailed:**",
+    "```",
+    preview.length > MAX_PREVIEW_CHARS ? `${preview.slice(0, MAX_PREVIEW_CHARS)}…` : preview,
+    "```",
+  ];
+  if (unquoted.length > 0) {
+    previewLines.push(
+      `⚠️ Card${unquoted.length === 1 ? "" : "s"} ${unquoted.join(", ")} not quoted yet — still send?`
+    );
+  }
+
+  return {
+    type: CallbackType.MODAL,
+    data: {
+      custom_id: customId,
+      title: `Notify · Order #${context.order.display_id}`.slice(0, 45),
+      components: [
+        textDisplay(previewLines.join("\n")),
+        labeled(
+          "Subject",
+          textInput({
+            customId: FIELD.SUBJECT,
+            style: TextInputStyle.SHORT,
+            required: true,
+            value: DEFAULT_NOTIFY_SUBJECT,
+            maxLength: MAX_SUBJECT_CHARS,
+          })
+        ),
+        labeled(
+          "Message (optional)",
+          textInput({
+            customId: FIELD.MESSAGE,
+            style: TextInputStyle.PARAGRAPH,
+            required: false,
+            placeholder: "Shown above the quote summary in the email. Leave blank to send just the summary.",
+            maxLength: MAX_MESSAGE_CHARS,
+          }),
+          "Same as the admin editor's Save & notify"
+        ),
+      ],
+    },
+  };
+}
+
+/** "Save & notify" click → preview modal. */
+export async function handleNotifyButton(interaction: Interaction): Promise<Response> {
+  const data = (interaction.data ?? {}) as Json;
+  const parsed = parseOrderCustomId(NOTIFY_BUTTON_PREFIX, String(data.custom_id ?? ""));
+  if (!parsed) return ephemeralReply("Unknown button.");
+
+  let context: OrderContext | null;
+  try {
+    context = await loadOrderContext(getServiceClient(), parsed.orderId);
+  } catch (err) {
+    console.error("notify button load failed", err);
+    return ephemeralReply("Couldn't load this order. Try again.");
+  }
+  if (!context) return ephemeralReply("This order no longer exists.");
+
+  const email = String(context.order.customer_email ?? "").trim();
+  if (!email || !isValidEmail(email)) {
+    return ephemeralReply("This order has no valid customer email — reach out via a contact method instead.");
+  }
+
+  const channelId = String(interaction.channel_id ?? "");
+  const message = (interaction.message ?? {}) as Json;
+  const messageId = String(message.id ?? "");
+  return json(
+    notifyModal({
+      customId: `${NOTIFY_BUTTON_PREFIX}${parsed.orderId}:${channelId}:${messageId}`,
+      context,
+    })
+  );
+}
+
+/** Insert the customer message, send via Resend, record the result. */
+export async function sendQuoteNotification(params: {
+  supabase: SupabaseClient;
+  context: OrderContext;
+  subject: string;
+  message: string;
+}): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
+  const { supabase, context, subject, message } = params;
+  const email = String(context.order.customer_email ?? "").trim().toLowerCase();
+  if (!email || !isValidEmail(email)) {
+    return { ok: false, error: "order has no valid customer_email" };
+  }
+  const changelog = buildQuoteChangelog(context);
+  const hasChangelog = (changelog.cardGroups?.length ?? 0) > 0 || (changelog.orderChanges?.length ?? 0) > 0;
+  const displayId = context.order.display_id;
+
+  // sender defaults to 'admin' in the DB; omit it like admin-api does.
+  const { data: inserted, error: insertError } = await supabase
+    .from("customer_messages")
+    .insert({
+      order_id: context.order.id,
+      recipient_email: email,
+      user_id: context.order.user_id ?? null,
+      subject,
+      body: buildStoredMessageBody(message, displayId),
+      changelog: hasChangelog ? changelog : null,
+      email_status: "pending",
+      batch_id: crypto.randomUUID(),
+    })
+    .select("id")
+    .single();
+  if (insertError) return { ok: false, error: insertError.message };
+
+  const sendResult = await sendResendEmail({
+    to: email,
+    subject,
+    body: message,
+    orderDisplayId: displayId,
+    changelog: hasChangelog ? changelog : null,
+  });
+
+  const { error: updateError } = await supabase
+    .from("customer_messages")
+    .update({
+      email_status: sendResult.ok ? "sent" : "failed",
+      email_error: sendResult.ok ? null : sendResult.error,
+    })
+    .eq("id", inserted.id);
+  if (updateError) console.error("customer_messages status update failed", updateError);
+
+  if (!sendResult.ok) return { ok: false, error: sendResult.error };
+  return { ok: true, email };
+}
+
+async function processNotifyModal(interaction: Interaction): Promise<void> {
+  const applicationId = String(interaction.application_id ?? "");
+  const token = String(interaction.token ?? "");
+  const data = (interaction.data ?? {}) as Json;
+  const parsed = parseOrderCustomId(NOTIFY_BUTTON_PREFIX, String(data.custom_id ?? ""));
+
+  try {
+    if (!parsed) {
+      await editOriginal(applicationId, token, "Invalid notify form.");
+      return;
+    }
+    const fields = collectModalFields(data.components);
+    const subject =
+      fieldValue(fields, FIELD.SUBJECT).trim().slice(0, MAX_SUBJECT_CHARS) ||
+      DEFAULT_NOTIFY_SUBJECT;
+    const message = fieldValue(fields, FIELD.MESSAGE).trim().slice(0, MAX_MESSAGE_CHARS);
+
+    const supabase = getServiceClient();
+    const context = await loadOrderContext(supabase, parsed.orderId);
+    if (!context) {
+      await editOriginal(applicationId, token, "This order no longer exists — nothing sent.");
+      return;
+    }
+
+    const result = await sendQuoteNotification({ supabase, context, subject, message });
+    if (!result.ok) {
+      await editOriginal(applicationId, token, `❌ Email not sent: ${result.error}`);
+      return;
+    }
+
+    let refreshed = false;
+    if (parsed.channelId && parsed.messageId) {
+      const fresh = (await loadOrderContext(supabase, parsed.orderId)) ?? context;
+      refreshed = await editChannelMessage(
+        parsed.channelId,
+        parsed.messageId,
+        buildWrapupMessage({ context: fresh, interactive: true })
+      );
+    }
+    const out = [
+      `📨 Emailed **${result.email}** — “${subject}”`,
+      "-# Logged in the order's message history (admin → Messages).",
+    ];
+    if (!refreshed) out.push("-# Couldn't refresh the wrap-up message; press Refresh.");
+    await editOriginal(applicationId, token, out.join("\n"));
+  } catch (err) {
+    console.error("notify modal failed", err);
+    const text = err instanceof Error ? err.message : String(err);
+    await editOriginal(applicationId, token, `Email not sent: ${text}`);
+  }
+}
+
+/** Modal submit: ACK now, send in the background. */
+export function handleNotifyModal(
+  interaction: Interaction,
+  waitUntil: (promise: Promise<unknown>) => void
+): Response {
+  waitUntil(
+    processNotifyModal(interaction).catch((err) => {
+      console.error("notify modal background failed", err);
+    })
+  );
+  return json({
+    type: CallbackType.DEFERRED_CHANNEL_MESSAGE,
+    data: { flags: EPHEMERAL },
+  });
+}
+
+/** "Refresh" click → replace the wrap-up message in place. */
+export async function handleWrapupRefresh(interaction: Interaction): Promise<Response> {
+  const data = (interaction.data ?? {}) as Json;
+  const parsed = parseOrderCustomId(WRAPUP_REFRESH_PREFIX, String(data.custom_id ?? ""));
+  if (!parsed) return ephemeralReply("Unknown button.");
+  try {
+    const context = await loadOrderContext(getServiceClient(), parsed.orderId);
+    if (!context) return ephemeralReply("This order no longer exists.");
+    return json({
+      type: CallbackType.UPDATE_MESSAGE,
+      data: buildWrapupMessage({ context, interactive: true }),
+    });
+  } catch (err) {
+    console.error("wrap-up refresh failed", err);
+    return ephemeralReply("Couldn't refresh. Try again.");
+  }
+}

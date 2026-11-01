@@ -12,13 +12,16 @@ For new orders it:
 3. Creates **signed URLs** for customer photos (1 year)
 4. Posts to **Discord** via the bot into `DISCORD_QUOTES_CHANNEL_ID`:
    - a header (`New Order #42`: customer, delivery, contacts, card/photo counts, admin + sheet links)
-   - **one message per card**: name/set, damage tags, description, all customer photos, and an **Add quote** button handled by [`discord-interactions`](../discord-interactions/README.md)
+   - a **thread** on that header (`#42 · Customer`, auto-archives after 7 days idle) containing:
+     - **one message per card**: name/set, damage tags, description, all customer photos, and an **Add quote** button
+     - a **wrap-up** as the last message: all contact methods, quote overview + total, the copy-and-paste outreach message, last-notified time, and **Save & notify** / **Refresh** buttons
+   - buttons are handled by [`discord-interactions`](../discord-interactions/README.md)
 5. Appends a summary row to the **Orders** Google Sheet tab via Apps Script
 6. Sends the customer a "we received your quote request" email
 
-Message rendering lives in [`_shared/discordOrderMessages.ts`](../_shared/discordOrderMessages.ts) so the card message can be re-rendered after a quote is saved from Discord.
+Message rendering lives in [`_shared/discordOrderMessages.ts`](../_shared/discordOrderMessages.ts) so card and wrap-up messages can be re-rendered after a quote is saved or the customer is notified from Discord.
 
-If `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout, but webhooks cannot carry buttons, so the quote flow is unavailable.
+If `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout posted flat into the channel (webhooks can't open threads or carry buttons), so the quote / notify flows are unavailable.
 
 The service role key never touches the frontend — only this server-side function.
 
@@ -136,8 +139,9 @@ Submit a quote on `/quote/`, then confirm:
 - Rows in `orders`, `contacts`, `cards`, `card_images`
 - Matching rows in `*_original` tables
 - Photos under `card-photos/order-<uuid>/card-<uuid>/...`
-- Discord: `New Order #N` header, then one message per card with photos + **Add quote**
-- Press **Add quote** on a card → modal → submit → card message shows the quote; order flips to pending drop-off once all cards are quoted
+- Discord: `New Order #N` header with a thread; inside it one message per card with photos + **Add quote**, then the wrap-up (contacts, quote overview, outreach text, **Save & notify**)
+- Press **Add quote** on a card → modal → submit → card message shows the quote and the wrap-up total updates; order flips to pending drop-off once all cards are quoted
+- Press **Save & notify** on the wrap-up → modal preview → submit → customer email sent, `customer_messages` row created, wrap-up shows "Emailed …"
 - New row on the **Orders** sheet tab
 
 Admin `update_order` (service role) should change working tables only and **not** post to Discord/Sheets.

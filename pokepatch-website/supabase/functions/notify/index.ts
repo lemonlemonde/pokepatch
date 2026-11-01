@@ -3,22 +3,29 @@ import {
   buildStoredMessageBody,
   sendResendEmail,
 } from "../_shared/resend.ts";
-import { postChannelMessage } from "../_shared/discord.ts";
+import {
+  createThreadFromMessage,
+  hasBotToken,
+  postChannelMessage,
+} from "../_shared/discord.ts";
 import {
   BUCKET,
+  QUOTE_CONFIRMATION_SUBJECT,
   SIGNED_URL_EXPIRES_IN,
   buildCardMessage,
   buildOrderHeaderMessage,
+  buildWrapupMessage,
   customerPhotoPaths,
   deliveryLabels,
   loadOrder,
   loadOrderCards,
   signPhotoUrls,
+  threadName,
   type CardRow,
+  type ContactRow,
   type OrderRow,
 } from "../_shared/discordOrderMessages.ts";
 
-const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
 const CONTACT_DISCORD = "pokepatch.cards";
@@ -129,8 +136,9 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
 
   const { data: contacts, error: contactsError } = await supabase
     .from("contacts")
-    .select("contact_type, value")
-    .eq("order_id", orderUuid);
+    .select("id, contact_type, value")
+    .eq("order_id", orderUuid)
+    .order("id", { ascending: true });
   if (contactsError) throw contactsError;
 
   const cards = await loadOrderCards(supabase, orderUuid);
@@ -142,7 +150,7 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
   const cardIds = cards.map((card) => String(card.id));
   const photoPathsByCard = await customerPhotoPaths(supabase, cardIds);
   const paths = cardIds.flatMap((id) => photoPathsByCard.get(id) ?? []);
-  const contactsList = contacts ?? [];
+  const contactsList = (contacts ?? []) as ContactRow[];
 
   // Admin "create order" seeds a blank card with no photos/contacts — don't
   // treat that like a customer submission.
@@ -153,11 +161,13 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
 
   const storagePrefix = orderUuid ? `order-${orderUuid}` : extractFolderId(paths);
 
-  // Discord: header, then one message per card (each with its quote button).
+  // Discord: header → thread → one message per card → wrap-up.
   const order: OrderRow = (await loadOrder(supabase, orderUuid)) ?? {
     id: orderUuid,
     display_id: displayId,
     customer_name: customerName,
+    customer_email: String(record.customer_email ?? "").trim() || null,
+    user_id: (record.user_id as string | null) ?? null,
     delivery_method: String(record.delivery_method ?? ""),
     status: String(record.status ?? "pending"),
     pending_kind: (record.pending_kind as string | null) ?? null,
@@ -168,6 +178,7 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     order,
     cards,
     photoPathsByCard,
+    contacts: contactsList,
     contactsText: formatContacts(contactsList, "; "),
   });
 
@@ -194,14 +205,20 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
   });
 }
 
+/**
+ * Header in the quotes channel, then a thread off it holding one message per
+ * card and a wrap-up last. Without a bot token (webhook only) threads can't be
+ * created, so everything posts flat into the channel without buttons.
+ */
 async function notifyDiscordOrder(params: {
   supabase: SupabaseClient;
   order: OrderRow;
   cards: CardRow[];
   photoPathsByCard: Map<string, string[]>;
+  contacts: ContactRow[];
   contactsText: string;
 }) {
-  const { supabase, order, cards, photoPathsByCard, contactsText } = params;
+  const { supabase, order, cards, photoPathsByCard, contacts, contactsText } = params;
   const channelId = quotesChannelId();
   if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
 
@@ -225,13 +242,22 @@ async function notifyDiscordOrder(params: {
     return;
   }
 
+  const interactive = Boolean(channelId) && hasBotToken();
+  const threadId = interactive
+    ? await createThreadFromMessage(header.channel_id, header.id, threadName(order))
+    : null;
+  if (interactive && !threadId) {
+    console.error("notify: thread create failed; posting cards in channel", order.id);
+  }
+  const target = threadId ?? header.channel_id;
+
   for (const [index, card] of cards.entries()) {
     const imageUrls = await signPhotoUrls(
       supabase,
       photoPathsByCard.get(String(card.id)) ?? []
     );
     const posted = await postChannelMessage(
-      channelId,
+      target,
       buildCardMessage({
         order,
         card,
@@ -240,13 +266,22 @@ async function notifyDiscordOrder(params: {
         imageUrls,
         cardQuoteItems: [],
         hvAmount: 0,
-        interactive: true,
+        interactive,
       })
     );
     if (!posted) {
       console.error("notify: discord card post failed", order.id, card.id);
     }
   }
+
+  const wrapup = await postChannelMessage(
+    target,
+    buildWrapupMessage({
+      context: { order, cards, quoteItems: [], contacts, lastNotification: null },
+      interactive,
+    })
+  );
+  if (!wrapup) console.error("notify: discord wrap-up post failed", order.id);
 }
 
 function buildQuoteConfirmationBody(customerName: string): string {
@@ -349,7 +384,7 @@ async function sendQuoteConfirmationEmail({
 }
 
 function formatContacts(
-  contacts: { contact_type?: string; value?: string }[],
+  contacts: { contact_type?: string | null; value?: string | null }[],
   separator: string
 ): string {
   return contacts

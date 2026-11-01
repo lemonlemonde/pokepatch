@@ -31,6 +31,7 @@ import {
   loadCardContext,
   quoteItemsForCard,
   quoteSummaryLines,
+  refreshWrapupInThread,
   renderCardMessageFromDb,
   type CardContext,
   type CardRow,
@@ -519,6 +520,11 @@ async function processQuoteModal(interaction: Interaction): Promise<void> {
     }
 
     const fresh = rendered?.context ?? context;
+    // Card messages live in the order thread with the wrap-up; keep its
+    // quote overview / Save & notify state current.
+    if (messageUpdated && parsed.channelId) {
+      await refreshWrapupInThread(supabase, parsed.channelId, fresh.order.id, fresh);
+    }
     const summary = quoteSummaryLines({
       card: fresh.card,
       cardQuoteItems: fresh.cardQuoteItems,

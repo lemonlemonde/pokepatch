@@ -126,6 +126,10 @@ export function roundMoney(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
+/** Paid priority service — flat fee per priority card. */
+export const PRIORITY_FEE_PER_CARD = 15;
+const PRIORITY_ADJUSTMENT_LABEL = "priority service";
+
 /** Stored shape of orders.quote_bulk_counts (version 2). */
 export type CardHvRow = {
   card_id: string;
@@ -252,5 +256,90 @@ export function withCardHvFromMarket(
     version: 2,
     adjustments: normalized.adjustments,
     ...(card_hv.length > 0 ? { card_hv } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Order total (mirrors computeQuoteTotal / orderQuoteTotalFromStored)
+
+type TotalCard = {
+  id: string;
+  status?: string | null;
+  is_priority?: boolean | null;
+};
+type TotalItem = {
+  card_id?: string | null;
+  quote_base_amount: number | string;
+};
+
+function isCanceledStatus(status: unknown): boolean {
+  const s = String(status ?? "").trim().toLowerCase();
+  return s === "canceled" || s === "cancelled";
+}
+
+function isPriorityAdjustment(row: Record<string, unknown>): boolean {
+  return String(row.description ?? "").trim().toLowerCase() === PRIORITY_ADJUSTMENT_LABEL;
+}
+
+/** Signed $ for one adjustment row; percent rows apply to the services subtotal. */
+function adjustmentSignedAmount(row: Record<string, unknown>, subtotal: number): number {
+  const kind = String(row.kind ?? "adjustment");
+  let dollars = Number(row.amount_dollars);
+  if (!Number.isFinite(dollars) || dollars === 0) {
+    const percent = Math.abs(Number(row.amount_percent));
+    if (!Number.isFinite(percent) || percent <= 0) return 0;
+    const fromPercent = roundMoney(subtotal * (percent / 100));
+    return kind === "discount" ? -fromPercent : fromPercent;
+  }
+  if (dollars > 0 && kind === "discount") dollars = -dollars;
+  return roundMoney(dollars);
+}
+
+/**
+ * Full order quote: billable service lines + card HV + adjustments + priority
+ * fee. `items` must already be attributed to cards (`card_id`) so canceled
+ * cards drop out; items without a card_id always count.
+ */
+export function orderQuoteTotal(params: {
+  cards: TotalCard[];
+  items: TotalItem[];
+  quoteBulkCounts: unknown;
+}): {
+  servicesSubtotal: number;
+  hvTotal: number;
+  adjustmentsTotal: number;
+  priorityFee: number;
+  total: number;
+} {
+  const { cards, items, quoteBulkCounts } = params;
+  const billable = cards.filter((card) => !isCanceledStatus(card.status));
+  const billableIds = new Set(billable.map((card) => String(card.id)));
+
+  const servicesSubtotal = roundMoney(
+    items
+      .filter((item) => !item.card_id || billableIds.has(String(item.card_id)))
+      .reduce((sum, item) => sum + (Number(item.quote_base_amount) || 0), 0)
+  );
+
+  const stored = normalizeQuoteBulkCounts(quoteBulkCounts);
+  const hvTotal = roundMoney(
+    (stored.card_hv ?? [])
+      .filter((row) => billableIds.has(row.card_id))
+      .reduce((sum, row) => sum + row.amount_dollars, 0)
+  );
+  const adjustmentsTotal = roundMoney(
+    stored.adjustments
+      .filter((row) => !isPriorityAdjustment(row))
+      .reduce((sum, row) => sum + adjustmentSignedAmount(row, servicesSubtotal), 0)
+  );
+  const priorityCount = billable.filter((card) => Boolean(card.is_priority)).length;
+  const priorityFee = roundMoney(priorityCount * PRIORITY_FEE_PER_CARD);
+
+  return {
+    servicesSubtotal,
+    hvTotal,
+    adjustmentsTotal,
+    priorityFee,
+    total: roundMoney(servicesSubtotal + hvTotal + adjustmentsTotal + priorityFee),
   };
 }

@@ -1,10 +1,11 @@
 # Supabase Edge Function: `discord-interactions`
 
-Single Discord **Interactions Endpoint** for the PokePatch app. Two flows:
+Single Discord **Interactions Endpoint** for the PokePatch app. Three flows:
 
 | Flow | Trigger | File |
 |------|---------|------|
-| **Quote a card** | **Add quote** / **Edit quote** button on a card message posted by [`notify`](../notify/README.md) | [`quote.ts`](./quote.ts) |
+| **Quote a card** | **Add quote** / **Edit quote** button on a card message inside the order thread posted by [`notify`](../notify/README.md) | [`quote.ts`](./quote.ts) |
+| **Save & notify** / **Refresh** | Buttons on the **wrap-up** message (last message in the order thread) | [`notifyCustomer.ts`](./notifyCustomer.ts) |
 | **wooper** (before/after photos) | Right-click a message with images → **Apps → wooper** | [`wooper.ts`](./wooper.ts) |
 
 Only Discord user IDs listed in `DISCORD_ADMIN_USER_IDS` may use either flow.
@@ -13,7 +14,7 @@ Only Discord user IDs listed in `DISCORD_ADMIN_USER_IDS` may use either flow.
 
 ## Quote a card from Discord
 
-When a customer submits `/quote/`, `notify` posts a header message for the order and then **one message per card** into `DISCORD_QUOTES_CHANNEL_ID`:
+When a customer submits `/quote/`, `notify` posts a header message for the order into `DISCORD_QUOTES_CHANNEL_ID`, opens a **thread** on it (`#42 · Customer`), and posts **one message per card** into the thread, followed by a **wrap-up** message. Each card message has:
 
 - card name · set, ⭐ if priority
 - customer damage tags + description
@@ -42,7 +43,25 @@ Then the card message is re-rendered (quote lines, subtotal, green accent, butto
 
 Validation errors (unknown service name, bad amount) save **nothing** and tell you what to fix.
 
-Limits inherited from the data model: quote lines attach to a card by **name + set**, so two cards in one order with the identical name and set share quote lines (same as admin). Customer emails are not sent from Discord — use the admin editor's Save + notify for that.
+Saving a card quote also refreshes the thread's wrap-up message (quote overview + total).
+
+Limits inherited from the data model: quote lines attach to a card by **name + set**, so two cards in one order with the identical name and set share quote lines (same as admin).
+
+---
+
+## Wrap-up: contacts, outreach text, Save & notify
+
+The **last message in each order thread** is the wrap-up:
+
+- **Contacts** — every contact method the customer entered (phone, Instagram as a profile link, Discord as a clickable `<@id>` mention when they gave a user ID) plus the order email
+- **Quote overview** — per-card subtotal / _not quoted_ / canceled, order total (incl. HV, priority, adjustments), `n/N cards quoted`, order status
+- **Quote message (copy & paste)** — the same outreach text the admin editor shows (`DEFAULT_OUTREACH_MESSAGE`, mirrored in [`_shared/outreach.ts`](../_shared/outreach.ts)) in a code block, so it has a copy button on hover
+- **Last notified** — when the customer was last emailed about this order
+- Buttons: **Save & notify**, **Refresh**, **Open in admin**
+
+**Save & notify** opens a modal showing the exact quote summary that will be emailed (and a warning if any card is still unquoted), with **Subject** (prefilled `Your order quote has been updated`) and an optional **Message**. Submitting does what the admin editor's Save & notify does: inserts a `customer_messages` row (visible in the order's message history and My Orders) and sends the email through Resend with the quote changelog. Quotes are already saved per card, so there is nothing else to "save" here. The button is disabled when the order has no email — use the contacts above instead.
+
+**Refresh** re-renders the wrap-up from the DB (e.g. after editing the order in admin).
 
 ---
 
@@ -67,7 +86,7 @@ Up to **20 photos per side** per card. Files over 15MB are rejected. **Each uplo
 1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
 2. **Bot** → Add Bot → **Reset Token** → this is `DISCORD_BOT_TOKEN`. Disable "Public Bot" if you like.
 3. **General Information** → copy **Public Key** → `DISCORD_PUBLIC_KEY`.
-4. **OAuth2 → URL Generator**: scopes `applications.commands` + `bot`; bot permissions **View Channels, Send Messages, Embed Links, Attach Files, Read Message History**. Invite it into the PokePatch server.
+4. **OAuth2 → URL Generator**: scopes `applications.commands` + `bot`; bot permissions **View Channels, Send Messages, Create Public Threads, Send Messages in Threads, Embed Links, Attach Files, Read Message History**. Invite it into the PokePatch server.
 5. Developer Mode → right-click the quotes channel → **Copy Channel ID** → `DISCORD_QUOTES_CHANNEL_ID`. Right-click yourself → **Copy User ID** → `DISCORD_ADMIN_USER_IDS`.
 
 ## 2. Secrets
@@ -115,7 +134,9 @@ curl -s -X PUT \
 
 ## 5. Pricing + schema
 
-Service keys, list prices and HV tiers are mirrored in [`_shared/servicePricing.ts`](../_shared/servicePricing.ts) from `src/lib/servicePricing.js` — change the JS file first, then the mirror. Damage tag labels come from [`_shared/damageTags.ts`](../_shared/damageTags.ts).
+Service keys, list prices, HV tiers and the order-total math are mirrored in [`_shared/servicePricing.ts`](../_shared/servicePricing.ts) from `src/lib/servicePricing.js`; the outreach text + contact link helpers in [`_shared/outreach.ts`](../_shared/outreach.ts) mirror `src/lib/adminOutreachMessage.js` — change the JS file first, then the mirror. Damage tag labels come from [`_shared/damageTags.ts`](../_shared/damageTags.ts).
+
+Save & notify needs the same `RESEND_API_KEY` / `RESEND_FROM_EMAIL` secrets as `admin-api`.
 
 wooper needs migration `card_images_before_after` (`before` / `after` image types).
 

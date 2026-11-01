@@ -276,6 +276,63 @@ export async function editChannelMessage(
   return true;
 }
 
+/**
+ * Start a public thread on a message. The thread id equals the message id.
+ * Returns null without a bot (webhooks can't create threads here).
+ */
+export async function createThreadFromMessage(
+  channelId: string,
+  messageId: string,
+  name: string
+): Promise<string | null> {
+  if (!hasBotToken()) return null;
+  const res = await discordRequest(
+    `/channels/${channelId}/messages/${messageId}/threads`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: name.slice(0, 100) || "Order",
+        // 7 days of inactivity before it collapses from the channel list.
+        auto_archive_duration: 10080,
+      }),
+    }
+  );
+  if (!res.ok) {
+    console.error("discord thread create failed", await readError(res));
+    return null;
+  }
+  const data = (await res.json()) as { id: string };
+  return data.id;
+}
+
+/** Newest-first messages in a channel/thread (bot only). */
+export async function listChannelMessages(
+  channelId: string,
+  limit = 25
+): Promise<Json[]> {
+  if (!hasBotToken()) return [];
+  const res = await discordRequest(
+    `/channels/${channelId}/messages?limit=${Math.min(Math.max(limit, 1), 100)}`
+  );
+  if (!res.ok) {
+    console.error("discord list messages failed", await readError(res));
+    return [];
+  }
+  return (await res.json()) as Json[];
+}
+
+/** Depth-first search for a button custom_id anywhere in a message's components. */
+export function messageHasCustomId(message: Json, customId: string): boolean {
+  const visit = (node: unknown): boolean => {
+    if (Array.isArray(node)) return node.some(visit);
+    if (!node || typeof node !== "object") return false;
+    const record = node as Json;
+    if (record.custom_id === customId) return true;
+    return visit(record.components) || visit(record.component) || visit(record.accessory);
+  };
+  return visit(message.components);
+}
+
 /** Edit the deferred interaction reply (`@original`). */
 export async function editOriginal(
   applicationId: string,
@@ -370,14 +427,16 @@ export function button(params: {
   style?: number;
   url?: string;
   emoji?: string;
+  disabled?: boolean;
 }): Json {
-  const { customId, label, style = ButtonStyle.PRIMARY, url, emoji } = params;
+  const { customId, label, style = ButtonStyle.PRIMARY, url, emoji, disabled } = params;
   return {
     type: ComponentType.BUTTON,
     style: url ? ButtonStyle.LINK : style,
     label,
     ...(url ? { url } : { custom_id: customId }),
     ...(emoji ? { emoji: { name: emoji } } : {}),
+    ...(disabled ? { disabled: true } : {}),
   };
 }
 
