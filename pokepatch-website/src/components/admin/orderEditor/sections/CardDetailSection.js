@@ -53,6 +53,39 @@ import CardPhotoPreviewModal from "@/components/admin/orderEditor/CardPhotoPrevi
 import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
+const PHOTO_ACTION_ICON_PROPS = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: "2.25",
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  className: "h-4 w-4",
+  "aria-hidden": "true",
+};
+
+// Outlined sibling of RestorationDownloadButton's filled 9×9 square.
+const PHOTO_ACTION_BUTTON_CLASS =
+  "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-ink/25 text-ink transition hover:bg-ink/10 disabled:cursor-not-allowed disabled:border-ink/10 disabled:text-ink/35";
+
+function MagnifierIcon() {
+  return (
+    <svg {...PHOTO_ACTION_ICON_PROPS}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function SendIcon() {
+  return (
+    <svg {...PHOTO_ACTION_ICON_PROPS}>
+      <path d="M21 3 10.5 13.5" />
+      <path d="M21 3 14 21l-3.5-7.5L3 10z" />
+    </svg>
+  );
+}
+
 function DamageTagChips({ tags, className }) {
   return tags.map((tag) => (
     <span key={tag.id} className={className}>
@@ -683,15 +716,16 @@ export default function CardDetailSection({
                     : "None yet — upload via Discord /wooper."}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={previewCount === 0}
                   onClick={() => setPreviewOpen(true)}
+                  aria-label="Preview photos"
                   title="Preview every photo on this card"
-                  className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10 disabled:cursor-not-allowed disabled:border-ink/10 disabled:text-ink/35"
+                  className={PHOTO_ACTION_BUTTON_CLASS}
                 >
-                  Preview
+                  <MagnifierIcon />
                 </button>
                 <RestorationDownloadButton
                   orderDisplayId={displayId}
@@ -703,9 +737,11 @@ export default function CardDetailSection({
                 {canOpenInStudio ? (
                   <a
                     href={`/admin/studio/?fromOrderCard=${encodeURIComponent(card.id)}&orderId=${encodeURIComponent(orderId)}`}
-                    className="inline-flex items-center rounded-lg border border-ink/25 px-3 py-1.5 text-sm font-semibold text-ink transition hover:bg-ink/10"
+                    aria-label="Open in Studio"
+                    title="Open in Studio"
+                    className={PHOTO_ACTION_BUTTON_CLASS}
                   >
-                    Open in Studio
+                    <SendIcon />
                   </a>
                 ) : null}
               </div>
