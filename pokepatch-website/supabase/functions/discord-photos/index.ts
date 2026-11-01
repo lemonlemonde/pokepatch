@@ -4,6 +4,8 @@
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
  * (order / card / side). Each upload replaces that side's existing photos.
+ * Side is optional: blank → `before` when the card has no before photos,
+ * otherwise `after`; if both sides are filled the upload is rejected.
  *
  * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS
  * Injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -147,6 +149,37 @@ async function clearSide(
   return existing.length;
 }
 
+/**
+ * Blank side → pick one from what the card already has:
+ *   no before photos → `before`; before filled, after empty → `after`;
+ *   both filled → null (caller rejects so nothing is silently replaced).
+ */
+async function defaultSideForCard(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: number
+): Promise<{ side: string | null; beforeCount: number; afterCount: number }> {
+  const { data, error } = await supabase
+    .from("card_images")
+    .select("image_type")
+    .eq("card_id", cardId)
+    .in("image_type", [...SIDE_IMAGE_TYPES.before, ...SIDE_IMAGE_TYPES.after]);
+  if (error) throw error;
+
+  let beforeCount = 0;
+  let afterCount = 0;
+  for (const row of data ?? []) {
+    if (SIDE_IMAGE_TYPES.before.includes(String(row.image_type))) {
+      beforeCount += 1;
+    } else {
+      afterCount += 1;
+    }
+  }
+
+  if (beforeCount === 0) return { side: "before", beforeCount, afterCount };
+  if (afterCount === 0) return { side: "after", beforeCount, afterCount };
+  return { side: null, beforeCount, afterCount };
+}
+
 function interactionUserId(interaction: Record<string, unknown>): string {
   const member = interaction.member as Record<string, unknown> | undefined;
   const user =
@@ -257,11 +290,11 @@ function wooperModal(pendingId: string, imageCount: number) {
             {
               type: 4,
               custom_id: "side",
-              label: "Side (before or after)",
+              label: "Side (optional: before or after)",
               style: 1,
-              placeholder: "before",
-              required: true,
-              min_length: 5,
+              placeholder: "Blank = before, or after once before is filled",
+              required: false,
+              min_length: 0,
               max_length: 6,
             },
           ],
@@ -326,6 +359,7 @@ async function uploadAttachments(params: {
   token: string;
   orderDisplayId: number;
   cardIndex: number;
+  /** `before` / `after`, or "" to pick from the card's existing photos. */
   side: string;
   files: DiscordAttachment[];
 }): Promise<void> {
@@ -334,7 +368,7 @@ async function uploadAttachments(params: {
     token,
     orderDisplayId,
     cardIndex,
-    side,
+    side: requestedSide,
     files,
   } = params;
 
@@ -355,11 +389,11 @@ async function uploadAttachments(params: {
       );
       return;
     }
-    if (!(side in SIDE_IMAGE_TYPES)) {
+    if (requestedSide && !(requestedSide in SIDE_IMAGE_TYPES)) {
       await editOriginal(
         applicationId,
         token,
-        "Side must be `before` or `after`."
+        "Side must be `before`, `after`, or left blank."
       );
       return;
     }
@@ -401,6 +435,27 @@ async function uploadAttachments(params: {
         `Order #${orderDisplayId} has ${cards?.length ?? 0} card(s); card ${cardIndex} is out of range.`
       );
       return;
+    }
+
+    const cardLabel = (card.card_name || `Card ${cardIndex}`).trim();
+
+    let side = requestedSide;
+    let sideWasDefaulted = false;
+    if (!side) {
+      const picked = await defaultSideForCard(supabase, card.id);
+      if (!picked.side) {
+        await editOriginal(
+          applicationId,
+          token,
+          [
+            `Nothing uploaded — Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}) already has **${picked.beforeCount}** before and **${picked.afterCount}** after photo(s).`,
+            "Re-run wooper and type `before` or `after` to replace that side.",
+          ].join("\n")
+        );
+        return;
+      }
+      side = picked.side;
+      sideWasDefaulted = true;
     }
 
     // Old photos are cleared lazily, once the first new one has downloaded,
@@ -482,12 +537,14 @@ async function uploadAttachments(params: {
       }
     }
 
-    const cardLabel = (card.card_name || `Card ${cardIndex}`).trim();
     const lines = [
       uploaded > 0
         ? `Uploaded **${uploaded}** ${side} photo(s) → Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`
         : `No photos uploaded for Order **#${orderDisplayId}** · ${cardLabel}.`,
     ];
+    if (sideWasDefaulted) {
+      lines.push(`Side left blank → defaulted to **${side}**.`);
+    }
     if (replaced) {
       lines.push(`Replaced ${replaced} previous ${side} photo(s).`);
     }

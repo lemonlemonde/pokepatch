@@ -7,7 +7,15 @@ onto order cards (`card_images` + private `card-photos` bucket).
 
 1. Post your photos in a Discord channel (up to 10 attachments on one message).
 2. **Right-click that message** → **Apps** → **wooper**.
-3. Fill in **order number**, **card number** (1 = first card in the order), and **side** (`before` or `after`).
+3. Fill in **order number**, **card number** (1 = first card in the order), and optionally **side** (`before` or `after`).
+
+**Side defaults** when left blank:
+
+- Card has no `before` photos → `before`.
+- Card has `before` but no `after` → `after`.
+- Both sides already have photos → nothing is uploaded; the reply asks you to type `before` or `after` explicitly to replace that side.
+
+Typing `before` or `after` always wins over the default.
 
 Up to **20 photos per side** per card. Files over 15MB are rejected.
 
