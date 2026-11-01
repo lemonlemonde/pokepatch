@@ -32,6 +32,17 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
+/** Discord allows at most 10 files per message. */
+const FILES_PER_MESSAGE = 10;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
 type CardImageRow = {
   id: number;
   storage_path: string;
@@ -139,7 +150,11 @@ type CardGenerateResult =
       cardIndex: number;
       cardLabel: string;
       posted: number;
+      beforeCount: number;
+      afterCount: number;
+      workCount: number;
       skippedLarge: string[];
+      notes: string[];
     }
   | {
       ok: false;
@@ -149,8 +164,8 @@ type CardGenerateResult =
     };
 
 /**
- * Download → stitch → post one pair at a time (never parallel ImageScript).
- * Posts each PNG as a follow-up as soon as that pair is ready.
+ * Download + stitch pairs one at a time (never parallel ImageScript), then
+ * post every PNG for this card in as few Discord messages as possible.
  */
 async function generateForCard(params: {
   supabase: SupabaseClient;
@@ -160,11 +175,9 @@ async function generateForCard(params: {
   multiCard: boolean;
   applicationId: string;
   token: string;
-  /** pair = 1-based index about to start; postedInCard = uploads so far on this card. */
   onPairProgress: (state: {
     pair: number;
     total: number;
-    postedInCard: number;
   }) => Promise<void>;
 }): Promise<CardGenerateResult> {
   const {
@@ -199,17 +212,26 @@ async function generateForCard(params: {
     };
   }
 
-  const pairCount = Math.min(beforeRows.length, afterRows.length);
+  const beforeCount = beforeRows.length;
+  const afterCount = afterRows.length;
+  const pairCount = Math.min(beforeCount, afterCount);
   if (pairCount <= SKIP_OVERVIEW_PAIRS) {
     return {
       ok: false,
       cardIndex,
       cardLabel,
-      reason: `only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview`,
+      reason: `only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview (before **${beforeCount}**, after **${afterCount}**)`,
     };
   }
 
   const workCount = pairCount - SKIP_OVERVIEW_PAIRS;
+  const notes: string[] = [];
+  if (beforeCount !== afterCount) {
+    notes.push(
+      `before **${beforeCount}** ≠ after **${afterCount}** — paired **${pairCount}**, skipped first **${SKIP_OVERVIEW_PAIRS}** overview → **${workCount}** post(s)`
+    );
+  }
+
   const overlay: CarouselOverlay = {
     card: cardLabel,
     set: setLabel,
@@ -226,17 +248,13 @@ async function generateForCard(params: {
     }
   }
 
+  const files: DiscordUploadFile[] = [];
   const skippedLarge: string[] = [];
-  let posted = 0;
 
   for (let offset = 0; offset < workCount; offset += 1) {
     const i = SKIP_OVERVIEW_PAIRS + offset;
     const pairNum = offset + 1;
-    await onPairProgress({
-      pair: pairNum,
-      total: workCount,
-      postedInCard: posted,
-    });
+    await onPairProgress({ pair: pairNum, total: workCount });
 
     const [beforeBytes, afterBytes] = await Promise.all([
       downloadStorageBytes(supabase, beforeRows[i].storage_path),
@@ -256,20 +274,14 @@ async function generateForCard(params: {
       continue;
     }
 
-    const file: DiscordUploadFile = {
+    files.push({
       filename,
       bytes: png,
       contentType: "image/png",
-    };
-    const label =
-      workCount === 1
-        ? `Card ${cardIndex} · ${cardLabel}`
-        : `Card ${cardIndex} · ${cardLabel} · pair ${pairNum}/${workCount}`;
-    await followupWithFiles(applicationId, token, { content: label }, [file]);
-    posted += 1;
+    });
   }
 
-  if (posted === 0) {
+  if (files.length === 0) {
     return {
       ok: false,
       cardIndex,
@@ -281,12 +293,30 @@ async function generateForCard(params: {
     };
   }
 
+  const batches = chunk(files, FILES_PER_MESSAGE);
+  for (let b = 0; b < batches.length; b += 1) {
+    const label =
+      batches.length === 1
+        ? `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`
+        : `Card ${cardIndex} · ${cardLabel} · PNGs (${b + 1}/${batches.length})`;
+    await followupWithFiles(
+      applicationId,
+      token,
+      { content: label },
+      batches[b]
+    );
+  }
+
   return {
     ok: true,
     cardIndex,
     cardLabel,
-    posted,
+    posted: files.length,
+    beforeCount,
+    afterCount,
+    workCount,
     skippedLarge,
+    notes,
   };
 }
 
@@ -354,7 +384,7 @@ export async function runClamperlJob(params: {
         applicationId,
         token,
         multiCard
-          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(PNGs post as each pair finishes)`
+          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(each card posts as one message when ready)`
           : `Generating Order **#${orderDisplayId}** · card **${targets[0].cardIndex}**…`
       ),
     ]);
@@ -362,9 +392,10 @@ export async function runClamperlJob(params: {
     const skippedLarge: string[] = [];
     const skippedCards: string[] = [];
     const okCards: string[] = [];
+    const notes: string[] = [];
     let postedFiles = 0;
 
-    // One card at a time; within each card, one pair at a time.
+    // One card at a time; stitch pairs sequentially, then upload that card's PNGs together.
     for (let t = 0; t < targets.length; t += 1) {
       const target = targets[t];
       const result = await generateForCard({
@@ -375,15 +406,15 @@ export async function runClamperlJob(params: {
         multiCard,
         applicationId,
         token,
-        onPairProgress: async ({ pair, total, postedInCard }) => {
+        onPairProgress: async ({ pair, total }) => {
           await editOriginal(
             applicationId,
             token,
             [
               `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
               multiCard
-                ? `Card **${target.cardIndex}/${targets.length}** · pair **${pair}/${total}** · **${postedFiles + postedInCard}** posted`
-                : `Card ${target.cardIndex} · pair **${pair}/${total}** · **${postedFiles + postedInCard}** posted`,
+                ? `Card **${target.cardIndex}/${targets.length}** · stitching pair **${pair}/${total}**`
+                : `Card ${target.cardIndex} · stitching pair **${pair}/${total}**`,
               okCards.length > 0
                 ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
                 : "",
@@ -403,9 +434,10 @@ export async function runClamperlJob(params: {
         );
       } else {
         okCards.push(
-          `card ${result.cardIndex} · ${result.cardLabel} (**${result.posted}**)`
+          `card ${result.cardIndex} · ${result.cardLabel} (**${result.posted}** of **${result.workCount}** · before ${result.beforeCount}/after ${result.afterCount})`
         );
         skippedLarge.push(...result.skippedLarge);
+        notes.push(...result.notes);
         postedFiles += result.posted;
       }
     }
@@ -422,6 +454,7 @@ export async function runClamperlJob(params: {
           skippedLarge.length > 0
             ? `Too large:\n${skippedLarge.join("\n")}`
             : "",
+          notes.length > 0 ? notes.join("\n") : "",
         ]
           .filter(Boolean)
           .join("\n")
@@ -438,7 +471,7 @@ export async function runClamperlJob(params: {
       token,
       [
         `Done · Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
-        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** post(s)`,
+        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** PNG(s)`,
         okCards.length > 0
           ? `Cards:\n${okCards.map((line) => `• ${line}`).join("\n")}`
           : "",
@@ -448,7 +481,8 @@ export async function runClamperlJob(params: {
         skippedLarge.length > 0
           ? `Omitted (too large):\n${skippedLarge.join("\n")}`
           : "",
-        `_PNGs are in the follow-up messages._`,
+        notes.length > 0 ? `Notes:\n${notes.map((line) => `• ${line}`).join("\n")}` : "",
+        `_PNGs are in the follow-up message(s)._`,
       ]
         .filter(Boolean)
         .join("\n")
