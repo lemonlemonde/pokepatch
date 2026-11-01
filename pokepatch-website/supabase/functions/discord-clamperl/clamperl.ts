@@ -13,7 +13,6 @@ import {
   CallbackType,
   EPHEMERAL,
   editOriginal,
-  editOriginalWithFiles,
   followupWithFiles,
   json,
   type DiscordUploadFile,
@@ -23,6 +22,7 @@ import {
 import { BUCKET } from "../_shared/discordOrderMessages.ts";
 import {
   SKIP_OVERVIEW_PAIRS,
+  preloadInstaAssets,
   stitchCarouselPairs,
   type CarouselOverlay,
 } from "../_shared/instaCarousel.ts";
@@ -328,38 +328,81 @@ export async function runClamperlJob(params: {
     }
 
     const multiCard = targets.length > 1;
-    const results: CardGenerateResult[] = [];
-    for (const target of targets) {
-      results.push(
-        await generateForCard({
-          supabase,
-          card: target.card,
-          cardIndex: target.cardIndex,
-          sizeLimit,
-          multiCard,
-        })
-      );
-    }
+    await Promise.all([
+      preloadInstaAssets(),
+      editOriginal(
+        applicationId,
+        token,
+        multiCard
+          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(PNGs post as each card finishes)`
+          : `Generating Order **#${orderDisplayId}** · card **${targets[0].cardIndex}**…`
+      ),
+    ]);
 
-    const files: DiscordUploadFile[] = [];
     const skippedLarge: string[] = [];
     const skippedCards: string[] = [];
     const okCards: string[] = [];
-    for (const result of results) {
+    let postedFiles = 0;
+
+    // PNGs always go in follow-ups. Editing @original drops attachments, so
+    // the original message is status-only and updates as cards finish.
+    for (let t = 0; t < targets.length; t += 1) {
+      const target = targets[t];
+      const result = await generateForCard({
+        supabase,
+        card: target.card,
+        cardIndex: target.cardIndex,
+        sizeLimit,
+        multiCard,
+      });
+
       if (!result.ok) {
         skippedCards.push(
           `card ${result.cardIndex} · ${result.cardLabel}: ${result.reason}`
         );
-        continue;
+      } else {
+        okCards.push(
+          `card ${result.cardIndex} · ${result.cardLabel} (**${result.postCount}**)`
+        );
+        skippedLarge.push(...result.skippedLarge);
+        postedFiles += result.files.length;
+
+        const batches = chunk(result.files, FILES_PER_MESSAGE);
+        for (let b = 0; b < batches.length; b += 1) {
+          const label =
+            batches.length === 1
+              ? `Card ${result.cardIndex} · ${result.cardLabel}`
+              : `Card ${result.cardIndex} · ${result.cardLabel} (${b + 1}/${batches.length})`;
+          await followupWithFiles(
+            applicationId,
+            token,
+            { content: label },
+            batches[b]
+          );
+        }
       }
-      okCards.push(
-        `card ${result.cardIndex} · ${result.cardLabel} (**${result.postCount}**)`
+
+      await editOriginal(
+        applicationId,
+        token,
+        [
+          `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
+          multiCard
+            ? `Progress **${t + 1}/${targets.length}** · **${postedFiles}** post(s) so far`
+            : `Card ${target.cardIndex} · **${postedFiles}** post(s)`,
+          okCards.length > 0
+            ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
+            : "",
+          skippedCards.length > 0
+            ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n")
       );
-      files.push(...result.files);
-      skippedLarge.push(...result.skippedLarge);
     }
 
-    if (files.length === 0) {
+    if (postedFiles === 0) {
       await editOriginal(
         applicationId,
         token,
@@ -382,36 +425,26 @@ export async function runClamperlJob(params: {
       cardIndex == null
         ? `all cards (${okCards.length}/${targets.length} generated)`
         : okCards[0] ?? `card ${cardIndex}`;
-    const batches = chunk(files, FILES_PER_MESSAGE);
-    const header = [
-      `Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
-      `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${files.length}** post(s)`,
-      skippedCards.length > 0
-        ? `Skipped cards:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
-        : "",
-      skippedLarge.length > 0
-        ? `Omitted (too large):\n${skippedLarge.join("\n")}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    const [first, ...rest] = batches;
-    await editOriginalWithFiles(
+    await editOriginal(
       applicationId,
       token,
-      { content: header },
-      first
+      [
+        `Done · Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
+        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** post(s)`,
+        okCards.length > 0
+          ? `Cards:\n${okCards.map((line) => `• ${line}`).join("\n")}`
+          : "",
+        skippedCards.length > 0
+          ? `Skipped cards:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+          : "",
+        skippedLarge.length > 0
+          ? `Omitted (too large):\n${skippedLarge.join("\n")}`
+          : "",
+        `_PNGs are in the follow-up messages._`,
+      ]
+        .filter(Boolean)
+        .join("\n")
     );
-
-    for (let i = 0; i < rest.length; i += 1) {
-      await followupWithFiles(
-        applicationId,
-        token,
-        { content: `Carousel batch ${i + 2}/${batches.length}` },
-        rest[i]
-      );
-    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("clamperl job failed", err);
