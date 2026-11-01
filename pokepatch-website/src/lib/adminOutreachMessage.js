@@ -1,4 +1,7 @@
-/** Default quote-outreach text for phone SMS / Instagram paste. */
+/**
+ * Default quote-outreach text for phone SMS / Instagram paste.
+ * Mirrored in supabase/functions/_shared/outreach.ts (Discord wrap-up) — keep in sync.
+ */
 export const DEFAULT_OUTREACH_MESSAGE =
   "Hey! This is Ray with pokepatch. Saw that you submitted a quote request on my website. Just reaching out here to lyk that I've added a quote and some details to your order. Feel free to contact me directly here as well.";
 

@@ -86,7 +86,7 @@ supabase functions deploy admin-api --no-verify-jwt
 
 - Does **not** modify `notify`, `quote_requests`, or `*_original` tables
 - Admin writes go to **working** tables only via `update_order` (service role)
-- No `orders` UPDATE webhook — admin edits stay silent (no Discord/Sheets)
+- No `orders` UPDATE webhook — admin edits stay silent (no Discord)
 - Customer submission photos are read-only in the UI
 
 ## Frontend

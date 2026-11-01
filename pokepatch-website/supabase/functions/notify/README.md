@@ -2,15 +2,25 @@
 
 Handles notifications for both:
 
-1. **Legacy** `quote_requests` INSERT → Discord + Requests sheet (`SHEETS_*` secrets)
-2. **Orders** `orders` INSERT → Discord + Orders sheet (`ORDERS_SHEETS_*` secrets)
+1. **Legacy** `quote_requests` INSERT → Discord
+2. **Orders** `orders` INSERT → Discord + customer confirmation email
 
 For new orders it:
 
-1. Loads related `contacts`, `cards`, and `card_images` with the service role key
-2. Creates **signed URLs** for customer photos
-3. Posts a **Discord** message (`New Order #42`) with link to `ORDERS_SHEET_VIEW_URL`
-4. Appends a summary row to the **Orders** Google Sheet tab via Apps Script
+1. ACKs the webhook immediately and finishes in the background (`EdgeRuntime.waitUntil`) — one message per card takes longer than the DB webhook waits
+2. Loads related `contacts`, `cards`, and `card_images` with the service role key
+3. Creates **signed URLs** for customer photos (1 year)
+4. Posts to **Discord** via the bot into `DISCORD_QUOTES_CHANNEL_ID`:
+   - a header (`New Order #42`: customer, delivery, contacts, card/photo counts, admin link)
+   - a **thread** on that header (`#42 · Customer`, auto-archives after 7 days idle) containing:
+     - **one message per card**: name/set, damage tags, description, all customer photos, and an **Add quote** button
+     - a **wrap-up** as the last message: all contact methods, quote overview + total, the copy-and-paste outreach message, last-notified time, and **Save & notify** / **Refresh** buttons
+   - buttons are handled by [`discord-interactions`](../discord-interactions/README.md)
+5. Sends the customer a "we received your quote request" email
+
+Message rendering lives in [`_shared/discordOrderMessages.ts`](../_shared/discordOrderMessages.ts) so card and wrap-up messages can be re-rendered after a quote is saved or the customer is notified from Discord.
+
+If `DISCORD_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages fall back to `DISCORD_WEBHOOK_URL` — same layout posted flat into the channel (webhooks can't open threads or carry buttons), so the quote / notify flows are unavailable.
 
 The service role key never touches the frontend — only this server-side function.
 
@@ -46,16 +56,15 @@ From `pokepatch-website/`:
 supabase login
 supabase link --project-ref tmdbqymvjphhfvgyimnb
 
-# Existing secrets (leave unchanged for legacy quote_requests)
-# DISCORD_WEBHOOK_URL
-# SHEETS_WEBHOOK_URL
-# SHEETS_SECRET
-# SHEET_VIEW_URL
+# Discord bot (one message per card + quote buttons)
+supabase secrets set DISCORD_BOT_TOKEN="bot-token"
+supabase secrets set DISCORD_QUOTES_CHANNEL_ID="channel-id"
 
-# New secrets for the orders pipeline
-supabase secrets set ORDERS_SHEETS_WEBHOOK_URL="https://script.google.com/macros/s/XXXX/exec"
-supabase secrets set ORDERS_SHEETS_SECRET="new-long-random-string-matching-orders-gs-SHARED_SECRET"
-supabase secrets set ORDERS_SHEET_VIEW_URL="https://docs.google.com/spreadsheets/d/XXXX/edit#gid=ORDERS_TAB"
+# Existing secret (legacy quote_requests + fallback when no bot token)
+# DISCORD_WEBHOOK_URL
+
+# Confirmation email (shared with admin-api)
+# RESEND_API_KEY / RESEND_FROM_EMAIL
 
 # Emergency only — normal path is merge to main (CI deploys all functions)
 supabase functions deploy notify --no-verify-jwt
@@ -67,12 +76,10 @@ supabase functions deploy notify --no-verify-jwt
 
 | Secret | Purpose |
 |--------|---------|
-| `DISCORD_WEBHOOK_URL` | Shared Discord webhook (legacy + orders) |
-| `SHEETS_WEBHOOK_URL` / `SHEETS_SECRET` | Legacy Requests tab (do **not** change) |
-| `SHEET_VIEW_URL` | Legacy Discord spreadsheet link |
-| `ORDERS_SHEETS_WEBHOOK_URL` | New Orders Apps Script `/exec` URL |
-| `ORDERS_SHEETS_SECRET` | Must match `SHARED_SECRET` in `google-sheets-webhook-orders.gs` |
-| `ORDERS_SHEET_VIEW_URL` | Discord link for new orders (Orders tab) |
+| `DISCORD_BOT_TOKEN` | Bot token — posts order/card messages with buttons (shared with `discord-interactions`) |
+| `DISCORD_QUOTES_CHANNEL_ID` | Channel the bot posts quote requests into |
+| `DISCORD_WEBHOOK_URL` | Legacy webhook; fallback when the bot isn't configured (no buttons) |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Customer confirmation email |
 
 ---
 
@@ -98,36 +105,20 @@ Do **not** add an UPDATE webhook on `orders` — admin edits must stay silent.
 
 ---
 
-## 4. Google Sheets (Orders tab)
-
-Google allows only one bound Apps Script per spreadsheet. Leave the legacy Requests script (Extensions → Apps Script) alone. Orders uses a **standalone** project:
-
-1. Add an **Orders** tab on the spreadsheet (or let the script create it)
-2. Copy the spreadsheet ID from the sheet URL
-3. Go to [script.google.com](https://script.google.com) → **New project** (not Extensions → Apps Script)
-4. Paste [`scripts/google-sheets-webhook-orders.gs`](../../../scripts/google-sheets-webhook-orders.gs)
-5. Set `SHARED_SECRET` (new string, not the legacy secret) and `SPREADSHEET_ID`
-6. Deploy → New deployment → Web app: Execute as **Me**, Who has access: **Anyone**
-7. Copy `/exec` URL → `ORDERS_SHEETS_WEBHOOK_URL`
-8. Set `ORDERS_SHEET_VIEW_URL` to the Orders tab URL
-
-Legacy [`scripts/google-sheets-webhook.gs`](../../../scripts/google-sheets-webhook.gs) and the **Requests** tab stay as-is.
-
----
-
-## 5. Test
+## 4. Test
 
 Submit a quote on `/quote/`, then confirm:
 
 - Rows in `orders`, `contacts`, `cards`, `card_images`
 - Matching rows in `*_original` tables
 - Photos under `card-photos/order-<uuid>/card-<uuid>/...`
-- Discord: `New Order #N` with `ORDERS_SHEET_VIEW_URL`
-- New row on the **Orders** sheet tab
+- Discord: `New Order #N` header with a thread; inside it one message per card with photos + **Add quote**, then the wrap-up (contacts, quote overview, outreach text, **Save & notify**)
+- Press **Add quote** on a card → modal → submit → card message shows the quote and the wrap-up total updates; order flips to pending drop-off once all cards are quoted
+- Press **Save & notify** on the wrap-up → modal preview → submit → customer email sent, `customer_messages` row created, wrap-up shows "Emailed …"
 
-Admin `update_order` (service role) should change working tables only and **not** post to Discord/Sheets.
+Admin `update_order` (service role) should change working tables only and **not** post to Discord.
 
-Legacy: INSERT into `quote_requests` should still hit Discord + Requests tab.
+Legacy: INSERT into `quote_requests` should still hit Discord.
 
 ---
 

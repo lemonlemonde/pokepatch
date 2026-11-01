@@ -1,29 +1,38 @@
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getServiceClient } from "../_shared/adminSession.ts";
+import { isValidEmail, sendCustomerEmail } from "../_shared/customerMessages.ts";
+import { CONTACT_TYPE_LABELS } from "../_shared/outreach.ts";
 import {
-  buildStoredMessageBody,
-  sendResendEmail,
-} from "../_shared/resend.ts";
+  createThreadFromMessage,
+  hasBotToken,
+  postChannelMessage,
+} from "../_shared/discord.ts";
+import {
+  BUCKET,
+  QUOTE_CONFIRMATION_SUBJECT,
+  buildCardMessage,
+  buildOrderHeaderMessage,
+  buildWrapupMessage,
+  customerPhotoPaths,
+  deliveryLabels,
+  loadContacts,
+  loadOrder,
+  loadOrderCards,
+  signPhotoUrls,
+  threadName,
+  type CardRow,
+  type ContactRow,
+  type OrderRow,
+} from "../_shared/discordOrderMessages.ts";
 
-const QUOTE_CONFIRMATION_SUBJECT = "We received your quote request";
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
 const CONTACT_DISCORD = "pokepatch.cards";
 const MY_ORDERS_TRACK_URL =
   "https://pokepatch.cards/login?redirect=/my-orders";
 
-const BUCKET = "card-photos";
-// Signed URLs expire. 1 year keeps links working in Discord history / the Sheet.
-const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
-
-const deliveryLabels: Record<string, string> = {
-  local_dropoff: "Local Drop-Off",
-  shipping: "Shipping",
-};
-
-const contactTypeLabels: Record<string, string> = {
-  phone: "Phone",
-  discord: "Discord",
-  instagram: "Instagram",
+declare const EdgeRuntime: {
+  waitUntil: (promise: Promise<unknown>) => void;
 };
 
 function extractFolderId(paths: string[]): string {
@@ -46,13 +55,24 @@ function isLegacyRecord(record: Record<string, unknown>): boolean {
   return record.restoration_details != null;
 }
 
+/** Channel the bot posts quote requests into. Empty → legacy webhook fallback. */
+function quotesChannelId(): string {
+  return (Deno.env.get("DISCORD_QUOTES_CHANNEL_ID") ?? "").trim();
+}
+
 Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const record = (body.record ?? body) as Record<string, unknown>;
 
     if (isOrdersRecord(record)) {
-      await handleOrdersInsert(record);
+      // Discord posts one message per card plus the email — longer than
+      // the DB webhook waits. ACK now and finish in the background.
+      EdgeRuntime.waitUntil(
+        handleOrdersInsert(record).catch((err) => {
+          console.error("notify: orders insert failed", err);
+        })
+      );
     } else if (isLegacyRecord(record)) {
       await handleLegacyInsert(record);
     } else {
@@ -67,7 +87,7 @@ Deno.serve(async (req) => {
 });
 
 async function handleLegacyInsert(record: Record<string, unknown>) {
-  const id = record.id ?? "?";
+  const id = (record.id as number | string | null) ?? "?";
   const delivery =
     deliveryLabels[String(record.delivery_method)] ??
     String(record.delivery_method ?? "unknown");
@@ -77,65 +97,33 @@ async function handleLegacyInsert(record: Record<string, unknown>) {
     ? (record.image_paths as string[])
     : [];
 
-  const photoUrls = await signPaths(paths);
-  const folderId = extractFolderId(paths);
-
   await notifyDiscordLegacy({
     id,
     delivery,
     contact,
     details,
     photoCount: paths.length,
-    folderId,
+    folderId: extractFolderId(paths),
   });
-  await notifySheetLegacy({ record, delivery, photoUrls, folderId });
 }
 
 async function handleOrdersInsert(record: Record<string, unknown>) {
   const orderUuid = String(record.id ?? "");
-  const displayId = record.display_id ?? "?";
+  const displayId = (record.display_id as number | string | null) ?? "?";
   const customerName = String(record.customer_name ?? "").trim();
-  const delivery =
-    deliveryLabels[String(record.delivery_method)] ??
-    String(record.delivery_method ?? "unknown");
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  }
+  const supabase = getServiceClient();
+  const contactsList = await loadContacts(supabase, orderUuid);
 
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  const { data: contacts, error: contactsError } = await supabase
-    .from("contacts")
-    .select("contact_type, value")
-    .eq("order_id", orderUuid);
-  if (contactsError) throw contactsError;
-
-  const { data: cards, error: cardsError } = await supabase
-    .from("cards")
-    .select("id")
-    .eq("order_id", orderUuid);
-  if (cardsError) throw cardsError;
-
-  const cardIds = (cards ?? []).map((c) => c.id as string);
-  if (cardIds.length < 1) {
+  const cards = await loadOrderCards(supabase, orderUuid);
+  if (cards.length < 1) {
     console.log("notify: skipping order with no cards", orderUuid);
     return;
   }
 
-  const { data: images, error: imagesError } = await supabase
-    .from("card_images")
-    .select("storage_path")
-    .in("card_id", cardIds);
-  if (imagesError) throw imagesError;
-  const paths = (images ?? [])
-    .map((img) => img.storage_path as string)
-    .filter(Boolean);
-
-  const photoUrls = await signPaths(paths, supabase);
-  const contactsList = contacts ?? [];
+  const cardIds = cards.map((card) => String(card.id));
+  const photoPathsByCard = await customerPhotoPaths(supabase, cardIds);
+  const paths = cardIds.flatMap((id) => photoPathsByCard.get(id) ?? []);
 
   // Admin "create order" seeds a blank card with no photos/contacts — don't
   // treat that like a customer submission.
@@ -144,28 +132,25 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     return;
   }
 
-  const storagePrefix = orderUuid ? `order-${orderUuid}` : extractFolderId(paths);
-
+  // Discord: header → thread → one message per card → wrap-up.
+  const order: OrderRow = (await loadOrder(supabase, orderUuid)) ?? {
+    id: orderUuid,
+    display_id: displayId,
+    customer_name: customerName,
+    customer_email: String(record.customer_email ?? "").trim() || null,
+    user_id: (record.user_id as string | null) ?? null,
+    delivery_method: String(record.delivery_method ?? ""),
+    status: String(record.status ?? "pending"),
+    pending_kind: (record.pending_kind as string | null) ?? null,
+    quote_bulk_counts: null,
+  };
   await notifyDiscordOrder({
-    displayId,
-    customerName,
-    delivery,
-    cardCount: cardIds.length,
+    supabase,
+    order,
+    cards,
+    photoPathsByCard,
+    contacts: contactsList,
     contactsText: formatContacts(contactsList, "; "),
-    photoCount: paths.length,
-    storagePrefix,
-  });
-
-  await notifySheetOrder({
-    displayId,
-    orderUuid,
-    createdAt: record.created_at,
-    customerName,
-    delivery,
-    cardCount: cardIds.length,
-    contactsText: formatContacts(contactsList, "\n"),
-    storagePrefix,
-    photoUrls,
   });
 
   await sendQuoteConfirmationEmail({
@@ -176,6 +161,84 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     userId: (record.user_id as string | null) ?? null,
     customerName,
   });
+}
+
+/**
+ * Header in the quotes channel, then a thread off it holding one message per
+ * card and a wrap-up last. Without a bot token (webhook only) threads can't be
+ * created, so everything posts flat into the channel without buttons.
+ */
+async function notifyDiscordOrder(params: {
+  supabase: SupabaseClient;
+  order: OrderRow;
+  cards: CardRow[];
+  photoPathsByCard: Map<string, string[]>;
+  contacts: ContactRow[];
+  contactsText: string;
+}) {
+  const { supabase, order, cards, photoPathsByCard, contacts, contactsText } = params;
+  const channelId = quotesChannelId();
+  if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
+
+  const photoCount = [...photoPathsByCard.values()].reduce(
+    (sum, list) => sum + list.length,
+    0
+  );
+
+  const header = await postChannelMessage(
+    channelId,
+    buildOrderHeaderMessage({
+      order,
+      cardCount: cards.length,
+      photoCount,
+      contactsText,
+    })
+  );
+  if (!header) {
+    console.error("notify: discord header post failed; skipping card messages");
+    return;
+  }
+
+  const interactive = Boolean(channelId) && hasBotToken();
+  const threadId = interactive
+    ? await createThreadFromMessage(header.channel_id, header.id, threadName(order))
+    : null;
+  if (interactive && !threadId) {
+    console.error("notify: thread create failed; posting cards in channel", order.id);
+  }
+  const target = threadId ?? header.channel_id;
+
+  for (const [index, card] of cards.entries()) {
+    const imageUrls = await signPhotoUrls(
+      supabase,
+      photoPathsByCard.get(String(card.id)) ?? []
+    );
+    const posted = await postChannelMessage(
+      target,
+      buildCardMessage({
+        order,
+        card,
+        cardIndex: index,
+        cardCount: cards.length,
+        imageUrls,
+        cardQuoteItems: [],
+        hvAmount: 0,
+        interactive,
+      })
+    );
+    if (!posted) {
+      console.error("notify: discord card post failed", order.id, card.id);
+    }
+  }
+
+  const wrapup = await postChannelMessage(
+    target,
+    buildWrapupMessage({
+      context: { order, cards, quoteItems: [], contacts, lastNotification: null },
+      interactive,
+    })
+  );
+  if (!wrapup) console.error("notify: discord wrap-up post failed", order.id);
 }
 
 function buildQuoteConfirmationBody(customerName: string): string {
@@ -210,7 +273,7 @@ async function sendQuoteConfirmationEmail({
   customerName: string;
 }): Promise<void> {
   const email = customerEmail.trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!email || !isValidEmail(email)) {
     console.log("quote confirmation: skipping — no valid customer_email");
     return;
   }
@@ -231,131 +294,32 @@ async function sendQuoteConfirmationEmail({
     return;
   }
 
-  const messageBody = buildQuoteConfirmationBody(customerName);
-  const storedBody = buildStoredMessageBody(messageBody, displayId);
-  const batchId = crypto.randomUUID();
-
-  const { data: inserted, error: insertError } = await supabase
-    .from("customer_messages")
-    .insert({
-      order_id: orderUuid,
-      recipient_email: email,
-      user_id: userId,
-      subject: QUOTE_CONFIRMATION_SUBJECT,
-      body: storedBody,
-      email_status: "pending",
-      batch_id: batchId,
-    })
-    .select("id")
-    .single();
-
-  if (insertError) {
-    console.error("quote confirmation: failed to log message", insertError);
-    return;
-  }
-
-  const messageId = inserted.id as string;
-  const sendResult = await sendResendEmail({
-    to: email,
-    subject: QUOTE_CONFIRMATION_SUBJECT,
-    body: messageBody,
+  const result = await sendCustomerEmail({
+    supabase,
+    orderId: orderUuid,
     orderDisplayId: displayId,
+    to: email,
+    userId,
+    subject: QUOTE_CONFIRMATION_SUBJECT,
+    body: buildQuoteConfirmationBody(customerName),
   });
-
-  const emailStatus = sendResult.ok ? "sent" : "failed";
-  const emailError = sendResult.ok ? null : sendResult.error;
-
-  const { error: updateError } = await supabase
-    .from("customer_messages")
-    .update({ email_status: emailStatus, email_error: emailError })
-    .eq("id", messageId);
-
-  if (updateError) {
-    console.error("quote confirmation: failed to update message status", updateError);
-  } else if (!sendResult.ok) {
-    console.error("quote confirmation: send failed", sendResult.error);
-  }
+  if (!result.ok) console.error("quote confirmation: send failed", result.error);
 }
 
 function formatContacts(
-  contacts: { contact_type?: string; value?: string }[],
+  contacts: { contact_type?: string | null; value?: string | null }[],
   separator: string
 ): string {
   return contacts
     .map((c) => {
       const label =
-        contactTypeLabels[String(c.contact_type ?? "")] ??
+        CONTACT_TYPE_LABELS[String(c.contact_type ?? "")] ??
         String(c.contact_type ?? "Contact");
       const value = String(c.value ?? "").trim();
       return value ? `${label}: ${value}` : null;
     })
     .filter(Boolean)
     .join(separator);
-}
-
-async function signPaths(
-  paths: string[],
-  client?: SupabaseClient
-): Promise<string[]> {
-  if (paths.length === 0) return [];
-
-  let supabase = client;
-  if (!supabase) {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceKey) return [];
-    supabase = createClient(supabaseUrl, serviceKey);
-  }
-
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(
-      paths.map((p) =>
-        p.endsWith(".thumb.webp") || p.endsWith(".poster.webp")
-          ? p
-          : `${p}.thumb.webp`
-      ),
-      SIGNED_URL_EXPIRES_IN
-    );
-  if (error) {
-    console.error("createSignedUrls error", error);
-    // Fall back to full-size signed URLs.
-    const fallback = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrls(paths, SIGNED_URL_EXPIRES_IN);
-    if (fallback.error) return [];
-    return (fallback.data ?? [])
-      .map((d) => d.signedUrl)
-      .filter((u): u is string => Boolean(u));
-  }
-
-  const thumbUrls = (data ?? [])
-    .map((d, i) => ({ url: d.signedUrl, err: (d as { error?: string }).error, path: paths[i] }))
-    .filter((row) => row.url && !row.err);
-
-  if (thumbUrls.length === paths.length) {
-    return thumbUrls.map((row) => row.url as string);
-  }
-
-  // Mix: use thumbs where available, full for the rest.
-  const missing = paths.filter(
-    (_, i) => !(data?.[i]?.signedUrl) || (data?.[i] as { error?: string })?.error
-  );
-  const fallback = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrls(missing, SIGNED_URL_EXPIRES_IN);
-  const fullByPath = new Map<string, string>();
-  for (const item of fallback.data ?? []) {
-    if (item.path && item.signedUrl) fullByPath.set(item.path, item.signedUrl);
-  }
-
-  return paths.map((path, i) => {
-    const thumb = data?.[i];
-    if (thumb?.signedUrl && !(thumb as { error?: string }).error) {
-      return thumb.signedUrl;
-    }
-    return fullByPath.get(path) ?? "";
-  }).filter(Boolean);
 }
 
 async function notifyDiscordLegacy({
@@ -373,14 +337,12 @@ async function notifyDiscordLegacy({
   photoCount: number;
   folderId: string;
 }) {
-  const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
-
-  const sheetUrl = Deno.env.get("SHEET_VIEW_URL");
+  const channelId = quotesChannelId();
+  if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
 
   const safeDetails = details
     ? details.length > 1200
-      ? `${details.slice(0, 1200)}… (see spreadsheet)`
+      ? `${details.slice(0, 1200)}… (see admin)`
       : details
     : "—";
 
@@ -394,164 +356,8 @@ async function notifyDiscordLegacy({
   if (folderId) {
     lines.push(`- **Storage folder:** \`${BUCKET}/${folderId}\``);
   }
-  if (sheetUrl) {
-    lines.push(`**Spreadsheet link:** ${sheetUrl}`);
-  }
-
-  await postDiscord(webhook, lines.join("\n").slice(0, 2000));
-}
-
-async function notifyDiscordOrder({
-  displayId,
-  customerName,
-  delivery,
-  cardCount,
-  contactsText,
-  photoCount,
-  storagePrefix,
-}: {
-  displayId: number | string;
-  customerName: string;
-  delivery: string;
-  cardCount: number;
-  contactsText: string;
-  photoCount: number;
-  storagePrefix: string;
-}) {
-  const webhook = Deno.env.get("DISCORD_WEBHOOK_URL");
-  if (!webhook) return;
-
-  const sheetUrl = Deno.env.get("ORDERS_SHEET_VIEW_URL");
-
-  const lines = [
-    `<<--<<-- **New Order #${displayId}:** -->>-->>`,
-    `- **Customer:** ${customerName || "—"}`,
-    `- **Delivery:** ${delivery}`,
-    `- **Cards:** ${cardCount}`,
-    `- **Contact:** ${contactsText || "—"}`,
-    `- **Photos:** ${photoCount} image${photoCount === 1 ? "" : "s"}`,
-  ];
-  if (storagePrefix) {
-    lines.push(`- **Storage:** \`${BUCKET}/${storagePrefix}/\``);
-  }
-  if (sheetUrl) {
-    lines.push(`**Spreadsheet:** ${sheetUrl}`);
-  }
-
-  await postDiscord(webhook, lines.join("\n").slice(0, 2000));
-}
-
-async function postDiscord(webhook: string, content: string) {
-  const res = await fetch(webhook, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+  await postChannelMessage(channelId, {
+    content: lines.join("\n").slice(0, 2000),
+    allowed_mentions: { parse: [] },
   });
-
-  if (!res.ok) {
-    console.error("Discord error", res.status, await res.text());
-  }
-}
-
-async function notifySheetLegacy({
-  record,
-  delivery,
-  photoUrls,
-  folderId,
-}: {
-  record: Record<string, unknown>;
-  delivery: string;
-  photoUrls: string[];
-  folderId: string;
-}) {
-  const url = Deno.env.get("SHEETS_WEBHOOK_URL");
-  if (!url) return;
-
-  const secret = Deno.env.get("SHEETS_SECRET") ?? "";
-  const baseRecord = {
-    id: record.id,
-    created_at: record.created_at,
-    delivery,
-    contact: record.contact,
-    restoration_details: record.restoration_details,
-    folder_id: folderId,
-  };
-
-  const ok = await postToSheet(url, { secret, record: baseRecord, photos: photoUrls });
-  if (!ok && photoUrls.length > 0) {
-    console.error("Sheets error with photo URLs, retrying without URLs");
-    await postToSheet(url, { secret, record: baseRecord, photos: [] });
-  }
-}
-
-async function notifySheetOrder({
-  displayId,
-  orderUuid,
-  createdAt,
-  customerName,
-  delivery,
-  cardCount,
-  contactsText,
-  storagePrefix,
-  photoUrls,
-}: {
-  displayId: number | string;
-  orderUuid: string;
-  createdAt: unknown;
-  customerName: string;
-  delivery: string;
-  cardCount: number;
-  contactsText: string;
-  storagePrefix: string;
-  photoUrls: string[];
-}) {
-  const url = Deno.env.get("ORDERS_SHEETS_WEBHOOK_URL");
-  if (!url) return;
-
-  const secret = Deno.env.get("ORDERS_SHEETS_SECRET") ?? "";
-  const baseRecord = {
-    id: displayId,
-    order_uuid: orderUuid,
-    created_at: createdAt,
-    customer_name: customerName,
-    delivery,
-    card_count: cardCount,
-    contacts: contactsText,
-    storage_prefix: storagePrefix,
-  };
-
-  const ok = await postToSheet(url, { secret, record: baseRecord, photos: photoUrls });
-  if (!ok && photoUrls.length > 0) {
-    console.error("Orders sheets error with photo URLs, retrying without URLs");
-    await postToSheet(url, { secret, record: baseRecord, photos: [] });
-  }
-}
-
-async function postToSheet(
-  url: string,
-  body: { secret: string; record: Record<string, unknown>; photos: string[] }
-): Promise<boolean> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  const text = await res.text();
-  if (!res.ok || text.includes("<!DOCTYPE html>")) {
-    console.error("Sheets error", res.status, text.slice(0, 500));
-    return false;
-  }
-
-  try {
-    const data = JSON.parse(text);
-    if (!data.ok) {
-      console.error("Sheets error", data);
-      return false;
-    }
-    return true;
-  } catch {
-    console.error("Sheets error: non-JSON response", text.slice(0, 500));
-    return false;
-  }
 }
