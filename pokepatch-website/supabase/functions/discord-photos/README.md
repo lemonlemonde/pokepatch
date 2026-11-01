@@ -6,7 +6,7 @@ Discord **Interactions Endpoint** for the **wooper** Discord app only.
 |------|---------|------|
 | **wooper** (before/after photos) | Right-click a message with images → **Apps → wooper** | [`wooper.ts`](./wooper.ts) |
 
-Quote requests use a **separate** Discord app → [`discord-interactions`](../discord-interactions/README.md).
+Quote requests use a **separate** Discord app → [`discord-interactions`](../discord-interactions/README.md). Instagram carousel PNGs use [`discord-clamperl`](../discord-clamperl/README.md).
 
 Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use wooper.
 

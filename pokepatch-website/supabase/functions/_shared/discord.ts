@@ -1,11 +1,11 @@
 /**
  * Discord helpers shared by `notify` (posts quote-request messages),
- * `discord-interactions` (quotes app buttons/modals), and `discord-photos`
- * (wooper app command/modals).
+ * `discord-interactions` (quotes app buttons/modals), `discord-photos`
+ * (wooper app command/modals), and `discord-clamperl` (carousel PNG slash command).
  *
  * Quote posts use `DISCORD_QUOTES_BOT_TOKEN`, with `DISCORD_WEBHOOK_URL` as a
- * non-interactive fallback. Wooper verifies with `DISCORD_PUBLIC_KEY` and does
- * not need the quotes bot token.
+ * non-interactive fallback. Wooper / clamperl verify with their own public keys
+ * and do not need the quotes bot token for interaction replies.
  */
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -205,8 +205,17 @@ export async function discordRequest(
 ): Promise<Response> {
   const { auth = true, ...rest } = init;
   const headers = new Headers(rest.headers ?? {});
-  if (!headers.has("Content-Type") && rest.body && typeof rest.body === "string") {
+  // Let the runtime set multipart boundaries for FormData; only force JSON
+  // when the body is an already-serialized string.
+  if (
+    !headers.has("Content-Type") &&
+    rest.body &&
+    typeof rest.body === "string"
+  ) {
     headers.set("Content-Type", "application/json");
+  }
+  if (typeof FormData !== "undefined" && rest.body instanceof FormData) {
+    headers.delete("Content-Type");
   }
   if (auth) {
     const token = botToken();
@@ -389,6 +398,86 @@ export async function editOriginal(
   );
   if (!res.ok) {
     console.error("discord edit original failed", await readError(res));
+  }
+}
+
+export type DiscordUploadFile = {
+  filename: string;
+  bytes: Uint8Array;
+  contentType?: string;
+};
+
+function multipartWithFiles(payload: Json, files: DiscordUploadFile[]): FormData {
+  const form = new FormData();
+  const attachments = files.map((file, index) => ({
+    id: index,
+    filename: file.filename,
+  }));
+  form.append(
+    "payload_json",
+    JSON.stringify({
+      ...payload,
+      ...(files.length > 0 ? { attachments } : {}),
+    })
+  );
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    form.append(
+      `files[${index}]`,
+      new Blob([file.bytes], {
+        type: file.contentType ?? "application/octet-stream",
+      }),
+      file.filename
+    );
+  }
+  return form;
+}
+
+/**
+ * Edit `@original` with file attachments (multipart). Discord serves the
+ * uploaded bytes as-is on download — no recompression of the file itself.
+ */
+export async function editOriginalWithFiles(
+  applicationId: string,
+  token: string,
+  payload: Json,
+  files: DiscordUploadFile[]
+): Promise<void> {
+  if (files.length === 0) {
+    await editOriginal(applicationId, token, payload);
+    return;
+  }
+
+  const res = await discordRequest(
+    `/webhooks/${applicationId}/${token}/messages/@original`,
+    {
+      method: "PATCH",
+      auth: false,
+      body: multipartWithFiles(payload, files),
+    }
+  );
+  if (!res.ok) {
+    console.error("discord edit original (files) failed", await readError(res));
+  }
+}
+
+/** Post a follow-up message on an interaction webhook (with optional files). */
+export async function followupWithFiles(
+  applicationId: string,
+  token: string,
+  payload: Json,
+  files: DiscordUploadFile[] = []
+): Promise<void> {
+  const res = await discordRequest(
+    `/webhooks/${applicationId}/${token}`,
+    {
+      method: "POST",
+      auth: false,
+      body: multipartWithFiles(payload, files),
+    }
+  );
+  if (!res.ok) {
+    console.error("discord followup (files) failed", await readError(res));
   }
 }
 
