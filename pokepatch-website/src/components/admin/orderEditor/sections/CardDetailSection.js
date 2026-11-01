@@ -289,14 +289,22 @@ export default function CardDetailSection({
   function removePhoto(imageId) {
     if (saving || imageId == null) return;
     const idKey = String(imageId);
-    const pending = card.pending_image_deletes ?? [];
-    updateCard({
-      images: (card.images ?? []).filter(
-        (image) => String(image.id) !== idKey
-      ),
-      pending_image_deletes: pending.some((id) => String(id) === idKey)
-        ? pending
-        : [...pending, imageId],
+    updateCardSection((current) => {
+      const currentCard = current.card;
+      const pending = currentCard.pending_image_deletes ?? [];
+      const imageKey = (image) => String(image.id ?? image.storage_path);
+      return {
+        ...current,
+        card: {
+          ...currentCard,
+          images: (currentCard.images ?? []).filter(
+            (image) => imageKey(image) !== idKey
+          ),
+          pending_image_deletes: pending.some((id) => String(id) === idKey)
+            ? pending
+            : [...pending, imageId],
+        },
+      };
     });
   }
 
