@@ -14,11 +14,14 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 
 ## `/clamperl` (carousel before/after)
 
-1. `/clamperl order:42 card:3`
-2. Bot loads that card’s before/after photos (sorted by upload id).
-3. Skips the first **two** overview pairs.
+1. `/clamperl order:42` — every card in the order  
+   or `/clamperl order:42 card:3` — one card
+2. Bot loads before/after photos (sorted by upload id).
+3. Skips the first **two** overview pairs on each card.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
 5. Replies in-channel with PNG attachments anyone can download.
+
+Cards without enough before/after pairs are skipped with a note in the reply.
 
 ---
 
@@ -41,18 +44,20 @@ supabase secrets set DISCORD_CLAMPERL_PUBLIC_KEY="hex-public-key"
 
 ### Register the `/clamperl` slash command (once per app)
 
+Re-run this whenever options change (e.g. making `card` optional):
+
 ```bash
 export CLAMPERL_APP_ID="clamperl-application-id"
 export CLAMPERL_BOT_TOKEN="clamperl-bot-token"   # only needed to register the command
 export GUILD_ID="your-server-id"
 
 curl -s -X PUT \
-  "https://discord.com/api/v10/applications/${CLAMPERL_APP_ID}/guilds/${GUILD_ID}/commands" \
+  "https://discord.com/api/v10/applications/${CLAMPERL_APP_ID}/commands" \
   -H "Authorization: Bot ${CLAMPERL_BOT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '[{
     "name": "clamperl",
-    "description": "Generate Instagram carousel before/after PNGs for an order card",
+    "description": "Generate Instagram carousel before/after PNGs for an order",
     "options": [
       {
         "name": "order",
@@ -62,9 +67,9 @@ curl -s -X PUT \
       },
       {
         "name": "card",
-        "description": "Card number in the order (1 = first card)",
+        "description": "Card number (1 = first). Omit to generate every card.",
         "type": 4,
-        "required": true
+        "required": false
       }
     ]
   }]'
