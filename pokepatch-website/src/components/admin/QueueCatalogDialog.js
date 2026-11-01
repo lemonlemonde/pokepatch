@@ -160,13 +160,6 @@ export default function QueueCatalogDialog({
           >
             {title}
           </h2>
-          <p className="mt-1 text-xs text-ink/50">
-            Official card art and titles for the public queue — not customer
-            photos.
-            {publishOnly
-              ? " Changes save as you apply them."
-              : " Continue without art if you prefer to add it later."}
-          </p>
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">

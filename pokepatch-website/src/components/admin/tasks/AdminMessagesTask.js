@@ -15,7 +15,6 @@ export default function AdminMessagesTask({ onOpenOrder }) {
     <AdminTaskModule
       eyebrow="Inbox"
       title="Messages"
-      description="Orders with new customer messages. Opening one marks those messages as read."
       accent="sky"
       count={count}
       countLabel="Orders with unread messages"

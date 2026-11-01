@@ -118,9 +118,6 @@ export default function OrderCardCatalogThumb({
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
             Queue catalog image
           </p>
-          <p className="mt-1 text-xs text-ink/50">
-            Official card art for the public queue — not customer photos.
-          </p>
         </div>
         {previewUrl ? (
           <div className="flex items-center gap-3">

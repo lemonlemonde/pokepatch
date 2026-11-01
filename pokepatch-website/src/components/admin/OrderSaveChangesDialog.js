@@ -254,25 +254,10 @@ export default function OrderSaveChangesDialog({
             {title}
           </h2>
           {variant === "move" ? (
-            <>
-              <OrderMoveSummary summary={orderSummary} />
-              <p className="mt-2 text-xs text-ink/50">
-                Customer gets an email and this appears in Messages.
-              </p>
-            </>
+            <OrderMoveSummary summary={orderSummary} />
           ) : saveOrderSummary ? (
-            <>
-              <OrderMoveSummary summary={saveOrderSummary} />
-              <p className="mt-2 text-xs text-ink/50">
-                Saving will also update the order status. Customer gets an email
-                and this appears in Messages.
-              </p>
-            </>
-          ) : (
-            <p className="mt-1 text-xs text-ink/50">
-              Customer gets an email and this appears in Messages.
-            </p>
-          )}
+            <OrderMoveSummary summary={saveOrderSummary} />
+          ) : null}
           {willSplit && variant === "save" ? (
             <p className="mt-3 rounded-xl border border-ink/15 bg-ink/[0.06] px-3 py-2 text-sm text-ink/80">
               Priority cards will move to a{" "}
@@ -303,13 +288,8 @@ export default function OrderSaveChangesDialog({
                 disabled={saving}
                 onChange={() => setMode("only")}
               />
-              <span>
-                <span className="block text-sm font-semibold text-ink">
-                  {onlyLabel}
-                </span>
-                <span className="mt-0.5 block text-xs text-ink/50">
-                  Apply changes without emailing the customer.
-                </span>
+              <span className="block text-sm font-semibold text-ink">
+                {onlyLabel}
               </span>
             </label>
             <label
@@ -329,19 +309,15 @@ export default function OrderSaveChangesDialog({
                 <span className="block text-sm font-semibold text-ink">
                   {notifyLabel}
                 </span>
-                <span className="mt-0.5 block text-xs text-ink/50">
-                  {canNotify ? (
-                    <>
-                      Email{" "}
-                      <span className="font-bold text-mint">
-                        {customerEmail}
-                      </span>{" "}
-                      and add to Messages.
-                    </>
-                  ) : (
-                   "No email on this order."
-                  )}
-                </span>
+                {!canNotify ? (
+                  <span className="mt-0.5 block text-xs text-ink/50">
+                    No email on this order.
+                  </span>
+                ) : customerEmail ? (
+                  <span className="mt-0.5 block text-xs text-ink/50">
+                    <span className="font-bold text-mint">{customerEmail}</span>
+                  </span>
+                ) : null}
               </span>
             </label>
           </div>

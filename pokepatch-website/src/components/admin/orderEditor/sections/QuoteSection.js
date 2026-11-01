@@ -242,7 +242,7 @@ export default function QuoteSection() {
                       description: event.target.value,
                     })
                   }
-                  placeholder="Description (shown on receipt)"
+                  placeholder="Description"
                 />
                 <RemoveButton
                   label="Remove adjustment"
@@ -268,10 +268,6 @@ export default function QuoteSection() {
           </GhostButton>
         }
       >
-        <p className="mb-2 text-xs text-ink/50">
-          Price changes after the order is done (tip, rounded to the nearest
-          dollar, etc.). Does not change the quote; adds to earned.
-        </p>
         <LedgerRowsEditor
           rows={afterCompletionRows}
           onChange={updateAfterCompletion}
@@ -297,10 +293,6 @@ export default function QuoteSection() {
           </GhostButton>
         }
       >
-        <p className="mb-2 text-xs text-ink/50">
-          Materials or costs during restoration. Does not change the quote;
-          subtracts from earned.
-        </p>
         <LedgerRowsEditor
           rows={restorationCosts}
           onChange={updateCost}
@@ -339,9 +331,7 @@ export default function QuoteSection() {
               }
             />
           ) : (
-            <p className="text-sm text-ink/40">
-              Add services on cards to build the quote.
-            </p>
+            <p className="text-sm text-ink/40">No quote yet.</p>
           )}
         </div>
       </Panel>

@@ -64,7 +64,6 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
     <AdminTaskModule
       eyebrow="Uploads"
       title="Photo albums"
-      description="In progress and ready-for-customer orders that still need before and after photos on every active card."
       accent="peach"
       count={loading && orders.length === 0 ? null : orders.length}
       countLabel="Orders missing before/after photos"
@@ -93,10 +92,6 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-ink/15 px-4 py-12 text-center">
               <p className="text-sm font-semibold text-ink/70">
                 All caught up
-              </p>
-              <p className="mt-1 max-w-sm text-sm text-ink/45">
-                Every in-progress and ready order has before and after photos
-                on each active card.
               </p>
             </div>
           ) : (
@@ -137,7 +132,7 @@ export default function AdminPhotoAlbumsTask({ onOpenOrder }) {
                             "Customer"}
                         </span>
                         <span className="mt-1 block text-sm text-ink/55">
-                          Missing before/after photos (Discord /wooper)
+                          Missing before/after photos
                         </span>
                       </span>
                       <span className="shrink-0 text-xs text-ink/45 sm:pt-0.5 sm:text-right">

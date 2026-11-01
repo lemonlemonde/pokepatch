@@ -78,46 +78,35 @@ const ADMIN_TABS = [
     label: "Orders",
     path: "/admin/orders/",
     title: "Orders admin",
-    subtitle:
-     "Drag between columns to change status. Hover to inspect, click to edit. Closed columns show the last 7 days — use Show all for older orders. Right-click or drag to the bin to delete.",
   },
   {
     id: "tasks",
     label: "Tasks",
     path: "/admin/tasks/",
     title: "Tasks",
-    subtitle:
-      "Open work that needs attention. Each box is its own checklist — add more task types later.",
   },
   {
     id: "gallery",
     label: "Gallery",
     path: "/admin/gallery/",
     title: "Gallery admin",
-    subtitle:
-     "Upload and manage restorations shown on the public Gallery page.",
   },
   {
     id: "studio",
     label: "Studio",
     path: "/admin/studio/",
     title: "Studio",
-    subtitle:
-      "Upload before & after folders, drag into pairs, then generate Instagram posts.",
   },
 ];
 
 const ORDERS_ALL_META = {
   id: "orders-all",
   title: "All orders",
-  subtitle:
-   "Spreadsheet view of every order. Search cards by name or set and filter by status. Click a row to open it.",
 };
 
 const ORDERS_EDIT_META = {
   id: "orders-edit",
   title: "Edit order",
-  subtitle: "",
 };
 
 function tabFromPathname(pathname) {
@@ -1264,11 +1253,11 @@ function KanbanBoard({
                 ? `Release to delete #${dragOrder?.display_id ?? ""}`
                 : "Recycling bin"}
             </p>
-            <p className="mt-0.5 text-xs opacity-80">
-              {trashArmed
-                ? "You’ll confirm before anything is deleted"
-                : "Right-click or drag here — always confirms first"}
-            </p>
+            {trashArmed ? (
+              <p className="mt-0.5 text-xs opacity-80">
+                You’ll confirm before anything is deleted
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
