@@ -21,49 +21,16 @@ export type QuoteService = {
   title: string;
   listPrice: number | null;
   priceSuffix?: string;
-  /** Short names accepted in the Discord "price overrides" field. */
-  aliases: string[];
 };
 
-/** Same order as the admin service picker. Custom is handled separately. */
+/** Same order as the admin service picker. */
 export const QUOTE_SERVICES: QuoteService[] = [
-  {
-    key: SERVICE_KEYS.SURFACE,
-    title: "Surface Cleaning",
-    listPrice: 20,
-    aliases: ["surface cleaning", "surface", "cleaning", "clean"],
-  },
-  {
-    key: SERVICE_KEYS.PRESSING,
-    title: "Minor Damage",
-    listPrice: 30,
-    aliases: ["minor damage", "damage minor", "pressing", "minor"],
-  },
-  {
-    key: SERVICE_KEYS.ADVANCED,
-    title: "Major Damage",
-    listPrice: 50,
-    priceSuffix: "+",
-    aliases: ["major damage", "damage major", "advanced", "major"],
-  },
-  {
-    key: SERVICE_KEYS.WHITENING,
-    title: "Minor Whitening",
-    listPrice: 25,
-    aliases: ["minor whitening", "whitening minor", "whitening"],
-  },
-  {
-    key: SERVICE_KEYS.WHITENING_MAJOR,
-    title: "Major Whitening",
-    listPrice: 40,
-    aliases: ["major whitening", "whitening major"],
-  },
-  {
-    key: SERVICE_KEYS.SLAB,
-    title: "Slab Cracking",
-    listPrice: 10,
-    aliases: ["slab cracking", "slab", "crack"],
-  },
+  { key: SERVICE_KEYS.SURFACE, title: "Surface Cleaning", listPrice: 20 },
+  { key: SERVICE_KEYS.PRESSING, title: "Minor Damage", listPrice: 30 },
+  { key: SERVICE_KEYS.ADVANCED, title: "Major Damage", listPrice: 50, priceSuffix: "+" },
+  { key: SERVICE_KEYS.WHITENING, title: "Minor Whitening", listPrice: 25 },
+  { key: SERVICE_KEYS.WHITENING_MAJOR, title: "Major Whitening", listPrice: 40 },
+  { key: SERVICE_KEYS.SLAB, title: "Slab Cracking", listPrice: 10 },
 ];
 
 export function serviceByKey(key: string): QuoteService | null {
