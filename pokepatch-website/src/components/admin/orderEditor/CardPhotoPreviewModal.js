@@ -34,7 +34,7 @@ const TOOLBAR_BUTTON_CLASS =
 /**
  * Admin-only photo reference viewer for one order card.
  * Opens with every photo laid out by group; clicking a photo shows the
- * full-resolution file at its original pixel size (toggle to fit-to-screen).
+ * full-resolution file scaled to fit the screen.
  *
  * `groups`: [{ key, title, items }] where items come from `savedPhotoItems`.
  * Nothing here is rendered for customers — the images only load on open.
@@ -46,7 +46,6 @@ export default function CardPhotoPreviewModal({
   groups = [],
 }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
-  const [fitToScreen, setFitToScreen] = useState(false);
   const { mounted, visible } = useOverlayPresence(open);
 
   const flatItems = useMemo(
@@ -67,7 +66,6 @@ export default function CardPhotoPreviewModal({
   // Fresh grid every time the modal reopens.
   const requestClose = useCallback(() => {
     setExpandedIndex(null);
-    setFitToScreen(false);
     onClose();
   }, [onClose]);
 
@@ -136,16 +134,6 @@ export default function CardPhotoPreviewModal({
             : `${total} photo${total === 1 ? "" : "s"}`}
         </p>
       </div>
-      {expandedItem ? (
-        <button
-          type="button"
-          onClick={() => setFitToScreen((value) => !value)}
-          aria-pressed={fitToScreen}
-          className={TOOLBAR_BUTTON_CLASS}
-        >
-          {fitToScreen ? "Original size" : "Fit to screen"}
-        </button>
-      ) : null}
       <button
         type="button"
         onClick={requestClose}
@@ -157,8 +145,11 @@ export default function CardPhotoPreviewModal({
     </div>
   );
 
+  // Groups sit side by side and wrap; the dialog hugs this content so a card
+  // with a handful of photos gets a compact, centered panel instead of a
+  // mostly-empty full-height one.
   const gridBody = (
-    <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-5">
+    <div className="flex min-h-0 flex-1 flex-wrap items-start justify-center gap-x-10 gap-y-6 overflow-y-auto px-5 py-5 sm:px-8">
       {total === 0 ? (
         <p className="text-sm text-ink/50">No photos on this card yet.</p>
       ) : null}
@@ -166,16 +157,16 @@ export default function CardPhotoPreviewModal({
         const { items } = group;
         if (items.length === 0) return null;
         return (
-          <section key={group.key}>
-            <h3 className="mb-2 flex items-baseline gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
+          <section key={group.key} className="flex flex-col items-center">
+            <h3 className="mb-2.5 flex items-baseline gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
               {group.title}
               <span className="font-mono text-ink/35">{items.length}</span>
             </h3>
-            <ul className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3">
+            <ul className="flex flex-wrap justify-center gap-3">
               {items.map((item) => (
                 <li
                   key={item.id}
-                  className="overflow-hidden rounded-xl bg-night/40 ring-1 ring-ink/10"
+                  className="w-40 overflow-hidden rounded-xl bg-night/40 ring-1 ring-ink/10"
                 >
                   <button
                     type="button"
@@ -214,34 +205,19 @@ export default function CardPhotoPreviewModal({
 
   const expandedBody = expandedItem ? (
     <div className="relative min-h-0 flex-1">
-      <div className="h-full w-full overflow-auto">
-        {/*
-          Original: natural pixels, auto margins center small images and keep
-          large ones scrollable from the top-left. Fit: wrapper takes the full
-          viewport box so max-h/max-w resolve against a definite size.
-        */}
-        <div
-          className={
-            fitToScreen
-              ? "flex h-full w-full items-center justify-center p-4"
-              : "flex min-h-full min-w-full p-4"
-          }
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            key={expandedItem.fullSrc || expandedItem.src}
-            src={expandedItem.fullSrc || expandedItem.src}
-            alt={expandedItem.alt}
-            decoding="async"
-            onClick={() => setFitToScreen((value) => !value)}
-            title={fitToScreen ? "Show original size" : "Fit to screen"}
-            className={
-              fitToScreen
-                ? "max-h-full max-w-full cursor-zoom-in object-contain"
-                : "m-auto block max-w-none cursor-zoom-out"
-            }
-          />
-        </div>
+      {/*
+        Wrapper takes the full dialog body so max-h/max-w resolve against a
+        definite size and the image always fits on screen.
+      */}
+      <div className="flex h-full w-full items-center justify-center p-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          key={expandedItem.fullSrc || expandedItem.src}
+          src={expandedItem.fullSrc || expandedItem.src}
+          alt={expandedItem.alt}
+          decoding="async"
+          className="max-h-full max-w-full object-contain"
+        />
       </div>
       {hasPrevious ? (
         <button
@@ -276,7 +252,11 @@ export default function CardPhotoPreviewModal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-ink/15 bg-cream"
+        className={`flex max-w-6xl flex-col overflow-hidden rounded-2xl border border-ink/15 bg-cream ${
+          expandedItem
+            ? "h-full w-full"
+            : "max-h-full w-auto min-w-[min(100%,24rem)]"
+        }`}
         onClick={(event) => event.stopPropagation()}
       >
         {header}
