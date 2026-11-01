@@ -2,9 +2,10 @@
  * Discord helpers shared by `notify` (posts order/card messages) and
  * `discord-interactions` (handles button / modal / command interactions).
  *
- * REST calls use the bot token (`DISCORD_BOT_TOKEN`). Channel messages fall
- * back to the legacy webhook (`DISCORD_WEBHOOK_URL`) when no bot is configured;
- * webhooks cannot carry interactive components, so buttons are dropped there.
+ * Quote-request posts use the quotes bot (`DISCORD_QUOTES_BOT_TOKEN`). Channel
+ * messages fall back to the legacy webhook (`DISCORD_WEBHOOK_URL`) when no bot
+ * is configured; webhooks cannot carry interactive components, so buttons are
+ * dropped there. Wooper uses a separate Discord app (`discord-photos`).
  */
 
 const DISCORD_API = "https://discord.com/api/v10";
@@ -137,7 +138,7 @@ export function deniedResponse(): Response {
 // REST
 
 function botToken(): string {
-  return (Deno.env.get("DISCORD_BOT_TOKEN") ?? "").trim();
+  return (Deno.env.get("DISCORD_QUOTES_BOT_TOKEN") ?? "").trim();
 }
 
 export function hasBotToken(): boolean {
@@ -165,7 +166,7 @@ export async function discordRequest(
   }
   if (auth) {
     const token = botToken();
-    if (!token) throw new Error("DISCORD_BOT_TOKEN not set");
+    if (!token) throw new Error("DISCORD_QUOTES_BOT_TOKEN not set");
     headers.set("Authorization", `Bot ${token}`);
   }
   const url = path.startsWith("http") ? path : `${DISCORD_API}${path}`;

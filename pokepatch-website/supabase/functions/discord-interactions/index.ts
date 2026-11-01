@@ -1,13 +1,14 @@
 /**
- * Discord Interactions endpoint for the PokePatch app.
+ * Discord Interactions endpoint for the **quotes** Discord app.
  *
  * Routes:
- * - `wooper` message command → before/after photo upload (wooper.ts)
  * - `quote:<cardId>` button → per-card quote modal (quote.ts)
  * - `notify:<orderId>` button → Save & notify modal (notifyCustomer.ts)
  * - `wrapup:<orderId>` button → re-render the order wrap-up (notifyCustomer.ts)
  *
- * Secrets: DISCORD_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS, DISCORD_BOT_TOKEN
+ * Wooper lives on a separate Discord app → `discord-photos`.
+ *
+ * Secrets: DISCORD_QUOTES_PUBLIC_KEY, DISCORD_ADMIN_USER_IDS, DISCORD_QUOTES_BOT_TOKEN
  * Injected: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  */
 
@@ -34,11 +35,6 @@ import {
   handleWrapupRefresh,
 } from "./notifyCustomer.ts";
 import { handleQuoteButton, handleQuoteModal } from "./quote.ts";
-import {
-  WOOPER_MODAL_PREFIX,
-  handleWooperCommand,
-  handleWooperModal,
-} from "./wooper.ts";
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
@@ -51,9 +47,9 @@ Deno.serve(async (req) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  const publicKey = Deno.env.get("DISCORD_PUBLIC_KEY") ?? "";
+  const publicKey = Deno.env.get("DISCORD_QUOTES_PUBLIC_KEY") ?? "";
   if (!publicKey) {
-    console.error("DISCORD_PUBLIC_KEY not set");
+    console.error("DISCORD_QUOTES_PUBLIC_KEY not set");
     return new Response("Server misconfigured", { status: 500 });
   }
 
@@ -86,14 +82,6 @@ Deno.serve(async (req) => {
   const data = (interaction.data ?? {}) as Json;
   const customId = String(data.custom_id ?? "");
 
-  if (type === InteractionType.APPLICATION_COMMAND) {
-    const commandName = String(data.name ?? "");
-    if (commandName === "wooper") {
-      return await handleWooperCommand(interaction);
-    }
-    return ephemeralReply(`Unknown command \`${commandName}\`.`);
-  }
-
   if (type === InteractionType.MESSAGE_COMPONENT) {
     if (customId.startsWith(QUOTE_BUTTON_PREFIX)) {
       return await handleQuoteButton(interaction);
@@ -108,9 +96,6 @@ Deno.serve(async (req) => {
   }
 
   if (type === InteractionType.MODAL_SUBMIT) {
-    if (customId.startsWith(WOOPER_MODAL_PREFIX)) {
-      return handleWooperModal(interaction, waitUntil);
-    }
     if (customId.startsWith(QUOTE_BUTTON_PREFIX)) {
       return handleQuoteModal(interaction, waitUntil);
     }
