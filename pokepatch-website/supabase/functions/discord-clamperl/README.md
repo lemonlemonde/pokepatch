@@ -77,4 +77,4 @@ Invite the bot to your server with `applications.commands` scope.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Discord bot attachment limits still apply (~10 MB/file baseline). Oversized PNGs are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
-- Fonts/logo are fetched once per isolate (Nunito from Google Fonts GitHub; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.
+- Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.
