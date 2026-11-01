@@ -506,7 +506,7 @@ async function drawBranding(
 }
 
 /**
- * Stitch one before/after pair into a 1080×1350 PNG.
+ * Stitch one before/after pair into a 1080×1350 JPEG (Studio-quality).
  */
 export async function stitchCarouselPairPng(
   beforeBytes: Uint8Array,
@@ -610,11 +610,14 @@ export async function stitchCarouselPairPng(
     await drawCardInfo(canvas, assets, overlay, contentBottom + CHIP_GAP);
   }
 
-  return await canvas.encodePNG();
+  // Match Admin Studio: JPEG q=0.98. PNG encode + Discord upload of many
+  // 1080×1350 frames is too slow for multi-card Edge jobs; Instagram
+  // recompresses on upload anyway.
+  return await canvas.encodeJPEG(98);
 }
 
 /** Run async work over items with a fixed concurrency cap. */
-async function mapPool<T, R>(
+export async function mapPool<T, R>(
   items: T[],
   concurrency: number,
   fn: (item: T, index: number) => Promise<R>
@@ -634,18 +637,18 @@ async function mapPool<T, R>(
 }
 
 /** Parallel pair stitches (capped) — Edge memory is limited. */
-const PAIR_STITCH_CONCURRENCY = 2;
+const PAIR_STITCH_CONCURRENCY = 3;
 
 /**
- * Stitch every pair after skipping overview pairs. Returns PNG bytes + labels.
+ * Stitch every pair after skipping overview pairs. Returns JPEG bytes + labels.
  */
 export async function stitchCarouselPairs(
   pairs: CarouselPairInput[],
   overlay: CarouselOverlay = {}
-): Promise<{ key: string; label: string; png: Uint8Array }[]> {
+): Promise<{ key: string; label: string; bytes: Uint8Array }[]> {
   const solo = pairs.length === 1;
   return mapPool(pairs, PAIR_STITCH_CONCURRENCY, async (pair, index) => {
-    const png = await stitchCarouselPairPng(
+    const bytes = await stitchCarouselPairPng(
       pair.beforeBytes,
       pair.afterBytes,
       overlay
@@ -654,7 +657,7 @@ export async function stitchCarouselPairs(
     return {
       key: `pair-${n}`,
       label: solo ? "Post" : `Pair ${n}`,
-      png,
+      bytes,
     };
   });
 }
