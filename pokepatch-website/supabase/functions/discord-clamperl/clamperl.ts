@@ -22,9 +22,8 @@ import {
 import { BUCKET } from "../_shared/discordOrderMessages.ts";
 import {
   SKIP_OVERVIEW_PAIRS,
-  mapPool,
   preloadInstaAssets,
-  stitchCarouselPairs,
+  stitchCarouselPairPng,
   type CarouselOverlay,
 } from "../_shared/instaCarousel.ts";
 
@@ -32,11 +31,6 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
   after: ["after", "final_front", "final_back"],
 };
-
-/** Discord allows at most 10 files per message. */
-const FILES_PER_MESSAGE = 10;
-/** How many cards to generate at once on Edge (memory-bound). */
-const CARD_CONCURRENCY = 2;
 
 type CardImageRow = {
   id: number;
@@ -108,14 +102,6 @@ function attachmentSizeLimit(interaction: Interaction): number {
   return 10 * 1024 * 1024;
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    out.push(items.slice(i, i + size));
-  }
-  return out;
-}
-
 async function loadOrderCards(
   supabase: SupabaseClient,
   orderId: string
@@ -152,9 +138,8 @@ type CardGenerateResult =
       ok: true;
       cardIndex: number;
       cardLabel: string;
-      files: DiscordUploadFile[];
+      posted: number;
       skippedLarge: string[];
-      postCount: number;
     }
   | {
       ok: false;
@@ -163,15 +148,30 @@ type CardGenerateResult =
       reason: string;
     };
 
+/**
+ * Download → stitch → post one pair at a time (never parallel ImageScript).
+ * Posts each PNG as a follow-up as soon as that pair is ready.
+ */
 async function generateForCard(params: {
   supabase: SupabaseClient;
   card: CardRow;
   cardIndex: number;
   sizeLimit: number;
-  /** Prefix filenames when generating multiple cards in one job. */
   multiCard: boolean;
+  applicationId: string;
+  token: string;
+  onPairProgress: (done: number, total: number) => Promise<void>;
 }): Promise<CardGenerateResult> {
-  const { supabase, card, cardIndex, sizeLimit, multiCard } = params;
+  const {
+    supabase,
+    card,
+    cardIndex,
+    sizeLimit,
+    multiCard,
+    applicationId,
+    token,
+    onPairProgress,
+  } = params;
   const cardId = String(card.id);
   const cardLabel = (
     card.catalog_card_name ||
@@ -204,17 +204,7 @@ async function generateForCard(params: {
     };
   }
 
-  const pairBytes = await Promise.all(
-    Array.from({ length: pairCount - SKIP_OVERVIEW_PAIRS }, async (_, offset) => {
-      const i = SKIP_OVERVIEW_PAIRS + offset;
-      const [beforeBytes, afterBytes] = await Promise.all([
-        downloadStorageBytes(supabase, beforeRows[i].storage_path),
-        downloadStorageBytes(supabase, afterRows[i].storage_path),
-      ]);
-      return { beforeBytes, afterBytes };
-    })
-  );
-
+  const workCount = pairCount - SKIP_OVERVIEW_PAIRS;
   const overlay: CarouselOverlay = {
     card: cardLabel,
     set: setLabel,
@@ -231,27 +221,45 @@ async function generateForCard(params: {
     }
   }
 
-  const outputs = await stitchCarouselPairs(pairBytes, overlay);
-  const files: DiscordUploadFile[] = [];
   const skippedLarge: string[] = [];
-  for (const output of outputs) {
+  let posted = 0;
+
+  for (let offset = 0; offset < workCount; offset += 1) {
+    const i = SKIP_OVERVIEW_PAIRS + offset;
+    await onPairProgress(offset, workCount);
+
+    const [beforeBytes, afterBytes] = await Promise.all([
+      downloadStorageBytes(supabase, beforeRows[i].storage_path),
+      downloadStorageBytes(supabase, afterRows[i].storage_path),
+    ]);
+
+    const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
+    const pairNum = offset + 1;
     const filename = multiCard
-      ? `pokepatch-card${cardIndex}-${output.key}.jpg`
-      : `pokepatch-${output.key}.jpg`;
-    if (output.bytes.byteLength > sizeLimit) {
+      ? `pokepatch-card${cardIndex}-pair-${pairNum}.png`
+      : `pokepatch-pair-${pairNum}.png`;
+
+    if (png.byteLength > sizeLimit) {
       skippedLarge.push(
-        `${filename} (${Math.ceil(output.bytes.byteLength / (1024 * 1024))}MB > limit)`
+        `${filename} (${Math.ceil(png.byteLength / (1024 * 1024))}MB > limit)`
       );
       continue;
     }
-    files.push({
+
+    const file: DiscordUploadFile = {
       filename,
-      bytes: output.bytes,
-      contentType: "image/jpeg",
-    });
+      bytes: png,
+      contentType: "image/png",
+    };
+    const label =
+      workCount === 1
+        ? `Card ${cardIndex} · ${cardLabel}`
+        : `Card ${cardIndex} · ${cardLabel} · pair ${pairNum}/${workCount}`;
+    await followupWithFiles(applicationId, token, { content: label }, [file]);
+    posted += 1;
   }
 
-  if (files.length === 0) {
+  if (posted === 0) {
     return {
       ok: false,
       cardIndex,
@@ -267,9 +275,8 @@ async function generateForCard(params: {
     ok: true,
     cardIndex,
     cardLabel,
-    files,
+    posted,
     skippedLarge,
-    postCount: files.length,
   };
 }
 
@@ -337,7 +344,7 @@ export async function runClamperlJob(params: {
         applicationId,
         token,
         multiCard
-          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(JPEGs post as each card finishes)`
+          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(PNGs post as each pair finishes)`
           : `Generating Order **#${orderDisplayId}** · card **${targets[0].cardIndex}**…`
       ),
     ]);
@@ -346,27 +353,38 @@ export async function runClamperlJob(params: {
     const skippedCards: string[] = [];
     const okCards: string[] = [];
     let postedFiles = 0;
-    let finishedCards = 0;
 
-    // Serialize Discord status edits (workers post files in parallel).
-    let statusLock: Promise<void> = Promise.resolve();
-    const setStatus = (content: string) => {
-      statusLock = statusLock
-        .then(() => editOriginal(applicationId, token, content))
-        .catch((err) => {
-          console.error("clamperl status edit failed", err);
-        });
-      return statusLock;
-    };
-
-    // Files go in follow-ups only — editing @original drops attachments.
-    await mapPool(targets, CARD_CONCURRENCY, async (target) => {
+    // One card at a time; within each card, one pair at a time.
+    for (let t = 0; t < targets.length; t += 1) {
+      const target = targets[t];
       const result = await generateForCard({
         supabase,
         card: target.card,
         cardIndex: target.cardIndex,
         sizeLimit,
         multiCard,
+        applicationId,
+        token,
+        onPairProgress: async (done, total) => {
+          await editOriginal(
+            applicationId,
+            token,
+            [
+              `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
+              multiCard
+                ? `Card **${target.cardIndex}/${targets.length}** · pair **${done + 1}/${total}** · **${postedFiles}** posted`
+                : `Card ${target.cardIndex} · pair **${done + 1}/${total}** · **${postedFiles}** posted`,
+              okCards.length > 0
+                ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
+                : "",
+              skippedCards.length > 0
+                ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n")
+          );
+        },
       });
 
       if (!result.ok) {
@@ -375,46 +393,12 @@ export async function runClamperlJob(params: {
         );
       } else {
         okCards.push(
-          `card ${result.cardIndex} · ${result.cardLabel} (**${result.postCount}**)`
+          `card ${result.cardIndex} · ${result.cardLabel} (**${result.posted}**)`
         );
         skippedLarge.push(...result.skippedLarge);
-        postedFiles += result.files.length;
-
-        const batches = chunk(result.files, FILES_PER_MESSAGE);
-        for (let b = 0; b < batches.length; b += 1) {
-          const label =
-            batches.length === 1
-              ? `Card ${result.cardIndex} · ${result.cardLabel}`
-              : `Card ${result.cardIndex} · ${result.cardLabel} (${b + 1}/${batches.length})`;
-          await followupWithFiles(
-            applicationId,
-            token,
-            { content: label },
-            batches[b]
-          );
-        }
+        postedFiles += result.posted;
       }
-
-      finishedCards += 1;
-      if (finishedCards < targets.length) {
-        await setStatus(
-          [
-            `Carousel **4:5 JPEG** · Order **#${orderDisplayId}**`,
-            `Progress **${finishedCards}/${targets.length}** · **${postedFiles}** post(s) so far`,
-            okCards.length > 0
-              ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
-              : "",
-            skippedCards.length > 0
-              ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
-              : "",
-          ]
-            .filter(Boolean)
-            .join("\n")
-        );
-      }
-    });
-
-    await statusLock;
+    }
 
     if (postedFiles === 0) {
       await editOriginal(
@@ -443,7 +427,7 @@ export async function runClamperlJob(params: {
       applicationId,
       token,
       [
-        `Done · Carousel **4:5 JPEG** · Order **#${orderDisplayId}** · ${scope}`,
+        `Done · Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
         `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** post(s)`,
         okCards.length > 0
           ? `Cards:\n${okCards.map((line) => `• ${line}`).join("\n")}`
@@ -454,7 +438,7 @@ export async function runClamperlJob(params: {
         skippedLarge.length > 0
           ? `Omitted (too large):\n${skippedLarge.join("\n")}`
           : "",
-        `_JPEGs are in the follow-up messages._`,
+        `_PNGs are in the follow-up messages._`,
       ]
         .filter(Boolean)
         .join("\n")

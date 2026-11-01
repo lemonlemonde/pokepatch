@@ -506,7 +506,7 @@ async function drawBranding(
 }
 
 /**
- * Stitch one before/after pair into a 1080×1350 JPEG (Studio-quality).
+ * Stitch one before/after pair into a 1080×1350 PNG.
  */
 export async function stitchCarouselPairPng(
   beforeBytes: Uint8Array,
@@ -610,54 +610,32 @@ export async function stitchCarouselPairPng(
     await drawCardInfo(canvas, assets, overlay, contentBottom + CHIP_GAP);
   }
 
-  // Match Admin Studio: JPEG q=0.98. PNG encode + Discord upload of many
-  // 1080×1350 frames is too slow for multi-card Edge jobs; Instagram
-  // recompresses on upload anyway.
-  return await canvas.encodeJPEG(98);
+  return await canvas.encodePNG();
 }
-
-/** Run async work over items with a fixed concurrency cap. */
-export async function mapPool<T, R>(
-  items: T[],
-  concurrency: number,
-  fn: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(items[index], index);
-    }
-  }
-  const workers = Math.max(1, Math.min(concurrency, items.length));
-  await Promise.all(Array.from({ length: workers }, () => worker()));
-  return results;
-}
-
-/** Parallel pair stitches (capped) — Edge memory is limited. */
-const PAIR_STITCH_CONCURRENCY = 3;
 
 /**
- * Stitch every pair after skipping overview pairs. Returns JPEG bytes + labels.
+ * Stitch pairs one at a time. ImageScript hangs/OOMs on Edge when two
+ * 1080×1350 stitches run concurrently — keep this strictly sequential.
  */
 export async function stitchCarouselPairs(
   pairs: CarouselPairInput[],
   overlay: CarouselOverlay = {}
-): Promise<{ key: string; label: string; bytes: Uint8Array }[]> {
+): Promise<{ key: string; label: string; png: Uint8Array }[]> {
   const solo = pairs.length === 1;
-  return mapPool(pairs, PAIR_STITCH_CONCURRENCY, async (pair, index) => {
-    const bytes = await stitchCarouselPairPng(
+  const out: { key: string; label: string; png: Uint8Array }[] = [];
+  for (let index = 0; index < pairs.length; index += 1) {
+    const pair = pairs[index];
+    const png = await stitchCarouselPairPng(
       pair.beforeBytes,
       pair.afterBytes,
       overlay
     );
     const n = index + 1;
-    return {
+    out.push({
       key: `pair-${n}`,
       label: solo ? "Post" : `Pair ${n}`,
-      bytes,
-    };
-  });
+      png,
+    });
+  }
+  return out;
 }
