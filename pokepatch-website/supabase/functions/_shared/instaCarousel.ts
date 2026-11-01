@@ -10,6 +10,14 @@ import { Image } from "npm:imagescript@3.12.2";
 export const CAROUSEL_WIDTH = 1080;
 export const CAROUSEL_HEIGHT = 1350;
 
+/** Fetched once per isolate — Edge does not bundle loose Deno.readFile assets. */
+const NUNITO_REF = "8c6a9bb9732545b9ed53f29ec5e1ab0ff53c4e6f";
+const NUNITO_URL =
+  `https://cdn.jsdelivr.net/gh/googlefonts/nunito@${NUNITO_REF}/fonts/variable/Nunito%5Bwght%5D.ttf`;
+const NUNITO_ITALIC_URL =
+  `https://cdn.jsdelivr.net/gh/googlefonts/nunito@${NUNITO_REF}/fonts/variable/Nunito-Italic%5Bwght%5D.ttf`;
+const LOGO_URL = "https://pokepatch.cards/email/pokepatch-icon.png";
+
 /** Overview pairs skipped at the start of each side (before[0..1], after[0..1]). */
 export const SKIP_OVERVIEW_PAIRS = 2;
 
@@ -66,15 +74,24 @@ type Assets = {
 
 let assetsPromise: Promise<Assets> | null = null;
 
-function assetUrl(name: string): URL {
-  return new URL(`./insta-assets/${name}`, import.meta.url);
+async function fetchBytes(url: string, label: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load ${label} (${res.status})`);
+  }
+  return new Uint8Array(await res.arrayBuffer());
 }
 
+/**
+ * Load fonts/logo over HTTPS and cache on the isolate. Loose files under
+ * `_shared/` are not included in the Supabase Edge bundle, so readFile fails
+ * on hosted functions.
+ */
 async function loadAssets(): Promise<Assets> {
   const [font, fontItalic, logoBytes] = await Promise.all([
-    Deno.readFile(assetUrl("Nunito.ttf")),
-    Deno.readFile(assetUrl("Nunito-Italic.ttf")),
-    Deno.readFile(assetUrl("pokepatch-icon.png")),
+    fetchBytes(NUNITO_URL, "Nunito"),
+    fetchBytes(NUNITO_ITALIC_URL, "Nunito Italic"),
+    fetchBytes(LOGO_URL, "PokePatch logo"),
   ]);
   const logo = await Image.decode(logoBytes);
   return {
