@@ -56,9 +56,11 @@ tmp="$(mktemp)"
 mkdir -p supabase
 mv "$tmp" supabase/.env
 
-if ! grep -qE '^DISCORD_WEBHOOK_URL=.+' supabase/.env 2>/dev/null; then
-  echo "note: DISCORD_WEBHOOK_URL not set in .env.local.prod — local order notify won't post to Discord"
+if ! grep -qE '^DISCORD_QUOTES_BOT_TOKEN=.+' supabase/.env 2>/dev/null &&
+  ! grep -qE '^DISCORD_WEBHOOK_URL=.+' supabase/.env 2>/dev/null; then
+  echo "note: DISCORD_QUOTES_BOT_TOKEN / DISCORD_WEBHOOK_URL not set — local order notify won't post to Discord"
 fi
+
 if ! grep -qE '^ADMIN_ALLOWED_EMAILS=.+' supabase/.env 2>/dev/null; then
   echo "note: ADMIN_ALLOWED_EMAILS not set — local /admin login gate will reject everyone"
 fi

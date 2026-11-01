@@ -8,15 +8,9 @@
  */
 
 import {
-  CallbackType,
   InteractionType,
-  deniedResponse,
   ephemeralReply,
-  interactionUserId,
-  isAllowedUser,
-  json,
-  verifyDiscordRequest,
-  type Interaction,
+  openDiscordInteraction,
   type Json,
 } from "../_shared/discord.ts";
 import {
@@ -32,42 +26,11 @@ declare const EdgeRuntime: {
 const waitUntil = (promise: Promise<unknown>) => EdgeRuntime.waitUntil(promise);
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
+  const opened = await openDiscordInteraction(req, "DISCORD_PUBLIC_KEY");
+  if ("response" in opened) return opened.response;
 
-  const publicKey = Deno.env.get("DISCORD_PUBLIC_KEY") ?? "";
-  if (!publicKey) {
-    console.error("DISCORD_PUBLIC_KEY not set");
-    return new Response("Server misconfigured", { status: 500 });
-  }
-
-  const signature = req.headers.get("X-Signature-Ed25519") ?? "";
-  const timestamp = req.headers.get("X-Signature-Timestamp") ?? "";
-  const body = await req.text();
-
-  const valid = await verifyDiscordRequest(publicKey, signature, timestamp, body);
-  if (!valid) {
-    return new Response("Invalid request signature", { status: 401 });
-  }
-
-  let interaction: Interaction;
-  try {
-    interaction = JSON.parse(body) as Interaction;
-  } catch {
-    return new Response("Bad JSON", { status: 400 });
-  }
-
+  const { interaction } = opened;
   const type = Number(interaction.type);
-
-  if (type === InteractionType.PING) {
-    return json({ type: CallbackType.PONG });
-  }
-
-  if (!isAllowedUser(interactionUserId(interaction))) {
-    return deniedResponse();
-  }
-
   const data = (interaction.data ?? {}) as Json;
   const customId = String(data.custom_id ?? "");
 

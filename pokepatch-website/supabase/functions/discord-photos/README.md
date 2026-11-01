@@ -48,13 +48,13 @@ supabase secrets set DISCORD_ADMIN_USER_IDS="123456789012345678"
 ### Register the `wooper` message command (once per app)
 
 ```bash
-export DISCORD_APP_ID="wooper-application-id"
-export DISCORD_BOT_TOKEN="wooper-bot-token"   # only needed to register the command
+export WOOPER_APP_ID="wooper-application-id"
+export WOOPER_BOT_TOKEN="wooper-bot-token"   # only needed to register the command
 export GUILD_ID="your-server-id"
 
 curl -s -X PUT \
-  "https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands" \
-  -H "Authorization: Bot ${DISCORD_BOT_TOKEN}" \
+  "https://discord.com/api/v10/applications/${WOOPER_APP_ID}/guilds/${GUILD_ID}/commands" \
+  -H "Authorization: Bot ${WOOPER_BOT_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '[{ "name": "wooper", "type": 3 }]'
 ```
