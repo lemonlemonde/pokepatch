@@ -198,10 +198,6 @@ export default function CreateOrderDialog({
           <h2 id="create-order-title" className="text-xl font-bold text-ink">
             New order
           </h2>
-          <p className="mt-1 text-xs text-ink/50">
-            Search for an existing account to prefill, or enter a guest by hand.
-            Add cards after create.
-          </p>
         </div>
         <div className="space-y-4 px-5 py-4">
           {error ? (
@@ -248,10 +244,6 @@ export default function CreateOrderDialog({
                   autoFocus
                   className={fieldClassName()}
                 />
-                <p className="mt-1.5 text-xs text-ink/40">
-                  Live search by first name, last name, or email. Optional —
-                  leave blank for a guest order.
-                </p>
               </>
             )}
 

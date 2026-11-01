@@ -71,7 +71,6 @@ export default function AdminContractsTask({ onOpenOrder }) {
     <AdminTaskModule
       eyebrow="Agreements"
       title="Contracts"
-      description="To-do, in-progress, and ready-for-customer orders that still need a signed contract."
       accent="mint"
       count={loading && orders.length === 0 ? null : orders.length}
       countLabel="Orders with unsigned contracts"
@@ -100,10 +99,6 @@ export default function AdminContractsTask({ onOpenOrder }) {
             <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-ink/15 px-4 py-12 text-center">
               <p className="text-sm font-semibold text-ink/70">
                 All caught up
-              </p>
-              <p className="mt-1 max-w-sm text-sm text-ink/45">
-                Every to-do, in-progress, and ready order has a signed
-                contract.
               </p>
             </div>
           ) : (

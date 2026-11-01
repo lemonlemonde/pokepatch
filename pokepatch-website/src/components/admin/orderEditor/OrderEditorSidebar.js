@@ -285,7 +285,7 @@ export function OrderPanel() {
         {driveUrl ? (
           <div>
             <div className="flex items-baseline justify-between gap-2">
-              <EditorLabel>Drive folder (legacy)</EditorLabel>
+              <EditorLabel>Drive folder</EditorLabel>
               <a
                 href={driveUrl}
                 target="_blank"
@@ -298,15 +298,11 @@ export function OrderPanel() {
             <p className="mt-1 break-all rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2 text-xs text-ink/70">
               {driveUrl}
             </p>
-            <p className="mt-1 text-[11px] text-ink/40">
-              Kept for older orders. New photos go through Discord /wooper.
-            </p>
           </div>
         ) : null}
 
         <AdminNoteField
           label="Notes from PokePatch"
-          hint="Visible to customer"
           value={draft.general_notes}
           disabled={saving}
           onChange={(event) => updateDraft({ general_notes: event.target.value })}

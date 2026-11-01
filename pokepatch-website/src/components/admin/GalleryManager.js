@@ -946,7 +946,7 @@ export default function GalleryManager() {
 
             {(selected.pairs ?? []).length === 0 ? (
               <p className="rounded-lg border border-dashed border-ink/15 px-3 py-4 text-center text-sm text-ink/50">
-                No pairs yet. Add an image or video pair.
+                No pairs yet.
               </p>
             ) : (
               (selected.pairs ?? []).map((pair, index) => (
@@ -1066,12 +1066,6 @@ export default function GalleryManager() {
           </div>
         )}
 
-        {!selected && (
-          <p className="mt-4 rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2 text-sm text-ink/65">
-            Create the item first — then add before/after pairs.
-          </p>
-        )}
-
         {editorError && (
           <p className="mt-4 rounded-lg border border-error/40 bg-error/10 px-3 py-2 text-sm text-error">
             {editorError}
@@ -1152,7 +1146,7 @@ export default function GalleryManager() {
           <LoadingIndicator label="Loading gallery…" />
         ) : items.length === 0 && !draft ? (
           <p className="rounded-lg border border-dashed border-ink/20 px-4 py-10 text-center text-sm text-ink/50">
-            No gallery items yet. Click “New gallery item” to add your first restoration.
+            No gallery items yet.
           </p>
         ) : (
           <ul className="divide-y divide-ink/10 rounded-lg border border-ink/10">

@@ -31,6 +31,9 @@ function ArrowIcon({ direction }) {
 const TOOLBAR_BUTTON_CLASS =
   "inline-flex h-8 items-center rounded-lg border border-ink/20 px-3 text-xs font-semibold text-ink transition hover:bg-ink/10 disabled:cursor-not-allowed disabled:opacity-40";
 
+const REMOVE_BUTTON_CLASS =
+  "inline-flex h-8 items-center rounded-lg border border-error/35 bg-error/10 px-3 text-xs font-semibold text-error transition hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40";
+
 /**
  * Admin-only photo reference viewer for one order card.
  * Opens with every photo laid out by group; clicking a photo shows the
@@ -38,15 +41,24 @@ const TOOLBAR_BUTTON_CLASS =
  *
  * `groups`: [{ key, title, items }] where items come from `savedPhotoItems`.
  * Nothing here is rendered for customers — the images only load on open.
+ *
+ * Pass `onRemove` + `removableGroupKeys` to stage deletes (Save & Confirm).
  */
 export default function CardPhotoPreviewModal({
   open,
   onClose,
   title,
   groups = [],
+  onRemove,
+  removableGroupKeys = ["before", "after"],
 }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const { mounted, visible } = useOverlayPresence(open);
+
+  const removableKeys = useMemo(
+    () => new Set(removableGroupKeys ?? []),
+    [removableGroupKeys]
+  );
 
   const flatItems = useMemo(
     () =>
@@ -54,9 +66,11 @@ export default function CardPhotoPreviewModal({
         group.items.map((item) => ({
           ...item,
           groupTitle: group.title,
+          canRemove:
+            typeof onRemove === "function" && removableKeys.has(group.key),
         }))
       ),
-    [groups]
+    [groups, onRemove, removableKeys]
   );
 
   const total = flatItems.length;
@@ -100,6 +114,18 @@ export default function CardPhotoPreviewModal({
     };
   }, [open, expandedIndex, total, requestClose]);
 
+  // Keep expanded index valid when the parent removes items from the draft.
+  useEffect(() => {
+    if (expandedIndex == null) return;
+    if (total === 0) {
+      setExpandedIndex(null);
+      return;
+    }
+    if (expandedIndex >= total) {
+      setExpandedIndex(total - 1);
+    }
+  }, [expandedIndex, total]);
+
   if (!mounted) return null;
   if (typeof document === "undefined") return null;
 
@@ -111,6 +137,21 @@ export default function CardPhotoPreviewModal({
       (item) => String(item.id) === String(itemId)
     );
     if (index >= 0) setExpandedIndex(index);
+  }
+
+  function handleRemove(itemId) {
+    if (typeof onRemove !== "function" || itemId == null) return;
+    const removingExpanded =
+      expandedItem != null && String(expandedItem.id) === String(itemId);
+    onRemove(itemId);
+    if (removingExpanded) {
+      setExpandedIndex((current) => {
+        if (current == null) return null;
+        if (total <= 1) return null;
+        if (current >= total - 1) return current - 1;
+        return current;
+      });
+    }
   }
 
   const header = (
@@ -134,6 +175,15 @@ export default function CardPhotoPreviewModal({
             : `${total} photo${total === 1 ? "" : "s"}`}
         </p>
       </div>
+      {expandedItem?.canRemove ? (
+        <button
+          type="button"
+          onClick={() => handleRemove(expandedItem.id)}
+          className={REMOVE_BUTTON_CLASS}
+        >
+          Remove
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={requestClose}
@@ -156,6 +206,8 @@ export default function CardPhotoPreviewModal({
       {groups.map((group) => {
         const { items } = group;
         if (items.length === 0) return null;
+        const groupRemovable =
+          typeof onRemove === "function" && removableKeys.has(group.key);
         return (
           <section key={group.key} className="flex flex-col items-center">
             <h3 className="mb-2.5 flex items-baseline gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
@@ -194,6 +246,17 @@ export default function CardPhotoPreviewModal({
                       </span>
                     ) : null}
                   </button>
+                  {groupRemovable ? (
+                    <div className="border-t border-ink/10 px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(item.id)}
+                        className="w-full rounded-md px-2 py-1 text-[11px] font-semibold text-error transition hover:bg-error/10"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ) : null}
                 </li>
               ))}
             </ul>

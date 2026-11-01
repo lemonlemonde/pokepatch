@@ -577,9 +577,6 @@ export default function CardDetailSection({
 
           <div>
             <EditorLabel>Damage</EditorLabel>
-            <p className="mt-1 text-xs text-ink/50">
-              Customer selection — you can add or remove tags.
-            </p>
             <div
               className="mt-1.5 flex flex-wrap gap-1.5"
               role="group"
@@ -619,7 +616,6 @@ export default function CardDetailSection({
 
           <AdminNoteField
             label="Note from PokePatch"
-            hint="Visible to customer on this card"
             value={card.admin_note}
             disabled={saving}
             onChange={(event) => updateCard({ admin_note: event.target.value })}
@@ -710,11 +706,6 @@ export default function CardDetailSection({
                   </span>{" "}
                   after
                 </p>
-                <p className="mt-0.5 text-[11px] text-ink/45">
-                  {restorationCount > 0
-                    ? "Re-uploading a side via Discord /wooper replaces it."
-                    : "None yet — upload via Discord /wooper."}
-                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -804,6 +795,8 @@ export default function CardDetailSection({
         onClose={() => setPreviewOpen(false)}
         title={`${cardName}${cardSet ? ` · ${cardSet}` : ""}`}
         groups={previewGroups}
+        onRemove={saving ? undefined : removePhoto}
+        removableGroupKeys={["before", "after"]}
       />
     </section>
   );

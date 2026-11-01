@@ -91,9 +91,6 @@ export default function AdminMessagesInbox({
       {orders.length === 0 && !error ? (
         <div className="rounded-xl border border-dashed border-ink/15 px-4 py-12 text-center">
           <p className="text-sm font-semibold text-ink/70">Inbox is clear</p>
-          <p className="mt-1 text-sm text-ink/45">
-            Customer messages show up here until you open them.
-          </p>
         </div>
       ) : (
         <ul className="space-y-2">

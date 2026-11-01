@@ -93,9 +93,9 @@ export default function OrderNoteOnlyDialog({
       >
         <div className="border-b border-ink/10 px-5 py-4">
           <h2 className="text-xl font-bold text-ink">{title}</h2>
-          <p className="mt-1 text-xs text-ink/50">
-            Emails {customerEmail || "—"} and appears in Messages.
-          </p>
+          {customerEmail ? (
+            <p className="mt-1 text-xs text-ink/50">{customerEmail}</p>
+          ) : null}
         </div>
         <div className="space-y-4 px-5 py-4">
           {error ? (
