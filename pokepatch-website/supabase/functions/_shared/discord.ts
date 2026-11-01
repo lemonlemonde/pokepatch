@@ -7,7 +7,7 @@
  * webhooks cannot carry interactive components, so buttons are dropped there.
  */
 
-export const DISCORD_API = "https://discord.com/api/v10";
+const DISCORD_API = "https://discord.com/api/v10";
 
 export const EPHEMERAL = 1 << 6;
 export const IS_COMPONENTS_V2 = 1 << 15;
@@ -23,7 +23,6 @@ export const CallbackType = {
   PONG: 1,
   CHANNEL_MESSAGE: 4,
   DEFERRED_CHANNEL_MESSAGE: 5,
-  DEFERRED_UPDATE_MESSAGE: 6,
   UPDATE_MESSAGE: 7,
   MODAL: 9,
 } as const;
@@ -31,7 +30,6 @@ export const CallbackType = {
 export const ComponentType = {
   ACTION_ROW: 1,
   BUTTON: 2,
-  STRING_SELECT: 3,
   TEXT_INPUT: 4,
   TEXT_DISPLAY: 10,
   MEDIA_GALLERY: 12,

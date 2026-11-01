@@ -7,7 +7,8 @@
  * otherwise `after`; if both sides are filled the upload is rejected.
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getServiceClient } from "../_shared/adminSession.ts";
 import {
   CallbackType,
   EPHEMERAL,
@@ -21,8 +22,8 @@ import {
   type Interaction,
   type Json,
 } from "../_shared/discord.ts";
+import { BUCKET } from "../_shared/discordOrderMessages.ts";
 
-const BUCKET = "card-photos";
 const PENDING_PREFIX = "wooper-pending/";
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 /** Match admin MAX_ADMIN_PHOTOS_PER_CARD — per side (before or after). */
@@ -45,15 +46,6 @@ type DiscordAttachment = {
   size?: number | null;
 };
 
-function getServiceClient() {
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) throw new Error("missing Supabase env");
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
@@ -66,7 +58,7 @@ function storagePathsFor(storagePath: string): string[] {
 
 /** Delete every existing photo on this side of the card. Returns how many were removed. */
 async function clearSide(
-  supabase: ReturnType<typeof getServiceClient>,
+  supabase: SupabaseClient,
   cardId: string,
   side: string
 ): Promise<number> {
@@ -106,7 +98,7 @@ async function clearSide(
  *   both filled → null (caller rejects so nothing is silently replaced).
  */
 async function defaultSideForCard(
-  supabase: ReturnType<typeof getServiceClient>,
+  supabase: SupabaseClient,
   cardId: string
 ): Promise<{ side: string | null; beforeCount: number; afterCount: number }> {
   const { data, error } = await supabase

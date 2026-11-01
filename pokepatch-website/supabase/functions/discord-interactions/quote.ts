@@ -7,7 +7,8 @@
  * the same RPC the admin editor uses — then re-renders the card message.
  */
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getServiceClient } from "../_shared/adminSession.ts";
 import {
   CallbackType,
   EPHEMERAL,
@@ -29,7 +30,10 @@ import {
   QUOTE_BUTTON_PREFIX,
   cardIsCanceled,
   loadCardContext,
+  orderStatusText,
+  parsePrefixedCustomId,
   quoteItemsForCard,
+  quoteProgress,
   quoteSummaryLines,
   refreshWrapupInThread,
   renderCardMessageFromDb,
@@ -43,7 +47,6 @@ import {
   SERVICE_KEYS,
   serviceByKey,
   servicePriceDisplay,
-  storedCardHvAmount,
   withCardHvFromMarket,
   type QuoteService,
 } from "../_shared/servicePricing.ts";
@@ -63,29 +66,6 @@ type QuoteLine = {
   service_label: string;
   quote_base_amount: number;
 };
-
-function getServiceClient(): SupabaseClient {
-  const url = Deno.env.get("SUPABASE_URL");
-  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) throw new Error("missing Supabase env");
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-// ---------------------------------------------------------------------------
-// custom_id: "quote:<cardId>" (button) / "quote:<cardId>:<channelId>:<messageId>" (modal)
-
-export function parseQuoteCustomId(
-  customId: string
-): { cardId: string; channelId: string; messageId: string } | null {
-  if (!customId.startsWith(QUOTE_BUTTON_PREFIX)) return null;
-  const [cardId = "", channelId = "", messageId = ""] = customId
-    .slice(QUOTE_BUTTON_PREFIX.length)
-    .split(":");
-  if (!/^[0-9a-f-]{36}$/i.test(cardId)) return null;
-  return { cardId, channelId, messageId };
-}
 
 // ---------------------------------------------------------------------------
 // Text parsing
@@ -327,12 +307,12 @@ function cardLabelFor(context: CardContext): string {
 /** Button click → open the quote modal, prefilled from the current quote. */
 export async function handleQuoteButton(interaction: Interaction): Promise<Response> {
   const data = (interaction.data ?? {}) as Json;
-  const parsed = parseQuoteCustomId(String(data.custom_id ?? ""));
+  const parsed = parsePrefixedCustomId(QUOTE_BUTTON_PREFIX, String(data.custom_id ?? ""));
   if (!parsed) return ephemeralReply("Unknown button.");
 
   let context: CardContext | null;
   try {
-    context = await loadCardContext(getServiceClient(), parsed.cardId);
+    context = await loadCardContext(getServiceClient(), parsed.id);
   } catch (err) {
     console.error("quote button load failed", err);
     return ephemeralReply("Couldn't load this card. Try again.");
@@ -347,7 +327,7 @@ export async function handleQuoteButton(interaction: Interaction): Promise<Respo
   const message = (interaction.message ?? {}) as Json;
   const channelId = String(interaction.channel_id ?? message.channel_id ?? "");
   const messageId = String(message.id ?? "");
-  const customId = `${QUOTE_BUTTON_PREFIX}${parsed.cardId}:${channelId}:${messageId}`;
+  const customId = `${QUOTE_BUTTON_PREFIX}${parsed.id}:${channelId}:${messageId}`;
 
   return json(
     quoteModal({
@@ -431,28 +411,15 @@ export async function saveCardQuote(params: {
 }
 
 function orderProgressLine(context: CardContext): string {
-  const active = context.cards.filter((card) => !cardIsCanceled(card));
-  const quoted = active.filter(
-    (card) =>
-      quoteItemsForCard(context.quoteItems, card).length > 0 ||
-      storedCardHvAmount(context.order.quote_bulk_counts, String(card.id)) > 0
-  ).length;
-  const status = String(context.order.status ?? "");
-  const pendingKind = String(context.order.pending_kind ?? "");
-  const statusText =
-    status === "pending" && pendingKind === "drop_off"
-      ? "Order is now **pending drop-off**."
-      : status === "pending"
-        ? "Order is **pending quote**."
-        : `Order status: **${status.replace("_", " ")}**.`;
-  return `${quoted}/${active.length} cards quoted. ${statusText}`;
+  const { quoted, active } = quoteProgress(context);
+  return `${quoted}/${active} cards quoted. Order is **${orderStatusText(context.order)}**.`;
 }
 
 async function processQuoteModal(interaction: Interaction): Promise<void> {
   const applicationId = String(interaction.application_id ?? "");
   const token = String(interaction.token ?? "");
   const data = (interaction.data ?? {}) as Json;
-  const parsed = parseQuoteCustomId(String(data.custom_id ?? ""));
+  const parsed = parsePrefixedCustomId(QUOTE_BUTTON_PREFIX, String(data.custom_id ?? ""));
 
   try {
     if (!parsed) {
@@ -496,7 +463,7 @@ async function processQuoteModal(interaction: Interaction): Promise<void> {
     const lines = buildQuoteLines({ selectedKeys, overrides, customs });
 
     const supabase = getServiceClient();
-    const context = await loadCardContext(supabase, parsed.cardId);
+    const context = await loadCardContext(supabase, parsed.id);
     if (!context) {
       await editOriginal(applicationId, token, "This card no longer exists — nothing saved.");
       return;
@@ -509,7 +476,7 @@ async function processQuoteModal(interaction: Interaction): Promise<void> {
     await saveCardQuote({ supabase, context, lines, marketValue, note });
 
     // Reload so the confirmation and the card message reflect what's stored.
-    const rendered = await renderCardMessageFromDb(supabase, parsed.cardId);
+    const rendered = await renderCardMessageFromDb(supabase, parsed.id);
     let messageUpdated = false;
     if (rendered && parsed.channelId && parsed.messageId) {
       messageUpdated = await editChannelMessage(

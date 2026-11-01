@@ -40,7 +40,7 @@ import type { ChangelogPayload } from "./resend.ts";
 
 export const BUCKET = "card-photos";
 /** Signed URLs expire; 1 year keeps Discord history browsable. */
-export const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
+const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 const SITE_URL = "https://pokepatch.cards";
 const MAX_GALLERY_ITEMS = 10;
 const MAX_DESCRIPTION_CHARS = 900;
@@ -62,6 +62,22 @@ const ACCENT_WRAPUP = 0x9ecbff; // sky
 export const QUOTE_BUTTON_PREFIX = "quote:";
 export const NOTIFY_BUTTON_PREFIX = "notify:";
 export const WRAPUP_REFRESH_PREFIX = "wrapup:";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Button / modal custom_id: `<prefix><uuid>` or `<prefix><uuid>:<channelId>:<messageId>`
+ * (the modal form carries the message to re-render after submit).
+ */
+export function parsePrefixedCustomId(
+  prefix: string,
+  customId: string
+): { id: string; channelId: string; messageId: string } | null {
+  if (!customId.startsWith(prefix)) return null;
+  const [id = "", channelId = "", messageId = ""] = customId.slice(prefix.length).split(":");
+  if (!UUID_RE.test(id)) return null;
+  return { id, channelId, messageId };
+}
 
 export type OrderRow = {
   id: string;
@@ -304,7 +320,7 @@ export async function loadLastNotification(
     .order("sent_at", { ascending: false })
     .limit(5);
   if (error) {
-    // Pre-migration deploys may lack `sender`; treat as none rather than fail.
+    // The wrap-up still renders without this line.
     console.error("loadLastNotification", error);
     return null;
   }
@@ -417,6 +433,21 @@ export function orderTotals(context: OrderContext) {
     })),
     quoteBulkCounts: context.order.quote_bulk_counts,
   });
+}
+
+/** "pending quote" / "pending drop-off" / other statuses with underscores spaced. */
+export function orderStatusText(order: OrderRow): string {
+  const status = String(order.status ?? "");
+  if (status === "pending") {
+    return order.pending_kind === "drop_off" ? "pending drop-off" : "pending quote";
+  }
+  return status.replace(/_/g, " ");
+}
+
+/** `{ quoted, active }` counts over non-canceled cards. */
+export function quoteProgress(context: OrderContext): { quoted: number; active: number } {
+  const active = cardQuotes(context).filter((entry) => !entry.canceled);
+  return { quoted: active.filter((entry) => entry.quoted).length, active: active.length };
 }
 
 /**
@@ -679,21 +710,12 @@ export function buildWrapupMessage(params: {
       `adjustments ${totals.adjustmentsTotal > 0 ? "+" : "−"}${formatMoney(Math.abs(totals.adjustmentsTotal))}`
     );
   }
-  const active = quotes.filter((entry) => !entry.canceled);
-  const quotedCount = active.filter((entry) => entry.quoted).length;
-  const status = String(order.status ?? "");
-  const pendingKind = String(order.pending_kind ?? "");
-  const statusText =
-    status === "pending"
-      ? pendingKind === "drop_off"
-        ? "pending drop-off"
-        : "pending quote"
-      : status.replace(/_/g, " ");
+  const progress = quoteProgress(context);
   const overviewBlock = [
     "**Quote overview**",
     ...overviewLines,
     `**Total ${formatMoney(totals.total)}**${extras.length ? ` (${extras.join(", ")})` : ""}`,
-    `-# ${quotedCount}/${active.length} cards quoted · order ${statusText}`,
+    `-# ${progress.quoted}/${progress.active} cards quoted · order ${orderStatusText(order)}`,
   ];
 
   const outreachBlock = [

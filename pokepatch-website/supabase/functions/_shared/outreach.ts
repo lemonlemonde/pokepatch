@@ -41,13 +41,3 @@ export function normalizeDiscordUserId(value: unknown): string {
   if (/^\d{17,20}$/.test(raw)) return raw;
   return "";
 }
-
-/** Digits only, keep leading + for international. */
-export function normalizePhoneForSms(value: unknown): string {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-  const hasPlus = raw.startsWith("+");
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return "";
-  return hasPlus ? `+${digits}` : digits;
-}

@@ -1,8 +1,7 @@
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  buildStoredMessageBody,
-  sendResendEmail,
-} from "../_shared/resend.ts";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getServiceClient } from "../_shared/adminSession.ts";
+import { isValidEmail, sendCustomerEmail } from "../_shared/customerMessages.ts";
+import { CONTACT_TYPE_LABELS } from "../_shared/outreach.ts";
 import {
   createThreadFromMessage,
   hasBotToken,
@@ -16,6 +15,7 @@ import {
   buildWrapupMessage,
   customerPhotoPaths,
   deliveryLabels,
+  loadContacts,
   loadOrder,
   loadOrderCards,
   signPhotoUrls,
@@ -33,12 +33,6 @@ const MY_ORDERS_TRACK_URL =
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;
-};
-
-const contactTypeLabels: Record<string, string> = {
-  phone: "Phone",
-  discord: "Discord",
-  instagram: "Instagram",
 };
 
 function extractFolderId(paths: string[]): string {
@@ -118,20 +112,8 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
   const displayId = (record.display_id as number | string | null) ?? "?";
   const customerName = String(record.customer_name ?? "").trim();
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
-  }
-
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  const { data: contacts, error: contactsError } = await supabase
-    .from("contacts")
-    .select("id, contact_type, value")
-    .eq("order_id", orderUuid)
-    .order("id", { ascending: true });
-  if (contactsError) throw contactsError;
+  const supabase = getServiceClient();
+  const contactsList = await loadContacts(supabase, orderUuid);
 
   const cards = await loadOrderCards(supabase, orderUuid);
   if (cards.length < 1) {
@@ -142,7 +124,6 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
   const cardIds = cards.map((card) => String(card.id));
   const photoPathsByCard = await customerPhotoPaths(supabase, cardIds);
   const paths = cardIds.flatMap((id) => photoPathsByCard.get(id) ?? []);
-  const contactsList = (contacts ?? []) as ContactRow[];
 
   // Admin "create order" seeds a blank card with no photos/contacts — don't
   // treat that like a customer submission.
@@ -292,7 +273,7 @@ async function sendQuoteConfirmationEmail({
   customerName: string;
 }): Promise<void> {
   const email = customerEmail.trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!email || !isValidEmail(email)) {
     console.log("quote confirmation: skipping — no valid customer_email");
     return;
   }
@@ -313,50 +294,16 @@ async function sendQuoteConfirmationEmail({
     return;
   }
 
-  const messageBody = buildQuoteConfirmationBody(customerName);
-  const storedBody = buildStoredMessageBody(messageBody, displayId);
-  const batchId = crypto.randomUUID();
-
-  const { data: inserted, error: insertError } = await supabase
-    .from("customer_messages")
-    .insert({
-      order_id: orderUuid,
-      recipient_email: email,
-      user_id: userId,
-      subject: QUOTE_CONFIRMATION_SUBJECT,
-      body: storedBody,
-      email_status: "pending",
-      batch_id: batchId,
-    })
-    .select("id")
-    .single();
-
-  if (insertError) {
-    console.error("quote confirmation: failed to log message", insertError);
-    return;
-  }
-
-  const messageId = inserted.id as string;
-  const sendResult = await sendResendEmail({
-    to: email,
-    subject: QUOTE_CONFIRMATION_SUBJECT,
-    body: messageBody,
+  const result = await sendCustomerEmail({
+    supabase,
+    orderId: orderUuid,
     orderDisplayId: displayId,
+    to: email,
+    userId,
+    subject: QUOTE_CONFIRMATION_SUBJECT,
+    body: buildQuoteConfirmationBody(customerName),
   });
-
-  const emailStatus = sendResult.ok ? "sent" : "failed";
-  const emailError = sendResult.ok ? null : sendResult.error;
-
-  const { error: updateError } = await supabase
-    .from("customer_messages")
-    .update({ email_status: emailStatus, email_error: emailError })
-    .eq("id", messageId);
-
-  if (updateError) {
-    console.error("quote confirmation: failed to update message status", updateError);
-  } else if (!sendResult.ok) {
-    console.error("quote confirmation: send failed", sendResult.error);
-  }
+  if (!result.ok) console.error("quote confirmation: send failed", result.error);
 }
 
 function formatContacts(
@@ -366,7 +313,7 @@ function formatContacts(
   return contacts
     .map((c) => {
       const label =
-        contactTypeLabels[String(c.contact_type ?? "")] ??
+        CONTACT_TYPE_LABELS[String(c.contact_type ?? "")] ??
         String(c.contact_type ?? "Contact");
       const value = String(c.value ?? "").trim();
       return value ? `${label}: ${value}` : null;
