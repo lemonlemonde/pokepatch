@@ -58,6 +58,8 @@ export type CarouselOverlay = {
   card?: string;
   set?: string;
   frontBytes?: Uint8Array | null;
+  /** Pre-decoded chip thumb — avoids re-decoding catalog art every pair. */
+  frontThumb?: Image | null;
 };
 
 type Assets = {
@@ -168,10 +170,43 @@ function sharedTarget(
   return { tw, th: Math.max(leftH, rightH) };
 }
 
+/** Cover + round in place — caller must not reuse `source` afterward. */
 function prepareCard(source: Image, tw: number, th: number): Image {
-  const card = source.clone().cover(tw, th);
-  card.roundCorners(CARD_RADIUS);
-  return card;
+  source.cover(tw, th);
+  source.roundCorners(CARD_RADIUS);
+  return source;
+}
+
+/** Decode only long enough to read dimensions (lets the full bitmap fall out of scope). */
+async function measureImageBytes(
+  bytes: Uint8Array
+): Promise<{ w: number; h: number }> {
+  const img = await Image.decode(bytes);
+  return { w: img.width, h: img.height };
+}
+
+/**
+ * Decode catalog art once per job into a chip-sized thumb (mutates overlay).
+ */
+export async function prepareCarouselOverlay(
+  overlay: CarouselOverlay
+): Promise<void> {
+  if (overlay.frontThumb || !overlay.frontBytes) return;
+  try {
+    const front = await Image.decode(overlay.frontBytes);
+    const scale = Math.min(
+      CHIP_THUMB / Math.max(1, front.width),
+      CHIP_THUMB / Math.max(1, front.height)
+    );
+    const tw = Math.max(1, Math.round(front.width * scale));
+    const th = Math.max(1, Math.round(front.height * scale));
+    front.resize(tw, th);
+    front.roundCorners(THUMB_RADIUS);
+    overlay.frontThumb = front;
+  } catch {
+    overlay.frontThumb = null;
+  }
+  overlay.frontBytes = null;
 }
 
 async function renderTrackedLabel(
@@ -340,16 +375,8 @@ async function drawCardInfo(
 ): Promise<void> {
   const card = (overlay.card ?? "").trim();
   const set = (overlay.set ?? "").trim();
-  if (!card && !set && !overlay.frontBytes) return;
-
-  let front: Image | null = null;
-  if (overlay.frontBytes) {
-    try {
-      front = await Image.decode(overlay.frontBytes);
-    } catch {
-      front = null;
-    }
-  }
+  const thumb = overlay.frontThumb ?? null;
+  if (!card && !set && !thumb) return;
 
   const cardField = await layoutLabeledField(
     assets.font,
@@ -372,16 +399,8 @@ async function drawCardInfo(
   const textH = cardField.height + CHIP_LINE_GAP + setField.height;
   const textW = CHIP_TEXT_W;
 
-  let thumbW = 0;
-  let thumbH = 0;
-  let thumb: Image | null = null;
-  if (front) {
-    const scale = Math.min(CHIP_THUMB / front.width, CHIP_THUMB / front.height);
-    thumbW = Math.max(1, Math.round(front.width * scale));
-    thumbH = Math.max(1, Math.round(front.height * scale));
-    thumb = front.clone().fit(thumbW, thumbH);
-    thumb.roundCorners(THUMB_RADIUS);
-  }
+  const thumbW = thumb?.width ?? 0;
+  const thumbH = thumb?.height ?? 0;
 
   const blockW = CHIP_PAD_X + CHIP_THUMB + CHIP_TEXT_GAP + textW + CHIP_PAD_X;
   const blockH = Math.max(CHIP_THUMB, textH) + CHIP_PAD_Y * 2;
@@ -509,13 +528,11 @@ export async function stitchCarouselPairPng(
   overlay: CarouselOverlay = {}
 ): Promise<Uint8Array> {
   const assets = await ensureAssets();
-  const [beforeImg, afterImg] = await Promise.all([
-    Image.decode(beforeBytes),
-    Image.decode(afterBytes),
-  ]);
 
   const hasCardInfo = Boolean(
-    overlay.frontBytes || (overlay.card ?? "").trim() || (overlay.set ?? "").trim()
+    overlay.frontThumb ||
+      (overlay.card ?? "").trim() ||
+      (overlay.set ?? "").trim()
   );
   const reserve = bottomReserve(hasCardInfo);
   const brand = await measureBrandChip(assets);
@@ -528,15 +545,27 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
+  // Measure first (no pre-shrink), then decode→cover one side at a time so
+  // peak RAM stays near one full phone photo.
+  const beforeSize = await measureImageBytes(beforeBytes);
+  const afterSize = await measureImageBytes(afterBytes);
+  console.log(
+    "clamperl stitch measure",
+    JSON.stringify({
+      before: [beforeSize.w, beforeSize.h, beforeBytes.byteLength],
+      after: [afterSize.w, afterSize.h, afterBytes.byteLength],
+    })
+  );
+
   const leftMetrics = containSize(
-    beforeImg.width,
-    beforeImg.height,
+    beforeSize.w,
+    beforeSize.h,
     SLOT_WIDTH,
     maxImageHeight
   );
   const rightMetrics = containSize(
-    afterImg.width,
-    afterImg.height,
+    afterSize.w,
+    afterSize.h,
     SLOT_WIDTH,
     maxImageHeight
   );
@@ -553,8 +582,8 @@ export async function stitchCarouselPairPng(
     brandLift +
     Math.max(0, Math.floor((bandH - stackH) / 2));
 
-  const leftCard = prepareCard(beforeImg, tw, th);
-  const rightCard = prepareCard(afterImg, tw, th);
+  const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
+  const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
   const [beforeLabel, afterLabel] = await Promise.all([
     renderTrackedLabel(assets.font, "before", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
     renderTrackedLabel(assets.font, "after", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
@@ -566,13 +595,12 @@ export async function stitchCarouselPairPng(
   const leftDrawX = LEFT_X + Math.floor((SLOT_WIDTH - tw) / 2);
   const rightDrawX = RIGHT_X + Math.floor((SLOT_WIDTH - tw) / 2);
 
-  // Soft drop-shadow stand-in: offset dark rounded rect under each card.
-  for (const x of [leftDrawX, rightDrawX]) {
-    const shadow = new Image(tw, th);
-    shadow.fill(0x0000008c);
-    shadow.roundCorners(CARD_RADIUS);
-    canvas.composite(shadow, x, imageTop + 8);
-  }
+  // One shared soft shadow (avoid allocating two rounded full-slot bitmaps).
+  const shadow = new Image(tw, th);
+  shadow.fill(0x0000008c);
+  shadow.roundCorners(CARD_RADIUS);
+  canvas.composite(shadow, leftDrawX, imageTop + 8);
+  canvas.composite(shadow, rightDrawX, imageTop + 8);
 
   canvas.composite(leftCard, leftDrawX, imageTop);
   canvas.composite(rightCard, rightDrawX, imageTop);
