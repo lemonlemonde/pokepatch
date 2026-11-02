@@ -137,6 +137,8 @@ export default function CardDetailSection({
   onRemoveCard,
   expanded,
   onExpandedChange,
+  /** Hide quote lines, HV fee, priority star, and money subtotals. */
+  showCommerce = true,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -526,7 +528,7 @@ export default function CardDetailSection({
               </span>
             )}
           </span>
-          {subtotal > 0 ? (
+          {showCommerce && subtotal > 0 ? (
             <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
               {formatMoney(subtotal)}
             </span>
@@ -540,22 +542,24 @@ export default function CardDetailSection({
           </span>
           <ExpandChevron open={expanded} className="h-4 w-4 text-ink/35" />
         </button>
-        <button
-          type="button"
-          disabled={saving}
-          aria-pressed={Boolean(card.is_priority)}
-          aria-label={
-            card.is_priority ? "Priority service on" : "Priority service off"
-          }
-          onClick={() => updateCard({ is_priority: !card.is_priority })}
-          className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${
-            card.is_priority
-              ? "border-status-yellow/55 bg-status-yellow/15 text-status-yellow"
-              : "border-ink/15 bg-transparent text-ink/30 hover:border-ink/30 hover:text-ink/55"
-          }`}
-        >
-          <PriorityStarIcon className="h-3 w-3" />
-        </button>
+        {showCommerce ? (
+          <button
+            type="button"
+            disabled={saving}
+            aria-pressed={Boolean(card.is_priority)}
+            aria-label={
+              card.is_priority ? "Priority service on" : "Priority service off"
+            }
+            onClick={() => updateCard({ is_priority: !card.is_priority })}
+            className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${
+              card.is_priority
+                ? "border-status-yellow/55 bg-status-yellow/15 text-status-yellow"
+                : "border-ink/15 bg-transparent text-ink/30 hover:border-ink/30 hover:text-ink/55"
+            }`}
+          >
+            <PriorityStarIcon className="h-3 w-3" />
+          </button>
+        ) : null}
       </div>
 
       <ExpandPanel
@@ -655,51 +659,57 @@ export default function CardDetailSection({
             </div>
           </div>
 
-          <EditorDivider label="Customer photos" />
-          <div className="space-y-3">
-            <AdminOrderCardPhotoGroups
-              title="Customer photos"
-              items={customerPhotoItems}
-              pendingFiles={pendingFiles}
-              onRemove={saving ? undefined : removePhoto}
-              onRemovePending={
-                saving
-                  ? undefined
-                  : (fileId) =>
-                      updateCard({
-                        pending_files: pendingFiles.filter(
-                          (entry) => entry.id !== fileId
-                        ),
-                      })
-              }
-            />
-            <div>
-              <input
-                id={photoInputId}
-                type="file"
-                accept="image/*"
-                multiple
-                disabled={saving}
-                onChange={(event) => {
-                  addPendingFiles(event.target.files);
-                  event.target.value = "";
-                }}
-                className="sr-only"
-              />
-              <label
-                htmlFor={photoInputId}
-                className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${
-                  saving
-                    ? "cursor-not-allowed border-ink/10 text-ink/35"
-                    : "cursor-pointer border-ink/25 text-ink hover:bg-ink/10"
-                }`}
-              >
-                Add photos
-              </label>
-            </div>
-          </div>
+          {showCommerce ? (
+            <>
+              <EditorDivider label="Customer photos" />
+              <div className="space-y-3">
+                <AdminOrderCardPhotoGroups
+                  title="Customer photos"
+                  items={customerPhotoItems}
+                  pendingFiles={pendingFiles}
+                  onRemove={saving ? undefined : removePhoto}
+                  onRemovePending={
+                    saving
+                      ? undefined
+                      : (fileId) =>
+                          updateCard({
+                            pending_files: pendingFiles.filter(
+                              (entry) => entry.id !== fileId
+                            ),
+                          })
+                  }
+                />
+                <div>
+                  <input
+                    id={photoInputId}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={saving}
+                    onChange={(event) => {
+                      addPendingFiles(event.target.files);
+                      event.target.value = "";
+                    }}
+                    className="sr-only"
+                  />
+                  <label
+                    htmlFor={photoInputId}
+                    className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-sm font-semibold transition ${
+                      saving
+                        ? "cursor-not-allowed border-ink/10 text-ink/35"
+                        : "cursor-pointer border-ink/25 text-ink hover:bg-ink/10"
+                    }`}
+                  >
+                    Add photos
+                  </label>
+                </div>
+              </div>
+            </>
+          ) : null}
 
-          <EditorDivider label="Restoration photos" />
+          <EditorDivider
+            label={showCommerce ? "Restoration photos" : "Before & after"}
+          />
           <div className="rounded-xl bg-night/25 px-3 py-3 ring-1 ring-ink/10">
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
               <div className="min-w-0">
@@ -747,37 +757,43 @@ export default function CardDetailSection({
             </div>
           </div>
 
-          <EditorDivider label="Services" />
-          <div className="space-y-2">
-            {quoteItems.map((item, index) => renderQuoteServiceLine(item, index))}
-            <GhostButton onClick={addQuoteItem} disabled={saving}>
-              + Add service
-            </GhostButton>
-          </div>
+          {showCommerce ? (
+            <>
+              <EditorDivider label="Services" />
+              <div className="space-y-2">
+                {quoteItems.map((item, index) =>
+                  renderQuoteServiceLine(item, index)
+                )}
+                <GhostButton onClick={addQuoteItem} disabled={saving}>
+                  + Add service
+                </GhostButton>
+              </div>
 
-          <div>
-            <EditorLabel>High-value fee</EditorLabel>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <input
-                className={`${editorFieldClass({ fullWidth: false })} w-40`}
-                inputMode="decimal"
-                value={card.market_value_raw_nm ?? ""}
-                disabled={saving}
-                onChange={(event) =>
-                  updateCard({ market_value_raw_nm: event.target.value })
-                }
-                placeholder="Market value $"
-              />
-              {cardStatus !== "canceled" && cardHv > 0 ? (
-                <span className="text-sm font-semibold tabular-nums text-peach">
-                  +{formatMoney(cardHv)} fee
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-1.5 text-[11px] text-ink/35">
-              {HV_TIER_RANGES_LABEL}
-            </p>
-          </div>
+              <div>
+                <EditorLabel>High-value fee</EditorLabel>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <input
+                    className={`${editorFieldClass({ fullWidth: false })} w-40`}
+                    inputMode="decimal"
+                    value={card.market_value_raw_nm ?? ""}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateCard({ market_value_raw_nm: event.target.value })
+                    }
+                    placeholder="Market value $"
+                  />
+                  {cardStatus !== "canceled" && cardHv > 0 ? (
+                    <span className="text-sm font-semibold tabular-nums text-peach">
+                      +{formatMoney(cardHv)} fee
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink/35">
+                  {HV_TIER_RANGES_LABEL}
+                </p>
+              </div>
+            </>
+          ) : null}
 
           <div className="flex items-center justify-between border-t border-ink/10 pt-3">
             {onRemoveCard ? (
@@ -787,15 +803,17 @@ export default function CardDetailSection({
             ) : (
               <span />
             )}
-            <p className="text-right text-sm font-bold tabular-nums text-ink">
-              {cardStatus === "canceled" ? (
-                <span className="font-semibold text-ink/45">
-                  Not in quote
-                </span>
-              ) : (
-                <>Subtotal {formatMoney(subtotal)}</>
-              )}
-            </p>
+            {showCommerce ? (
+              <p className="text-right text-sm font-bold tabular-nums text-ink">
+                {cardStatus === "canceled" ? (
+                  <span className="font-semibold text-ink/45">Not in quote</span>
+                ) : (
+                  <>Subtotal {formatMoney(subtotal)}</>
+                )}
+              </p>
+            ) : (
+              <span />
+            )}
           </div>
       </ExpandPanel>
       <CardPhotoPreviewModal

@@ -18,7 +18,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use wooper.
 2. **Right-click that message** → **Apps** → **wooper**.
 3. Fill in **order number**, **card number** (1 = first card in the order), and optionally **side** (`before` or `after`).
 
-**Own cards:** use order number **`-1`**. That is the permanent owner portfolio (not a customer order). Card slots are created automatically through the card number you enter (`My card 1`, `My card 2`, …). Rename them later in admin → **My cards**.
+**Own cards:** use order number **`-1`**. That is the permanent owner portfolio (not a customer order). Card slots are created automatically through the card number you enter (`My card 1`, `My card 2`, …). Rename them later under admin → **My cards** tab.
 
 **Side defaults** when left blank:
 
