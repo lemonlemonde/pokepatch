@@ -271,8 +271,6 @@ async function generateForCard(params: {
       downloadStorageBytes(supabase, afterRows[i].storage_path),
     ]);
 
-    // One stitch at a time — concurrent ImageScript freezes on Edge.
-    // Source photos are downscaled inside stitch to avoid Edge OOM.
     const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
     const filename = `pokepatch-pair-${pairNum}.png`;
 

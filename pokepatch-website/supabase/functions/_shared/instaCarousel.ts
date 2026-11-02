@@ -171,8 +171,8 @@ function sharedTarget(
 }
 
 /**
- * Shrink a decoded photo before cover/clone work. Phone JPEGs are often
- * 12MP+; two of those plus clones OOM Supabase Edge by the 3rd pair.
+ * Shrink a decoded photo before cover. Phone JPEGs are often 12MP+; keeping
+ * full buffers through cover OOMs Supabase Edge by later pairs.
  */
 function downscaleForSlot(img: Image, maxW: number, maxH: number): void {
   const capW = Math.max(1, Math.ceil(maxW * 2));
@@ -551,7 +551,6 @@ export async function stitchCarouselPairPng(
 
   const hasCardInfo = Boolean(
     overlay.frontThumb ||
-      overlay.frontBytes ||
       (overlay.card ?? "").trim() ||
       (overlay.set ?? "").trim()
   );
@@ -566,7 +565,6 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
-  // Drop megapixel buffers before cover/clone work.
   downscaleForSlot(beforeImg, SLOT_WIDTH, maxImageHeight);
   downscaleForSlot(afterImg, SLOT_WIDTH, maxImageHeight);
 
