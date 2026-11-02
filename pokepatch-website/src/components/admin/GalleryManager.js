@@ -1267,7 +1267,7 @@ export default function GalleryManager() {
                       </span>
                     </button>
 
-                    <GalleryListThumb item={item} />}
+                    <GalleryListThumb item={item} />
 
                     <button
                       type="button"
