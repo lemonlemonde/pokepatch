@@ -424,10 +424,9 @@ function multipartWithFiles(payload: Json, files: DiscordUploadFile[]): FormData
     const file = files[index];
     form.append(
       `files[${index}]`,
-      new Blob([file.bytes], {
+      new File([file.bytes], file.filename, {
         type: file.contentType ?? "application/octet-stream",
-      }),
-      file.filename
+      })
     );
   }
   return form;

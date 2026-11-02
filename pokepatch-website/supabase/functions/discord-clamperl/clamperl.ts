@@ -34,13 +34,31 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
 
 /** Discord allows at most 10 files per message. */
 const FILES_PER_MESSAGE = 10;
+/**
+ * Keep each multipart under this so Edge + Discord don't hang/OOM on a
+ * multi-PNG upload (lossless 1080×1350 frames are multi‑MB each).
+ */
+const MAX_BATCH_BYTES = 8 * 1024 * 1024;
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    out.push(items.slice(i, i + size));
+function chunkFilesForDiscord(files: DiscordUploadFile[]): DiscordUploadFile[][] {
+  const batches: DiscordUploadFile[][] = [];
+  let current: DiscordUploadFile[] = [];
+  let currentBytes = 0;
+  for (const file of files) {
+    const nextBytes = currentBytes + file.bytes.byteLength;
+    if (
+      current.length > 0 &&
+      (current.length >= FILES_PER_MESSAGE || nextBytes > MAX_BATCH_BYTES)
+    ) {
+      batches.push(current);
+      current = [];
+      currentBytes = 0;
+    }
+    current.push(file);
+    currentBytes += file.bytes.byteLength;
   }
-  return out;
+  if (current.length > 0) batches.push(current);
+  return batches;
 }
 
 type CardImageRow = {
@@ -171,6 +189,7 @@ async function generateForCard(params: {
   supabase: SupabaseClient;
   card: CardRow;
   cardIndex: number;
+  orderDisplayId: number;
   sizeLimit: number;
   multiCard: boolean;
   applicationId: string;
@@ -179,16 +198,19 @@ async function generateForCard(params: {
     pair: number;
     total: number;
   }) => Promise<void>;
+  onStatus: (content: string) => Promise<void>;
 }): Promise<CardGenerateResult> {
   const {
     supabase,
     card,
     cardIndex,
+    orderDisplayId,
     sizeLimit,
     multiCard,
     applicationId,
     token,
     onPairProgress,
+    onStatus,
   } = params;
   const cardId = String(card.id);
   const cardLabel = (
@@ -293,25 +315,66 @@ async function generateForCard(params: {
     };
   }
 
-  const batches = chunk(files, FILES_PER_MESSAGE);
+  const totalMb = (
+    files.reduce((sum, file) => sum + file.bytes.byteLength, 0) /
+    (1024 * 1024)
+  ).toFixed(1);
+  await onStatus(
+    `Order **#${orderDisplayId}** · Card ${cardIndex} · uploading **${files.length}** PNG(s) (${totalMb} MB)…`
+  );
+
+  // Prefer fewer messages, but split by size. If a multi-file post fails,
+  // fall back to one PNG per message (that path is proven on Discord/Edge).
+  const batches = chunkFilesForDiscord(files);
+  let posted = 0;
   for (let b = 0; b < batches.length; b += 1) {
+    const batch = batches[b];
     const label =
       batches.length === 1
         ? `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`
         : `Card ${cardIndex} · ${cardLabel} · PNGs (${b + 1}/${batches.length})`;
-    await followupWithFiles(
-      applicationId,
-      token,
-      { content: label },
-      batches[b]
-    );
+    try {
+      console.log(
+        "clamperl upload batch",
+        JSON.stringify({
+          cardIndex,
+          batch: b + 1,
+          files: batch.length,
+          bytes: batch.reduce((sum, file) => sum + file.bytes.byteLength, 0),
+        })
+      );
+      await followupWithFiles(
+        applicationId,
+        token,
+        { content: label },
+        batch
+      );
+      posted += batch.length;
+    } catch (batchErr) {
+      console.error("clamperl multi-file upload failed; falling back", batchErr);
+      if (batch.length === 1) throw batchErr;
+      for (const file of batch) {
+        await followupWithFiles(
+          applicationId,
+          token,
+          {
+            content: `Card ${cardIndex} · ${cardLabel} · ${file.filename}`,
+          },
+          [file]
+        );
+        posted += 1;
+      }
+      notes.push(
+        `multi-file Discord upload failed for card ${cardIndex}; posted PNGs one-by-one instead`
+      );
+    }
   }
 
   return {
     ok: true,
     cardIndex,
     cardLabel,
-    posted: files.length,
+    posted,
     beforeCount,
     afterCount,
     workCount,
@@ -406,12 +469,16 @@ export async function runClamperlJob(params: {
         multiCard,
         applicationId,
         token,
+        orderDisplayId,
+        onStatus: async (content) => {
+          await editOriginal(applicationId, token, content);
+        },
         onPairProgress: async ({ pair, total }) => {
           await editOriginal(
             applicationId,
             token,
             [
-              `Carousel **4:5 PNG** · Order **#${orderDisplayId}**`,
+              `Order **#${orderDisplayId}**`,
               multiCard
                 ? `Card **${target.cardIndex}/${targets.length}** · stitching pair **${pair}/${total}**`
                 : `Card ${target.cardIndex} · stitching pair **${pair}/${total}**`,
@@ -470,7 +537,7 @@ export async function runClamperlJob(params: {
       applicationId,
       token,
       [
-        `Done · Carousel **4:5 PNG** · Order **#${orderDisplayId}** · ${scope}`,
+        `Done · Order **#${orderDisplayId}** · ${scope}`,
         `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** PNG(s)`,
         okCards.length > 0
           ? `Cards:\n${okCards.map((line) => `• ${line}`).join("\n")}`
