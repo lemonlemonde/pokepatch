@@ -2,14 +2,21 @@
  * Publish order-card before/after source photos as a public gallery item.
  * Copies bytes from the card-photos bucket into the gallery bucket — never
  * Instagram/clamperl stitch canvases.
+ *
+ * Also writes `.thumb.webp` siblings so admin/list UIs that prefer thumbs
+ * (via galleryThumbPublicUrl) do not render blank 404 slots.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { Image } from "npm:imagescript@3.12.2";
 import { sanitizeDamageTags } from "./damageTags.ts";
 
 const GALLERY_BUCKET = "gallery";
 const GALLERY_CACHE_CONTROL = "86400";
 const SITE_URL = "https://pokepatch.cards";
+/** Match browser `GALLERY_THUMB_MAX_DIMENSION` in imageCompression.js. */
+const GALLERY_THUMB_MAX_DIMENSION = 640;
+const GALLERY_THUMB_QUALITY = 70;
 
 export type GallerySourcePair = {
   beforePath: string;
@@ -84,6 +91,58 @@ async function uploadBytes(
   }
 }
 
+/** Sibling path for list/thumbnail UI: foo.jpg → foo.jpg.thumb.webp */
+function thumbSiblingPath(storagePath: string): string {
+  if (
+    storagePath.endsWith(".thumb.webp") ||
+    storagePath.endsWith(".poster.webp")
+  ) {
+    return storagePath;
+  }
+  return `${storagePath}.thumb.webp`;
+}
+
+function pathsWithThumbSiblings(paths: string[]): string[] {
+  const out = new Set<string>();
+  for (const path of paths) {
+    if (!path) continue;
+    out.add(path);
+    out.add(thumbSiblingPath(path));
+  }
+  return [...out];
+}
+
+/**
+ * Downscale + encode a `.thumb.webp` sibling (same convention as admin uploads).
+ * Best-effort: decode failures are logged and skipped so the full object still publishes.
+ */
+async function uploadThumbSibling(
+  supabase: SupabaseClient,
+  destPath: string,
+  bytes: Uint8Array
+): Promise<void> {
+  try {
+    const img = await Image.decode(bytes);
+    const maxSide = Math.max(img.width, img.height);
+    if (maxSide > GALLERY_THUMB_MAX_DIMENSION) {
+      const scale = GALLERY_THUMB_MAX_DIMENSION / maxSide;
+      img.resize(
+        Math.max(1, Math.round(img.width * scale)),
+        Math.max(1, Math.round(img.height * scale))
+      );
+    }
+    const webp = await img.encodeWebP({ quality: GALLERY_THUMB_QUALITY });
+    await uploadBytes(
+      supabase,
+      thumbSiblingPath(destPath),
+      webp,
+      "image/webp"
+    );
+  } catch (err) {
+    console.error("gallery publish pair thumb failed", destPath, err);
+  }
+}
+
 async function cleanupGalleryItem(
   supabase: SupabaseClient,
   itemId: string
@@ -105,7 +164,9 @@ async function cleanupGalleryItem(
       .maybeSingle();
     if (item?.thumbnail_path) paths.push(String(item.thumbnail_path));
     if (paths.length > 0) {
-      await supabase.storage.from(GALLERY_BUCKET).remove(paths);
+      await supabase.storage
+        .from(GALLERY_BUCKET)
+        .remove(pathsWithThumbSiblings(paths));
     }
     await supabase.from("gallery_items").delete().eq("id", itemId);
   } catch (err) {
@@ -205,6 +266,11 @@ export async function publishGalleryFromCardPairs(
         afterBytes,
         contentTypeFromPath(pair.afterPath)
       );
+      // Admin edit + list UIs request `.thumb.webp` siblings first.
+      await Promise.all([
+        uploadThumbSibling(supabase, beforeDest, beforeBytes),
+        uploadThumbSibling(supabase, afterDest, afterBytes),
+      ]);
 
       const { error: updateError } = await supabase
         .from("gallery_pairs")

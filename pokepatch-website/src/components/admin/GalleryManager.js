@@ -90,6 +90,89 @@ function ObjectPreview({ file, kind, className }) {
   return <img src={url} alt="" className={className} />;
 }
 
+/**
+ * Prefer `.thumb.webp` sibling; fall back to the full object if the thumb 404s
+ * (e.g. Clamperl-published pairs before sibling upload existed).
+ */
+function GalleryThumbImg({
+  src,
+  alt = "",
+  className,
+  cacheKey,
+  loading,
+  decoding,
+}) {
+  const [useOriginal, setUseOriginal] = useState(false);
+  const thumbSrc = galleryThumbPublicUrl(src, cacheKey) || src;
+  const displaySrc = useOriginal ? src : thumbSrc;
+
+  useEffect(() => {
+    setUseOriginal(false);
+  }, [src, cacheKey]);
+
+  // eslint-disable-next-line @next/next/no-img-element
+  return (
+    <img
+      key={`${src}:${cacheKey ?? ""}:${useOriginal ? "full" : "thumb"}`}
+      src={displaySrc}
+      alt={alt}
+      loading={loading}
+      decoding={decoding}
+      onError={() => {
+        if (!useOriginal && displaySrc !== src) {
+          setUseOriginal(true);
+        }
+      }}
+      className={className}
+    />
+  );
+}
+
+function GalleryListThumb({ item }) {
+  if (item.urls?.thumbnail) {
+    return (
+      <GalleryThumbImg
+        src={item.urls.thumbnail}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className={`w-9 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/10`}
+      />
+    );
+  }
+
+  const first = item.pairs?.[0];
+  const beforeUrl = first?.urls?.before;
+  if (!beforeUrl) return null;
+
+  const isVideo =
+    first.media_kind === "video" || first.mediaKind === "video";
+  if (isVideo) {
+    const poster = galleryPosterPublicUrl(beforeUrl);
+    if (!poster) return null;
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={poster}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="h-12 w-9 rounded object-cover"
+      />
+    );
+  }
+
+  return (
+    <GalleryThumbImg
+      src={beforeUrl}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className="h-12 w-9 rounded object-cover"
+    />
+  );
+}
+
 function sortItemsNewestFirst(rows) {
   return [...rows].sort((a, b) => {
     const aTime = a?.created_at ? new Date(a.created_at).getTime() : 0;
@@ -194,9 +277,8 @@ function SideUpload({
               </div>
             )
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={galleryThumbPublicUrl(previewUrl) || previewUrl}
+            <GalleryThumbImg
+              src={previewUrl}
               alt={label}
               className="h-full w-full object-cover"
             />
@@ -299,10 +381,9 @@ function ThumbnailUpload({
             className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
         ) : previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={`${previewUrl}:${previewCacheKey ?? ""}`}
-            src={galleryThumbPublicUrl(previewUrl, previewCacheKey) || previewUrl}
+          <GalleryThumbImg
+            src={previewUrl}
+            cacheKey={previewCacheKey}
             alt="Card thumbnail"
             className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
           />
@@ -1199,34 +1280,7 @@ export default function GalleryManager() {
                       </span>
                     </button>
 
-                    {item.urls?.thumbnail ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={
-                          galleryThumbPublicUrl(item.urls.thumbnail) ||
-                          item.urls.thumbnail
-                        }
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className={`w-9 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/10`}
-                      />
-                    ) : item.pairs?.[0]?.urls?.before ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={
-                          (item.pairs[0].media_kind === "video" ||
-                          item.pairs[0].mediaKind === "video"
-                            ? galleryPosterPublicUrl(item.pairs[0].urls.before)
-                            : galleryThumbPublicUrl(item.pairs[0].urls.before)) ||
-                          item.pairs[0].urls.before
-                        }
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="h-12 w-9 rounded object-cover"
-                      />
-                    ) : null}
+                    <GalleryListThumb item={item} />}
 
                     <button
                       type="button"
