@@ -60,7 +60,7 @@ curl -s -X PUT \
     "options": [
       {
         "name": "order",
-        "description": "Order number (display id)",
+        "description": "Order number (display id), or -1 for my cards",
         "type": 4,
         "required": true
       },
@@ -78,6 +78,7 @@ Invite the bot to your server with `applications.commands` scope.
 
 ## Notes
 
+- Own cards: pass `order:-1` (same permanent portfolio as wooper). Card index is still 1-based within that order.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - **Why hops:** Supabase Edge Functions cap CPU time per worker (docs say 2s; the worker is killed a few seconds later with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one worker. Each hop runs in a fresh worker with a fresh budget.
 - **Hop transport:** the job (interaction token, pair paths, staged files, trail) is POSTed to `${SUPABASE_URL}/functions/v1/discord-clamperl` with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. `index.ts` routes those requests before Discord signature verification; a bad signature is 401. A worker that has already spent >3s of stitch time answers `503` so the dispatcher retries and lands on a fresh isolate. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.

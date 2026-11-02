@@ -258,6 +258,15 @@ export async function adminGetOrder(orderId) {
   return stabilizeOrderDetail(payload.order);
 }
 
+/** Load an order by public display id (e.g. owner portfolio #-1). */
+export async function adminGetOrderByDisplayId(displayId) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: { action: "get", display_id: displayId },
+  });
+  return stabilizeOrderDetail(payload.order);
+}
+
 /**
  * Search Auth accounts by name or email (live, fuzzy token match). Used to
  * prefill admin "new order" for an existing customer.

@@ -23,11 +23,18 @@ import {
   type Json,
 } from "../_shared/discord.ts";
 import { BUCKET } from "../_shared/discordOrderMessages.ts";
+import {
+  OWNER_ORDER_DISPLAY_ID,
+  isAllowedOrderDisplayId,
+  isOwnerOrderDisplayId,
+} from "../_shared/ownerOrder.ts";
 
 const PENDING_PREFIX = "wooper-pending/";
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
 /** Match admin MAX_ADMIN_PHOTOS_PER_CARD — per side (before or after). */
 const MAX_PHOTOS_PER_SIDE = 20;
+/** Cap auto-created slots on the owner portfolio so a typo can't flood cards. */
+const MAX_OWNER_CARD_INDEX = 100;
 const IMMUTABLE_CACHE_CONTROL = "604800";
 
 export const WOOPER_MODAL_PREFIX = "wooper:";
@@ -146,7 +153,7 @@ function wooperModal(pendingId: string, imageCount: number): Json {
           textInput({
             customId: "order",
             required: true,
-            placeholder: "e.g. 42",
+            placeholder: "e.g. 42 or -1 (my cards)",
             maxLength: 10,
           })
         ),
@@ -244,7 +251,7 @@ async function uploadAttachments(params: {
   } = params;
 
   try {
-    if (!Number.isFinite(orderDisplayId) || orderDisplayId <= 0) {
+    if (!isAllowedOrderDisplayId(orderDisplayId)) {
       await editOriginal(applicationId, token, "Invalid order number.");
       return;
     }
@@ -274,6 +281,7 @@ async function uploadAttachments(params: {
     }
 
     const supabase = getServiceClient();
+    const ownerPortfolio = isOwnerOrderDisplayId(orderDisplayId);
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
@@ -285,12 +293,14 @@ async function uploadAttachments(params: {
       await editOriginal(
         applicationId,
         token,
-        `Order #${orderDisplayId} not found.`
+        ownerPortfolio
+          ? `My cards order (#${OWNER_ORDER_DISPLAY_ID}) is missing. Run migrations.`
+          : `Order #${orderDisplayId} not found.`
       );
       return;
     }
 
-    const { data: cards, error: cardsError } = await supabase
+    let { data: cards, error: cardsError } = await supabase
       .from("cards")
       .select("id, card_name, sort_order")
       .eq("order_id", order.id)
@@ -298,12 +308,54 @@ async function uploadAttachments(params: {
       .order("id", { ascending: true });
     if (cardsError) throw cardsError;
 
+    const orderLabel = ownerPortfolio
+      ? `My cards (**#${OWNER_ORDER_DISPLAY_ID}**)`
+      : `Order **#${orderDisplayId}**`;
+
+    // Owner portfolio: create missing card slots through N so Discord-only
+    // uploads never need a pre-created customer order.
+    if (ownerPortfolio && cardIndex > (cards?.length ?? 0)) {
+      if (cardIndex > MAX_OWNER_CARD_INDEX) {
+        await editOriginal(
+          applicationId,
+          token,
+          `Card number too high for my cards (max ${MAX_OWNER_CARD_INDEX}).`
+        );
+        return;
+      }
+      const existingCount = cards?.length ?? 0;
+      const toInsert = [];
+      for (let n = existingCount + 1; n <= cardIndex; n += 1) {
+        toInsert.push({
+          id: crypto.randomUUID(),
+          order_id: order.id,
+          card_name: `My card ${n}`,
+          sort_order: n - 1,
+          damage_tags: [],
+          status: "todo",
+        });
+      }
+      const { error: insertCardsError } = await supabase
+        .from("cards")
+        .insert(toInsert);
+      if (insertCardsError) throw insertCardsError;
+
+      const reloaded = await supabase
+        .from("cards")
+        .select("id, card_name, sort_order")
+        .eq("order_id", order.id)
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true });
+      if (reloaded.error) throw reloaded.error;
+      cards = reloaded.data;
+    }
+
     const card = (cards ?? [])[cardIndex - 1];
     if (!card) {
       await editOriginal(
         applicationId,
         token,
-        `Order #${orderDisplayId} has ${cards?.length ?? 0} card(s); card ${cardIndex} is out of range.`
+        `${orderLabel} has ${cards?.length ?? 0} card(s); card ${cardIndex} is out of range.`
       );
       return;
     }
@@ -320,7 +372,7 @@ async function uploadAttachments(params: {
           applicationId,
           token,
           [
-            `Nothing uploaded — Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}) already has **${picked.beforeCount}** before and **${picked.afterCount}** after photo(s).`,
+            `Nothing uploaded — ${orderLabel} · ${cardLabel} (card ${cardIndex}) already has **${picked.beforeCount}** before and **${picked.afterCount}** after photo(s).`,
             "Re-run wooper and type `before` or `after` to replace that side.",
           ].join("\n")
         );
@@ -411,10 +463,10 @@ async function uploadAttachments(params: {
 
     const lines = [
       uploaded > 0
-        ? `Uploaded **${uploaded}** ${side} photo(s) → Order **#${orderDisplayId}** · ${cardLabel} (card ${cardIndex}).`
-        : `No photos uploaded for Order **#${orderDisplayId}** · ${cardLabel}.`,
+        ? `Uploaded **${uploaded}** ${side} photo(s) → ${orderLabel} · ${cardLabel} (card ${cardIndex}).`
+        : `No photos uploaded for ${orderLabel} · ${cardLabel}.`,
     ];
-    if (uploaded > 0 && side === "after") {
+    if (uploaded > 0 && side === "after" && !ownerPortfolio) {
       lines.push("Card marked **completed** (after photos uploaded).");
     }
     if (sideWasDefaulted) {

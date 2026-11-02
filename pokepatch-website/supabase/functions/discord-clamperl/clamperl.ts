@@ -31,6 +31,11 @@ import {
   stitchCarouselPairPng,
   type CarouselOverlay,
 } from "../_shared/instaCarousel.ts";
+import {
+  OWNER_ORDER_DISPLAY_ID,
+  isAllowedOrderDisplayId,
+  isOwnerOrderDisplayId,
+} from "../_shared/ownerOrder.ts";
 
 const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
@@ -138,6 +143,20 @@ function parsePositiveInt(value: string | number | null): number | null {
   const n = typeof value === "number" ? value : Number(String(value).trim());
   if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
   return n;
+}
+
+/** Positive display ids, or owner portfolio `#-1`. */
+function parseOrderDisplayId(value: string | number | null): number | null {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!isAllowedOrderDisplayId(n)) return null;
+  return n;
+}
+
+function orderLabel(orderDisplayId: number): string {
+  return isOwnerOrderDisplayId(orderDisplayId)
+    ? `My cards (**#${OWNER_ORDER_DISPLAY_ID}**)`
+    : `Order **#${orderDisplayId}**`;
 }
 
 function attachmentSizeLimit(interaction: Interaction): number {
@@ -505,7 +524,7 @@ async function stitchNextPair(
       : `pair **${pairNum}/${total}** · \`${phase}\``;
     await setStatus(
       job,
-      `Order **#${job.orderDisplayId}**\nCard ${job.cardIndex} · ${step} · worker ${job.hops}`
+      `${orderLabel(job.orderDisplayId)}\nCard ${job.cardIndex} · ${step} · worker ${job.hops}`
     );
   };
 
@@ -582,7 +601,7 @@ async function finalizeJob(
   supabase: SupabaseClient
 ): Promise<void> {
   const { staged, cardIndex, cardLabel, orderDisplayId } = job;
-  const prefix = `Order **#${orderDisplayId}** · card **${cardIndex}**`;
+  const prefix = `${orderLabel(orderDisplayId)} · card **${cardIndex}**`;
 
   try {
     if (staged.length === 0) {
@@ -632,7 +651,7 @@ async function finalizeJob(
     await setStatus(
       job,
       [
-        `Done · Order **#${orderDisplayId}** · card ${cardIndex} · ${cardLabel}`,
+        `Done · ${orderLabel(orderDisplayId)} · card ${cardIndex} · ${cardLabel}`,
         `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${staged.length}** of **${job.pairs.length}** PNG(s) (before ${job.beforeCount}/after ${job.afterCount}) · ${job.hops} worker(s)`,
         job.skippedLarge.length > 0
           ? `Omitted (too large):\n${job.skippedLarge.join("\n")}`
@@ -743,20 +762,25 @@ async function startClamperlJob(params: {
       .eq("display_id", orderDisplayId)
       .maybeSingle();
     if (orderError) throw orderError;
+    const label = orderLabel(orderDisplayId);
     if (!order) {
-      await reply(`Order #${orderDisplayId} not found.`);
+      await reply(
+        isOwnerOrderDisplayId(orderDisplayId)
+          ? `My cards order (#${OWNER_ORDER_DISPLAY_ID}) is missing. Run migrations.`
+          : `Order #${orderDisplayId} not found.`
+      );
       return;
     }
 
     const cards = await loadOrderCards(supabase, String(order.id));
     if (cards.length === 0) {
-      await reply(`Order #${orderDisplayId} has no cards.`);
+      await reply(`${label} has no cards.`);
       return;
     }
     const card = cards[cardIndex - 1];
     if (!card) {
       await reply(
-        `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
+        `${label} has ${cards.length} card(s); card ${cardIndex} is out of range.`
       );
       return;
     }
@@ -774,7 +798,7 @@ async function startClamperlJob(params: {
     ]);
     const beforeCount = beforeRows.length;
     const afterCount = afterRows.length;
-    const prefix = `Nothing to generate — Order **#${orderDisplayId}** · card **${cardIndex}**.`;
+    const prefix = `Nothing to generate — ${label} · card **${cardIndex}**.`;
     if (beforeCount === 0 || afterCount === 0) {
       await reply(
         `${prefix}\n• ${cardLabel}: before **${beforeCount}**, after **${afterCount}** (need both sides)`
@@ -798,7 +822,7 @@ async function startClamperlJob(params: {
     }
     if (pairs.length > FILES_PER_MESSAGE) {
       await reply(
-        `Order **#${orderDisplayId}** · card **${cardIndex}** · Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card would produce **${pairs.length}**.`
+        `${label} · card **${cardIndex}** · Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card would produce **${pairs.length}**.`
       );
       return;
     }
@@ -858,7 +882,7 @@ async function startClamperlJob(params: {
     // Clear leftovers from workers killed mid-hop before this job stages more.
     await sweepClamperlScratch(supabase);
     await reply(
-      `Generating Order **#${orderDisplayId}** · card **${cardIndex}** · **${pairs.length}** pair(s)…`
+      `Generating ${label} · card **${cardIndex}** · **${pairs.length}** pair(s)…`
     );
     await dispatchHop(job);
   } catch (err) {
@@ -874,14 +898,14 @@ export function handleClamperlCommandDeferred(
   waitUntil: (promise: Promise<unknown>) => void
 ): Response {
   const data = (interaction.data ?? {}) as Json;
-  const orderDisplayId = parsePositiveInt(optionValue(data.options, "order"));
+  const orderDisplayId = parseOrderDisplayId(optionValue(data.options, "order"));
   const cardIndex = parsePositiveInt(optionValue(data.options, "card"));
 
   if (orderDisplayId == null) {
     return json({
       type: CallbackType.CHANNEL_MESSAGE,
       data: {
-        content: "Order must be a positive whole number (e.g. `42`).",
+        content: `Order must be a positive whole number (e.g. \`42\`) or \`${OWNER_ORDER_DISPLAY_ID}\` for my cards.`,
         flags: EPHEMERAL,
       },
     });
