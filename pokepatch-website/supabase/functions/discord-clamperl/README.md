@@ -79,7 +79,7 @@ Invite the bot to your server with `applications.commands` scope.
 ## Notes
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
-- Pairs are stitched **one at a time** and staged to Storage between pairs. Decoded source photos are downscaled before cover work so phone-resolution JPEGs do not OOM Edge by later pairs.
+- Pairs are stitched **one at a time** and staged to Storage between pairs. Phone photos are decoded one side at a time and capped at **3× slot size** before cover (final slot is still ~500px on the 1080×1350 PNG — that output size limits damage detail, not the discarded megapixels).
 - Discord gets one follow-up (image embeds; click through to download). Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.

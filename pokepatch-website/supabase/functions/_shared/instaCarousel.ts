@@ -173,10 +173,14 @@ function sharedTarget(
 /**
  * Shrink a decoded photo before cover. Phone JPEGs are often 12MP+; keeping
  * full buffers through cover OOMs Supabase Edge by later pairs.
+ *
+ * Cap is 3× the slot so cover still has headroom for damage detail. The
+ * final carousel slot is ~500px wide on a 1080×1350 PNG either way — extra
+ * megapixels never appear in the export.
  */
 function downscaleForSlot(img: Image, maxW: number, maxH: number): void {
-  const capW = Math.max(1, Math.ceil(maxW * 2));
-  const capH = Math.max(1, Math.ceil(maxH * 2));
+  const capW = Math.max(1, Math.ceil(maxW * 3));
+  const capH = Math.max(1, Math.ceil(maxH * 3));
   if (img.width <= capW && img.height <= capH) return;
   const scale = Math.min(capW / img.width, capH / img.height);
   img.resize(
@@ -535,19 +539,6 @@ export async function stitchCarouselPairPng(
   overlay: CarouselOverlay = {}
 ): Promise<Uint8Array> {
   const assets = await ensureAssets();
-  const [beforeImg, afterImg] = await Promise.all([
-    Image.decode(beforeBytes),
-    Image.decode(afterBytes),
-  ]);
-  console.log(
-    "clamperl stitch decode",
-    JSON.stringify({
-      before: [beforeImg.width, beforeImg.height],
-      after: [afterImg.width, afterImg.height],
-      beforeBytes: beforeBytes.byteLength,
-      afterBytes: afterBytes.byteLength,
-    })
-  );
 
   const hasCardInfo = Boolean(
     overlay.frontThumb ||
@@ -565,7 +556,26 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
+  // Decode one side at a time and shrink immediately — peak RAM is one
+  // full phone photo, not two.
+  const beforeImg = await Image.decode(beforeBytes);
+  console.log(
+    "clamperl stitch decode before",
+    JSON.stringify({
+      size: [beforeImg.width, beforeImg.height],
+      bytes: beforeBytes.byteLength,
+    })
+  );
   downscaleForSlot(beforeImg, SLOT_WIDTH, maxImageHeight);
+
+  const afterImg = await Image.decode(afterBytes);
+  console.log(
+    "clamperl stitch decode after",
+    JSON.stringify({
+      size: [afterImg.width, afterImg.height],
+      bytes: afterBytes.byteLength,
+    })
+  );
   downscaleForSlot(afterImg, SLOT_WIDTH, maxImageHeight);
 
   const leftMetrics = containSize(
