@@ -52,6 +52,7 @@ import RestorationDownloadButton from "@/components/RestorationDownloadButton";
 import CardPhotoPreviewModal from "@/components/admin/orderEditor/CardPhotoPreviewModal";
 import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
+import { adminDeletePhoto, adminGetOrder } from "@/lib/adminApi";
 
 const PHOTO_ACTION_ICON_PROPS = {
   viewBox: "0 0 24 24",
@@ -145,7 +146,15 @@ export default function CardDetailSection({
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const { draft, updateDraft, saving, orderId } = useOrderEditor();
+  const {
+    draft,
+    updateDraft,
+    saving,
+    orderId,
+    setError,
+    removeSavedPhotoLocally,
+    reseedFromOrder,
+  } = useOrderEditor();
 
   const section = useMemo(() => pickCardSection(cardId, draft), [cardId, draft]);
   const card = section?.card;
@@ -290,26 +299,28 @@ export default function CardDetailSection({
     setExpandedQuoteLineId(quoteItems[index]?.id ?? null);
   }
 
-  function removePhoto(imageId) {
-    if (saving || imageId == null) return;
-    const idKey = String(imageId);
-    updateCardSection((current) => {
-      const currentCard = current.card;
-      const pending = currentCard.pending_image_deletes ?? [];
-      const imageKey = (image) => String(image.id ?? image.storage_path);
-      return {
-        ...current,
-        card: {
-          ...currentCard,
-          images: (currentCard.images ?? []).filter(
-            (image) => imageKey(image) !== idKey
-          ),
-          pending_image_deletes: pending.some((id) => String(id) === idKey)
-            ? pending
-            : [...pending, imageId],
-        },
-      };
-    });
+  async function removePhoto(imageId) {
+    if (saving || imageId == null || !orderId) return;
+    const numericId = Number(imageId);
+    const isSavedRow = Number.isFinite(numericId) && numericId > 0;
+
+    // Hard-delete immediately so clamperl / Discord never see a "removed" photo
+    // that is still sitting in card_images until Save.
+    removeSavedPhotoLocally(cardId, imageId);
+    if (!isSavedRow) return;
+
+    try {
+      await adminDeletePhoto(orderId, numericId);
+    } catch (err) {
+      if (/photo not found/i.test(String(err?.message ?? ""))) return;
+      setError(err.message || "Could not delete photo.");
+      try {
+        const refreshed = await adminGetOrder(orderId);
+        reseedFromOrder(refreshed);
+      } catch {
+        // Keep optimistic removal; refetch failed.
+      }
+    }
   }
 
   function addPendingFiles(fileList) {

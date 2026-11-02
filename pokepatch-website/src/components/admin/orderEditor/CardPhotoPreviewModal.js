@@ -42,7 +42,7 @@ const REMOVE_BUTTON_CLASS =
  * `groups`: [{ key, title, items }] where items come from `savedPhotoItems`.
  * Nothing here is rendered for customers — the images only load on open.
  *
- * Pass `onRemove` + `removableGroupKeys` to stage deletes (Save & Confirm).
+ * Pass `onRemove` + `removableGroupKeys` to hard-delete before/after photos.
  */
 export default function CardPhotoPreviewModal({
   open,

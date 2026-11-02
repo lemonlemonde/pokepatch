@@ -10,8 +10,11 @@ import { buildCardThumbById } from "@/lib/orderChangelog";
 import { draftPayload } from "@/lib/adminOrderDraft";
 
 /**
- * Save a full order draft (pending photo uploads + staged photo deletes) and
- * return the refreshed order from the server.
+ * Save a full order draft (pending photo uploads + any leftover staged photo
+ * deletes) and return the refreshed order from the server.
+ *
+ * Before/after Remove now hard-deletes immediately in the editor; the
+ * pending_image_deletes flush here remains as a safety net for older drafts.
  */
 export async function saveAdminOrderDraft(orderId, draft, { notify = false, subject = "", body = "", changelog = null } = {}) {
   const pendingUploads = (draft.cards ?? [])

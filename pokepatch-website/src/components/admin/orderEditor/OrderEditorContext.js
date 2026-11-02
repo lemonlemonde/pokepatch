@@ -94,6 +94,40 @@ export function OrderEditorProvider({
     setError("");
   }, [savedDraft]);
 
+  /** Drop a saved photo from draft + baseline so immediate deletes stay non-dirty. */
+  const removeSavedPhotoLocally = useCallback((cardId, imageId) => {
+    const idKey = String(imageId);
+    const cardKey = String(cardId);
+    const strip = (current) => ({
+      ...current,
+      cards: (current.cards ?? []).map((card) => {
+        if (String(card.id) !== cardKey) return card;
+        return {
+          ...card,
+          images: (card.images ?? []).filter(
+            (image) => String(image.id ?? image.storage_path) !== idKey
+          ),
+          pending_image_deletes: (card.pending_image_deletes ?? []).filter(
+            (id) => String(id) !== idKey
+          ),
+        };
+      }),
+    });
+    setDraft(strip);
+    setSavedDraft(strip);
+  }, []);
+
+  /** Re-seed draft from a freshly fetched order (e.g. after a failed hard delete). */
+  const reseedFromOrder = useCallback(
+    (refreshed) => {
+      onOrderUpdated?.(refreshed);
+      const next = orderToDraft(refreshed);
+      setDraft(next);
+      setSavedDraft(next);
+    },
+    [onOrderUpdated]
+  );
+
   const beforePayload = useMemo(() => draftPayload(savedDraft), [savedDraft]);
   const afterPayload = useMemo(
     () => draftPayloadForSavePreview(draft, savedDraft),
@@ -164,6 +198,8 @@ export function OrderEditorProvider({
     error,
     setError,
     discardChanges,
+    removeSavedPhotoLocally,
+    reseedFromOrder,
     requestSave,
     performSave,
     savePromptOpen,
