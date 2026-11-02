@@ -1,11 +1,9 @@
 /**
  * Wrap-up message actions: "Save & notify" (email the customer the stored
- * quote, same `customer_messages` + Resend path as the admin editor) and
- * "Refresh" (re-render the wrap-up from the DB).
+ * quote, same `customer_messages` + Resend path as the admin editor).
  *
  * custom_ids:
  * - `notify:<orderId>` button → modal `notify:<orderId>:<channelId>:<messageId>`
- * - `wrapup:<orderId>` button → UPDATE_MESSAGE with a fresh render
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -30,7 +28,6 @@ import {
 import {
   DEFAULT_NOTIFY_SUBJECT,
   NOTIFY_BUTTON_PREFIX,
-  WRAPUP_REFRESH_PREFIX,
   buildQuoteChangelog,
   buildWrapupMessage,
   cardQuotes,
@@ -205,7 +202,7 @@ async function processNotifyModal(interaction: Interaction): Promise<void> {
       `📨 Emailed **${result.email}** — “${subject}”`,
       "-# Logged in the order's message history (admin → Messages).",
     ];
-    if (!refreshed) out.push("-# Couldn't refresh the wrap-up message; press Refresh.");
+    if (!refreshed) out.push("-# Couldn't update the wrap-up message automatically.");
     await editOriginal(applicationId, token, out.join("\n"));
   } catch (err) {
     console.error("notify modal failed", err);
@@ -228,22 +225,4 @@ export function handleNotifyModal(
     type: CallbackType.DEFERRED_CHANNEL_MESSAGE,
     data: { flags: EPHEMERAL },
   });
-}
-
-/** "Refresh" click → replace the wrap-up message in place. */
-export async function handleWrapupRefresh(interaction: Interaction): Promise<Response> {
-  const data = (interaction.data ?? {}) as Json;
-  const parsed = parsePrefixedCustomId(WRAPUP_REFRESH_PREFIX, String(data.custom_id ?? ""));
-  if (!parsed) return ephemeralReply("Unknown button.");
-  try {
-    const context = await loadOrderContext(getServiceClient(), parsed.id);
-    if (!context) return ephemeralReply("This order no longer exists.");
-    return json({
-      type: CallbackType.UPDATE_MESSAGE,
-      data: buildWrapupMessage({ context, interactive: true }),
-    });
-  } catch (err) {
-    console.error("wrap-up refresh failed", err);
-    return ephemeralReply("Couldn't refresh. Try again.");
-  }
 }

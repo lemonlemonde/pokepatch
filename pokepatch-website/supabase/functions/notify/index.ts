@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getServiceClient } from "../_shared/adminSession.ts";
 import { isValidEmail, sendCustomerEmail } from "../_shared/customerMessages.ts";
-import { CONTACT_TYPE_LABELS } from "../_shared/outreach.ts";
 import {
   createThreadFromMessage,
   hasBotToken,
@@ -150,7 +149,6 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     cards,
     photoPathsByCard,
     contacts: contactsList,
-    contactsText: formatContacts(contactsList, "; "),
   });
 
   await sendQuoteConfirmationEmail({
@@ -174,24 +172,16 @@ async function notifyDiscordOrder(params: {
   cards: CardRow[];
   photoPathsByCard: Map<string, string[]>;
   contacts: ContactRow[];
-  contactsText: string;
 }) {
-  const { supabase, order, cards, photoPathsByCard, contacts, contactsText } = params;
+  const { supabase, order, cards, photoPathsByCard, contacts } = params;
   const channelId = quotesChannelId();
   if (!channelId && !Deno.env.get("DISCORD_WEBHOOK_URL")) return;
-
-  const photoCount = [...photoPathsByCard.values()].reduce(
-    (sum, list) => sum + list.length,
-    0
-  );
 
   const header = await postChannelMessage(
     channelId,
     buildOrderHeaderMessage({
       order,
       cardCount: cards.length,
-      photoCount,
-      contactsText,
     })
   );
   if (!header) {
@@ -304,22 +294,6 @@ async function sendQuoteConfirmationEmail({
     body: buildQuoteConfirmationBody(customerName),
   });
   if (!result.ok) console.error("quote confirmation: send failed", result.error);
-}
-
-function formatContacts(
-  contacts: { contact_type?: string | null; value?: string | null }[],
-  separator: string
-): string {
-  return contacts
-    .map((c) => {
-      const label =
-        CONTACT_TYPE_LABELS[String(c.contact_type ?? "")] ??
-        String(c.contact_type ?? "Contact");
-      const value = String(c.value ?? "").trim();
-      return value ? `${label}: ${value}` : null;
-    })
-    .filter(Boolean)
-    .join(separator);
 }
 
 async function notifyDiscordLegacy({

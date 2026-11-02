@@ -4,7 +4,6 @@
  * Routes:
  * - `quote:<cardId>` button → per-card quote modal (quote.ts)
  * - `notify:<orderId>` button → Save & notify modal (notifyCustomer.ts)
- * - `wrapup:<orderId>` button → re-render the order wrap-up (notifyCustomer.ts)
  *
  * Wooper lives on a separate Discord app → `discord-photos`.
  *
@@ -21,12 +20,10 @@ import {
 import {
   NOTIFY_BUTTON_PREFIX,
   QUOTE_BUTTON_PREFIX,
-  WRAPUP_REFRESH_PREFIX,
 } from "../_shared/discordOrderMessages.ts";
 import {
   handleNotifyButton,
   handleNotifyModal,
-  handleWrapupRefresh,
 } from "./notifyCustomer.ts";
 import { handleQuoteButton, handleQuoteModal } from "./quote.ts";
 
@@ -51,9 +48,6 @@ Deno.serve(async (req) => {
     }
     if (customId.startsWith(NOTIFY_BUTTON_PREFIX)) {
       return await handleNotifyButton(interaction);
-    }
-    if (customId.startsWith(WRAPUP_REFRESH_PREFIX)) {
-      return await handleWrapupRefresh(interaction);
     }
     return ephemeralReply("Unknown button.");
   }
