@@ -140,11 +140,6 @@ const CONTRACT_TRACKING_STATUS_IDS = new Set(
   CONTRACT_TRACKING_STATUSES.map((status) => status.id)
 );
 
-/** Closed statuses (completed + canceled). */
-export const CLOSED_ORDER_STATUSES = ORDER_STATUSES.filter(
-  (status) => status.id === "completed" || status.id === "canceled"
-);
-
 /** Picked-up orders dock beside canceled / delete (not on the main row). */
 export const COMPLETED_ORDER_STATUS = ORDER_STATUSES.find(
   (status) => status.id === "completed"
@@ -456,19 +451,4 @@ export function editorStatusValue(statusId, pendingKind = null) {
     return `pending:${normalizePendingKind(pendingKind)}`;
   }
   return status;
-}
-
-export function parseEditorStatusValue(value) {
-  const raw = String(value ?? "");
-  if (raw.startsWith("pending:")) {
-    return {
-      status: "pending",
-      pendingKind: normalizePendingKind(raw.slice("pending:".length)),
-    };
-  }
-  const status = normalizeOrderStatus(raw);
-  return {
-    status,
-    pendingKind: status === "pending" ? DEFAULT_PENDING_KIND : null,
-  };
 }

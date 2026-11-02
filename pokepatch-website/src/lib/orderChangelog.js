@@ -746,16 +746,3 @@ export function formatOrderChangelogText({
   while (lines[lines.length - 1] === "") lines.pop();
   return `Updates on your order:\n\n${lines.join("\n")}`;
 }
-
-export function buildCustomerMessageBody({
-  message = "",
-  attachChangelog = false,
-  changelogText = "",
-} = {}) {
-  const note = String(message ?? "").trim();
-  const changelog = attachChangelog ? String(changelogText ?? "").trim() : "";
-  if (note && changelog) return `${note}\n\n${changelog}`;
-  if (note) return note;
-  if (changelog) return changelog;
-  return "";
-}

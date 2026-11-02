@@ -130,11 +130,6 @@ export function galleryPosterPublicUrl(pathOrUrl) {
   return publicUrlForPath(posterPath(pathOrUrl));
 }
 
-/** @deprecated No Image Transformations — use galleryThumbPublicUrl / stored thumbs. */
-export function galleryImageUrl(src) {
-  return src;
-}
-
 function detectMediaKind(path) {
   if (!path) return "image";
   return /\.(mp4|webm|mov)(\?|$)/i.test(path) ? "video" : "image";

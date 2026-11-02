@@ -1,7 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/lib/**/*.{js,ts}",
@@ -35,7 +34,6 @@ export default {
         ink: "#F3E9F2",
         error: "#F87171",
         night: "#0B1020",
-        plum: "#1A1230",
       },
       fontFamily: {
         sans: [
@@ -53,17 +51,9 @@ export default {
         ],
       },
       keyframes: {
-        fadeIn: {
-          "0%": { opacity: "0" },
-          "100%": { opacity: "1" },
-        },
         fadeUp: {
           "0%": { opacity: "0", transform: "translateY(16px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        popIn: {
-          "0%": { opacity: "0", transform: "scale(0.8)" },
-          "100%": { opacity: "1", transform: "scale(1)" },
         },
         softBounce: {
           "0%, 100%": { transform: "translateY(0)" },
@@ -71,9 +61,7 @@ export default {
         },
       },
       animation: {
-        "fade-in": "fadeIn 0.5s ease-out both",
         "fade-up": "fadeUp 0.6s ease-out both",
-        "pop-in": "popIn 0.5s ease-out both",
         "soft-bounce": "softBounce 0.9s ease-in-out infinite",
       },
     },

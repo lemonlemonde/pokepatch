@@ -47,7 +47,6 @@ import {
   useOverlayPresence,
 } from "@/components/ExpandReveal";
 import {
-  ORDER_STATUSES,
   ACTIVE_ORDER_STATUSES,
   COMPLETED_ORDER_STATUS,
   CANCELED_ORDER_STATUS,
@@ -59,10 +58,7 @@ import {
   DEFAULT_PENDING_KIND,
   markActiveCardsCompleted,
   orderStatusHeadingClass,
-  orderStatusLabel,
   orderDisplayLabel,
-  orderStatusBadgeClass,
-  cardStatusBadgeClass,
   isClosedOrderStatus,
   isPendingOrderStatus,
   filterClosedColumnOrders,
@@ -1847,7 +1843,7 @@ export default function AdminApp() {
     });
 
     try {
-      await adminSetStatus(orderId, nextStatus, null, {
+      await adminSetStatus(orderId, nextStatus, {
         pendingKind: nextStatus === "pending" ? pendingKind : undefined,
       });
 

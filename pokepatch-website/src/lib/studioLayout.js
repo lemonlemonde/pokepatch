@@ -55,11 +55,6 @@ export function exportScale(ctx) {
 
 // --- Studio comparison layout (before | after) ---
 export const EDGE_PADDING = 18;
-export const COLUMN_GAP = 18;
-export const SLOT_WIDTH =
-  (INSTAGRAM_WIDTH - 2 * EDGE_PADDING - COLUMN_GAP) / 2;
-export const LEFT_COLUMN_X = EDGE_PADDING;
-export const RIGHT_COLUMN_X = EDGE_PADDING + SLOT_WIDTH + COLUMN_GAP;
 export const BACKGROUND = "#000000";
 export const LABEL_FONT_SIZE = 34;
 export const LABEL_FONT_FAMILY =
@@ -68,7 +63,6 @@ export const LABEL_COLOR = "rgba(255, 255, 255, 0.9)";
 export const LABEL_TRACKING = 14;
 export const LABEL_GAP = 28;
 export const BRAND_HANDLE = "@pokepatch.cards";
-export const LABEL_BLOCK_HEIGHT = LABEL_GAP + LABEL_FONT_SIZE;
 export const CARD_RADIUS = 8;
 
 // Restoration caption — slightly smaller / tighter than BEFORE/AFTER labels.
@@ -76,15 +70,6 @@ export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_TRACKING = 6;
 export const CARD_INFO_FONT_SIZE = 26;
 export const CARD_INFO_THUMB_SIZE = 112;
-/** 4:5 card chip thumb — keeps Card/Set readable. */
-const CAROUSEL_CARD_INFO_THUMB_SIZE = Math.round(
-  CARD_INFO_THUMB_SIZE * 2.7,
-);
-/** Fixed text column inside the 4:5 card chip (keeps the badge wide). */
-const CAROUSEL_CARD_INFO_TEXT_WIDTH = 480;
-const CAROUSEL_CARD_INFO_FONT_SIZE = 36;
-const CAROUSEL_CARD_INFO_INNER_PAD_Y = 12;
-const CAROUSEL_CARD_INFO_INNER_PAD_X = 14;
 export const CARD_INFO_INNER_PAD_Y = 6;
 export const CARD_INFO_INNER_PAD_X = 12;
 export const CARD_INFO_EDGE_PADDING = 24;
@@ -92,49 +77,11 @@ export const CARD_INFO_EDGE_PADDING = 24;
 // caption gaps: chip → caption → images).
 export const CARD_INFO_CLEARANCE = 28;
 export const CAPTION_GAP = CARD_INFO_CLEARANCE;
-/** Gap between BEFORE/AFTER labels and the card chip on 4:5. */
-const CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT = 28;
 /** Gap between the brand chip and the before/after images on 4:5. */
 const CAROUSEL_BRANDING_GAP_ABOVE_IMAGES = 24;
-// Branding chip metrics (must stay in sync with drawBranding).
-const BRANDING_MAX_FRAME = 72;
-const BRANDING_INNER_PAD = 14;
-const BRANDING_FONT_SIZE = 24;
 
-/**
- * Experimental 4:5 composition — cards as hero, quiet brand, balanced stack.
- * Revert: set to `false`, or `git revert` the experiment commit.
- */
-export const CAROUSEL_LAYOUT_EXPERIMENT = true;
-
-/** Active 4:5 layout numbers (experiment or prior baseline). */
+/** Active 4:5 layout — cards as hero, quiet brand, balanced stack. */
 function carouselMetrics() {
-  if (!CAROUSEL_LAYOUT_EXPERIMENT) {
-    return {
-      edge: EDGE_PADDING,
-      columnGap: COLUMN_GAP,
-      contentTop: EDGE_PADDING,
-      labelFont: LABEL_FONT_SIZE,
-      labelGap: LABEL_GAP,
-      labelTracking: LABEL_TRACKING,
-      chipThumb: CAROUSEL_CARD_INFO_THUMB_SIZE,
-      chipFont: CAROUSEL_CARD_INFO_FONT_SIZE,
-      chipTextW: CAROUSEL_CARD_INFO_TEXT_WIDTH,
-      chipPadX: CAROUSEL_CARD_INFO_INNER_PAD_X,
-      chipPadY: CAROUSEL_CARD_INFO_INNER_PAD_Y,
-      chipGap: CAROUSEL_CARD_INFO_GAP_BELOW_CONTENT,
-      chipTextGap: 10,
-      chipLineGap: 8,
-      brandFrame: BRANDING_MAX_FRAME,
-      brandFont: BRANDING_FONT_SIZE,
-      brandPad: BRANDING_INNER_PAD,
-      brandGap: 10,
-      brandOpaque: false,
-      /** @type {'bottom' | 'center'} */
-      stackMode: "bottom",
-    };
-  }
-  // Cards own the frame; brand sits just above the images in the stack.
   return {
     edge: 28,
     columnGap: 24,

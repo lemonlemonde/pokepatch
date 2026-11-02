@@ -195,7 +195,28 @@ The site is a **static frontend** on GitHub Pages. All backend logic runs in **S
 | Admin orders + gallery + studio | `/admin/` (unlisted) | `admin-auth` + `admin-api` edge functions |
 | Legacy quotes | — | `quote_requests` table + `notify` (historical only) |
 
-New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history and still have their own notify path.
+New customer submissions write to the **orders** relational model. Legacy rows in `quote_requests` are kept for history; the table/trigger remain so old webhook traffic still reaches `notify`, but the app never writes there.
+
+### Customer login & My Orders
+
+Optional accounts so customers can track quotes and restorations. Guests can still submit quotes without signing up; matching email links orders after signup.
+
+| Path | Role |
+|------|------|
+| `/quote` | Public quote form |
+| `/thank-you` | Confirmation + optional signup |
+| `/login` | Login / signup / forgot password |
+| `/my-orders` | Linked order list |
+| `/my-orders/detail?id=…` | Detail, messages, pending edits |
+| `/account` | Profile + password |
+
+Feature flag: `NEXT_PUBLIC_CUSTOMER_AUTH_ENABLED=true` → `src/lib/customerAuth.js` (`isCustomerAuthEnabled`).
+
+**Auth email (Resend SMTP):** Supabase’s built-in mailer is rate-limited. For production: verify a domain in Resend, set Authentication → Email → SMTP (`smtp.resend.com`, port `465`, user `resend`, API key as password), keep **Confirm email** on (`/verify-email`), allowlist Site URL + redirects, and use `supabase/templates/confirmation.html` + `recovery.html`. Signup `emailRedirectTo` → `/my-orders` on the current origin.
+
+Admin → customer messages go through `admin-api` + Resend into `customer_messages` (shown on My Orders detail). Needs `RESEND_API_KEY` / `RESEND_FROM_EMAIL` edge secrets and `ADMIN_ALLOWED_EMAILS`.
+
+Troubleshooting: missing confirm emails → Resend SMTP + domain; orders not linking → signup email must match quote contact (case-insensitive); missing photos → `card-photos` bucket policies.
 
 ---
 
@@ -300,7 +321,7 @@ Postgres holds two parallel data paths: **legacy quotes** and **orders**.
 
 | Table | Role |
 |-------|------|
-| `quote_requests` | Flat submissions from the old form; historical data + legacy notify webhook |
+| `quote_requests` | Historical flat submissions; retained table + INSERT webhook → `notify` (app no longer writes here) |
 
 ### Orders (current)
 
@@ -350,7 +371,7 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 
 RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
 
-Schema reference (informational, may lag live): [`pokepatch-website/supabase/schema.sql`](pokepatch-website/supabase/schema.sql)
+Authoritative schema is whatever `supabase/migrations/` builds (local Studio / `db reset`). Do not keep a parallel hand-maintained dump.
 
 ### Schema changes (CLI-managed)
 
@@ -376,7 +397,6 @@ supabase migration list             # optional check that Local === Remote after
 - Put **only the delta** in each new migration (never re-apply the whole live schema).
 - **Always** create files with `supabase migration new`. Never invent or rename migration timestamps by hand.
 - Do **not** apply schema via the Supabase dashboard SQL editor, MCP `apply_migration`, or ad-hoc `execute_sql` for DDL **unless** you immediately sync local afterward (see below). Prefer merge-to-`main` CI (or emergency `db push` with permission).
-- Keep `schema.sql` as a human reference if useful; it is not what the CLI applies.
 - Before committing migration changes, run `supabase migration list` against the linked project when you can, and fix any Local/Remote mismatch.
 
 #### If something was applied on remote first (MCP / dashboard)
@@ -557,7 +577,6 @@ pokepatch-website/
       posthog.js                 # PostHog init + capture helper
       adminApi.js                # Admin edge function client
   supabase/
-    schema.sql                   # Schema reference (may lag live)
     migrations/                  # CLI deltas; versions must match remote (see Schema changes)
     functions/
       _shared/                   # discord.ts, discordOrderMessages.ts, servicePricing.ts + outreach.ts (mirrors), …

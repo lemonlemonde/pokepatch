@@ -32,18 +32,6 @@ export function posterPath(videoPath) {
   return `${videoPath}.poster.webp`;
 }
 
-/** Paths to remove alongside a main storage object (thumb + poster siblings). */
-export function siblingPaths(storagePath) {
-  if (!storagePath || typeof storagePath !== "string") return [];
-  if (
-    storagePath.endsWith(".thumb.webp") ||
-    storagePath.endsWith(".poster.webp")
-  ) {
-    return [];
-  }
-  return [thumbPath(storagePath), posterPath(storagePath)];
-}
-
 function baseNameFromFile(file) {
   return file?.name?.replace(/\.[^.]+$/, "") || "image";
 }
@@ -448,14 +436,4 @@ export async function makeVideoPosterForUpload(
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
-}
-
-/**
- * Legacy helper used where callers expect a File back.
- * Prefer compressImageForUpload which returns { file, error }.
- */
-export async function compressImageForUploadOrPassthrough(file, options) {
-  const { file: out, error } = await compressImageForUpload(file, options);
-  if (error) throw new Error(error);
-  return out ?? file;
 }
