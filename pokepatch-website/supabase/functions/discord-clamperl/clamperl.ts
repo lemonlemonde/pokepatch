@@ -1,14 +1,11 @@
 /**
  * `/clamperl` — generate Instagram carousel (4:5) before/after PNGs for one
- * order card (`order` + required `card`).
+ * order card (`order` + required `card`; optional `name` / `set` / `thumbnail`).
  *
- * Supabase Edge Functions cap CPU time per worker (docs: 2s; in practice the
- * worker is killed outright a few seconds later with "CPU Time exceeded", and no
- * catch/finally runs). Decoding two phone JPEGs costs ~2.5s CPU, so a card is
- * processed as a chain of **hops**: each hop runs in its own worker, stitches
- * ONE pair, stages the PNG to Storage, then POSTs the job back to this function
- * for the next pair. The final hop posts the attachments to Discord and deletes
- * the scratch files.
+ * Flow: validate pairs → search local TCG catalog → Discord select menu → hop
+ * chain. Each hop stitches ONE pair in a fresh Edge worker (CPU time cap),
+ * stages the PNG, then POSTs the job back for the next pair. The final hop
+ * posts Discord attachments and deletes scratch files.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -16,9 +13,12 @@ import { getServiceClient } from "../_shared/adminSession.ts";
 import {
   CallbackType,
   EPHEMERAL,
+  actionRow,
   editOriginal,
+  ephemeralReply,
   followupWithFiles,
   json,
+  stringSelect,
   type DiscordUploadFile,
   type Interaction,
   type Json,
@@ -36,6 +36,11 @@ import {
   isAllowedOrderDisplayId,
   isOwnerOrderDisplayId,
 } from "../_shared/ownerOrder.ts";
+import {
+  fetchPokemonTcgCard,
+  searchPokemonTcgCatalog,
+  type TcgCardCandidate,
+} from "../_shared/pokemonTcg.ts";
 
 const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
@@ -54,9 +59,19 @@ const REMOVE_BATCH = 100;
 /** Header carrying the HMAC of a hop request body (signed with the service role key). */
 export const HOP_HEADER = "x-clamperl-hop";
 
+/** Select-menu custom_id prefix; value after prefix is the pending pick id. */
+export const PICK_CUSTOM_ID_PREFIX = "clamperl:pick:";
+
 /** Hop handoff retries — a 503 means the worker that answered has already burned its CPU budget. */
 const HOP_MAX_ATTEMPTS = 6;
 const HOP_RETRY_DELAY_MS = 1500;
+
+/** Leave room in the select for linked / custom / plain choices. */
+const CATALOG_SELECT_MAX = 22;
+
+const CHOICE_CUSTOM = "custom";
+const CHOICE_LINKED = "linked";
+const CHOICE_PLAIN = "plain";
 
 /**
  * Heavy (stitch) wall-time this isolate has already spent. Past this, refuse
@@ -75,9 +90,36 @@ type CardRow = {
   id: string;
   card_name: string | null;
   set_name: string | null;
+  tcg_card_id?: string | null;
   catalog_card_name?: string | null;
   catalog_set_name?: string | null;
   catalog_image_url?: string | null;
+};
+
+/** Slash overrides + resolved order/card state parked in Storage until the select fires. */
+type ClamperlPick = {
+  v: 1;
+  pickId: string;
+  applicationId: string;
+  token: string;
+  orderDisplayId: number;
+  cardIndex: number;
+  cardId: string;
+  sizeLimit: number;
+  pairs: { before: string; after: string }[];
+  beforeCount: number;
+  afterCount: number;
+  notes: string[];
+  overrideName: string | null;
+  overrideSet: string | null;
+  overrideThumbUrl: string | null;
+  orderCardName: string;
+  orderSetName: string;
+  linkedTcgId: string | null;
+  linkedCatalogName: string | null;
+  linkedCatalogSet: string | null;
+  linkedCatalogImageUrl: string | null;
+  createdAt: string;
 };
 
 type StagedPng = {
@@ -136,6 +178,31 @@ function optionValue(
     }
   }
   return null;
+}
+
+function optionString(options: unknown, name: string): string | null {
+  const value = optionValue(options, name);
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+/** Optional https thumbnail URL from the slash command. */
+function parseOptionalHttpsUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function truncateLabel(text: string, max = 100): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= max) return trimmed;
+  return `${trimmed.slice(0, Math.max(0, max - 1))}…`;
 }
 
 function parsePositiveInt(value: string | number | null): number | null {
@@ -239,14 +306,14 @@ async function loadOrderCards(
   const full = await supabase
     .from("cards")
     .select(
-      "id, card_name, set_name, sort_order, catalog_card_name, catalog_set_name, catalog_image_url"
+      "id, card_name, set_name, sort_order, tcg_card_id, catalog_card_name, catalog_set_name, catalog_image_url"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
   if (
     full.error &&
-    /catalog_card_name|catalog_set_name|catalog_image_url|42703/i.test(
+    /tcg_card_id|catalog_card_name|catalog_set_name|catalog_image_url|42703/i.test(
       full.error.message ?? ""
     )
   ) {
@@ -739,16 +806,392 @@ async function runHop(job: ClamperlJob): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Slash command entry
+// Catalog pick → generate
 
-/** Resolve order/card, build the job, and dispatch hop 1. Cheap on CPU. */
+function pendingPickPath(pickId: string): string {
+  return `clamperl/pending/${pickId}.json`;
+}
+
+async function savePendingPick(
+  supabase: SupabaseClient,
+  pick: ClamperlPick
+): Promise<void> {
+  const body = new TextEncoder().encode(JSON.stringify(pick));
+  const { error } = await supabase.storage.from(BUCKET).upload(
+    pendingPickPath(pick.pickId),
+    body,
+    { contentType: "application/json", upsert: true }
+  );
+  if (error) throw new Error(`Failed to stage catalog picker: ${error.message}`);
+}
+
+async function loadPendingPick(
+  supabase: SupabaseClient,
+  pickId: string
+): Promise<ClamperlPick | null> {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .download(pendingPickPath(pickId));
+  if (error || !data) return null;
+  try {
+    const parsed = JSON.parse(await data.text()) as ClamperlPick;
+    if (parsed.v !== 1 || parsed.pickId !== pickId) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+async function deletePendingPick(
+  supabase: SupabaseClient,
+  pickId: string
+): Promise<void> {
+  await removePaths(supabase, [pendingPickPath(pickId)]);
+}
+
+async function fetchImageBase64(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    return bytesToBase64(new Uint8Array(await res.arrayBuffer()));
+  } catch {
+    return null;
+  }
+}
+
+async function beginGenerateJob(params: {
+  applicationId: string;
+  token: string;
+  orderDisplayId: number;
+  cardIndex: number;
+  cardLabel: string;
+  setLabel: string;
+  catalogFrontBase64: string | null;
+  sizeLimit: number;
+  pairs: ClamperlJob["pairs"];
+  beforeCount: number;
+  afterCount: number;
+  notes: string[];
+  supabase: SupabaseClient;
+}): Promise<void> {
+  const {
+    applicationId,
+    token,
+    orderDisplayId,
+    cardIndex,
+    cardLabel,
+    setLabel,
+    catalogFrontBase64,
+    sizeLimit,
+    pairs,
+    beforeCount,
+    afterCount,
+    notes,
+    supabase,
+  } = params;
+  const label = orderLabel(orderDisplayId);
+
+  const job: ClamperlJob = {
+    v: 1,
+    jobId: crypto.randomUUID(),
+    applicationId,
+    token,
+    orderDisplayId,
+    cardIndex,
+    cardLabel,
+    setLabel,
+    catalogFrontBase64,
+    sizeLimit,
+    beforeCount,
+    afterCount,
+    pairs,
+    next: 0,
+    hops: 0,
+    staged: [],
+    skippedLarge: [],
+    notes,
+    trail: [],
+  };
+
+  clamperlLog(job.jobId, "job_start", {
+    cardIndex,
+    orderDisplayId,
+    workCount: pairs.length,
+    beforeCount,
+    afterCount,
+    sizeLimit,
+    cardLabel,
+    setLabel,
+    hasThumb: Boolean(catalogFrontBase64),
+  });
+
+  await sweepClamperlScratch(supabase);
+  await editOriginal(applicationId, token, {
+    content: `Generating ${label} · card **${cardIndex}** · **${pairs.length}** pair(s)…`,
+    components: [],
+  });
+  await dispatchHop(job);
+}
+
+function hasCustomOverrides(pick: ClamperlPick): boolean {
+  return Boolean(
+    pick.overrideName || pick.overrideSet || pick.overrideThumbUrl
+  );
+}
+
+function hasLinkedCatalog(pick: ClamperlPick): boolean {
+  return Boolean(
+    pick.linkedCatalogImageUrl ||
+      pick.linkedCatalogName ||
+      pick.linkedTcgId
+  );
+}
+
+function buildSelectOptions(
+  pick: ClamperlPick,
+  candidates: TcgCardCandidate[]
+): { label: string; value: string; description?: string }[] {
+  const options: { label: string; value: string; description?: string }[] = [];
+
+  for (const candidate of candidates.slice(0, CATALOG_SELECT_MAX)) {
+    const numberBit = candidate.number ? `#${candidate.number}` : "";
+    options.push({
+      label: truncateLabel(candidate.name),
+      value: `tcg:${candidate.id}`,
+      description: truncateLabel(
+        [candidate.set_name, numberBit].filter(Boolean).join(" · ") ||
+          candidate.id
+      ),
+    });
+  }
+
+  if (hasCustomOverrides(pick)) {
+    const bits = [
+      pick.overrideName,
+      pick.overrideSet,
+      pick.overrideThumbUrl ? "thumb" : null,
+    ].filter(Boolean);
+    options.push({
+      label: "Use my name / set / thumbnail",
+      value: CHOICE_CUSTOM,
+      description: truncateLabel(bits.join(" · ") || "slash overrides"),
+    });
+  }
+
+  if (hasLinkedCatalog(pick)) {
+    options.push({
+      label: truncateLabel(
+        pick.linkedCatalogName
+          ? `Keep linked: ${pick.linkedCatalogName}`
+          : "Keep linked catalog"
+      ),
+      value: CHOICE_LINKED,
+      description: truncateLabel(
+        pick.linkedCatalogSet || pick.linkedTcgId || "existing catalog on card"
+      ),
+    });
+  }
+
+  options.push({
+    label: "Labels only (no catalog thumb)",
+    value: CHOICE_PLAIN,
+    description: truncateLabel(
+      [pick.overrideName || pick.orderCardName || `Card ${pick.cardIndex}`, pick.overrideSet || pick.orderSetName]
+        .filter(Boolean)
+        .join(" · ") || "order card text"
+    ),
+  });
+
+  return options.slice(0, 25);
+}
+
+async function applyCatalogLink(
+  supabase: SupabaseClient,
+  cardId: string,
+  tcg: TcgCardCandidate
+): Promise<void> {
+  const imageUrl = tcg.image_small?.trim() || tcg.image_large?.trim() || null;
+  const { error } = await supabase
+    .from("cards")
+    .update({
+      tcg_card_id: tcg.id,
+      catalog_image_url: imageUrl,
+      catalog_card_name: tcg.name?.trim() || null,
+      catalog_set_name: tcg.set_name?.trim() || null,
+    })
+    .eq("id", cardId);
+  if (error) {
+    console.error("clamperl catalog link failed", error.message);
+  }
+}
+
+async function applyCustomCatalogFields(
+  supabase: SupabaseClient,
+  pick: ClamperlPick
+): Promise<void> {
+  // Custom chip is no longer a TCG identity — clear the link even if only
+  // name/set changed so admin doesn't keep a mismatched tcg_card_id.
+  const patch: Record<string, unknown> = { tcg_card_id: null };
+  if (pick.overrideName) patch.catalog_card_name = pick.overrideName;
+  if (pick.overrideSet) patch.catalog_set_name = pick.overrideSet;
+  if (pick.overrideThumbUrl) patch.catalog_image_url = pick.overrideThumbUrl;
+  const { error } = await supabase.from("cards").update(patch).eq("id", pick.cardId);
+  if (error) {
+    console.error("clamperl custom catalog update failed", error.message);
+  }
+}
+
+function fallbackCardLabel(pick: ClamperlPick, ...preferred: Array<string | null>): string {
+  for (const value of preferred) {
+    const trimmed = (value ?? "").trim();
+    if (trimmed) return trimmed;
+  }
+  return `Card ${pick.cardIndex}`;
+}
+
+function fallbackSetLabel(...preferred: Array<string | null>): string {
+  for (const value of preferred) {
+    const trimmed = (value ?? "").trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+type ResolvedChip = {
+  cardLabel: string;
+  setLabel: string;
+  thumbUrl: string | null;
+};
+
+async function resolvePickChoice(
+  supabase: SupabaseClient,
+  pick: ClamperlPick,
+  choice: string
+): Promise<ResolvedChip | { error: string }> {
+  if (choice.startsWith("tcg:")) {
+    const tcgId = choice.slice("tcg:".length).trim();
+    const tcg = await fetchPokemonTcgCard(supabase, tcgId);
+    if (!tcg) {
+      return { error: `Catalog card \`${tcgId}\` not found. Run \`/clamperl\` again.` };
+    }
+    await applyCatalogLink(supabase, pick.cardId, tcg);
+    return {
+      cardLabel: fallbackCardLabel(pick, tcg.name, pick.orderCardName),
+      setLabel: fallbackSetLabel(tcg.set_name, pick.orderSetName),
+      thumbUrl: tcg.image_large?.trim() || tcg.image_small?.trim() || null,
+    };
+  }
+
+  if (choice === CHOICE_CUSTOM) {
+    if (!hasCustomOverrides(pick)) {
+      return {
+        error: "No custom name/set/thumbnail was provided. Run `/clamperl` again.",
+      };
+    }
+    await applyCustomCatalogFields(supabase, pick);
+    return {
+      cardLabel: fallbackCardLabel(pick, pick.overrideName, pick.orderCardName),
+      setLabel: fallbackSetLabel(pick.overrideSet, pick.orderSetName),
+      thumbUrl: pick.overrideThumbUrl,
+    };
+  }
+
+  if (choice === CHOICE_LINKED) {
+    return {
+      cardLabel: fallbackCardLabel(
+        pick,
+        pick.linkedCatalogName,
+        pick.orderCardName
+      ),
+      setLabel: fallbackSetLabel(pick.linkedCatalogSet, pick.orderSetName),
+      thumbUrl: pick.linkedCatalogImageUrl,
+    };
+  }
+
+  if (choice === CHOICE_PLAIN) {
+    return {
+      cardLabel: fallbackCardLabel(pick, pick.overrideName, pick.orderCardName),
+      setLabel: fallbackSetLabel(pick.overrideSet, pick.orderSetName),
+      thumbUrl: null,
+    };
+  }
+
+  return { error: "Unknown catalog choice. Run `/clamperl` again." };
+}
+
+/** After the user picks from the select menu, resolve overlay + start hops. */
+async function completeClamperlPick(params: {
+  interaction: Interaction;
+  pickId: string;
+  choice: string;
+}): Promise<void> {
+  const { interaction, pickId, choice } = params;
+  const applicationId = String(interaction.application_id ?? "");
+  const token = String(interaction.token ?? "");
+  const reply = (content: string) =>
+    editOriginal(applicationId, token, { content, components: [] });
+
+  let supabase: SupabaseClient | null = null;
+  try {
+    supabase = getServiceClient();
+    const pick = await loadPendingPick(supabase, pickId);
+    if (!pick) {
+      await reply("That catalog picker expired. Run `/clamperl` again.");
+      return;
+    }
+
+    const resolved = await resolvePickChoice(supabase, pick, choice);
+    if ("error" in resolved) {
+      await reply(resolved.error);
+      await deletePendingPick(supabase, pickId);
+      return;
+    }
+
+    const catalogFrontBase64 = resolved.thumbUrl
+      ? await fetchImageBase64(resolved.thumbUrl)
+      : null;
+    await deletePendingPick(supabase, pickId);
+    await beginGenerateJob({
+      applicationId,
+      token,
+      orderDisplayId: pick.orderDisplayId,
+      cardIndex: pick.cardIndex,
+      cardLabel: resolved.cardLabel,
+      setLabel: resolved.setLabel,
+      catalogFrontBase64,
+      sizeLimit: pick.sizeLimit,
+      pairs: pick.pairs,
+      beforeCount: pick.beforeCount,
+      afterCount: pick.afterCount,
+      notes: pick.notes,
+      supabase,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("clamperl pick failed", err);
+    if (supabase) await deletePendingPick(supabase, pickId);
+    await reply(`Generate failed: ${message}`);
+  }
+}
+
+/** Resolve order/card, search catalog, show select (or generate if nowhere to choose). */
 async function startClamperlJob(params: {
   interaction: Interaction;
   orderDisplayId: number;
   /** 1-based card index within the order. */
   cardIndex: number;
+  overrideName: string | null;
+  overrideSet: string | null;
+  overrideThumbUrl: string | null;
 }): Promise<void> {
-  const { interaction, orderDisplayId, cardIndex } = params;
+  const {
+    interaction,
+    orderDisplayId,
+    cardIndex,
+    overrideName,
+    overrideSet,
+    overrideThumbUrl,
+  } = params;
   const applicationId = String(interaction.application_id ?? "");
   const token = String(interaction.token ?? "");
   const reply = (content: string) => editOriginal(applicationId, token, content);
@@ -785,12 +1228,17 @@ async function startClamperlJob(params: {
       return;
     }
 
-    const cardLabel = (
-      card.catalog_card_name ||
-      card.card_name ||
-      `Card ${cardIndex}`
-    ).trim();
-    const setLabel = (card.catalog_set_name || card.set_name || "").trim();
+    const orderCardName = (card.card_name || "").trim();
+    const orderSetName = (card.set_name || "").trim();
+    const linkedCatalogName = (card.catalog_card_name || "").trim() || null;
+    const linkedCatalogSet = (card.catalog_set_name || "").trim() || null;
+    const linkedCatalogImageUrl = (card.catalog_image_url || "").trim() || null;
+    const linkedTcgId = (card.tcg_card_id || "").trim() || null;
+    const displayName =
+      overrideName ||
+      linkedCatalogName ||
+      orderCardName ||
+      `Card ${cardIndex}`;
 
     const [beforeRows, afterRows] = await Promise.all([
       loadSideImages(supabase, String(card.id), "before"),
@@ -801,14 +1249,14 @@ async function startClamperlJob(params: {
     const prefix = `Nothing to generate — ${label} · card **${cardIndex}**.`;
     if (beforeCount === 0 || afterCount === 0) {
       await reply(
-        `${prefix}\n• ${cardLabel}: before **${beforeCount}**, after **${afterCount}** (need both sides)`
+        `${prefix}\n• ${displayName}: before **${beforeCount}**, after **${afterCount}** (need both sides)`
       );
       return;
     }
     const pairCount = Math.min(beforeCount, afterCount);
     if (pairCount <= SKIP_OVERVIEW_PAIRS) {
       await reply(
-        `${prefix}\n• ${cardLabel}: only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview (before **${beforeCount}**, after **${afterCount}**)`
+        `${prefix}\n• ${displayName}: only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview (before **${beforeCount}**, after **${afterCount}**)`
       );
       return;
     }
@@ -834,57 +1282,98 @@ async function startClamperlJob(params: {
       );
     }
 
-    let catalogFrontBase64: string | null = null;
-    if (card.catalog_image_url) {
-      try {
-        const res = await fetch(String(card.catalog_image_url));
-        if (res.ok) {
-          catalogFrontBase64 = bytesToBase64(
-            new Uint8Array(await res.arrayBuffer())
-          );
-        }
-      } catch {
-        catalogFrontBase64 = null;
-      }
-    }
-
-    const job: ClamperlJob = {
+    const pickId = crypto.randomUUID();
+    const pick: ClamperlPick = {
       v: 1,
-      jobId: crypto.randomUUID(),
+      pickId,
       applicationId,
       token,
       orderDisplayId,
       cardIndex,
-      cardLabel,
-      setLabel,
-      catalogFrontBase64,
+      cardId: String(card.id),
       sizeLimit: attachmentSizeLimit(interaction),
+      pairs,
       beforeCount,
       afterCount,
-      pairs,
-      next: 0,
-      hops: 0,
-      staged: [],
-      skippedLarge: [],
       notes,
-      trail: [],
+      overrideName,
+      overrideSet,
+      overrideThumbUrl,
+      orderCardName,
+      orderSetName,
+      linkedTcgId,
+      linkedCatalogName,
+      linkedCatalogSet,
+      linkedCatalogImageUrl,
+      createdAt: new Date().toISOString(),
     };
 
-    clamperlLog(job.jobId, "job_start", {
-      cardIndex,
-      orderDisplayId,
-      workCount: pairs.length,
-      beforeCount,
-      afterCount,
-      sizeLimit: job.sizeLimit,
-    });
+    const searchName = overrideName || orderCardName || linkedCatalogName || "";
+    const searchSet = overrideSet || orderSetName || linkedCatalogSet || "";
+    let candidates: TcgCardCandidate[] = [];
+    let catalogTotal = 0;
+    if (searchName || searchSet) {
+      const result = await searchPokemonTcgCatalog(
+        supabase,
+        searchName,
+        searchSet,
+        { page: 1, pageSize: CATALOG_SELECT_MAX }
+      );
+      candidates = result.candidates;
+      catalogTotal = result.totalCount;
+    }
 
-    // Clear leftovers from workers killed mid-hop before this job stages more.
-    await sweepClamperlScratch(supabase);
-    await reply(
-      `Generating ${label} · card **${cardIndex}** · **${pairs.length}** pair(s)…`
-    );
-    await dispatchHop(job);
+    const options = buildSelectOptions(pick, candidates);
+    const onlyPlain =
+      options.length === 1 && options[0]?.value === CHOICE_PLAIN;
+
+    // Nothing to choose — generate with order labels and no forced thumb.
+    if (onlyPlain) {
+      await beginGenerateJob({
+        applicationId,
+        token,
+        orderDisplayId,
+        cardIndex,
+        cardLabel: displayName,
+        setLabel: fallbackSetLabel(overrideSet, orderSetName, linkedCatalogSet),
+        catalogFrontBase64: null,
+        sizeLimit: pick.sizeLimit,
+        pairs,
+        beforeCount,
+        afterCount,
+        notes,
+        supabase,
+      });
+      return;
+    }
+
+    await savePendingPick(supabase, pick);
+
+    const queryBits = [searchName, searchSet].filter(Boolean).join(" · ");
+    const hitLabel =
+      catalogTotal > candidates.length
+        ? `**${candidates.length}** of **${catalogTotal}** hit(s)`
+        : `**${candidates.length}** hit(s)`;
+    const lines = [
+      `${label} · card **${cardIndex}** · **${pairs.length}** pair(s)`,
+      queryBits
+        ? `Catalog search: \`${queryBits}\` · ${hitLabel}`
+        : "No name/set to search — pick an option below (or pass `name` / `set`).",
+      "Select the catalog printing (or your overrides) to continue.",
+    ];
+
+    await editOriginal(applicationId, token, {
+      content: lines.join("\n"),
+      components: [
+        actionRow([
+          stringSelect({
+            customId: `${PICK_CUSTOM_ID_PREFIX}${pickId}`,
+            placeholder: "Pick catalog card / overrides",
+            options,
+          }),
+        ]),
+      ],
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("clamperl job start failed", err);
@@ -892,7 +1381,7 @@ async function startClamperlJob(params: {
   }
 }
 
-/** Parse slash options and kick off the deferred job via waitUntil. */
+/** Parse slash options and kick off the deferred picker / job via waitUntil. */
 export function handleClamperlCommandDeferred(
   interaction: Interaction,
   waitUntil: (promise: Promise<unknown>) => void
@@ -900,6 +1389,10 @@ export function handleClamperlCommandDeferred(
   const data = (interaction.data ?? {}) as Json;
   const orderDisplayId = parseOrderDisplayId(optionValue(data.options, "order"));
   const cardIndex = parsePositiveInt(optionValue(data.options, "card"));
+  const overrideName = optionString(data.options, "name");
+  const overrideSet = optionString(data.options, "set");
+  const rawThumb = optionString(data.options, "thumbnail");
+  const overrideThumbUrl = parseOptionalHttpsUrl(rawThumb);
 
   if (orderDisplayId == null) {
     return json({
@@ -920,9 +1413,50 @@ export function handleClamperlCommandDeferred(
       },
     });
   }
+  if (rawThumb && !overrideThumbUrl) {
+    return json({
+      type: CallbackType.CHANNEL_MESSAGE,
+      data: {
+        content: "`thumbnail` must be an `https://` image URL.",
+        flags: EPHEMERAL,
+      },
+    });
+  }
 
-  waitUntil(startClamperlJob({ interaction, orderDisplayId, cardIndex }));
+  waitUntil(
+    startClamperlJob({
+      interaction,
+      orderDisplayId,
+      cardIndex,
+      overrideName,
+      overrideSet,
+      overrideThumbUrl,
+    })
+  );
 
   // Public channel reply so PNGs stay visible for download by anyone.
   return json({ type: CallbackType.DEFERRED_CHANNEL_MESSAGE });
+}
+
+/** Handle the catalog string-select on the deferred `/clamperl` reply. */
+export function handleClamperlPickDeferred(
+  interaction: Interaction,
+  waitUntil: (promise: Promise<unknown>) => void
+): Response {
+  const data = (interaction.data ?? {}) as Json;
+  const customId = String(data.custom_id ?? "");
+  if (!customId.startsWith(PICK_CUSTOM_ID_PREFIX)) {
+    return ephemeralReply("Unknown clamperl control.");
+  }
+  const pickId = customId.slice(PICK_CUSTOM_ID_PREFIX.length).trim();
+  if (!pickId) return ephemeralReply("Invalid catalog picker.");
+
+  const values = Array.isArray(data.values)
+    ? data.values.map((value) => String(value))
+    : [];
+  const choice = values[0]?.trim() ?? "";
+  if (!choice) return ephemeralReply("Pick a catalog option.");
+
+  waitUntil(completeClamperlPick({ interaction, pickId, choice }));
+  return json({ type: CallbackType.DEFERRED_UPDATE_MESSAGE });
 }
