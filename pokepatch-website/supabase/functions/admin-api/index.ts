@@ -3148,13 +3148,18 @@ Deno.serve(async (req) => {
           existing.catalog_image_url as string | null
         );
 
+        const officialName = tcgCard.name?.trim() || null;
+        const officialSet = tcgCard.set_name?.trim() || null;
         const { data: updated, error: updateError } = await supabase
           .from("cards")
           .update({
             tcg_card_id: tcgCard.id,
             catalog_image_url: imageUrl,
-            catalog_card_name: tcgCard.name?.trim() || null,
-            catalog_set_name: tcgCard.set_name?.trim() || null,
+            catalog_card_name: officialName,
+            catalog_set_name: officialSet,
+            // Keep order-card labels in sync with the printing used for queue art.
+            ...(officialName ? { card_name: officialName } : {}),
+            ...(officialSet ? { set_name: officialSet } : {}),
           })
           .eq("id", orderCardId)
           .select(
@@ -3169,6 +3174,46 @@ Deno.serve(async (req) => {
           err instanceof Error ? err.message : "Could not apply TCG thumbnail";
         return jsonResponse(req, { ok: false, error: message }, 502);
       }
+    }
+
+    // Queue dialog: persist typed card/set labels (e.g. after a custom thumb upload).
+    if (action === "order_card_set_labels") {
+      const orderCardId = String(body.order_card_id ?? body.card_id ?? "").trim();
+      const cardName = String(body.card_name ?? "").trim();
+      const setName = String(body.set_name ?? "").trim();
+      if (!orderCardId) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_card_id required" },
+          400
+        );
+      }
+      if (!cardName || !setName) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "card_name and set_name are required" },
+          400
+        );
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from("cards")
+        .update({
+          card_name: cardName,
+          set_name: setName,
+          catalog_card_name: cardName,
+          catalog_set_name: setName,
+        })
+        .eq("id", orderCardId)
+        .select(
+          "id, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name, card_name, set_name"
+        )
+        .single();
+      if (updateError) throw updateError;
+      if (!updated) {
+        return jsonResponse(req, { ok: false, error: "card not found" }, 404);
+      }
+      return jsonResponse(req, { ok: true, card: updated });
     }
 
     if (action === "order_card_catalog_clear") {

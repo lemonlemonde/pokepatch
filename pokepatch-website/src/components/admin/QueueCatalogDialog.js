@@ -7,7 +7,7 @@ import {
   overlayFadeClassName,
   useOverlayPresence,
 } from "@/components/ExpandReveal";
-import { adminGetOrder } from "@/lib/adminApi";
+import { adminGetOrder, adminSetOrderCardLabels } from "@/lib/adminApi";
 import { CARD_THUMB_ASPECT_CLASS, CARD_THUMB_IMAGE_CLASS } from "@/lib/gallery";
 import { normalizeCardStatus } from "@/lib/orderStatus";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
@@ -20,24 +20,39 @@ function catalogPreviewUrl(card) {
   return "";
 }
 
+function resolvedCardName(card) {
+  return (
+    (card?.catalog_card_name ?? "").trim() || (card?.card_name ?? "").trim()
+  );
+}
+
+function resolvedSetName(card) {
+  return (card?.catalog_set_name ?? "").trim() || (card?.set_name ?? "").trim();
+}
+
 function displayCardName(card) {
-  const catalog = (card?.catalog_card_name ?? "").trim();
-  if (catalog) return catalog;
-  return (card?.card_name ?? "").trim() || "Untitled card";
+  return resolvedCardName(card) || "Untitled card";
 }
 
 function displaySetName(card) {
-  const catalog = (card?.catalog_set_name ?? "").trim();
-  if (catalog) return catalog;
-  return (card?.set_name ?? "").trim();
+  return resolvedSetName(card);
+}
+
+function hasCatalogThumb(card) {
+  return Boolean(catalogPreviewUrl(card));
 }
 
 function catalogFieldsFromPick(picked) {
+  const name = (picked.name ?? "").trim();
+  const set = (picked.set_name ?? "").trim();
   return {
     tcg_card_id: picked.id,
     catalog_image_url: tcgCardImageUrl(picked),
-    catalog_card_name: picked.name ?? "",
-    catalog_set_name: picked.set_name ?? "",
+    catalog_card_name: name,
+    catalog_set_name: set,
+    // Official printing also becomes the order card's typed labels.
+    card_name: name,
+    set_name: set,
   };
 }
 
@@ -47,6 +62,8 @@ function catalogFieldsFromApplied(updated) {
     catalog_image_url: updated.catalog_image_url ?? "",
     catalog_card_name: updated.catalog_card_name ?? "",
     catalog_set_name: updated.catalog_set_name ?? "",
+    card_name: updated.card_name ?? "",
+    set_name: updated.set_name ?? "",
   };
 }
 
@@ -55,6 +72,14 @@ function omitCardError(errors, id) {
   const next = { ...errors };
   delete next[id];
   return next;
+}
+
+function missingRequirements(card) {
+  const missing = [];
+  if (!resolvedCardName(card)) missing.push("card name");
+  if (!resolvedSetName(card)) missing.push("set");
+  if (!hasCatalogThumb(card)) missing.push("thumbnail");
+  return missing;
 }
 
 /**
@@ -75,6 +100,7 @@ export default function QueueCatalogDialog({
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [cardErrors, setCardErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const revertByIdRef = useRef({});
 
   const { mounted, visible } = useOverlayPresence(open);
@@ -84,21 +110,29 @@ export default function QueueCatalogDialog({
     if (!open || !orderId) return undefined;
 
     let cancelled = false;
+    setLoading(true);
 
     adminGetOrder(orderId)
       .then((order) => {
         if (cancelled) return;
         const next = (order?.cards ?? [])
           .filter((card) => normalizeCardStatus(card.status) !== "canceled")
-          .map((card) => ({
-            id: card.id,
-            card_name: card.card_name ?? "",
-            set_name: card.set_name ?? "",
-            tcg_card_id: card.tcg_card_id ?? "",
-            catalog_image_url: card.catalog_image_url ?? "",
-            catalog_card_name: card.catalog_card_name ?? "",
-            catalog_set_name: card.catalog_set_name ?? "",
-          }));
+          .map((card) => {
+            const catalogName = (card.catalog_card_name ?? "").trim();
+            const catalogSet = (card.catalog_set_name ?? "").trim();
+            const typedName = (card.card_name ?? "").trim();
+            const typedSet = (card.set_name ?? "").trim();
+            return {
+              id: card.id,
+              // Prefer official catalog labels in the editable fields when present.
+              card_name: catalogName || typedName,
+              set_name: catalogSet || typedSet,
+              tcg_card_id: card.tcg_card_id ?? "",
+              catalog_image_url: card.catalog_image_url ?? "",
+              catalog_card_name: catalogName,
+              catalog_set_name: catalogSet,
+            };
+          });
         setCards(next);
         setExpandedId(next.length === 1 ? String(next[0].id) : null);
         setCardErrors({});
@@ -126,11 +160,61 @@ export default function QueueCatalogDialog({
   useEffect(() => {
     if (!open) return undefined;
     function onKeyDown(event) {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape" && !saving) onCancel();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onCancel]);
+  }, [open, onCancel, saving]);
+
+  function updateCardFields(id, patch) {
+    setCards((current) =>
+      current.map((row) => (String(row.id) === id ? { ...row, ...patch } : row))
+    );
+    setCardErrors((current) => omitCardError(current, id));
+  }
+
+  async function handleContinue() {
+    if (publishOnly) {
+      onContinue();
+      return;
+    }
+
+    const nextErrors = {};
+    for (const card of cards) {
+      const missing = missingRequirements(card);
+      if (missing.length > 0) {
+        nextErrors[String(card.id)] = `Required: ${missing.join(", ")}.`;
+      }
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setCardErrors(nextErrors);
+      const firstId = Object.keys(nextErrors)[0];
+      setExpandedId(firstId);
+      setError("Every card needs a name, set, and thumbnail before continuing.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      await Promise.all(
+        cards.map((card) =>
+          adminSetOrderCardLabels(
+            card.id,
+            resolvedCardName(card),
+            resolvedSetName(card)
+          )
+        )
+      );
+      onContinue();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not save card labels."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!mounted) return null;
   if (typeof document === "undefined") return null;
@@ -144,7 +228,9 @@ export default function QueueCatalogDialog({
     <div
       className={`fixed inset-0 z-[300] flex items-center justify-center bg-night/70 px-4 py-6 ${overlayFadeClassName(visible)}`}
       role="presentation"
-      onClick={onCancel}
+      onClick={() => {
+        if (!saving) onCancel();
+      }}
     >
       <div
         role="dialog"
@@ -160,6 +246,12 @@ export default function QueueCatalogDialog({
           >
             {title}
           </h2>
+          {!publishOnly ? (
+            <p className="mt-1 text-sm text-ink/55">
+              Each card needs a name, set, and thumbnail before it can enter To
+              do.
+            </p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
@@ -181,12 +273,17 @@ export default function QueueCatalogDialog({
             const preview = catalogPreviewUrl(card);
             const name = displayCardName(card);
             const set = displaySetName(card);
+            const incomplete = missingRequirements(card).length > 0;
 
             return (
               <div
                 key={id}
                 className={`overflow-hidden rounded-xl border ${
-                  expanded ? "border-ink/25 bg-ink/[0.03]" : "border-ink/10"
+                  expanded
+                    ? "border-ink/25 bg-ink/[0.03]"
+                    : incomplete
+                      ? "border-error/35"
+                      : "border-ink/10"
                 }`}
               >
                 <button
@@ -222,7 +319,11 @@ export default function QueueCatalogDialog({
                       <span className="mt-0.5 block truncate text-xs text-ink/50">
                         {set}
                       </span>
-                    ) : null}
+                    ) : (
+                      <span className="mt-0.5 block truncate text-xs text-error/80">
+                        Set required
+                      </span>
+                    )}
                   </span>
                   <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/40">
                     {expanded ? "Hide" : preview ? "Edit" : "Add art"}
@@ -236,27 +337,74 @@ export default function QueueCatalogDialog({
                 ) : null}
 
                 {expanded ? (
-                  <div className="border-t border-ink/10 px-3 pb-3 pt-3">
+                  <div className="space-y-3 border-t border-ink/10 px-3 pb-3 pt-3">
                     {cardErrors[id] ? (
-                      <p className="mb-3 text-xs font-semibold text-error">
+                      <p className="text-xs font-semibold text-error">
                         {cardErrors[id]}
                       </p>
                     ) : null}
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block space-y-1">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
+                          Card name
+                        </span>
+                        <input
+                          type="text"
+                          value={card.card_name ?? ""}
+                          disabled={saving}
+                          onChange={(event) =>
+                            updateCardFields(id, {
+                              card_name: event.target.value,
+                              catalog_card_name: event.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-ink/15 bg-cream px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
+                          placeholder="Required"
+                        />
+                      </label>
+                      <label className="block space-y-1">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
+                          Set
+                        </span>
+                        <input
+                          type="text"
+                          value={card.set_name ?? ""}
+                          disabled={saving}
+                          onChange={(event) =>
+                            updateCardFields(id, {
+                              set_name: event.target.value,
+                              catalog_set_name: event.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border border-ink/15 bg-cream px-3 py-2 text-sm text-ink outline-none transition focus:border-ink/40"
+                          placeholder="Required"
+                        />
+                      </label>
+                    </div>
+
                     <OrderCardCatalogThumb
                       cardId={card.id}
                       cardName={card.card_name}
                       setName={card.set_name}
                       tcgCardId={card.tcg_card_id}
                       catalogImageUrl={card.catalog_image_url}
+                      disabled={saving}
                       onSelecting={(picked) => {
                         setCards((current) => {
                           const entry = current.find(
                             (row) => String(row.id) === id
                           );
                           if (entry) revertByIdRef.current[id] = entry;
+                          const fields = catalogFieldsFromPick(picked);
                           return current.map((row) =>
                             String(row.id) === id
-                              ? { ...row, ...catalogFieldsFromPick(picked) }
+                              ? {
+                                  ...row,
+                                  ...fields,
+                                  card_name: fields.card_name || row.card_name,
+                                  set_name: fields.set_name || row.set_name,
+                                }
                               : row
                           );
                         });
@@ -274,8 +422,6 @@ export default function QueueCatalogDialog({
                           )
                         );
                         setCardErrors((current) => omitCardError(current, id));
-                        // Search picks already collapsed in onSelecting;
-                        // upload still needs this path.
                         if (
                           String(fields.tcg_card_id).trim() ||
                           String(fields.catalog_image_url).trim()
@@ -312,7 +458,8 @@ export default function QueueCatalogDialog({
             <button
               type="button"
               onClick={onContinue}
-              className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+              disabled={saving}
+              className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50"
             >
               Done
             </button>
@@ -321,16 +468,20 @@ export default function QueueCatalogDialog({
               <button
                 type="button"
                 onClick={onCancel}
-                className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30"
+                disabled={saving}
+                className="rounded-xl border border-ink/20 px-4 py-2 text-sm font-semibold text-ink transition hover:border-ink/30 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={onContinue}
-                className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110"
+                onClick={() => {
+                  void handleContinue();
+                }}
+                disabled={saving || loading || cards.length === 0}
+                className="rounded-xl bg-ink px-4 py-2 text-sm font-semibold text-night transition hover:brightness-110 disabled:opacity-50"
               >
-                Continue
+                {saving ? "Saving…" : "Continue"}
               </button>
             </>
           )}
