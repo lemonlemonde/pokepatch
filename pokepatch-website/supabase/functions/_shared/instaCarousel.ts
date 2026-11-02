@@ -177,12 +177,73 @@ function prepareCard(source: Image, tw: number, th: number): Image {
   return source;
 }
 
-/** Decode only long enough to read dimensions (lets the full bitmap fall out of scope). */
+function readU16BE(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] << 8) | bytes[offset + 1];
+}
+
+function readU32BE(bytes: Uint8Array, offset: number): number {
+  return (
+    ((bytes[offset] << 24) |
+      (bytes[offset + 1] << 16) |
+      (bytes[offset + 2] << 8) |
+      bytes[offset + 3]) >>>
+    0
+  );
+}
+
+/**
+ * Read width/height from JPEG/PNG headers without a full ImageScript decode.
+ * Avoids the double-decode that OOMs/hangs Edge when both sides are phone photos.
+ */
+function probeImageSize(bytes: Uint8Array): { w: number; h: number } | null {
+  if (
+    bytes.length >= 24 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    const w = readU32BE(bytes, 16);
+    const h = readU32BE(bytes, 20);
+    return w > 0 && h > 0 ? { w, h } : null;
+  }
+
+  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < bytes.length) {
+      if (bytes[i] !== 0xff) {
+        i += 1;
+        continue;
+      }
+      const marker = bytes[i + 1];
+      if (marker === 0xd9 || marker === 0xda) break;
+      const len = readU16BE(bytes, i + 2);
+      if (len < 2) break;
+      const isSof =
+        (marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf);
+      if (isSof) {
+        const h = readU16BE(bytes, i + 5);
+        const w = readU16BE(bytes, i + 7);
+        if (w > 0 && h > 0) return { w, h };
+      }
+      i += 2 + len;
+    }
+  }
+
+  return null;
+}
+
+/** Prefer header probe; fall back to one ImageScript decode for exotic formats. */
 async function measureImageBytes(
   bytes: Uint8Array
-): Promise<{ w: number; h: number }> {
+): Promise<{ w: number; h: number; via: "header" | "decode" }> {
+  const probed = probeImageSize(bytes);
+  if (probed) return { ...probed, via: "header" };
   const img = await Image.decode(bytes);
-  return { w: img.width, h: img.height };
+  return { w: img.width, h: img.height, via: "decode" };
 }
 
 /**
@@ -558,20 +619,20 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
-  // Measure first (no pre-shrink), then decode→cover one side at a time so
-  // peak RAM stays near one full phone photo.
+  // Header measure (no bitmap), then decode→cover→composite one side at a
+  // time so we never hold two phone-resolution ImageScript bitmaps.
   await onPhase?.("measure", {
     detail: `before ${(beforeBytes.byteLength / (1024 * 1024)).toFixed(1)}MB / after ${(afterBytes.byteLength / (1024 * 1024)).toFixed(1)}MB`,
   });
   const beforeSize = await measureImageBytes(beforeBytes);
   const afterSize = await measureImageBytes(afterBytes);
   const measureDetail =
-    `${beforeSize.w}×${beforeSize.h} / ${afterSize.w}×${afterSize.h}`;
+    `${beforeSize.w}×${beforeSize.h} / ${afterSize.w}×${afterSize.h} (${beforeSize.via}/${afterSize.via})`;
   console.log(
     "clamperl stitch measure",
     JSON.stringify({
-      before: [beforeSize.w, beforeSize.h, beforeBytes.byteLength],
-      after: [afterSize.w, afterSize.h, afterBytes.byteLength],
+      before: [beforeSize.w, beforeSize.h, beforeBytes.byteLength, beforeSize.via],
+      after: [afterSize.w, afterSize.h, afterBytes.byteLength, afterSize.via],
       ms: Date.now() - started,
     })
   );
@@ -608,15 +669,6 @@ export async function stitchCarouselPairPng(
     brandLift +
     Math.max(0, Math.floor((bandH - stackH) / 2));
 
-  await onPhase?.("decode_after", {
-    detail: `${afterSize.w}×${afterSize.h} → ${tw}×${th}`,
-  });
-  const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
-  await onPhase?.("decode_before", {
-    detail: `${beforeSize.w}×${beforeSize.h} → ${tw}×${th}`,
-  });
-  const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
-
   await onPhase?.("compose", { detail: `slot ${tw}×${th}` });
   const [beforeLabel, afterLabel] = await Promise.all([
     renderTrackedLabel(assets.font, "before", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
@@ -636,8 +688,23 @@ export async function stitchCarouselPairPng(
   canvas.composite(shadow, leftDrawX, imageTop + 8);
   canvas.composite(shadow, rightDrawX, imageTop + 8);
 
-  canvas.composite(leftCard, leftDrawX, imageTop);
-  canvas.composite(rightCard, rightDrawX, imageTop);
+  // After first: composite onto canvas, then drop the slot bitmap before
+  // decoding before (this is where pair 2/4 previously hung).
+  await onPhase?.("decode_after", {
+    detail: `${afterSize.w}×${afterSize.h} → ${tw}×${th}`,
+  });
+  {
+    const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
+    canvas.composite(rightCard, rightDrawX, imageTop);
+  }
+
+  await onPhase?.("decode_before", {
+    detail: `${beforeSize.w}×${beforeSize.h} → ${tw}×${th}`,
+  });
+  {
+    const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
+    canvas.composite(leftCard, leftDrawX, imageTop);
+  }
 
   const labelY = imageTop + th + LABEL_GAP;
   canvas.composite(
