@@ -214,6 +214,16 @@ export function galleryItemHref(item) {
   return `/gallery/?item=${encodeURIComponent(param)}`;
 }
 
+/** Admin editor deep-link for a gallery item (`/admin/gallery/?item=…`). */
+export function adminGalleryItemHref(itemOrId) {
+  const id =
+    typeof itemOrId === "string" || typeof itemOrId === "number"
+      ? String(itemOrId).trim()
+      : String(itemOrId?.id ?? "").trim();
+  if (!id) return "/admin/gallery/";
+  return `/admin/gallery/?item=${encodeURIComponent(id)}`;
+}
+
 export function galleryItemMatchesParam(item, param) {
   if (!param) return false;
   const key = galleryItemParam(item);

@@ -33,6 +33,8 @@ import {
   isAllowedOrderDisplayId,
   isOwnerOrderDisplayId,
 } from "../_shared/ownerOrder.ts";
+import { sanitizeDamageTags } from "../_shared/damageTags.ts";
+import { publishGalleryFromCardPairs } from "../_shared/publishGalleryFromCardPairs.ts";
 
 const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
@@ -72,6 +74,8 @@ type CardRow = {
   id: string;
   card_name: string | null;
   set_name: string | null;
+  damage_tags?: unknown;
+  tcg_card_id?: string | null;
   catalog_card_name?: string | null;
   catalog_set_name?: string | null;
   catalog_image_url?: string | null;
@@ -95,6 +99,9 @@ type ClamperlJob = {
   setLabel: string;
   /** Catalog art as base64 (fetched once at job start; avoids re-fetch per hop). */
   catalogFrontBase64: string | null;
+  /** Order-card damage tags → gallery item damage section. */
+  damageTags: string[];
+  tcgCardId: string | null;
   sizeLimit: number;
   beforeCount: number;
   afterCount: number;
@@ -236,20 +243,20 @@ async function loadOrderCards(
   const full = await supabase
     .from("cards")
     .select(
-      "id, card_name, set_name, sort_order, catalog_card_name, catalog_set_name, catalog_image_url"
+      "id, card_name, set_name, sort_order, damage_tags, tcg_card_id, catalog_card_name, catalog_set_name, catalog_image_url"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
   if (
     full.error &&
-    /catalog_card_name|catalog_set_name|catalog_image_url|42703/i.test(
+    /catalog_card_name|catalog_set_name|catalog_image_url|damage_tags|tcg_card_id|42703/i.test(
       full.error.message ?? ""
     )
   ) {
     const basic = await supabase
       .from("cards")
-      .select("id, card_name, set_name, sort_order")
+      .select("id, card_name, set_name, sort_order, damage_tags")
       .eq("order_id", orderId)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true });
@@ -592,7 +599,49 @@ async function stitchNextPair(
   job.next = index + 1;
 }
 
-/** Last hop: post staged PNGs to Discord, report, and delete scratch. */
+/**
+ * Copy the formatted pairs' *source* before/after photos into a published
+ * gallery item (never the Instagram stitch PNGs). Best-effort — Discord
+ * delivery still succeeds if this fails.
+ */
+async function publishJobPairsToGallery(
+  job: ClamperlJob,
+  supabase: SupabaseClient
+): Promise<{ adminUrl: string; publicUrl: string; pairCount: number } | null> {
+  if (job.pairs.length === 0) return null;
+
+  await setStatus(
+    job,
+    `${orderLabel(job.orderDisplayId)} · card **${job.cardIndex}** · publishing **${job.pairs.length}** source pair(s) to gallery…`
+  );
+
+  const catalogFrontBytes = job.catalogFrontBase64
+    ? base64ToBytes(job.catalogFrontBase64)
+    : null;
+
+  const result = await publishGalleryFromCardPairs(supabase, {
+    title: job.cardLabel,
+    setName: job.setLabel,
+    damageTags: job.damageTags ?? [],
+    tcgCardId: job.tcgCardId ?? null,
+    tcgLookupTitle: job.cardLabel,
+    tcgLookupSetName: job.setLabel,
+    pairs: job.pairs.map((pair) => ({
+      beforePath: pair.before,
+      afterPath: pair.after,
+    })),
+    sourceBucket: BUCKET,
+    catalogFrontBytes,
+  });
+
+  clamperlLog(job.jobId, "gallery_published", {
+    itemId: result.id,
+    pairCount: result.pairCount,
+  });
+  return result;
+}
+
+/** Last hop: post staged PNGs to Discord, publish gallery, report, delete scratch. */
 async function finalizeJob(
   job: ClamperlJob,
   supabase: SupabaseClient
@@ -645,6 +694,23 @@ async function finalizeJob(
       files
     );
 
+    let galleryLine = "";
+    try {
+      const gallery = await publishJobPairsToGallery(job, supabase);
+      if (gallery) {
+        galleryLine = [
+          `Gallery · **${gallery.pairCount}** source pair(s) published`,
+          `Edit: ${gallery.adminUrl}`,
+          `Public: ${gallery.publicUrl}`,
+        ].join("\n");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("clamperl gallery publish failed", err);
+      clamperlLog(job.jobId, "gallery_error", { message });
+      galleryLine = `Gallery publish failed: ${message}`;
+    }
+
     await setStatus(
       job,
       [
@@ -656,6 +722,7 @@ async function finalizeJob(
         job.notes.length > 0
           ? `Notes:\n${job.notes.map((line) => `• ${line}`).join("\n")}`
           : "",
+        galleryLine,
         `_PNGs are in the follow-up message._`,
       ]
         .filter(Boolean)
@@ -856,6 +923,8 @@ async function startClamperlJob(params: {
       cardLabel,
       setLabel,
       catalogFrontBase64,
+      damageTags: sanitizeDamageTags(card.damage_tags),
+      tcgCardId: (card.tcg_card_id ?? "").trim() || null,
       sizeLimit: attachmentSizeLimit(interaction),
       beforeCount,
       afterCount,

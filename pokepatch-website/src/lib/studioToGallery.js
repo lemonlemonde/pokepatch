@@ -1,5 +1,5 @@
 /**
- * Send Studio before/after slot images as a new gallery item (unpublished).
+ * Send Studio before/after slot images as a new gallery item (published).
  * Uses raw slot sources (crops/annotations), never Instagram stitch canvases.
  * Writes go through galleryAdminWrites (same path as Gallery admin).
  */
@@ -10,6 +10,7 @@ import {
   uploadGalleryThumbnail,
 } from "@/lib/galleryAdminWrites";
 import { adminDeleteGalleryItem } from "@/lib/adminApi";
+import { normalizeDamageTags } from "@/lib/damageTags";
 import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 
 const RESOLVE_ATTEMPTS = 2;
@@ -89,7 +90,7 @@ async function cleanupOrphanGalleryItem(itemId) {
   try {
     await adminDeleteGalleryItem(itemId);
   } catch {
-    // Best-effort — leave unpublished draft rather than masking the real error.
+    // Best-effort cleanup — don't mask the real upload error.
   }
 }
 
@@ -125,7 +126,7 @@ export async function publishStudioPairsToGallery({
   };
 
   // Resolve every image *before* creating the gallery row so a bad/hung decode
-  // cannot leave an empty unpublished item behind.
+  // cannot leave an empty published item behind.
   report(
     completePairs.length === 1
       ? "Preparing images…"
@@ -150,10 +151,24 @@ export async function publishStudioPairsToGallery({
     resolvedPairs.push(sources);
   }
 
+  const damageFromPairs = normalizeDamageTags(
+    completePairs.flatMap((pair) => pair.damage_tags ?? []),
+  );
+  const damageTags = normalizeDamageTags([
+    ...(meta?.damage_tags ?? []),
+    ...damageFromPairs,
+  ]);
+
   report("Creating gallery item…");
   let item;
   try {
-    item = await createGalleryItem({ ...meta, title, published: false });
+    item = await createGalleryItem({
+      ...meta,
+      title,
+      card_number: "",
+      damage_tags: damageTags,
+      published: true,
+    });
   } catch (err) {
     throw new Error(errorMessage(err, "Could not create gallery item."));
   }

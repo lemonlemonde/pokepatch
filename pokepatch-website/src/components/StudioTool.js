@@ -20,6 +20,7 @@ import { resolveStudioImageSource } from "@/lib/studioSlotImage";
 import { publishStudioPairsToGallery } from "@/lib/studioToGallery";
 import { buildStudioSeedFromGalleryItem } from "@/lib/galleryToStudio";
 import { buildStudioSeedFromOrderCard } from "@/lib/orderCardToStudio";
+import { adminGalleryItemHref } from "@/lib/gallery";
 import StudioAnnotatedPreview from "@/components/StudioAnnotatedPreview";
 import { downloadBlob } from "@/lib/downloadFile";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
@@ -726,7 +727,7 @@ function BeforeAfterPairPhotoFormatter({
     setSendingToGallery(true);
     setSendingToGalleryStatus("Preparing images…");
     try {
-      await publishStudioPairsToGallery({
+      const item = await publishStudioPairsToGallery({
         pairs,
         beforeItems,
         afterItems,
@@ -734,7 +735,7 @@ function BeforeAfterPairPhotoFormatter({
         meta: {
           title: cardMeta.card.trim(),
           set_name: cardMeta.set.trim(),
-          card_number: (cardMeta.card_number ?? "").trim(),
+          card_number: "",
           tcg_card_id: (cardMeta.tcg_card_id ?? "").trim(),
           tcg_lookup_title:
             (cardMeta.tcg_lookup_title ?? "").trim() || cardMeta.card.trim(),
@@ -745,7 +746,7 @@ function BeforeAfterPairPhotoFormatter({
         onProgress: setSendingToGalleryStatus,
       });
       setSendingToGalleryStatus("Opening gallery…");
-      router.push("/admin/gallery/");
+      router.push(adminGalleryItemHref(item?.id));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not send to gallery.",
@@ -861,10 +862,10 @@ function BeforeAfterPairPhotoFormatter({
               className="w-full flex-1 rounded-xl border border-ink/20 bg-night/50 px-4 py-3 font-semibold text-ink transition hover:border-ink/40 hover:bg-night/70 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {sendingToGallery
-                ? sendingToGalleryStatus || "Sending to gallery…"
+                ? sendingToGalleryStatus || "Publishing to gallery…"
                 : completePairCount <= 1
-                  ? "Send to gallery"
-                  : `Send ${completePairCount} pairs to gallery`}
+                  ? "Publish to gallery"
+                  : `Publish ${completePairCount} pairs to gallery`}
             </button>
           </div>
         </StudioFolderBoard>

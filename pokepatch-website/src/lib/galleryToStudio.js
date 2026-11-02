@@ -3,6 +3,7 @@
  */
 
 import { adminGetGalleryItem } from "@/lib/adminApi";
+import { normalizeDamageTags } from "@/lib/damageTags";
 import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 
 const FETCH_TIMEOUT_MS = 45_000;
@@ -112,6 +113,7 @@ export async function buildStudioSeedFromGalleryItem(itemId) {
   const afterItems = [];
   const pairs = [];
   const failures = [];
+  const itemDamageTags = normalizeDamageTags(item.damage_tags);
 
   for (let index = 0; index < imagePairs.length; index += 1) {
     const pair = imagePairs[index];
@@ -138,6 +140,7 @@ export async function buildStudioSeedFromGalleryItem(itemId) {
         id: crypto.randomUUID(),
         before: beforeItem.id,
         after: afterItem.id,
+        damage_tags: itemDamageTags,
       });
     } catch (err) {
       failures.push(
