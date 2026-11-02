@@ -18,7 +18,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 2. Bot loads before/after photos for that card (sorted by upload id).
 3. Skips the first **two** overview pairs.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
-5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), posts them as Discord attachments in one follow-up, then deletes the staged files.
+5. Stitches **one pair per Edge worker** (the function POSTs the job back to itself between pairs), staging each PNG to Storage, then the last worker posts them as Discord attachments in one follow-up and deletes the staged files.
 
 Cards without enough before/after pairs get a note in the reply.
 
@@ -79,9 +79,10 @@ Invite the bot to your server with `applications.commands` scope.
 ## Notes
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
-- Pairs are stitched **one at a time** and staged to Storage between pairs. JPEG phone photos are decoded with jpeg-js and cover-resized in JS so ImageScript only sees slot-sized bitmaps (avoids WASM hangs on later pairs); each side is composited before the other is loaded.
-- Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/` are deleted in a `finally` after each job. Each run also sweeps that scratch prefix for orphans older than ~1h (killed Edge isolates), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
-- Progress updates include the current sub-step (`download` → `measure` → `compose` → `decode_after` → `decode_before` → `encode` → `upload` → `staged`). Matching JSON lines are written to Edge logs (`console.log` prefix `clamperl`) in Supabase → Edge Functions → `discord-clamperl` → Logs.
+- **Why hops:** Supabase Edge Functions cap CPU time per worker (docs say 2s; the worker is killed a few seconds later with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one worker. Each hop runs in a fresh worker with a fresh budget.
+- **Hop transport:** the job (interaction token, pair paths, staged files, trail) is POSTed to `${SUPABASE_URL}/functions/v1/discord-clamperl` with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. `index.ts` routes those requests before Discord signature verification; a bad signature is 401. A worker that has already spent >3s of stitch time answers `503` so the dispatcher retries and lands on a fresh isolate. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.
+- Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/<order>/card<n>/<jobId>/` are deleted in a `finally` by the final hop (and on any failure). Each job start also sweeps that scratch prefix for orphans older than ~1h (killed workers), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
+- Progress updates include the current sub-step (`download` → `measure` → `compose` → `decode_after` → `decode_before` → `encode` → `upload` → `staged`) and the worker/hop number. Matching JSON lines (`hop_start`, `hop_dispatched`, `pair_done`, `job_done`, `job_error`, …) are written to Edge logs (`console.log` prefix `clamperl`) in Supabase → Edge Functions → `discord-clamperl` → Logs.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.

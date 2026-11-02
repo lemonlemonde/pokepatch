@@ -6,7 +6,6 @@
  */
 
 import { Image } from "npm:imagescript@3.12.2";
-import * as jpeg from "npm:jpeg-js@0.4.4";
 
 export const CAROUSEL_WIDTH = 1080;
 export const CAROUSEL_HEIGHT = 1350;
@@ -202,7 +201,7 @@ function isJpeg(bytes: Uint8Array): boolean {
 
 /**
  * Read JPEG Exif Orientation (1–8). Default 1 when missing.
- * Needed because jpeg-js does not auto-rotate like ImageScript.decode.
+ * ImageScript.decode auto-rotates, so header sizes must be swapped the same way.
  */
 function jpegExifOrientation(bytes: Uint8Array): number {
   if (!isJpeg(bytes)) return 1;
@@ -269,165 +268,9 @@ function orientedSize(
   return orientation >= 5 && orientation <= 8 ? { w: h, h: w } : { w, h };
 }
 
-/** Rotate/mirror RGBA buffer to upright pixels (Exif orientation). */
-function applyExifOrientationRgba(
-  data: Uint8Array,
-  width: number,
-  height: number,
-  orientation: number
-): { data: Uint8Array; width: number; height: number } {
-  if (orientation <= 1 || orientation > 8) {
-    return { data, width, height };
-  }
-  const srcW = width;
-  const srcH = height;
-  const swap = orientation >= 5;
-  const dstW = swap ? srcH : srcW;
-  const dstH = swap ? srcW : srcH;
-  const out = new Uint8Array(dstW * dstH * 4);
-  for (let y = 0; y < srcH; y += 1) {
-    for (let x = 0; x < srcW; x += 1) {
-      let dx = x;
-      let dy = y;
-      switch (orientation) {
-        case 2:
-          dx = srcW - 1 - x;
-          dy = y;
-          break;
-        case 3:
-          dx = srcW - 1 - x;
-          dy = srcH - 1 - y;
-          break;
-        case 4:
-          dx = x;
-          dy = srcH - 1 - y;
-          break;
-        case 5:
-          dx = y;
-          dy = x;
-          break;
-        case 6:
-          dx = srcH - 1 - y;
-          dy = x;
-          break;
-        case 7:
-          dx = srcH - 1 - y;
-          dy = srcW - 1 - x;
-          break;
-        case 8:
-          dx = y;
-          dy = srcW - 1 - x;
-          break;
-      }
-      const si = (y * srcW + x) * 4;
-      const di = (dy * dstW + dx) * 4;
-      out[di] = data[si];
-      out[di + 1] = data[si + 1];
-      out[di + 2] = data[si + 2];
-      out[di + 3] = data[si + 3];
-    }
-  }
-  return { data: out, width: dstW, height: dstH };
-}
-
-/** Cover-resize RGBA into tw×th with box filtering when shrinking. */
-function coverRgba(
-  src: Uint8Array,
-  sw: number,
-  sh: number,
-  tw: number,
-  th: number
-): Uint8Array {
-  const scale = Math.max(tw / sw, th / sh);
-  const rw = Math.max(1, Math.round(sw * scale));
-  const rh = Math.max(1, Math.round(sh * scale));
-  const ox = Math.floor((rw - tw) / 2);
-  const oy = Math.floor((rh - th) / 2);
-  const out = new Uint8Array(tw * th * 4);
-
-  for (let y = 0; y < th; y += 1) {
-    for (let x = 0; x < tw; x += 1) {
-      const x0 = ((x + ox) / scale);
-      const y0 = ((y + oy) / scale);
-      const x1 = ((x + ox + 1) / scale);
-      const y1 = ((y + oy + 1) / scale);
-      const sx0 = Math.max(0, Math.floor(x0));
-      const sy0 = Math.max(0, Math.floor(y0));
-      const sx1 = Math.min(sw, Math.ceil(x1));
-      const sy1 = Math.min(sh, Math.ceil(y1));
-      let r = 0;
-      let g = 0;
-      let b = 0;
-      let a = 0;
-      let count = 0;
-      for (let sy = sy0; sy < sy1; sy += 1) {
-        for (let sx = sx0; sx < sx1; sx += 1) {
-          const si = (sy * sw + sx) * 4;
-          r += src[si];
-          g += src[si + 1];
-          b += src[si + 2];
-          a += src[si + 3];
-          count += 1;
-        }
-      }
-      const di = (y * tw + x) * 4;
-      if (count === 0) {
-        const sx = Math.min(sw - 1, Math.max(0, Math.floor(x0)));
-        const sy = Math.min(sh - 1, Math.max(0, Math.floor(y0)));
-        const si = (sy * sw + sx) * 4;
-        out[di] = src[si];
-        out[di + 1] = src[si + 1];
-        out[di + 2] = src[si + 2];
-        out[di + 3] = src[si + 3];
-      } else {
-        out[di] = Math.round(r / count);
-        out[di + 1] = Math.round(g / count);
-        out[di + 2] = Math.round(b / count);
-        out[di + 3] = Math.round(a / count);
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * Decode a phone photo and cover to slot size without ImageScript.decode on
- * large JPEGs (WASM heap does not free across pairs and hangs by pair 3).
- */
-async function decodeCoverCard(
-  bytes: Uint8Array,
-  tw: number,
-  th: number
-): Promise<Image> {
-  if (isJpeg(bytes)) {
-    const orientation = jpegExifOrientation(bytes);
-    const decoded = jpeg.decode(bytes, { useTArray: true, formatAsRGBA: true });
-    const upright = applyExifOrientationRgba(
-      decoded.data as Uint8Array,
-      decoded.width,
-      decoded.height,
-      orientation
-    );
-    const covered = coverRgba(
-      upright.data,
-      upright.width,
-      upright.height,
-      tw,
-      th
-    );
-    const card = new Image(tw, th);
-    card.bitmap = covered;
-    card.roundCorners(CARD_RADIUS);
-    return card;
-  }
-
-  // PNG / other: rare for wooper uploads; keep ImageScript path.
-  return prepareCard(await Image.decode(bytes), tw, th);
-}
-
 /**
  * Read width/height from JPEG/PNG headers without a full ImageScript decode.
- * Avoids the double-decode that OOMs/hangs Edge when both sides are phone photos.
+ * Layout needs the sizes before either side is decoded; decoding costs CPU.
  */
 function probeImageSize(bytes: Uint8Array): { w: number; h: number } | null {
   if (
@@ -940,13 +783,13 @@ export async function stitchCarouselPairPng(
   canvas.composite(shadow, leftDrawX, imageTop + 8);
   canvas.composite(shadow, rightDrawX, imageTop + 8);
 
-  // JPEG phone photos: decode on JS heap (jpeg-js), cover in JS, then only a
-  // slot-sized bitmap enters ImageScript — avoids WASM heap growth across pairs.
+  // Decode → cover → composite one side at a time (ImageScript's WASM decoder
+  // is the cheapest CPU path; each full decode is still ~1s of the hop budget).
   await onPhase?.("decode_after", {
     detail: `${afterSize.w}×${afterSize.h} → ${tw}×${th}`,
   });
   {
-    const rightCard = await decodeCoverCard(afterBytes, tw, th);
+    const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
     canvas.composite(rightCard, rightDrawX, imageTop);
   }
 
@@ -954,7 +797,7 @@ export async function stitchCarouselPairPng(
     detail: `${beforeSize.w}×${beforeSize.h} → ${tw}×${th}`,
   });
   {
-    const leftCard = await decodeCoverCard(beforeBytes, tw, th);
+    const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
     canvas.composite(leftCard, leftDrawX, imageTop);
   }
 
