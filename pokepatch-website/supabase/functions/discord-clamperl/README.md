@@ -14,14 +14,13 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 
 ## `/clamperl` (carousel before/after)
 
-1. `/clamperl order:42` — every card in the order  
-   or `/clamperl order:42 card:3` — one card
-2. Bot loads before/after photos (sorted by upload id).
-3. Skips the first **two** overview pairs on each card.
+1. `/clamperl order:42 card:3` — one card (both options required)
+2. Bot loads before/after photos for that card (sorted by upload id).
+3. Skips the first **two** overview pairs.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
-5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), then posts that card in one Discord follow-up with image embeds + download links.
+5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), then posts one Discord follow-up with image embeds + download links.
 
-Cards without enough before/after pairs are skipped with a note in the reply.
+Cards without enough before/after pairs get a note in the reply.
 
 ---
 
@@ -44,7 +43,7 @@ supabase secrets set DISCORD_CLAMPERL_PUBLIC_KEY="hex-public-key"
 
 ### Register the `/clamperl` slash command (once per app)
 
-Re-run this whenever options change (e.g. making `card` optional):
+Re-run this whenever options change (e.g. making `card` required):
 
 ```bash
 export CLAMPERL_APP_ID="clamperl-application-id"
@@ -57,7 +56,7 @@ curl -s -X PUT \
   -H "Content-Type: application/json" \
   -d '[{
     "name": "clamperl",
-    "description": "Generate Instagram carousel before/after PNGs for an order",
+    "description": "Generate Instagram carousel before/after PNGs for an order card",
     "options": [
       {
         "name": "order",
@@ -67,9 +66,9 @@ curl -s -X PUT \
       },
       {
         "name": "card",
-        "description": "Card number (1 = first). Omit to generate every card.",
+        "description": "Card number (1 = first in the order)",
         "type": 4,
-        "required": false
+        "required": true
       }
     ]
   }]'
@@ -81,7 +80,7 @@ Invite the bot to your server with `applications.commands` scope.
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Pairs are stitched **one at a time** and staged to Storage between pairs — keeping multiple finished PNGs in Edge memory hangs ImageScript.
-- Discord gets one follow-up per card (image embeds; click through to download). Uneven before/after counts are called out in the status reply.
+- Discord gets one follow-up (image embeds; click through to download). Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.

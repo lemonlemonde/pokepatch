@@ -1,6 +1,6 @@
 /**
- * `/clamperl` — generate Instagram carousel (4:5) before/after PNGs for an
- * order card (or every card in the order when `card` is omitted).
+ * `/clamperl` — generate Instagram carousel (4:5) before/after PNGs for one
+ * order card (`order` + required `card`).
  *
  * Loads before/after photos (sorted by id), skips the first two overview pairs,
  * index-pairs the rest, stitches lossless PNGs matching Studio's carousel layout,
@@ -173,7 +173,6 @@ async function generateForCard(params: {
   cardIndex: number;
   orderDisplayId: number;
   sizeLimit: number;
-  multiCard: boolean;
   applicationId: string;
   token: string;
   onPairProgress: (state: {
@@ -189,7 +188,6 @@ async function generateForCard(params: {
     cardIndex,
     orderDisplayId,
     sizeLimit,
-    multiCard,
     applicationId,
     token,
     onPairProgress,
@@ -273,9 +271,7 @@ async function generateForCard(params: {
 
     // One stitch at a time — concurrent ImageScript freezes on Edge.
     const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
-    const filename = multiCard
-      ? `pokepatch-card${cardIndex}-pair-${pairNum}.png`
-      : `pokepatch-pair-${pairNum}.png`;
+    const filename = `pokepatch-pair-${pairNum}.png`;
 
     if (png.byteLength > sizeLimit) {
       skippedLarge.push(
@@ -383,8 +379,8 @@ async function generateForCard(params: {
 export async function runClamperlJob(params: {
   interaction: Interaction;
   orderDisplayId: number;
-  /** 1-based card index, or null to generate every card in the order. */
-  cardIndex: number | null;
+  /** 1-based card index within the order. */
+  cardIndex: number;
 }): Promise<void> {
   const { interaction, orderDisplayId, cardIndex } = params;
   const applicationId = String(interaction.application_id ?? "");
@@ -419,138 +415,74 @@ export async function runClamperlJob(params: {
       return;
     }
 
-    const targets: { card: CardRow; cardIndex: number }[] = [];
-    if (cardIndex == null) {
-      for (let i = 0; i < cards.length; i += 1) {
-        targets.push({ card: cards[i], cardIndex: i + 1 });
-      }
-    } else {
-      const card = cards[cardIndex - 1];
-      if (!card) {
-        await editOriginal(
-          applicationId,
-          token,
-          `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
-        );
-        return;
-      }
-      targets.push({ card, cardIndex });
+    const card = cards[cardIndex - 1];
+    if (!card) {
+      await editOriginal(
+        applicationId,
+        token,
+        `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
+      );
+      return;
     }
 
-    const multiCard = targets.length > 1;
     await Promise.all([
       preloadInstaAssets(),
       editOriginal(
         applicationId,
         token,
-        multiCard
-          ? `Generating Order **#${orderDisplayId}** · **${targets.length}** cards…\n(each card posts as one message when ready)`
-          : `Generating Order **#${orderDisplayId}** · card **${targets[0].cardIndex}**…`
+        `Generating Order **#${orderDisplayId}** · card **${cardIndex}**…`
       ),
     ]);
 
-    const skippedLarge: string[] = [];
-    const skippedCards: string[] = [];
-    const okCards: string[] = [];
-    const notes: string[] = [];
-    let postedFiles = 0;
-
-    // One card at a time; stitch/stage pairs sequentially, then one Discord post.
-    for (let t = 0; t < targets.length; t += 1) {
-      const target = targets[t];
-      const result = await generateForCard({
-        supabase,
-        card: target.card,
-        cardIndex: target.cardIndex,
-        sizeLimit,
-        multiCard,
-        applicationId,
-        token,
-        orderDisplayId,
-        onStatus: async (content) => {
-          await editOriginal(applicationId, token, content);
-        },
-        onPairProgress: async ({ pair, total, phase }) => {
-          const step =
-            phase === "stitching"
-              ? `stitching pair **${pair}/${total}**`
-              : `staged pair **${pair}/${total}**`;
-          await editOriginal(
-            applicationId,
-            token,
-            [
-              `Order **#${orderDisplayId}**`,
-              multiCard
-                ? `Card **${target.cardIndex}/${targets.length}** · ${step}`
-                : `Card ${target.cardIndex} · ${step}`,
-              okCards.length > 0
-                ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
-                : "",
-              skippedCards.length > 0
-                ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
-                : "",
-            ]
-              .filter(Boolean)
-              .join("\n")
-          );
-        },
-      });
-
-      if (!result.ok) {
-        skippedCards.push(
-          `card ${result.cardIndex} · ${result.cardLabel}: ${result.reason}`
+    const result = await generateForCard({
+      supabase,
+      card,
+      cardIndex,
+      sizeLimit,
+      applicationId,
+      token,
+      orderDisplayId,
+      onStatus: async (content) => {
+        await editOriginal(applicationId, token, content);
+      },
+      onPairProgress: async ({ pair, total, phase }) => {
+        const step =
+          phase === "stitching"
+            ? `stitching pair **${pair}/${total}**`
+            : `staged pair **${pair}/${total}**`;
+        await editOriginal(
+          applicationId,
+          token,
+          `Order **#${orderDisplayId}**\nCard ${cardIndex} · ${step}`
         );
-      } else {
-        okCards.push(
-          `card ${result.cardIndex} · ${result.cardLabel} (**${result.posted}** of **${result.workCount}** · before ${result.beforeCount}/after ${result.afterCount})`
-        );
-        skippedLarge.push(...result.skippedLarge);
-        notes.push(...result.notes);
-        postedFiles += result.posted;
-      }
-    }
+      },
+    });
 
-    if (postedFiles === 0) {
+    if (!result.ok) {
       await editOriginal(
         applicationId,
         token,
         [
-          `Nothing to generate — Order **#${orderDisplayId}**.`,
-          skippedCards.length > 0
-            ? `Skipped:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
-            : "",
-          skippedLarge.length > 0
-            ? `Too large:\n${skippedLarge.join("\n")}`
-            : "",
-          notes.length > 0 ? notes.join("\n") : "",
-        ]
-          .filter(Boolean)
-          .join("\n")
+          `Nothing to generate — Order **#${orderDisplayId}** · card **${cardIndex}**.`,
+          `• ${result.cardLabel}: ${result.reason}`,
+        ].join("\n")
       );
       return;
     }
 
-    const scope =
-      cardIndex == null
-        ? `all cards (${okCards.length}/${targets.length} generated)`
-        : okCards[0] ?? `card ${cardIndex}`;
     await editOriginal(
       applicationId,
       token,
       [
-        `Done · Order **#${orderDisplayId}** · ${scope}`,
-        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${postedFiles}** PNG(s)`,
-        okCards.length > 0
-          ? `Cards:\n${okCards.map((line) => `• ${line}`).join("\n")}`
+        `Done · Order **#${orderDisplayId}** · card ${result.cardIndex} · ${result.cardLabel}`,
+        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${result.posted}** of **${result.workCount}** PNG(s) (before ${result.beforeCount}/after ${result.afterCount})`,
+        result.skippedLarge.length > 0
+          ? `Omitted (too large):\n${result.skippedLarge.join("\n")}`
           : "",
-        skippedCards.length > 0
-          ? `Skipped cards:\n${skippedCards.map((line) => `• ${line}`).join("\n")}`
+        result.notes.length > 0
+          ? `Notes:\n${result.notes.map((line) => `• ${line}`).join("\n")}`
           : "",
-        skippedLarge.length > 0
-          ? `Omitted (too large):\n${skippedLarge.join("\n")}`
-          : "",
-        notes.length > 0 ? `Notes:\n${notes.map((line) => `• ${line}`).join("\n")}` : "",
-        `_PNGs are in the follow-up message(s) — click a pair title to download._`,
+        `_PNGs are in the follow-up — click a pair title to download._`,
       ]
         .filter(Boolean)
         .join("\n")
@@ -569,11 +501,7 @@ export function handleClamperlCommandDeferred(
 ): Response {
   const data = (interaction.data ?? {}) as Json;
   const orderDisplayId = parsePositiveInt(optionValue(data.options, "order"));
-  const cardRaw = optionValue(data.options, "card");
-  const cardIndex =
-    cardRaw == null || String(cardRaw).trim() === ""
-      ? null
-      : parsePositiveInt(cardRaw);
+  const cardIndex = parsePositiveInt(optionValue(data.options, "card"));
 
   if (orderDisplayId == null) {
     return json({
@@ -584,12 +512,12 @@ export function handleClamperlCommandDeferred(
       },
     });
   }
-  if (cardRaw != null && String(cardRaw).trim() !== "" && cardIndex == null) {
+  if (cardIndex == null) {
     return json({
       type: CallbackType.CHANNEL_MESSAGE,
       data: {
         content:
-          "Card must be a 1-based index within the order (1, 2, 3…), or leave blank for every card.",
+          "Card is required — use the 1-based index within the order (1, 2, 3…).",
         flags: EPHEMERAL,
       },
     });
