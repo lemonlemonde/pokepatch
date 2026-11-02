@@ -41,7 +41,6 @@ import type { ChangelogPayload } from "./resend.ts";
 export const BUCKET = "card-photos";
 /** Signed URLs expire; 1 year keeps Discord history browsable. */
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
-const SITE_URL = "https://pokepatch.cards";
 const MAX_GALLERY_ITEMS = 10;
 const MAX_DESCRIPTION_CHARS = 900;
 
@@ -61,7 +60,6 @@ const ACCENT_WRAPUP = 0x9ecbff; // sky
 
 export const QUOTE_BUTTON_PREFIX = "quote:";
 export const NOTIFY_BUTTON_PREFIX = "notify:";
-export const WRAPUP_REFRESH_PREFIX = "wrapup:";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -132,10 +130,6 @@ export const deliveryLabels: Record<string, string> = {
   local_dropoff: "Local Drop-Off",
   shipping: "Shipping",
 };
-
-export function adminOrderUrl(orderId: string): string {
-  return `${SITE_URL}/admin/orders/?edit=${encodeURIComponent(orderId)}`;
-}
 
 function normalizeCardKey(name: unknown, setName: unknown): string {
   return `${String(name ?? "").trim().toLowerCase()}|${String(setName ?? "")
@@ -496,26 +490,16 @@ export function threadName(order: OrderRow): string {
 export function buildOrderHeaderMessage(params: {
   order: OrderRow;
   cardCount: number;
-  photoCount: number;
-  contactsText: string;
 }): Json {
-  const { order, cardCount, photoCount, contactsText } = params;
-  const delivery =
-    deliveryLabels[String(order.delivery_method)] ??
-    String(order.delivery_method ?? "unknown");
+  const { order, cardCount } = params;
   const customer = String(order.customer_name ?? "").trim();
 
   const lines = [
     `# New Order #${order.display_id}`,
     `**Customer:** ${customer ? escapeMarkdown(customer) : "—"}`,
-    `**Delivery:** ${delivery}`,
-    `**Contact:** ${contactsText ? escapeMarkdown(contactsText) : "—"}`,
-    `**Cards:** ${cardCount} · **Photos:** ${photoCount}`,
+    `**Cards:** ${cardCount}`,
+    "-# Cards are in this thread — quote each one, then **Save & notify** on the last message.",
   ];
-  lines.push(`[Open in admin](${adminOrderUrl(order.id)})`);
-  lines.push(
-    "-# Cards are in this thread — quote each one, then **Save & notify** on the last message."
-  );
 
   return {
     flags: IS_COMPONENTS_V2,
@@ -623,7 +607,6 @@ export function buildCardMessage(params: {
           style: summary.quoted ? ButtonStyle.SECONDARY : ButtonStyle.PRIMARY,
           emoji: summary.quoted ? "✏️" : "💵",
         }),
-        button({ label: "Open in admin", url: adminOrderUrl(order.id) }),
       ])
     );
   }
@@ -673,13 +656,10 @@ export function buildWrapupMessage(params: {
   const { order, contacts, lastNotification } = context;
   const customer = String(order.customer_name ?? "").trim();
   const email = String(order.customer_email ?? "").trim();
-  const delivery =
-    deliveryLabels[String(order.delivery_method)] ??
-    String(order.delivery_method ?? "unknown");
 
   const headerLines = [
     `## Order #${order.display_id} · wrap-up`,
-    `**Customer:** ${customer ? escapeMarkdown(customer) : "—"} · ${delivery}`,
+    `**Customer:** ${customer ? escapeMarkdown(customer) : "—"}`,
   ];
 
   const contactLines = contacts.map(contactLine).filter(Boolean);
@@ -710,12 +690,11 @@ export function buildWrapupMessage(params: {
       `adjustments ${totals.adjustmentsTotal > 0 ? "+" : "−"}${formatMoney(Math.abs(totals.adjustmentsTotal))}`
     );
   }
-  const progress = quoteProgress(context);
   const overviewBlock = [
     "**Quote overview**",
     ...overviewLines,
     `**Total ${formatMoney(totals.total)}**${extras.length ? ` (${extras.join(", ")})` : ""}`,
-    `-# ${progress.quoted}/${progress.active} cards quoted · order ${orderStatusText(order)}`,
+    `-# Order ${orderStatusText(order)}`,
   ];
 
   const outreachBlock = [
@@ -754,13 +733,6 @@ export function buildWrapupMessage(params: {
           emoji: "📨",
           disabled: !email,
         }),
-        button({
-          customId: `${WRAPUP_REFRESH_PREFIX}${order.id}`,
-          label: "Refresh",
-          style: ButtonStyle.SECONDARY,
-          emoji: "🔄",
-        }),
-        button({ label: "Open in admin", url: adminOrderUrl(order.id) }),
       ])
     );
   }
