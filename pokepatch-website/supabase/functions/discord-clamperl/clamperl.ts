@@ -28,6 +28,11 @@ import {
   stitchCarouselPairPng,
   type CarouselOverlay,
 } from "../_shared/instaCarousel.ts";
+import {
+  OWNER_ORDER_DISPLAY_ID,
+  isAllowedOrderDisplayId,
+  isOwnerOrderDisplayId,
+} from "../_shared/ownerOrder.ts";
 
 const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
@@ -77,6 +82,14 @@ function parsePositiveInt(value: string | number | null): number | null {
   if (value == null) return null;
   const n = typeof value === "number" ? value : Number(String(value).trim());
   if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) return null;
+  return n;
+}
+
+/** Positive display ids, or owner portfolio `#-1`. */
+function parseOrderDisplayId(value: string | number | null): number | null {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  if (!isAllowedOrderDisplayId(n)) return null;
   return n;
 }
 
@@ -572,11 +585,18 @@ export async function runClamperlJob(params: {
       .eq("display_id", orderDisplayId)
       .maybeSingle();
     if (orderError) throw orderError;
+    const ownerPortfolio = isOwnerOrderDisplayId(orderDisplayId);
+    const orderLabel = ownerPortfolio
+      ? `My cards (**#${OWNER_ORDER_DISPLAY_ID}**)`
+      : `Order **#${orderDisplayId}**`;
+
     if (!order) {
       await editOriginal(
         applicationId,
         token,
-        `Order #${orderDisplayId} not found.`
+        ownerPortfolio
+          ? `My cards order (#${OWNER_ORDER_DISPLAY_ID}) is missing. Run migrations.`
+          : `Order #${orderDisplayId} not found.`
       );
       return;
     }
@@ -586,7 +606,7 @@ export async function runClamperlJob(params: {
       await editOriginal(
         applicationId,
         token,
-        `Order #${orderDisplayId} has no cards.`
+        `${orderLabel} has no cards.`
       );
       return;
     }
@@ -596,7 +616,7 @@ export async function runClamperlJob(params: {
       await editOriginal(
         applicationId,
         token,
-        `Order #${orderDisplayId} has ${cards.length} card(s); card ${cardIndex} is out of range.`
+        `${orderLabel} has ${cards.length} card(s); card ${cardIndex} is out of range.`
       );
       return;
     }
@@ -606,7 +626,7 @@ export async function runClamperlJob(params: {
       editOriginal(
         applicationId,
         token,
-        `Generating Order **#${orderDisplayId}** · card **${cardIndex}**…`
+        `Generating ${orderLabel} · card **${cardIndex}**…`
       ),
     ]);
 
@@ -628,7 +648,7 @@ export async function runClamperlJob(params: {
         await editOriginal(
           applicationId,
           token,
-          `Order **#${orderDisplayId}**\nCard ${cardIndex} · ${step}`
+          `${orderLabel}\nCard ${cardIndex} · ${step}`
         );
       },
     });
@@ -638,7 +658,7 @@ export async function runClamperlJob(params: {
         applicationId,
         token,
         [
-          `Nothing to generate — Order **#${orderDisplayId}** · card **${cardIndex}**.`,
+          `Nothing to generate — ${orderLabel} · card **${cardIndex}**.`,
           `• ${result.cardLabel}: ${result.reason}`,
         ].join("\n")
       );
@@ -649,7 +669,7 @@ export async function runClamperlJob(params: {
       applicationId,
       token,
       [
-        `Done · Order **#${orderDisplayId}** · card ${result.cardIndex} · ${result.cardLabel}`,
+        `Done · ${orderLabel} · card ${result.cardIndex} · ${result.cardLabel}`,
         `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${result.posted}** of **${result.workCount}** PNG(s) (before ${result.beforeCount}/after ${result.afterCount})`,
         result.skippedLarge.length > 0
           ? `Omitted (too large):\n${result.skippedLarge.join("\n")}`
@@ -690,14 +710,14 @@ export function handleClamperlCommandDeferred(
   waitUntil: (promise: Promise<unknown>) => void
 ): Response {
   const data = (interaction.data ?? {}) as Json;
-  const orderDisplayId = parsePositiveInt(optionValue(data.options, "order"));
+  const orderDisplayId = parseOrderDisplayId(optionValue(data.options, "order"));
   const cardIndex = parsePositiveInt(optionValue(data.options, "card"));
 
   if (orderDisplayId == null) {
     return json({
       type: CallbackType.CHANNEL_MESSAGE,
       data: {
-        content: "Order must be a positive whole number (e.g. `42`).",
+        content: `Order must be a positive whole number (e.g. \`42\`) or \`${OWNER_ORDER_DISPLAY_ID}\` for my cards.`,
         flags: EPHEMERAL,
       },
     });

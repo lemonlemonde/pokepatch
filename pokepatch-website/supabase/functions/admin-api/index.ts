@@ -13,6 +13,7 @@ import {
   tcgCardImageSmallUrl,
 } from "../_shared/pokemonTcg.ts";
 import { sanitizeDamageTags } from "../_shared/damageTags.ts";
+import { OWNER_ORDER_DISPLAY_ID } from "../_shared/ownerOrder.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -96,6 +97,11 @@ async function deleteOrderAndPhotos(
     .maybeSingle();
   if (existingError) throw existingError;
   if (!existing) return null;
+  if (Number(existing.display_id) === OWNER_ORDER_DISPLAY_ID) {
+    throw new Error(
+      `Order #${OWNER_ORDER_DISPLAY_ID} (my cards) cannot be deleted.`
+    );
+  }
 
   const { data: cards, error: cardsError } = await supabase
     .from("cards")
@@ -489,7 +495,11 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     }
   }
   if (ordersError) throw ordersError;
-  if (!orders?.length) return [];
+  // Owner portfolio (#-1) stays out of kanban / photo-album / all-orders lists.
+  orders = (orders ?? []).filter(
+    (order) => Number(order.display_id) !== OWNER_ORDER_DISPLAY_ID
+  );
+  if (!orders.length) return [];
 
   // 1-based place among status=new — same order as admin To do column /
   // sortOrdersForStatusColumn (priority, then status_changed_at).
@@ -822,23 +832,28 @@ async function searchOrdersByCardText(
   );
 
   const orderById = new Map(
-    ((orders ?? []) as SearchOrderRow[]).map((order) => [
-      order.id,
-      withAccountName(order, emailToUserId, namesByUserId),
-    ])
+    ((orders ?? []) as SearchOrderRow[])
+      .filter((order) => Number(order.display_id) !== OWNER_ORDER_DISPLAY_ID)
+      .map((order) => [
+        order.id,
+        withAccountName(order, emailToUserId, namesByUserId),
+      ])
   );
 
   // Newest orders first; tie-break by higher display_id, then card id.
-  const rankedCards = [...matchedCards].sort((a, b) => {
-    const orderA = orderById.get(a.order_id as string);
-    const orderB = orderById.get(b.order_id as string);
-    const byCreated = orderCreatedMs(orderB) - orderCreatedMs(orderA);
-    if (byCreated !== 0) return byCreated;
-    const displayA = Number(orderA?.display_id) || 0;
-    const displayB = Number(orderB?.display_id) || 0;
-    if (displayA !== displayB) return displayB - displayA;
-    return String(b.id).localeCompare(String(a.id));
-  });
+  // Skip cards whose order was filtered (owner portfolio #-1).
+  const rankedCards = matchedCards
+    .filter((card) => orderById.has(card.order_id as string))
+    .sort((a, b) => {
+      const orderA = orderById.get(a.order_id as string);
+      const orderB = orderById.get(b.order_id as string);
+      const byCreated = orderCreatedMs(orderB) - orderCreatedMs(orderA);
+      if (byCreated !== 0) return byCreated;
+      const displayA = Number(orderA?.display_id) || 0;
+      const displayB = Number(orderB?.display_id) || 0;
+      if (displayA !== displayB) return displayB - displayA;
+      return String(b.id).localeCompare(String(a.id));
+    });
 
   const truncated =
     rankedCards.length > SEARCH_RESULT_LIMIT ||
@@ -2230,9 +2245,30 @@ Deno.serve(async (req) => {
     }
 
     if (action === "get") {
-      const orderId = String(body.order_id ?? "");
+      let orderId = String(body.order_id ?? "").trim();
+      if (!orderId && body.display_id != null && body.display_id !== "") {
+        const displayId = Number(body.display_id);
+        if (!Number.isFinite(displayId) || !Number.isInteger(displayId)) {
+          return jsonResponse(
+            req,
+            { ok: false, error: "display_id must be an integer" },
+            400
+          );
+        }
+        const { data: byDisplay, error: byDisplayError } = await supabase
+          .from("orders")
+          .select("id")
+          .eq("display_id", displayId)
+          .maybeSingle();
+        if (byDisplayError) throw byDisplayError;
+        orderId = byDisplay?.id ? String(byDisplay.id) : "";
+      }
       if (!orderId) {
-        return jsonResponse(req, { ok: false, error: "order_id required" }, 400);
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_id or display_id required" },
+          400
+        );
       }
       const order = await fetchOrderGraph(supabase, orderId);
       if (!order) {

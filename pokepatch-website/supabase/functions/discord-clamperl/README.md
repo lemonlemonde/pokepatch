@@ -60,7 +60,7 @@ curl -s -X PUT \
     "options": [
       {
         "name": "order",
-        "description": "Order number (display id)",
+        "description": "Order number (display id), or -1 for my cards",
         "type": 4,
         "required": true
       },
@@ -78,6 +78,7 @@ Invite the bot to your server with `applications.commands` scope.
 
 ## Notes
 
+- Own cards: pass `order:-1` (same permanent portfolio as wooper). Card index is still 1-based within that order.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Pairs are stitched **one at a time** and staged to Storage between pairs. JPEG phone photos are decoded with jpeg-js and cover-resized in JS so ImageScript only sees slot-sized bitmaps (avoids WASM hangs on later pairs); each side is composited before the other is loaded.
 - Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/` are deleted in a `finally` after each job. Each run also sweeps that scratch prefix for orphans older than ~1h (killed Edge isolates), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.

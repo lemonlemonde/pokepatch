@@ -12,6 +12,7 @@ import {
   adminCreateOrder,
   adminDeleteOrders,
   adminGetOrder,
+  adminGetOrderByDisplayId,
   adminListOrders,
   adminLoginWithSession,
   adminLogout,
@@ -21,6 +22,7 @@ import {
   adminValidate,
   isAdminApiConfigured,
 } from "@/lib/adminApi";
+import { OWNER_ORDER_DISPLAY_ID } from "@/lib/ownerOrder";
 import { supabase } from "@/lib/supabaseClient";
 import GalleryManager from "@/components/admin/GalleryManager";
 import CreateOrderDialog from "@/components/admin/CreateOrderDialog";
@@ -918,6 +920,8 @@ function KanbanBoard({
   onRequestDelete,
   onViewAllOrders,
   onCreateOrder,
+  onOpenMyCards,
+  myCardsBusy = false,
   onPublishQueue,
   suppressInspect = false,
   queueRotation,
@@ -1280,6 +1284,14 @@ function KanbanBoard({
           </button>
           <button
             type="button"
+            onClick={onOpenMyCards}
+            disabled={myCardsBusy}
+            className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30 disabled:cursor-wait disabled:opacity-60"
+          >
+            {myCardsBusy ? "Opening…" : "My cards"}
+          </button>
+          <button
+            type="button"
             onClick={onViewAllOrders}
             className="rounded-xl border border-ink/20 px-3 py-1.5 text-sm font-semibold text-ink transition hover:border-ink/30"
           >
@@ -1427,6 +1439,7 @@ export default function AdminApp() {
   const [noteOnlySending, setNoteOnlySending] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [openingMyCards, setOpeningMyCards] = useState(false);
   const [queueRotation, setQueueRotation] = useState(() =>
     defaultQueueRotation()
   );
@@ -1934,6 +1947,19 @@ export default function AdminApp() {
     router.push(`/admin/orders/?${params.toString()}`);
   }
 
+  async function openMyCards() {
+    setOpeningMyCards(true);
+    setListError("");
+    try {
+      const order = await adminGetOrderByDisplayId(OWNER_ORDER_DISPLAY_ID);
+      await openOrder(order.id);
+    } catch (err) {
+      setListError(err.message || "Could not open my cards.");
+    } finally {
+      setOpeningMyCards(false);
+    }
+  }
+
   async function handleCreateOrder(fields) {
     setCreatingOrder(true);
     setListError("");
@@ -2254,6 +2280,8 @@ export default function AdminApp() {
                   setListError("");
                   setCreateOrderOpen(true);
                 }}
+                onOpenMyCards={openMyCards}
+                myCardsBusy={openingMyCards}
                 onPublishQueue={(order) => {
                   setQueueCatalogPrompt({
                     mode: "publish",
