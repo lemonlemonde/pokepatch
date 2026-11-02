@@ -177,6 +177,14 @@ function prepareCard(source: Image, tw: number, th: number): Image {
   return source;
 }
 
+/** Decode only long enough to read dimensions (lets the full bitmap fall out of scope). */
+async function measureImageBytes(
+  bytes: Uint8Array
+): Promise<{ w: number; h: number }> {
+  const img = await Image.decode(bytes);
+  return { w: img.width, h: img.height };
+}
+
 /**
  * Decode catalog art once per job into a chip-sized thumb (mutates overlay).
  */
@@ -537,26 +545,15 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
-  // No pre-shrink: cover each photo straight to the final slot size. Measure
-  // one side, free it, then cover the other — peak RAM is one full phone photo.
-  let beforeImg: Image | null = await Image.decode(beforeBytes);
-  const beforeSize = { w: beforeImg.width, h: beforeImg.height };
+  // Measure first (no pre-shrink), then decode→cover one side at a time so
+  // peak RAM stays near one full phone photo.
+  const beforeSize = await measureImageBytes(beforeBytes);
+  const afterSize = await measureImageBytes(afterBytes);
   console.log(
-    "clamperl stitch measure before",
+    "clamperl stitch measure",
     JSON.stringify({
-      size: [beforeSize.w, beforeSize.h],
-      bytes: beforeBytes.byteLength,
-    })
-  );
-  beforeImg = null;
-
-  let afterImg: Image | null = await Image.decode(afterBytes);
-  const afterSize = { w: afterImg.width, h: afterImg.height };
-  console.log(
-    "clamperl stitch measure after",
-    JSON.stringify({
-      size: [afterSize.w, afterSize.h],
-      bytes: afterBytes.byteLength,
+      before: [beforeSize.w, beforeSize.h, beforeBytes.byteLength],
+      after: [afterSize.w, afterSize.h, afterBytes.byteLength],
     })
   );
 
@@ -585,12 +582,8 @@ export async function stitchCarouselPairPng(
     brandLift +
     Math.max(0, Math.floor((bandH - stackH) / 2));
 
-  const rightCard = prepareCard(afterImg, tw, th);
-  afterImg = null;
-
-  beforeImg = await Image.decode(beforeBytes);
-  const leftCard = prepareCard(beforeImg, tw, th);
-  beforeImg = null;
+  const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
+  const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
   const [beforeLabel, afterLabel] = await Promise.all([
     renderTrackedLabel(assets.font, "before", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
     renderTrackedLabel(assets.font, "after", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
