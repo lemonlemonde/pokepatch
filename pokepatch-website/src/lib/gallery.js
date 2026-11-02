@@ -80,8 +80,10 @@ function withCacheBust(url, cacheKey) {
 }
 
 /**
- * Public URL for a gallery still's list/thumbnail sibling (.thumb.webp).
- * Falls back to the full object URL when path is missing or local/static.
+ * Public URL for a gallery still's `.thumb.webp` sibling.
+ * Gallery storage objects never fall back to the full file — missing thumbs
+ * return null. Local/blob URLs and non-gallery http (e.g. TCG catalog art
+ * before apply) pass through unchanged.
  */
 export function galleryThumbPublicUrl(pathOrUrl, cacheKey) {
   if (!pathOrUrl || typeof pathOrUrl !== "string") return null;
@@ -97,15 +99,16 @@ export function galleryThumbPublicUrl(pathOrUrl, cacheKey) {
     const marker = "/storage/v1/object/public/gallery/";
     const idx = baseUrl.indexOf(marker);
     if (idx === -1) {
+      // External preview (TCG, etc.) — not a gallery object.
       base = baseUrl;
     } else {
       const objectPath = baseUrl.slice(idx + marker.length);
-      base =
-        publicUrlForPath(thumbPath(decodeURIComponent(objectPath))) || baseUrl;
+      base = publicUrlForPath(thumbPath(decodeURIComponent(objectPath)));
     }
   } else {
-    base = publicUrlForPath(thumbPath(pathOrUrl)) || publicUrlForPath(pathOrUrl);
+    base = publicUrlForPath(thumbPath(pathOrUrl));
   }
+  if (!base) return null;
   if (cacheKey) return withCacheBust(base, cacheKey);
   if (existingQuery) return `${base}?${existingQuery}`;
   return base;

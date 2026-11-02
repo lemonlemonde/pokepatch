@@ -3,8 +3,9 @@
  * Copies bytes from the card-photos bucket into the gallery bucket — never
  * Instagram/clamperl stitch canvases.
  *
- * Also writes `.thumb.webp` siblings so admin/list UIs that prefer thumbs
- * (via galleryThumbPublicUrl) do not render blank 404 slots.
+ * Every image side gets a required `.thumb.webp` sibling (ImageScript). Callers
+ * that hit Edge CPU limits should publish **one pair per worker**; a failed
+ * thumb fails the pair (and the item should be cleaned up). No silent skip.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -23,27 +24,13 @@ export type GallerySourcePair = {
   afterPath: string;
 };
 
-export type PublishGalleryFromCardPairsInput = {
+export type CreateGalleryItemInput = {
   title: string;
   setName?: string;
   damageTags?: unknown;
   tcgCardId?: string | null;
   tcgLookupTitle?: string;
   tcgLookupSetName?: string;
-  /** Source storage paths in `sourceBucket` (before/after). */
-  pairs: GallerySourcePair[];
-  /** Usually `card-photos`. */
-  sourceBucket: string;
-  /** Optional card-art bytes for the gallery thumbnail. */
-  catalogFrontBytes?: Uint8Array | null;
-  catalogFrontContentType?: string;
-};
-
-export type PublishGalleryFromCardPairsResult = {
-  id: string;
-  adminUrl: string;
-  publicUrl: string;
-  pairCount: number;
 };
 
 function sanitizeFilename(name: string): string {
@@ -61,6 +48,14 @@ function contentTypeFromPath(path: string): string {
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif")) return "image/gif";
   return "image/jpeg";
+}
+
+export function galleryItemAdminUrl(itemId: string): string {
+  return `${SITE_URL}/admin/gallery/?item=${encodeURIComponent(itemId)}`;
+}
+
+export function galleryItemPublicUrl(itemId: string): string {
+  return `${SITE_URL}/gallery/?item=${encodeURIComponent(itemId)}`;
 }
 
 async function downloadBytes(
@@ -114,36 +109,33 @@ function pathsWithThumbSiblings(paths: string[]): string[] {
 
 /**
  * Downscale + encode a `.thumb.webp` sibling (same convention as admin uploads).
- * Best-effort: decode failures are logged and skipped so the full object still publishes.
+ * Required — decode/encode failures throw so the publish can roll back.
  */
 async function uploadThumbSibling(
   supabase: SupabaseClient,
   destPath: string,
   bytes: Uint8Array
 ): Promise<void> {
-  try {
-    const img = await Image.decode(bytes);
-    const maxSide = Math.max(img.width, img.height);
-    if (maxSide > GALLERY_THUMB_MAX_DIMENSION) {
-      const scale = GALLERY_THUMB_MAX_DIMENSION / maxSide;
-      img.resize(
-        Math.max(1, Math.round(img.width * scale)),
-        Math.max(1, Math.round(img.height * scale))
-      );
-    }
-    const webp = await img.encodeWebP({ quality: GALLERY_THUMB_QUALITY });
-    await uploadBytes(
-      supabase,
-      thumbSiblingPath(destPath),
-      webp,
-      "image/webp"
+  const img = await Image.decode(bytes);
+  const maxSide = Math.max(img.width, img.height);
+  if (maxSide > GALLERY_THUMB_MAX_DIMENSION) {
+    const scale = GALLERY_THUMB_MAX_DIMENSION / maxSide;
+    img.resize(
+      Math.max(1, Math.round(img.width * scale)),
+      Math.max(1, Math.round(img.height * scale))
     );
-  } catch (err) {
-    console.error("gallery publish pair thumb failed", destPath, err);
   }
+  const webp = await img.encodeWebP({ quality: GALLERY_THUMB_QUALITY });
+  await uploadBytes(
+    supabase,
+    thumbSiblingPath(destPath),
+    webp,
+    "image/webp"
+  );
 }
 
-async function cleanupGalleryItem(
+/** Best-effort delete of an orphan gallery item + its storage objects. */
+export async function cleanupGalleryItem(
   supabase: SupabaseClient,
   itemId: string
 ): Promise<void> {
@@ -174,25 +166,15 @@ async function cleanupGalleryItem(
   }
 }
 
-/**
- * Create a published gallery item and copy each source before/after into it.
- * On failure after the row is created, best-effort deletes the orphan item.
- */
-export async function publishGalleryFromCardPairs(
+/** Create the published gallery row (no pairs yet). */
+export async function createPublishedGalleryItem(
   supabase: SupabaseClient,
-  input: PublishGalleryFromCardPairsInput
-): Promise<PublishGalleryFromCardPairsResult> {
+  input: CreateGalleryItemInput
+): Promise<{ id: string; adminUrl: string; publicUrl: string }> {
   const title = (input.title ?? "").trim();
   if (!title) {
     throw new Error("gallery publish: title required");
   }
-  const pairs = (input.pairs ?? []).filter(
-    (pair) => pair?.beforePath && pair?.afterPath
-  );
-  if (pairs.length === 0) {
-    throw new Error("gallery publish: at least one before/after pair required");
-  }
-
   const setName = (input.setName ?? "").trim();
   const damageTags = sanitizeDamageTags(input.damageTags);
   const tcgCardId = (input.tcgCardId ?? "").trim() || null;
@@ -221,108 +203,124 @@ export async function publishGalleryFromCardPairs(
     );
   }
 
-  const itemId = String(inserted.id);
+  const id = String(inserted.id);
+  return {
+    id,
+    adminUrl: galleryItemAdminUrl(id),
+    publicUrl: galleryItemPublicUrl(id),
+  };
+}
 
-  try {
-    for (let index = 0; index < pairs.length; index += 1) {
-      const pair = pairs[index];
-      const { data: pairRow, error: pairError } = await supabase
-        .from("gallery_pairs")
-        .insert({
-          item_id: itemId,
-          sort_order: index,
-          media_kind: "image",
-        })
-        .select("id")
-        .single();
-      if (pairError || !pairRow?.id) {
-        throw new Error(
-          `gallery publish: create pair ${index + 1} failed: ${
-            pairError?.message ?? "unknown"
-          }`
-        );
-      }
+/**
+ * Copy one before/after pair into an existing gallery item and write required
+ * `.thumb.webp` siblings. Throws on any failure (caller should cleanup).
+ */
+export async function publishGalleryPairWithThumbs(
+  supabase: SupabaseClient,
+  params: {
+    itemId: string;
+    sortOrder: number;
+    pair: GallerySourcePair;
+    sourceBucket: string;
+  }
+): Promise<void> {
+  const { itemId, sortOrder, pair, sourceBucket } = params;
+  if (!pair?.beforePath || !pair?.afterPath) {
+    throw new Error(`gallery publish: pair ${sortOrder + 1} missing paths`);
+  }
 
-      const pairId = String(pairRow.id);
-      const beforeName = sanitizeFilename(basename(pair.beforePath));
-      const afterName = sanitizeFilename(basename(pair.afterPath));
-      const beforeDest = `item-${itemId}/pair-${pairId}/before-${beforeName}`;
-      const afterDest = `item-${itemId}/pair-${pairId}/after-${afterName}`;
+  const { data: pairRow, error: pairError } = await supabase
+    .from("gallery_pairs")
+    .insert({
+      item_id: itemId,
+      sort_order: sortOrder,
+      media_kind: "image",
+    })
+    .select("id")
+    .single();
+  if (pairError || !pairRow?.id) {
+    throw new Error(
+      `gallery publish: create pair ${sortOrder + 1} failed: ${
+        pairError?.message ?? "unknown"
+      }`
+    );
+  }
 
-      const [beforeBytes, afterBytes] = await Promise.all([
-        downloadBytes(supabase, input.sourceBucket, pair.beforePath),
-        downloadBytes(supabase, input.sourceBucket, pair.afterPath),
-      ]);
+  const pairId = String(pairRow.id);
+  const beforeName = sanitizeFilename(basename(pair.beforePath));
+  const afterName = sanitizeFilename(basename(pair.afterPath));
+  const beforeDest = `item-${itemId}/pair-${pairId}/before-${beforeName}`;
+  const afterDest = `item-${itemId}/pair-${pairId}/after-${afterName}`;
 
-      await uploadBytes(
-        supabase,
-        beforeDest,
-        beforeBytes,
-        contentTypeFromPath(pair.beforePath)
-      );
-      await uploadBytes(
-        supabase,
-        afterDest,
-        afterBytes,
-        contentTypeFromPath(pair.afterPath)
-      );
-      // Admin edit + list UIs request `.thumb.webp` siblings first.
-      await Promise.all([
-        uploadThumbSibling(supabase, beforeDest, beforeBytes),
-        uploadThumbSibling(supabase, afterDest, afterBytes),
-      ]);
+  const [beforeBytes, afterBytes] = await Promise.all([
+    downloadBytes(supabase, sourceBucket, pair.beforePath),
+    downloadBytes(supabase, sourceBucket, pair.afterPath),
+  ]);
 
-      const { error: updateError } = await supabase
-        .from("gallery_pairs")
-        .update({
-          before_path: beforeDest,
-          after_path: afterDest,
-        })
-        .eq("id", pairId);
-      if (updateError) {
-        throw new Error(
-          `gallery publish: pair ${index + 1} paths failed: ${updateError.message}`
-        );
-      }
-    }
+  await uploadBytes(
+    supabase,
+    beforeDest,
+    beforeBytes,
+    contentTypeFromPath(pair.beforePath)
+  );
+  await uploadBytes(
+    supabase,
+    afterDest,
+    afterBytes,
+    contentTypeFromPath(pair.afterPath)
+  );
+  // Required thumbs — sequential so one Edge hop stays within CPU budget.
+  await uploadThumbSibling(supabase, beforeDest, beforeBytes);
+  await uploadThumbSibling(supabase, afterDest, afterBytes);
 
-    if (input.catalogFrontBytes && input.catalogFrontBytes.byteLength > 0) {
-      const thumbPath = `item-${itemId}/card-icon.thumb.webp`;
-      const contentType =
-        (input.catalogFrontContentType ?? "").trim() || "image/jpeg";
-      try {
-        await uploadBytes(
-          supabase,
-          thumbPath,
-          input.catalogFrontBytes,
-          contentType
-        );
-        await supabase
-          .from("gallery_items")
-          .update({
-            thumbnail_path: thumbPath,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", itemId);
-      } catch (err) {
-        // Thumbnail is best-effort once pairs are saved.
-        console.error("gallery publish thumb failed", itemId, err);
-      }
-    } else {
-      await supabase
-        .from("gallery_items")
-        .update({ updated_at: new Date().toISOString() })
-        .eq("id", itemId);
-    }
+  const { error: updateError } = await supabase
+    .from("gallery_pairs")
+    .update({
+      before_path: beforeDest,
+      after_path: afterDest,
+    })
+    .eq("id", pairId);
+  if (updateError) {
+    throw new Error(
+      `gallery publish: pair ${sortOrder + 1} paths failed: ${updateError.message}`
+    );
+  }
+}
 
-    return {
-      id: itemId,
-      adminUrl: `${SITE_URL}/admin/gallery/?item=${encodeURIComponent(itemId)}`,
-      publicUrl: `${SITE_URL}/gallery/?item=${encodeURIComponent(itemId)}`,
-      pairCount: pairs.length,
-    };
-  } catch (err) {
-    await cleanupGalleryItem(supabase, itemId);
-    throw err;
+/** Attach catalog card art as the item thumbnail (required when bytes provided). */
+export async function setGalleryItemCatalogThumbnail(
+  supabase: SupabaseClient,
+  itemId: string,
+  catalogFrontBytes: Uint8Array,
+  catalogFrontContentType?: string
+): Promise<void> {
+  if (!catalogFrontBytes || catalogFrontBytes.byteLength === 0) {
+    throw new Error("gallery publish: catalog thumb bytes required");
+  }
+  const thumbPath = `item-${itemId}/card-icon.thumb.webp`;
+  const contentType = (catalogFrontContentType ?? "").trim() || "image/jpeg";
+  await uploadBytes(supabase, thumbPath, catalogFrontBytes, contentType);
+  const { error } = await supabase
+    .from("gallery_items")
+    .update({
+      thumbnail_path: thumbPath,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", itemId);
+  if (error) {
+    throw new Error(`gallery publish: catalog thumb update failed: ${error.message}`);
+  }
+}
+
+export async function touchGalleryItemUpdatedAt(
+  supabase: SupabaseClient,
+  itemId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("gallery_items")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", itemId);
+  if (error) {
+    throw new Error(`gallery publish: touch failed: ${error.message}`);
   }
 }
