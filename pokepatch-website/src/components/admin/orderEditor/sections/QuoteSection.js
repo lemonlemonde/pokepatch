@@ -4,8 +4,6 @@ import QuoteReceipt from "@/components/QuoteReceipt";
 import {
   adminLedgerTotal,
   billableQuoteCards,
-  bulkDiscountPercentForCardCount,
-  BULK_TIER_RANGES_LABEL,
   cardsWithQuoteHv,
   emptyAdminLedgerEntry,
   emptyQuoteAdjustment,
@@ -108,7 +106,6 @@ export default function QuoteSection() {
   const afterCompletionRows = draft.after_completion_amounts ?? [];
   const restorationCosts = draft.restoration_costs ?? [];
   const preview = buildQuotePreview(draft);
-  const bulkPercent = bulkDiscountPercentForCardCount(preview.cardCount);
   const showPriority =
     priorityBillableCards(draft.cards).length > 0 ||
     Boolean(draft.is_priority);
@@ -311,13 +308,6 @@ export default function QuoteSection() {
 
       <Panel title="Quote">
         <div className="space-y-4">
-          {bulkPercent > 0 ? (
-            <p className="rounded-lg border border-mint/25 bg-mint/10 px-3 py-2 text-xs leading-relaxed text-ink/70">
-              {preview.cardCount} cards qualify for a {bulkPercent}% bulk
-              discount ({BULK_TIER_RANGES_LABEL}).
-            </p>
-          ) : null}
-
           {hasReceipt ? (
             <QuoteReceipt
               items={preview.items}
