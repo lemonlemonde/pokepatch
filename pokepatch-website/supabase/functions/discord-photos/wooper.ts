@@ -5,10 +5,15 @@
  * (order / card / side). Each upload replaces that side's existing photos.
  * Side is optional: blank → `before` when the card has no before photos,
  * otherwise `after`; if both sides are filled the upload is rejected.
+ *
+ * DB triggers flip card/order status on first before → in_progress and first
+ * after → completed (order → ready when all active cards are done). Wooper then
+ * emails the customer via the shared changelog notify path when status changes.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getServiceClient } from "../_shared/adminSession.ts";
+import { sendCustomerEmail } from "../_shared/customerMessages.ts";
 import {
   CallbackType,
   EPHEMERAL,
@@ -28,6 +33,7 @@ import {
   isAllowedOrderDisplayId,
   isOwnerOrderDisplayId,
 } from "../_shared/ownerOrder.ts";
+import type { ChangelogPayload } from "../_shared/resend.ts";
 
 const PENDING_PREFIX = "wooper-pending/";
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -45,6 +51,23 @@ const SIDE_IMAGE_TYPES: Record<string, string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
+/** Customer-facing labels — keep in sync with src/lib/orderStatus.js. */
+const CARD_STATUS_LABEL: Record<string, string> = {
+  todo: "In queue",
+  in_progress: "In progress",
+  completed: "Completed",
+  canceled: "Canceled",
+};
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  new: "In queue",
+  in_progress: "In progress",
+  ready: "Ready for pickup",
+  completed: "Completed",
+  canceled: "Canceled",
+};
+
 type DiscordAttachment = {
   id: string;
   filename: string;
@@ -52,6 +75,111 @@ type DiscordAttachment = {
   content_type?: string | null;
   size?: number | null;
 };
+
+function normalizeCardStatus(value: unknown): string {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (status === "cancelled") return "canceled";
+  if (
+    status === "todo" ||
+    status === "in_progress" ||
+    status === "completed" ||
+    status === "canceled"
+  ) {
+    return status;
+  }
+  return "todo";
+}
+
+function cardStatusLabel(status: string): string {
+  return CARD_STATUS_LABEL[normalizeCardStatus(status)] ?? status;
+}
+
+function orderStatusLabel(status: string): string {
+  const key = String(status ?? "").trim().toLowerCase();
+  return ORDER_STATUS_LABEL[key] ?? status;
+}
+
+/**
+ * Email the customer when a wooper upload flips card (and maybe order) status.
+ * Uses the same customer_messages + changelog path as admin Move & notify.
+ */
+async function notifyStatusChange(params: {
+  supabase: SupabaseClient;
+  orderId: string;
+  orderDisplayId: number;
+  customerEmail: string | null;
+  userId: string | null;
+  cardId: string;
+  cardLabel: string;
+  fromCardStatus: string;
+  toCardStatus: string;
+  fromOrderStatus: string;
+  toOrderStatus: string;
+}): Promise<string | null> {
+  const {
+    supabase,
+    orderId,
+    orderDisplayId,
+    customerEmail,
+    userId,
+    cardId,
+    cardLabel,
+    fromCardStatus,
+    toCardStatus,
+    fromOrderStatus,
+    toOrderStatus,
+  } = params;
+
+  if (fromCardStatus === toCardStatus && fromOrderStatus === toOrderStatus) {
+    return null;
+  }
+
+  const email = String(customerEmail ?? "").trim().toLowerCase();
+  if (!email) return "no customer email on order";
+
+  const cardGroups: NonNullable<ChangelogPayload["cardGroups"]> = [];
+  if (fromCardStatus !== toCardStatus) {
+    cardGroups.push({
+      cardId,
+      label: cardLabel,
+      status: "modified",
+      changes: [
+        `Status: ${cardStatusLabel(fromCardStatus)} → ${cardStatusLabel(toCardStatus)}`,
+      ],
+    });
+  }
+
+  const orderChanges: string[] = [];
+  if (fromOrderStatus !== toOrderStatus) {
+    orderChanges.push(
+      `Status: ${orderStatusLabel(fromOrderStatus)} → ${orderStatusLabel(toOrderStatus)}`
+    );
+  }
+
+  const changelog: ChangelogPayload = { cardGroups, orderChanges };
+
+  let subject = "Your order has been updated";
+  if (toCardStatus === "in_progress" && fromCardStatus !== "in_progress") {
+    subject = "Your card is now in progress";
+  } else if (toOrderStatus === "ready" && fromOrderStatus !== "ready") {
+    subject = "Your order is now ready for pickup";
+  } else if (toCardStatus === "completed" && fromCardStatus !== "completed") {
+    subject = "A card on your order has been completed";
+  }
+
+  const result = await sendCustomerEmail({
+    supabase,
+    orderId,
+    orderDisplayId,
+    to: email,
+    userId,
+    subject,
+    body: "",
+    changelog,
+  });
+  if (!result.ok) return result.error;
+  return null;
+}
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
@@ -285,7 +413,7 @@ async function uploadAttachments(params: {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, display_id")
+      .select("id, display_id, status, customer_email, user_id")
       .eq("display_id", orderDisplayId)
       .maybeSingle();
     if (orderError) throw orderError;
@@ -300,9 +428,11 @@ async function uploadAttachments(params: {
       return;
     }
 
+    const fromOrderStatus = String(order.status ?? "").trim().toLowerCase();
+
     let { data: cards, error: cardsError } = await supabase
       .from("cards")
-      .select("id, card_name, sort_order")
+      .select("id, card_name, sort_order, status")
       .eq("order_id", order.id)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true });
@@ -342,7 +472,7 @@ async function uploadAttachments(params: {
 
       const reloaded = await supabase
         .from("cards")
-        .select("id, card_name, sort_order")
+        .select("id, card_name, sort_order, status")
         .eq("order_id", order.id)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true });
@@ -362,6 +492,7 @@ async function uploadAttachments(params: {
 
     const cardLabel = (card.card_name || `Card ${cardIndex}`).trim();
     const cardId = String(card.id);
+    const fromCardStatus = normalizeCardStatus(card.status);
 
     let side = requestedSide;
     let sideWasDefaulted = false;
@@ -466,9 +597,62 @@ async function uploadAttachments(params: {
         ? `Uploaded **${uploaded}** ${side} photo(s) → ${orderLabel} · ${cardLabel} (card ${cardIndex}).`
         : `No photos uploaded for ${orderLabel} · ${cardLabel}.`,
     ];
-    if (uploaded > 0 && side === "after" && !ownerPortfolio) {
-      lines.push("Card marked **completed** (after photos uploaded).");
+
+    // DB triggers flip card/order status on before → in_progress and after →
+    // completed (order → ready when every active card is done). Notify once
+    // when the status actually changed — same changelog email as admin notify.
+    if (uploaded > 0) {
+      const [{ data: cardAfter }, { data: orderAfter }] = await Promise.all([
+        supabase.from("cards").select("status").eq("id", cardId).maybeSingle(),
+        supabase
+          .from("orders")
+          .select("status")
+          .eq("id", String(order.id))
+          .maybeSingle(),
+      ]);
+      const toCardStatus = normalizeCardStatus(cardAfter?.status);
+      const toOrderStatus = String(orderAfter?.status ?? fromOrderStatus)
+        .trim()
+        .toLowerCase();
+
+      const statusChanged =
+        fromCardStatus !== toCardStatus || fromOrderStatus !== toOrderStatus;
+      if (fromCardStatus !== toCardStatus) {
+        lines.push(
+          `Card **${cardStatusLabel(fromCardStatus)}** → **${cardStatusLabel(toCardStatus)}**.`
+        );
+      }
+      if (fromOrderStatus !== toOrderStatus) {
+        lines.push(
+          `Order **${orderStatusLabel(fromOrderStatus)}** → **${orderStatusLabel(toOrderStatus)}**.`
+        );
+      }
+
+      if (statusChanged && !ownerPortfolio) {
+        const notifyError = await notifyStatusChange({
+          supabase,
+          orderId: String(order.id),
+          orderDisplayId: Number(order.display_id),
+          customerEmail:
+            typeof order.customer_email === "string"
+              ? order.customer_email
+              : null,
+          userId: typeof order.user_id === "string" ? order.user_id : null,
+          cardId,
+          cardLabel,
+          fromCardStatus,
+          toCardStatus,
+          fromOrderStatus,
+          toOrderStatus,
+        });
+        lines.push(
+          notifyError
+            ? `Customer notify failed: ${notifyError}`
+            : "Customer notified."
+        );
+      }
     }
+
     if (sideWasDefaulted) {
       lines.push(`Side left blank → defaulted to **${side}**.`);
     }
