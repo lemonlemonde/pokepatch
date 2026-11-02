@@ -37,6 +37,12 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
 /** Discord allows at most 10 attachments per message — hard fail above this. */
 const FILES_PER_MESSAGE = 10;
 
+/** Orphans older than this are safe to delete (avoids racing a concurrent /clamperl). */
+const SCRATCH_MAX_AGE_MS = 60 * 60 * 1000;
+
+/** Storage `.remove()` batch size. */
+const REMOVE_BATCH = 100;
+
 type CardImageRow = {
   id: number;
   storage_path: string;
@@ -375,7 +381,7 @@ async function generateForCard(params: {
     }
   } finally {
     // Drop staged objects after Discord post (or on failure) so Storage does not grow.
-    const cleanupError = await removeStaged(
+    const cleanupError = await removePaths(
       supabase,
       staged.map((item) => item.path)
     );
@@ -391,21 +397,21 @@ async function generateForCard(params: {
 }
 
 /** @returns error message on failure, otherwise null */
-async function removeStaged(
+async function removePaths(
   supabase: SupabaseClient,
   paths: string[]
 ): Promise<string | null> {
   if (paths.length === 0) return null;
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
-  if (error) {
-    console.error("clamperl staged cleanup failed", error.message, paths);
-    return error.message;
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const batch = paths.slice(i, i + REMOVE_BATCH);
+    const { error } = await supabase.storage.from(BUCKET).remove(batch);
+    if (error) {
+      console.error("clamperl storage remove failed", error.message, batch.length);
+      return error.message;
+    }
   }
   return null;
 }
-
-/** Orphans older than this are safe to delete (avoids racing a concurrent /clamperl). */
-const SCRATCH_MAX_AGE_MS = 60 * 60 * 1000;
 
 /**
  * Delete stale objects under `clamperl/` (scratch prefix). Catches orphans left
@@ -444,9 +450,9 @@ async function sweepClamperlScratch(supabase: SupabaseClient): Promise<void> {
   await walk("clamperl");
   if (paths.length === 0) return;
   console.log("clamperl scratch sweep", JSON.stringify({ count: paths.length }));
-  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  const error = await removePaths(supabase, paths);
   if (error) {
-    console.error("clamperl scratch sweep failed", error.message, paths.length);
+    console.error("clamperl scratch sweep failed", error, paths.length);
   }
 }
 
