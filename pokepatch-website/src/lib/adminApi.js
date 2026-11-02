@@ -321,7 +321,6 @@ export async function adminSaveOrder(
 export async function adminSetStatus(
   orderId,
   status,
-  _queueIndex = null,
   { pendingKind = undefined } = {}
 ) {
   const body = { action: "set_status", order_id: orderId, status };

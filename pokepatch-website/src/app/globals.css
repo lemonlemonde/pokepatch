@@ -183,10 +183,6 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pixel-square {
-    animation-duration: 18s;
-  }
-
   .scroll-reveal {
     animation: none !important;
     opacity: 1 !important;

@@ -1,9 +1,9 @@
 # Supabase Edge Function: `notify`
 
-Handles notifications for both:
+Handles notifications for:
 
-1. **Legacy** `quote_requests` INSERT → Discord
-2. **Orders** `orders` INSERT → Discord + customer confirmation email
+1. **Orders** `orders` INSERT → Discord + customer confirmation email (active path)
+2. **Legacy** `quote_requests` INSERT → Discord (historical table/webhook retained; app no longer writes here)
 
 For new orders it:
 
@@ -31,9 +31,9 @@ Admin `update_order` calls do **not** notify (no webhook on UPDATE).
 ## 1. Database prerequisites
 
 The orders schema (`orders`, `contacts`, `cards`, `card_images`, related RPCs)
-is already on live. Do **not** drop `quote_requests` (legacy path still used).
+is already on live. Do **not** drop `quote_requests` without an explicit migration plan — historical rows and the INSERT webhook remain.
 
-Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → test locally → merge to `main`). CI runs `db push` + function deploy. Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed).
+Future schema changes use CLI-managed migrations from `pokepatch-website/` (`migration new` → test locally → merge to `main`). CI runs `db push` + function deploy. Do not hand-name files or apply remote DDL without `migration fetch --linked` — see the root [README → Schema changes (CLI-managed)](../../../../README.md#schema-changes-cli-managed). Storage buckets/policies live in migrations (e.g. `create_storage_buckets`).
 
 ```bash
 supabase migration new <short_name>
@@ -41,10 +41,6 @@ supabase migration new <short_name>
 # merge to main → CI db push + functions deploy
 supabase migration list
 ```
-
-Optional storage policies (if bucket/policies are missing):
-
-- [`supabase/storage_policies.sql`](../../storage_policies.sql)
 
 ---
 
@@ -61,7 +57,7 @@ supabase secrets set DISCORD_QUOTES_BOT_TOKEN="bot-token"
 supabase secrets set DISCORD_QUOTES_PUBLIC_KEY="hex-public-key"
 supabase secrets set DISCORD_QUOTES_CHANNEL_ID="channel-id"
 
-# Existing secret (legacy quote_requests + fallback when no bot token)
+# Fallback when no bot token (also covers any leftover quote_requests webhook traffic)
 # DISCORD_WEBHOOK_URL
 
 # Confirmation email (shared with admin-api)
@@ -89,19 +85,19 @@ supabase functions deploy notify --no-verify-jwt
 
 Supabase dashboard → **Database → Webhooks**:
 
-### Legacy (keep existing)
-
-- Table: `quote_requests`
-- Events: **Insert**
-- Type: **Supabase Edge Functions** → `notify`
-
-### New (create)
+### Orders (required)
 
 - Table: `orders`
 - Events: **Insert**
 - Type: **Supabase Edge Functions** → `notify`
   (or HTTP Request POST to the function URL with header
   `Authorization: Bearer <anon key>`)
+
+### Legacy (retain if still present)
+
+- Table: `quote_requests`
+- Events: **Insert**
+- Type: **Supabase Edge Functions** → `notify`
 
 Do **not** add an UPDATE webhook on `orders` — admin edits must stay silent.
 
@@ -119,8 +115,6 @@ Submit a quote on `/quote/`, then confirm:
 - Press **Save & notify** on the wrap-up → modal preview → submit → customer email sent, `customer_messages` row created, wrap-up shows "Emailed …"
 
 Admin `update_order` (service role) should change working tables only and **not** post to Discord.
-
-Legacy: INSERT into `quote_requests` should still hit Discord.
 
 ---
 

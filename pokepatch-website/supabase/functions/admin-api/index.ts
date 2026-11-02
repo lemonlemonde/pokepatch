@@ -2324,18 +2324,6 @@ Deno.serve(async (req) => {
       if (!ORDER_STATUS_IDS.has(status)) {
         return jsonResponse(req, { ok: false, error: "invalid status" }, 400);
       }
-      const hasIndex = body.queue_index !== undefined && body.queue_index !== null;
-      const queueIndex = hasIndex ? Number(body.queue_index) : null;
-      if (hasIndex && !Number.isFinite(queueIndex)) {
-        return jsonResponse(req, { ok: false, error: "queue_index must be a number" }, 400);
-      }
-      if (hasIndex) {
-        return jsonResponse(
-          req,
-          { ok: false, error: "manual queue reorder is no longer supported" },
-          400
-        );
-      }
 
       const pendingKindRaw =
         body.pending_kind === undefined || body.pending_kind === null
@@ -2607,14 +2595,6 @@ Deno.serve(async (req) => {
         full: order,
         split: splitResult,
       });
-    }
-
-    if (action === "column_reorder") {
-      return jsonResponse(
-        req,
-        { ok: false, error: "manual queue reorder is no longer supported" },
-        400
-      );
     }
 
     if (action === "gallery_list") {

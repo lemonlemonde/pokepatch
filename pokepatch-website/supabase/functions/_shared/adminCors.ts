@@ -45,9 +45,3 @@ export function handleOptions(req: Request): Response | null {
 export function getAdminToken(req: Request): string | null {
   return req.headers.get("X-Admin-Token")?.trim() || null;
 }
-
-export function getSupabaseAnonKey(req: Request): string | null {
-  return req.headers.get("apikey")?.trim() ||
-    req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "").trim() ||
-    null;
-}
