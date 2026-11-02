@@ -169,6 +169,33 @@ type StagedPng = {
   byteLength: number;
 };
 
+type PairPhase =
+  | "download"
+  | "measure"
+  | "decode_after"
+  | "decode_before"
+  | "compose"
+  | "encode"
+  | "upload"
+  | "staged";
+
+/** Structured Edge logs — visible in Supabase → Edge Functions → discord-clamperl → Logs. */
+function clamperlLog(
+  jobId: string,
+  event: string,
+  data: Record<string, unknown> = {}
+): void {
+  console.log(
+    "clamperl",
+    JSON.stringify({
+      jobId,
+      event,
+      t: new Date().toISOString(),
+      ...data,
+    })
+  );
+}
+
 /**
  * Stitch pairs one at a time. Holding multiple finished PNGs in Edge memory
  * OOMs/hangs ImageScript on later pairs, so each PNG is staged to Storage
@@ -185,7 +212,8 @@ async function generateForCard(params: {
   onPairProgress: (state: {
     pair: number;
     total: number;
-    phase: "stitching" | "staged";
+    phase: PairPhase;
+    detail?: string;
   }) => Promise<void>;
   onStatus: (content: string) => Promise<void>;
 }): Promise<CardGenerateResult> {
@@ -264,33 +292,88 @@ async function generateForCard(params: {
   const jobId = crypto.randomUUID();
   const staged: StagedPng[] = [];
   const skippedLarge: string[] = [];
+  const trail: string[] = [];
   let result: CardGenerateResult | undefined;
+
+  const mark = async (
+    pairNum: number,
+    phase: PairPhase,
+    detail?: string,
+    data: Record<string, unknown> = {}
+  ) => {
+    const line = detail
+      ? `pair ${pairNum}/${workCount} ${phase}: ${detail}`
+      : `pair ${pairNum}/${workCount} ${phase}`;
+    trail.push(line);
+    if (trail.length > 40) trail.shift();
+    clamperlLog(jobId, phase, {
+      cardIndex,
+      orderDisplayId,
+      pair: pairNum,
+      total: workCount,
+      detail: detail ?? null,
+      ...data,
+    });
+    await onPairProgress({ pair: pairNum, total: workCount, phase, detail });
+  };
+
+  clamperlLog(jobId, "job_start", {
+    cardIndex,
+    orderDisplayId,
+    workCount,
+    beforeCount,
+    afterCount,
+    sizeLimit,
+  });
 
   try {
     for (let offset = 0; offset < workCount; offset += 1) {
       const i = SKIP_OVERVIEW_PAIRS + offset;
       const pairNum = offset + 1;
-      await onPairProgress({
+      const pairStarted = Date.now();
+      const beforePath = beforeRows[i].storage_path;
+      const afterPath = afterRows[i].storage_path;
+
+      await mark(pairNum, "download", undefined, { beforePath, afterPath });
+      const [beforeBytes, afterBytes] = await Promise.all([
+        downloadStorageBytes(supabase, beforePath),
+        downloadStorageBytes(supabase, afterPath),
+      ]);
+      clamperlLog(jobId, "download_done", {
         pair: pairNum,
-        total: workCount,
-        phase: "stitching",
+        beforeBytes: beforeBytes.byteLength,
+        afterBytes: afterBytes.byteLength,
+        ms: Date.now() - pairStarted,
       });
 
-      const [beforeBytes, afterBytes] = await Promise.all([
-        downloadStorageBytes(supabase, beforeRows[i].storage_path),
-        downloadStorageBytes(supabase, afterRows[i].storage_path),
-      ]);
-
-      const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
+      const png = await stitchCarouselPairPng(
+        beforeBytes,
+        afterBytes,
+        overlay,
+        async (phase, extra) => {
+          const detail =
+            extra && typeof extra.detail === "string"
+              ? extra.detail
+              : undefined;
+          await mark(pairNum, phase, detail, extra ?? {});
+        }
+      );
       const filename = `pokepatch-pair-${pairNum}.png`;
 
       if (png.byteLength > sizeLimit) {
         skippedLarge.push(
           `${filename} (${Math.ceil(png.byteLength / (1024 * 1024))}MB > limit)`
         );
+        clamperlLog(jobId, "pair_skipped_large", {
+          pair: pairNum,
+          bytes: png.byteLength,
+          sizeLimit,
+          ms: Date.now() - pairStarted,
+        });
         continue;
       }
 
+      await mark(pairNum, "upload", `${(png.byteLength / (1024 * 1024)).toFixed(2)}MB`);
       const path =
         `clamperl/${orderDisplayId}/card${cardIndex}/${jobId}/${filename}`;
       const { error: uploadError } = await supabase.storage
@@ -305,20 +388,13 @@ async function generateForCard(params: {
         );
       }
       staged.push({ path, filename, byteLength: png.byteLength });
-      console.log(
-        "clamperl staged",
-        JSON.stringify({
-          cardIndex,
-          pair: pairNum,
-          bytes: png.byteLength,
-          path,
-        })
-      );
-      await onPairProgress({
+      clamperlLog(jobId, "pair_done", {
         pair: pairNum,
-        total: workCount,
-        phase: "staged",
+        bytes: png.byteLength,
+        path,
+        ms: Date.now() - pairStarted,
       });
+      await mark(pairNum, "staged", `${(png.byteLength / (1024 * 1024)).toFixed(2)}MB`);
     }
 
     if (staged.length === 0) {
@@ -379,6 +455,15 @@ async function generateForCard(params: {
         notes,
       };
     }
+  } catch (err) {
+    const wrapped = err instanceof Error ? err : new Error(String(err));
+    (wrapped as Error & { trail?: string[] }).trail = [...trail];
+    clamperlLog(jobId, "job_error", {
+      cardIndex,
+      message: wrapped.message,
+      last: trail[trail.length - 1] ?? null,
+    });
+    throw wrapped;
   } finally {
     // Drop staged objects after Discord post (or on failure) so Storage does not grow.
     const cleanupError = await removePaths(
@@ -391,7 +476,18 @@ async function generateForCard(params: {
   }
 
   if (!result) {
-    throw new Error("clamperl generateForCard ended without a result");
+    const err = new Error("clamperl generateForCard ended without a result");
+    (err as Error & { trail?: string[] }).trail = trail;
+    throw err;
+  }
+  if (result.ok && trail.length > 0) {
+    // Keep a short breadcrumb in Discord so hangs are visible without the dashboard.
+    result.notes.push(
+      `debug trail (job \`${jobId.slice(0, 8)}\`):\n${trail
+        .slice(-12)
+        .map((line) => `• ${line}`)
+        .join("\n")}`
+    );
   }
   return result;
 }
@@ -525,11 +621,10 @@ export async function runClamperlJob(params: {
       onStatus: async (content) => {
         await editOriginal(applicationId, token, content);
       },
-      onPairProgress: async ({ pair, total, phase }) => {
-        const step =
-          phase === "stitching"
-            ? `stitching pair **${pair}/${total}**`
-            : `staged pair **${pair}/${total}**`;
+      onPairProgress: async ({ pair, total, phase, detail }) => {
+        const step = detail
+          ? `pair **${pair}/${total}** · \`${phase}\` · ${detail}`
+          : `pair **${pair}/${total}** · \`${phase}\``;
         await editOriginal(
           applicationId,
           token,
@@ -569,8 +664,23 @@ export async function runClamperlJob(params: {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const trail = (err as Error & { trail?: string[] }).trail;
     console.error("clamperl job failed", err);
-    await editOriginal(applicationId, token, `Generate failed: ${message}`);
+    await editOriginal(
+      applicationId,
+      token,
+      [
+        `Generate failed: ${message}`,
+        trail && trail.length > 0
+          ? `Last steps:\n${trail
+              .slice(-12)
+              .map((line) => `• ${line}`)
+              .join("\n")}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    );
   }
 }
 
