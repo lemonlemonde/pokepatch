@@ -137,7 +137,10 @@ export default function CardDetailSection({
   onRemoveCard,
   expanded,
   onExpandedChange,
-  /** Hide quote lines, HV fee, priority star, and money subtotals. */
+  /**
+   * Order-editor commerce + job chrome. When false (My cards), only name/set
+   * and before/after photos remain.
+   */
   showCommerce = true,
 }) {
   const [expandedQuoteLineId, setExpandedQuoteLineId] = useState(null);
@@ -515,31 +518,35 @@ export default function CardDetailSection({
                 <span className="text-sm text-ink/45"> · {cardSet}</span>
               ) : null}
             </span>
-            {customerDamageTags.length > 0 ? (
-              <span className="mt-1 flex flex-wrap gap-1">
-                <DamageTagChips
-                  tags={customerDamageTags}
-                  className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
-                />
-              </span>
-            ) : (
-              <span className="mt-1 block text-[11px] font-medium text-ink/40">
-                No damage tags
-              </span>
-            )}
+            {showCommerce ? (
+              customerDamageTags.length > 0 ? (
+                <span className="mt-1 flex flex-wrap gap-1">
+                  <DamageTagChips
+                    tags={customerDamageTags}
+                    className="rounded border border-ink/12 bg-ink/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-ink/70"
+                  />
+                </span>
+              ) : (
+                <span className="mt-1 block text-[11px] font-medium text-ink/40">
+                  No damage tags
+                </span>
+              )
+            ) : null}
           </span>
           {showCommerce && subtotal > 0 ? (
             <span className="hidden shrink-0 text-sm font-semibold tabular-nums text-ink/85 sm:block">
               {formatMoney(subtotal)}
             </span>
           ) : null}
-          <span
-            className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
-              cardStatus
-            )}`}
-          >
-            {statusLabel}
-          </span>
+          {showCommerce ? (
+            <span
+              className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cardStatusBadgeClass(
+                cardStatus
+              )}`}
+            >
+              {statusLabel}
+            </span>
+          ) : null}
           <ExpandChevron open={expanded} className="h-4 w-4 text-ink/35" />
         </button>
         {showCommerce ? (
@@ -587,77 +594,85 @@ export default function CardDetailSection({
           </label>
         </FieldGrid>
 
-          <div>
-            <EditorLabel>Damage</EditorLabel>
-            <div
-              className="mt-1.5 flex flex-wrap gap-1.5"
-              role="group"
-              aria-label="Damage types"
-            >
-              {DAMAGE_TAGS.map((tag) => {
-                const selected = selectedDamageIds.has(tag.id);
-                return (
-                  <button
-                    key={tag.id}
-                    type="button"
-                    disabled={saving}
-                    aria-pressed={selected}
-                    onClick={() => toggleDamageTag(tag.id)}
-                    className={
-                      selected
-                        ? "rounded-md border border-ink/45 bg-ink/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-ink/25 transition"
-                        : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/35 hover:bg-ink/10 hover:text-ink"
-                    }
-                  >
-                    {tag.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {showCommerce ? (
+            <>
+              <div>
+                <EditorLabel>Damage</EditorLabel>
+                <div
+                  className="mt-1.5 flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Damage types"
+                >
+                  {DAMAGE_TAGS.map((tag) => {
+                    const selected = selectedDamageIds.has(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        disabled={saving}
+                        aria-pressed={selected}
+                        onClick={() => toggleDamageTag(tag.id)}
+                        className={
+                          selected
+                            ? "rounded-md border border-ink/45 bg-ink/20 px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-ink/25 transition"
+                            : "rounded-md border border-ink/15 bg-ink/[0.03] px-2.5 py-1 text-xs font-semibold text-ink/70 transition hover:border-ink/35 hover:bg-ink/10 hover:text-ink"
+                        }
+                      >
+                        {tag.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          <label className="block">
-            <EditorLabel>Description</EditorLabel>
-            <textarea
-              className={`${editorFieldClass()} min-h-[64px]`}
-              value={card.description}
-              disabled={saving}
-              onChange={(event) => updateCard({ description: event.target.value })}
-            />
-          </label>
+              <label className="block">
+                <EditorLabel>Description</EditorLabel>
+                <textarea
+                  className={`${editorFieldClass()} min-h-[64px]`}
+                  value={card.description}
+                  disabled={saving}
+                  onChange={(event) =>
+                    updateCard({ description: event.target.value })
+                  }
+                />
+              </label>
 
-          <AdminNoteField
-            label="Note from PokePatch"
-            value={card.admin_note}
-            disabled={saving}
-            onChange={(event) => updateCard({ admin_note: event.target.value })}
-            placeholder="Optional note about this card…"
-          />
+              <AdminNoteField
+                label="Note from PokePatch"
+                value={card.admin_note}
+                disabled={saving}
+                onChange={(event) =>
+                  updateCard({ admin_note: event.target.value })
+                }
+                placeholder="Optional note about this card…"
+              />
 
-          <div>
-            <EditorLabel>Status</EditorLabel>
-            <div className="flex flex-wrap gap-1.5">
-              {CARD_STATUSES.map((status) => {
-                const selected = cardStatus === status.id;
-                return (
-                  <button
-                    key={status.id}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => updateCard({ status: status.id })}
-                    aria-pressed={selected}
-                    className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
-                      selected
-                        ? cardStatusBadgeClass(status.id)
-                        : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
-                    }`}
-                  >
-                    {status.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              <div>
+                <EditorLabel>Status</EditorLabel>
+                <div className="flex flex-wrap gap-1.5">
+                  {CARD_STATUSES.map((status) => {
+                    const selected = cardStatus === status.id;
+                    return (
+                      <button
+                        key={status.id}
+                        type="button"
+                        disabled={saving}
+                        onClick={() => updateCard({ status: status.id })}
+                        aria-pressed={selected}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${
+                          selected
+                            ? cardStatusBadgeClass(status.id)
+                            : "bg-ink/5 text-ink/45 hover:bg-ink/10 hover:text-ink/70"
+                        }`}
+                      >
+                        {status.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
 
           {showCommerce ? (
             <>
