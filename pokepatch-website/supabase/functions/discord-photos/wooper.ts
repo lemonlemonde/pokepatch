@@ -598,9 +598,11 @@ async function uploadAttachments(params: {
         : `No photos uploaded for ${orderLabel} · ${cardLabel}.`,
     ];
 
-    // DB triggers flip card/order status on before → in_progress and after →
-    // completed (order → ready when every active card is done). Notify once
-    // when the status actually changed — same changelog email as admin notify.
+    // DB triggers flip card/order status on before → in_progress (only when
+    // the card has no after photos yet) and after → completed (order → ready
+    // when every active card is done). Replacing photos on a card that already
+    // has afters is an edit only. Notify once when the status actually
+    // changed — same changelog email as admin notify.
     if (uploaded > 0) {
       const [{ data: cardAfter }, { data: orderAfter }] = await Promise.all([
         supabase.from("cards").select("status").eq("id", cardId).maybeSingle(),

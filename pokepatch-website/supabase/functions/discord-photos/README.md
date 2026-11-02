@@ -71,4 +71,4 @@ curl -s -X PUT \
 
 ## Schema
 
-wooper needs `card_images_before_after` (`before` / `after` image types) plus the before→in_progress / after→completed triggers (`cards_in_progress_when_before_photo`, `cards_complete_when_after_photo`).
+wooper needs `card_images_before_after` (`before` / `after` image types) plus the before→in_progress / after→completed triggers (`cards_in_progress_when_before_photo`, `cards_complete_when_after_photo`). Before→in_progress only runs when the card has no after photos yet — replacing before (or after) on a card that already has both sides is a photo edit only (no status flip, no customer notify).
