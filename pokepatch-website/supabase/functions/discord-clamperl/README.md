@@ -19,7 +19,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 2. Bot loads before/after photos (sorted by upload id).
 3. Skips the first **two** overview pairs on each card.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
-5. Stitches pairs one at a time, then posts that card’s PNGs together in one follow-up (status tracks stitch progress).
+5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), then posts that card in one Discord follow-up with image embeds + download links.
 
 Cards without enough before/after pairs are skipped with a note in the reply.
 
@@ -80,7 +80,8 @@ Invite the bot to your server with `applications.commands` scope.
 ## Notes
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
-- Pairs are stitched **one at a time** — parallel ImageScript stitches hang on Edge.
+- Pairs are stitched **one at a time** and staged to Storage between pairs — keeping multiple finished PNGs in Edge memory hangs ImageScript.
+- Discord gets one follow-up per card (embeds + signed download links), not a multi-file multipart upload.
 - Each card’s PNGs are uploaded together (one Discord message, or chunks of 10 if needed). Uneven before/after counts are called out in the status reply.
 - Discord bot attachment limits still apply (~10 MB/file baseline). Oversized PNGs are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.

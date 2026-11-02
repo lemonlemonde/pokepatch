@@ -468,6 +468,28 @@ export async function editOriginalWithFiles(
   }
 }
 
+/** Post a JSON follow-up on an interaction webhook (no file attachments). */
+export async function followup(
+  applicationId: string,
+  token: string,
+  payload: Json
+): Promise<void> {
+  const res = await discordRequest(
+    `/webhooks/${applicationId}/${token}?wait=true`,
+    {
+      method: "POST",
+      auth: false,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    }
+  );
+  if (!res.ok) {
+    const detail = await readError(res);
+    console.error("discord followup failed", detail);
+    throw new Error(`Discord follow-up failed: ${detail}`);
+  }
+}
+
 /** Post a follow-up message on an interaction webhook (with optional files). */
 export async function followupWithFiles(
   applicationId: string,
@@ -475,6 +497,10 @@ export async function followupWithFiles(
   payload: Json,
   files: DiscordUploadFile[] = []
 ): Promise<void> {
+  if (files.length === 0) {
+    await followup(applicationId, token, payload);
+    return;
+  }
   const totalBytes = files.reduce(
     (sum, file) => sum + file.bytes.byteLength,
     0
