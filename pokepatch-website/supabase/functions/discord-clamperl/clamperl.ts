@@ -31,8 +31,8 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
-/** Discord allows at most 10 embeds (images) per message — hard fail above this. */
-const FILES_PER_MESSAGE = 10;
+/** Discord allows at most 10 embeds per message — hard fail above this. */
+const MAX_EMBED_IMAGES = 10;
 /** Keep staged PNGs browsable from Discord history. */
 const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 
@@ -326,12 +326,12 @@ async function generateForCard(params: {
     };
   }
 
-  if (staged.length > FILES_PER_MESSAGE) {
+  if (staged.length > MAX_EMBED_IMAGES) {
     return {
       ok: false,
       cardIndex,
       cardLabel,
-      reason: `Discord allows at most **${FILES_PER_MESSAGE}** images per message; this card has **${staged.length}**`,
+      reason: `Discord allows at most **${MAX_EMBED_IMAGES}** images per message; this card has **${staged.length}**`,
     };
   }
 
@@ -343,8 +343,8 @@ async function generateForCard(params: {
     `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
   );
 
+  // Embed title `url` is the download target — keep content short (Discord 2000 cap).
   const embeds: Json[] = [];
-  const linkLines: string[] = [];
   for (let i = 0; i < staged.length; i += 1) {
     const item = staged[i];
     const { data: signed, error: signError } = await supabase.storage
@@ -356,17 +356,14 @@ async function generateForCard(params: {
       );
     }
     embeds.push({
-      title: `Pair ${i + 1}`,
+      title: `Pair ${i + 1} · ${item.filename}`,
+      url: signed.signedUrl,
       image: { url: signed.signedUrl },
     });
-    linkLines.push(`[${item.filename}](${signed.signedUrl})`);
   }
 
   await followup(applicationId, token, {
-    content: [
-      `Card ${cardIndex} · ${cardLabel} · **${staged.length}** PNG(s)`,
-      ...linkLines,
-    ].join("\n"),
+    content: `Card ${cardIndex} · ${cardLabel} · **${staged.length}** PNG(s)\n_Click a pair title (or open the image) to download._`,
     embeds,
   });
 
@@ -458,7 +455,7 @@ export async function runClamperlJob(params: {
     const notes: string[] = [];
     let postedFiles = 0;
 
-    // One card at a time; stitch pairs sequentially, then upload that card's PNGs together.
+    // One card at a time; stitch/stage pairs sequentially, then one Discord post.
     for (let t = 0; t < targets.length; t += 1) {
       const target = targets[t];
       const result = await generateForCard({
@@ -553,7 +550,7 @@ export async function runClamperlJob(params: {
           ? `Omitted (too large):\n${skippedLarge.join("\n")}`
           : "",
         notes.length > 0 ? `Notes:\n${notes.map((line) => `• ${line}`).join("\n")}` : "",
-        `_PNGs are in the follow-up message(s)._`,
+        `_PNGs are in the follow-up message(s) — click a pair title to download._`,
       ]
         .filter(Boolean)
         .join("\n")
