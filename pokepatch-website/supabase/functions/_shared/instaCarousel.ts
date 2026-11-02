@@ -170,25 +170,6 @@ function sharedTarget(
   return { tw, th: Math.max(leftH, rightH) };
 }
 
-/**
- * Shrink a decoded photo before cover. Phone JPEGs are often 12MP+; keeping
- * full buffers through cover OOMs Supabase Edge by later pairs.
- *
- * Cap is 3× the slot so cover still has headroom for damage detail. The
- * final carousel slot is ~500px wide on a 1080×1350 PNG either way — extra
- * megapixels never appear in the export.
- */
-function downscaleForSlot(img: Image, maxW: number, maxH: number): void {
-  const capW = Math.max(1, Math.ceil(maxW * 3));
-  const capH = Math.max(1, Math.ceil(maxH * 3));
-  if (img.width <= capW && img.height <= capH) return;
-  const scale = Math.min(capW / img.width, capH / img.height);
-  img.resize(
-    Math.max(1, Math.round(img.width * scale)),
-    Math.max(1, Math.round(img.height * scale))
-  );
-}
-
 /** Cover + round in place — caller must not reuse `source` afterward. */
 function prepareCard(source: Image, tw: number, th: number): Image {
   source.cover(tw, th);
@@ -556,37 +537,38 @@ export async function stitchCarouselPairPng(
     reserve -
     2 * LABEL_BLOCK_HEIGHT;
 
-  // Decode one side at a time and shrink immediately — peak RAM is one
-  // full phone photo, not two.
-  const beforeImg = await Image.decode(beforeBytes);
+  // No pre-shrink: cover each photo straight to the final slot size. Measure
+  // one side, free it, then cover the other — peak RAM is one full phone photo.
+  let beforeImg: Image | null = await Image.decode(beforeBytes);
+  const beforeSize = { w: beforeImg.width, h: beforeImg.height };
   console.log(
-    "clamperl stitch decode before",
+    "clamperl stitch measure before",
     JSON.stringify({
-      size: [beforeImg.width, beforeImg.height],
+      size: [beforeSize.w, beforeSize.h],
       bytes: beforeBytes.byteLength,
     })
   );
-  downscaleForSlot(beforeImg, SLOT_WIDTH, maxImageHeight);
+  beforeImg = null;
 
-  const afterImg = await Image.decode(afterBytes);
+  let afterImg: Image | null = await Image.decode(afterBytes);
+  const afterSize = { w: afterImg.width, h: afterImg.height };
   console.log(
-    "clamperl stitch decode after",
+    "clamperl stitch measure after",
     JSON.stringify({
-      size: [afterImg.width, afterImg.height],
+      size: [afterSize.w, afterSize.h],
       bytes: afterBytes.byteLength,
     })
   );
-  downscaleForSlot(afterImg, SLOT_WIDTH, maxImageHeight);
 
   const leftMetrics = containSize(
-    beforeImg.width,
-    beforeImg.height,
+    beforeSize.w,
+    beforeSize.h,
     SLOT_WIDTH,
     maxImageHeight
   );
   const rightMetrics = containSize(
-    afterImg.width,
-    afterImg.height,
+    afterSize.w,
+    afterSize.h,
     SLOT_WIDTH,
     maxImageHeight
   );
@@ -603,8 +585,12 @@ export async function stitchCarouselPairPng(
     brandLift +
     Math.max(0, Math.floor((bandH - stackH) / 2));
 
-  const leftCard = prepareCard(beforeImg, tw, th);
   const rightCard = prepareCard(afterImg, tw, th);
+  afterImg = null;
+
+  beforeImg = await Image.decode(beforeBytes);
+  const leftCard = prepareCard(beforeImg, tw, th);
+  beforeImg = null;
   const [beforeLabel, afterLabel] = await Promise.all([
     renderTrackedLabel(assets.font, "before", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
     renderTrackedLabel(assets.font, "after", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
