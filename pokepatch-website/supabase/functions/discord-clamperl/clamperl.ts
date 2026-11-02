@@ -84,7 +84,6 @@ type CardRow = {
 type StagedPng = {
   path: string;
   filename: string;
-  byteLength: number;
 };
 
 /** Everything one hop needs; travels as the signed JSON body between workers. */
@@ -114,18 +113,7 @@ type ClamperlJob = {
   staged: StagedPng[];
   skippedLarge: string[];
   notes: string[];
-  trail: string[];
 };
-
-type PairPhase =
-  | "download"
-  | "measure"
-  | "decode_after"
-  | "decode_before"
-  | "compose"
-  | "encode"
-  | "upload"
-  | "staged";
 
 function optionValue(
   options: unknown,
@@ -170,10 +158,6 @@ function attachmentSizeLimit(interaction: Interaction): number {
   return 10 * 1024 * 1024;
 }
 
-function mb(bytes: number): string {
-  return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
   const chunk = 0x8000;
   let binary = "";
@@ -188,23 +172,6 @@ function base64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
   return out;
-}
-
-/** Structured Edge logs — Supabase → Edge Functions → discord-clamperl → Logs. */
-function clamperlLog(
-  jobId: string,
-  event: string,
-  data: Record<string, unknown> = {}
-): void {
-  console.log(
-    "clamperl",
-    JSON.stringify({
-      jobId,
-      event,
-      t: new Date().toISOString(),
-      ...data,
-    })
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -277,7 +244,6 @@ async function removePaths(
     const batch = paths.slice(i, i + REMOVE_BATCH);
     const { error } = await supabase.storage.from(BUCKET).remove(batch);
     if (error) {
-      console.error("clamperl storage remove failed", error.message, batch.length);
       return error.message;
     }
   }
@@ -296,10 +262,7 @@ async function sweepClamperlScratch(supabase: SupabaseClient): Promise<void> {
     const { data, error } = await supabase.storage.from(BUCKET).list(prefix, {
       limit: 1000,
     });
-    if (error) {
-      console.error("clamperl scratch list failed", prefix, error.message);
-      return;
-    }
+    if (error) return;
     for (const entry of data ?? []) {
       const full = prefix ? `${prefix}/${entry.name}` : entry.name;
       // Folders from list() have id null / no metadata in some API versions.
@@ -320,11 +283,7 @@ async function sweepClamperlScratch(supabase: SupabaseClient): Promise<void> {
 
   await walk("clamperl");
   if (paths.length === 0) return;
-  console.log("clamperl scratch sweep", JSON.stringify({ count: paths.length }));
-  const error = await removePaths(supabase, paths);
-  if (error) {
-    console.error("clamperl scratch sweep failed", error, paths.length);
-  }
+  await removePaths(supabase, paths);
 }
 
 // ---------------------------------------------------------------------------
@@ -396,24 +355,12 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
         body,
         signal: AbortSignal.timeout(15_000),
       });
-      if (res.status === 202) {
-        clamperlLog(job.jobId, "hop_dispatched", {
-          hop: job.hops,
-          next: job.next,
-          attempt,
-        });
-        return;
-      }
+      if (res.status === 202) return;
       lastError = `${res.status} ${await res.text().catch(() => "")}`.trim();
       // 503 = busy worker; anything else is unexpected but still worth a retry.
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
-    clamperlLog(job.jobId, "hop_dispatch_retry", {
-      hop: job.hops,
-      attempt,
-      error: lastError,
-    });
     await sleep(HOP_RETRY_DELAY_MS);
   }
   throw new Error(
@@ -457,10 +404,6 @@ export async function handleClamperlHop(
   }
 
   if (isolateHeavyMs > ISOLATE_HEAVY_BUDGET_MS) {
-    clamperlLog(job.jobId, "hop_refused_busy", {
-      hop: job.hops,
-      isolateHeavyMs: Math.round(isolateHeavyMs),
-    });
     return json({ retry: true, isolateHeavyMs }, 503);
   }
 
@@ -470,11 +413,6 @@ export async function handleClamperlHop(
 
 // ---------------------------------------------------------------------------
 // Job steps
-
-function pushTrail(job: ClamperlJob, line: string): void {
-  job.trail.push(line);
-  if (job.trail.length > 40) job.trail.shift();
-}
 
 async function setStatus(job: ClamperlJob, content: string): Promise<void> {
   await editOriginal(job.applicationId, job.token, content);
@@ -499,66 +437,19 @@ async function stitchNextPair(
 ): Promise<void> {
   const index = job.next;
   const pairNum = index + 1;
-  const total = job.pairs.length;
   const { before: beforePath, after: afterPath } = job.pairs[index];
-  const pairStarted = Date.now();
 
-  const mark = async (
-    phase: PairPhase,
-    detail?: string,
-    data: Record<string, unknown> = {}
-  ) => {
-    pushTrail(
-      job,
-      detail
-        ? `pair ${pairNum}/${total} ${phase}: ${detail}`
-        : `pair ${pairNum}/${total} ${phase}`
-    );
-    clamperlLog(job.jobId, phase, {
-      cardIndex: job.cardIndex,
-      orderDisplayId: job.orderDisplayId,
-      pair: pairNum,
-      total,
-      hop: job.hops,
-      detail: detail ?? null,
-      ...data,
-    });
-    const step = detail
-      ? `pair **${pairNum}/${total}** · \`${phase}\` · ${detail}`
-      : `pair **${pairNum}/${total}** · \`${phase}\``;
-    await setStatus(
-      job,
-      `${orderLabel(job.orderDisplayId)}\nCard ${job.cardIndex} · ${step} · worker ${job.hops}`
-    );
-  };
-
-  await mark("download", undefined, { beforePath, afterPath });
   const [, overlay, beforeBytes, afterBytes] = await Promise.all([
     preloadInstaAssets(),
     buildOverlay(job),
     downloadStorageBytes(supabase, beforePath),
     downloadStorageBytes(supabase, afterPath),
   ]);
-  clamperlLog(job.jobId, "download_done", {
-    pair: pairNum,
-    beforeBytes: beforeBytes.byteLength,
-    afterBytes: afterBytes.byteLength,
-    ms: Date.now() - pairStarted,
-  });
 
   const heavyStarted = performance.now();
   let png: Uint8Array;
   try {
-    png = await stitchCarouselPairPng(
-      beforeBytes,
-      afterBytes,
-      overlay,
-      async (phase, extra) => {
-        const detail =
-          extra && typeof extra.detail === "string" ? extra.detail : undefined;
-        await mark(phase, detail, extra ?? {});
-      }
-    );
+    png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
   } finally {
     isolateHeavyMs += performance.now() - heavyStarted;
   }
@@ -568,17 +459,10 @@ async function stitchNextPair(
     job.skippedLarge.push(
       `${filename} (${Math.ceil(png.byteLength / (1024 * 1024))}MB > limit)`
     );
-    clamperlLog(job.jobId, "pair_skipped_large", {
-      pair: pairNum,
-      bytes: png.byteLength,
-      sizeLimit: job.sizeLimit,
-      ms: Date.now() - pairStarted,
-    });
     job.next = index + 1;
     return;
   }
 
-  await mark("upload", mb(png.byteLength));
   const path =
     `clamperl/${job.orderDisplayId}/card${job.cardIndex}/${job.jobId}/${filename}`;
   const { error: uploadError } = await supabase.storage
@@ -587,15 +471,7 @@ async function stitchNextPair(
   if (uploadError) {
     throw new Error(`Failed to stage ${filename} to storage: ${uploadError.message}`);
   }
-  job.staged.push({ path, filename, byteLength: png.byteLength });
-  clamperlLog(job.jobId, "pair_done", {
-    pair: pairNum,
-    bytes: png.byteLength,
-    path,
-    ms: Date.now() - pairStarted,
-    isolateHeavyMs: Math.round(isolateHeavyMs),
-  });
-  await mark("staged", mb(png.byteLength));
+  job.staged.push({ path, filename });
   job.next = index + 1;
 }
 
@@ -610,16 +486,11 @@ async function publishJobPairsToGallery(
 ): Promise<{ adminUrl: string; publicUrl: string; pairCount: number } | null> {
   if (job.pairs.length === 0) return null;
 
-  await setStatus(
-    job,
-    `${orderLabel(job.orderDisplayId)} · card **${job.cardIndex}** · publishing **${job.pairs.length}** source pair(s) to gallery…`
-  );
-
   const catalogFrontBytes = job.catalogFrontBase64
     ? base64ToBytes(job.catalogFrontBase64)
     : null;
 
-  const result = await publishGalleryFromCardPairs(supabase, {
+  return publishGalleryFromCardPairs(supabase, {
     title: job.cardLabel,
     setName: job.setLabel,
     damageTags: job.damageTags ?? [],
@@ -633,12 +504,6 @@ async function publishJobPairsToGallery(
     sourceBucket: BUCKET,
     catalogFrontBytes,
   });
-
-  clamperlLog(job.jobId, "gallery_published", {
-    itemId: result.id,
-    pairCount: result.pairCount,
-  });
-  return result;
 }
 
 /** Last hop: post staged PNGs to Discord, publish gallery, report, delete scratch. */
@@ -672,12 +537,6 @@ async function finalizeJob(
       return;
     }
 
-    const totalBytes = staged.reduce((sum, file) => sum + file.byteLength, 0);
-    await setStatus(
-      job,
-      `${prefix} · posting **${staged.length}** PNG(s) (${mb(totalBytes)})…`
-    );
-
     // Finished PNGs are small (1080×1350); reloading them is network, not CPU.
     const files: DiscordUploadFile[] = [];
     for (const item of staged) {
@@ -706,8 +565,6 @@ async function finalizeJob(
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("clamperl gallery publish failed", err);
-      clamperlLog(job.jobId, "gallery_error", { message });
       galleryLine = `Gallery publish failed: ${message}`;
     }
 
@@ -715,7 +572,7 @@ async function finalizeJob(
       job,
       [
         `Done · ${orderLabel(orderDisplayId)} · card ${cardIndex} · ${cardLabel}`,
-        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${staged.length}** of **${job.pairs.length}** PNG(s) (before ${job.beforeCount}/after ${job.afterCount}) · ${job.hops} worker(s)`,
+        `Skipped first **${SKIP_OVERVIEW_PAIRS}** overview pairs · **${staged.length}** of **${job.pairs.length}** PNG(s) (before ${job.beforeCount}/after ${job.afterCount})`,
         job.skippedLarge.length > 0
           ? `Omitted (too large):\n${job.skippedLarge.join("\n")}`
           : "",
@@ -728,19 +585,11 @@ async function finalizeJob(
         .filter(Boolean)
         .join("\n")
     );
-    clamperlLog(job.jobId, "job_done", {
-      cardIndex,
-      posted: staged.length,
-      hops: job.hops,
-    });
   } finally {
-    const cleanupError = await removePaths(
+    await removePaths(
       supabase,
       staged.map((item) => item.path)
     );
-    if (cleanupError) {
-      console.error("clamperl staged cleanup failed", cleanupError);
-    }
   }
 }
 
@@ -750,33 +599,13 @@ async function failJob(
   err: unknown
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
-  console.error("clamperl job failed", err);
-  clamperlLog(job.jobId, "job_error", {
-    cardIndex: job.cardIndex,
-    hop: job.hops,
-    message,
-    last: job.trail[job.trail.length - 1] ?? null,
-  });
   if (supabase) {
     await removePaths(
       supabase,
       job.staged.map((item) => item.path)
     );
   }
-  await setStatus(
-    job,
-    [
-      `Generate failed: ${message}`,
-      job.trail.length > 0
-        ? `Last steps:\n${job.trail
-            .slice(-12)
-            .map((line) => `• ${line}`)
-            .join("\n")}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
+  await setStatus(job, `Generate failed: ${message}`);
 }
 
 /** One worker's share: stitch the next pair and hand off, or finalize. */
@@ -784,13 +613,6 @@ async function runHop(job: ClamperlJob): Promise<void> {
   let supabase: SupabaseClient | null = null;
   try {
     supabase = getServiceClient();
-    clamperlLog(job.jobId, "hop_start", {
-      hop: job.hops,
-      next: job.next,
-      total: job.pairs.length,
-      staged: job.staged.length,
-    });
-
     if (job.next < job.pairs.length) {
       await stitchNextPair(job, supabase);
       await dispatchHop(job);
@@ -934,20 +756,7 @@ async function startClamperlJob(params: {
       staged: [],
       skippedLarge: [],
       notes,
-      trail: [],
     };
-
-    clamperlLog(job.jobId, "job_start", {
-      cardIndex,
-      orderDisplayId,
-      workCount: pairs.length,
-      beforeCount,
-      afterCount,
-      sizeLimit: job.sizeLimit,
-      cardLabel,
-      setLabel,
-      hasThumb: Boolean(catalogFrontBase64),
-    });
 
     await sweepClamperlScratch(supabase);
     await reply(
@@ -956,7 +765,6 @@ async function startClamperlJob(params: {
     await dispatchHop(job);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("clamperl job start failed", err);
     await reply(`Generate failed: ${message}`);
   }
 }
