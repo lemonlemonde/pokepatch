@@ -42,7 +42,8 @@ const REMOVE_BUTTON_CLASS =
  * `groups`: [{ key, title, items }] where items come from `savedPhotoItems`.
  * Nothing here is rendered for customers — the images only load on open.
  *
- * Pass `onRemove` + `removableGroupKeys` to hard-delete before/after photos.
+ * Pass `onRemove` + `removableGroupKeys` to hard-delete before/after photos
+ * (Remove asks for confirmation first).
  */
 export default function CardPhotoPreviewModal({
   open,
@@ -141,6 +142,13 @@ export default function CardPhotoPreviewModal({
 
   function handleRemove(itemId) {
     if (typeof onRemove !== "function" || itemId == null) return;
+    if (
+      !window.confirm(
+        "Remove this photo permanently? It is deleted right away and cannot be undone."
+      )
+    ) {
+      return;
+    }
     const removingExpanded =
       expandedItem != null && String(expandedItem.id) === String(itemId);
     onRemove(itemId);
