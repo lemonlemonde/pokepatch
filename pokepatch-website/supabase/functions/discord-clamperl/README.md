@@ -81,7 +81,7 @@ Invite the bot to your server with `applications.commands` scope.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Pairs are stitched **one at a time** and staged to Storage between pairs. Source size comes from JPEG/PNG headers (no double ImageScript decode); each side is decode→cover→composite onto the canvas before the other side is loaded.
 - Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/` are deleted in a `finally` after each job. Each run also sweeps that scratch prefix for orphans older than ~1h (killed Edge isolates), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
-- Progress updates include the current sub-step (`download` → `measure` → `decode_after` → `decode_before` → `compose` → `encode` → `upload` → `staged`). Matching JSON lines are written to Edge logs (`console.log` prefix `clamperl`) in Supabase → Edge Functions → `discord-clamperl` → Logs.
+- Progress updates include the current sub-step (`download` → `measure` → `compose` → `decode_after` → `decode_before` → `encode` → `upload` → `staged`). Matching JSON lines are written to Edge logs (`console.log` prefix `clamperl`) in Supabase → Edge Functions → `discord-clamperl` → Logs.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.

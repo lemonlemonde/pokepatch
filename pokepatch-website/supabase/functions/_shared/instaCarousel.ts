@@ -201,7 +201,11 @@ function probeImageSize(bytes: Uint8Array): { w: number; h: number } | null {
     bytes[0] === 0x89 &&
     bytes[1] === 0x50 &&
     bytes[2] === 0x4e &&
-    bytes[3] === 0x47
+    bytes[3] === 0x47 &&
+    bytes[12] === 0x49 &&
+    bytes[13] === 0x48 &&
+    bytes[14] === 0x44 &&
+    bytes[15] === 0x52
   ) {
     const w = readU32BE(bytes, 16);
     const h = readU32BE(bytes, 20);
@@ -210,26 +214,32 @@ function probeImageSize(bytes: Uint8Array): { w: number; h: number } | null {
 
   if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
     let i = 2;
-    while (i + 9 < bytes.length) {
+    while (i + 8 < bytes.length) {
       if (bytes[i] !== 0xff) {
         i += 1;
         continue;
       }
-      const marker = bytes[i + 1];
+      while (i < bytes.length && bytes[i] === 0xff) i += 1;
+      if (i >= bytes.length) break;
+      const marker = bytes[i];
+      i += 1;
       if (marker === 0xd9 || marker === 0xda) break;
-      const len = readU16BE(bytes, i + 2);
-      if (len < 2) break;
+      // Standalone markers (no length payload).
+      if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+      if (i + 1 >= bytes.length) break;
+      const len = readU16BE(bytes, i);
+      if (len < 2 || i + len > bytes.length) break;
       const isSof =
         (marker >= 0xc0 && marker <= 0xc3) ||
         (marker >= 0xc5 && marker <= 0xc7) ||
         (marker >= 0xc9 && marker <= 0xcb) ||
         (marker >= 0xcd && marker <= 0xcf);
-      if (isSof) {
-        const h = readU16BE(bytes, i + 5);
-        const w = readU16BE(bytes, i + 7);
+      if (isSof && len >= 7) {
+        const h = readU16BE(bytes, i + 3);
+        const w = readU16BE(bytes, i + 5);
         if (w > 0 && h > 0) return { w, h };
       }
-      i += 2 + len;
+      i += len;
     }
   }
 
@@ -688,8 +698,7 @@ export async function stitchCarouselPairPng(
   canvas.composite(shadow, leftDrawX, imageTop + 8);
   canvas.composite(shadow, rightDrawX, imageTop + 8);
 
-  // After first: composite onto canvas, then drop the slot bitmap before
-  // decoding before (this is where pair 2/4 previously hung).
+  // Composite each side immediately so only one phone-resolution bitmap is live.
   await onPhase?.("decode_after", {
     detail: `${afterSize.w}×${afterSize.h} → ${tw}×${th}`,
   });
