@@ -24,6 +24,7 @@ export const CallbackType = {
   PONG: 1,
   CHANNEL_MESSAGE: 4,
   DEFERRED_CHANNEL_MESSAGE: 5,
+  DEFERRED_UPDATE_MESSAGE: 6,
   UPDATE_MESSAGE: 7,
   MODAL: 9,
 } as const;
@@ -31,6 +32,7 @@ export const CallbackType = {
 export const ComponentType = {
   ACTION_ROW: 1,
   BUTTON: 2,
+  STRING_SELECT: 3,
   TEXT_INPUT: 4,
   TEXT_DISPLAY: 10,
   MEDIA_GALLERY: 12,
@@ -577,6 +579,41 @@ export function container(components: Json[], accentColor?: number): Json {
 
 export function actionRow(components: Json[]): Json {
   return { type: ComponentType.ACTION_ROW, components };
+}
+
+/** Classic string select (max 25 options). One select per action row. */
+export function stringSelect(params: {
+  customId: string;
+  placeholder?: string;
+  options: {
+    label: string;
+    value: string;
+    description?: string;
+  }[];
+  minValues?: number;
+  maxValues?: number;
+}): Json {
+  const {
+    customId,
+    placeholder,
+    options,
+    minValues = 1,
+    maxValues = 1,
+  } = params;
+  return {
+    type: ComponentType.STRING_SELECT,
+    custom_id: customId,
+    min_values: minValues,
+    max_values: maxValues,
+    ...(placeholder ? { placeholder: placeholder.slice(0, 150) } : {}),
+    options: options.slice(0, 25).map((option) => ({
+      label: option.label.slice(0, 100),
+      value: option.value.slice(0, 100),
+      ...(option.description
+        ? { description: option.description.slice(0, 100) }
+        : {}),
+    })),
+  };
 }
 
 export function button(params: {
