@@ -5,9 +5,8 @@ import Image from "next/image";
 import { galleryThumbPublicUrl } from "@/lib/gallery";
 
 /**
- * Gallery still for list/grid UI. Prefers the stored .thumb.webp sibling
- * (no Supabase Image Transformations). Falls back to the full URL if the
- * thumb is missing (legacy objects before backfill).
+ * Gallery still for list/grid UI. Requires the stored `.thumb.webp` sibling
+ * (no Supabase Image Transformations, no full-object fallback).
  */
 export default function GalleryImage({
   src,
@@ -18,26 +17,19 @@ export default function GalleryImage({
   className = "",
 }) {
   const [loaded, setLoaded] = useState(false);
-  const [useOriginal, setUseOriginal] = useState(false);
   // width kept for call-site compatibility; thumbs are pre-sized at upload.
   void width;
-  const thumbSrc = galleryThumbPublicUrl(src) || src;
-  const displaySrc = useOriginal ? src : thumbSrc;
+  const thumbSrc = galleryThumbPublicUrl(src);
+  if (!thumbSrc) return null;
 
   return (
     <Image
-      src={displaySrc}
+      src={thumbSrc}
       alt={alt}
       fill
       priority={priority}
       sizes={sizes}
       onLoad={() => setLoaded(true)}
-      onError={() => {
-        if (!useOriginal && displaySrc !== src) {
-          setLoaded(false);
-          setUseOriginal(true);
-        }
-      }}
       className={`${className} transition-opacity duration-300 ${
         loaded ? "opacity-100" : "opacity-0"
       }`}

@@ -90,10 +90,7 @@ function ObjectPreview({ file, kind, className }) {
   return <img src={url} alt="" className={className} />;
 }
 
-/**
- * Prefer `.thumb.webp` sibling; fall back to the full object if the thumb 404s
- * (e.g. Clamperl-published pairs before sibling upload existed).
- */
+/** Admin edit/list stills must use the stored `.thumb.webp` sibling — no full-object fallback. */
 function GalleryThumbImg({
   src,
   alt = "",
@@ -102,27 +99,17 @@ function GalleryThumbImg({
   loading,
   decoding,
 }) {
-  const [useOriginal, setUseOriginal] = useState(false);
-  const thumbSrc = galleryThumbPublicUrl(src, cacheKey) || src;
-  const displaySrc = useOriginal ? src : thumbSrc;
-
-  useEffect(() => {
-    setUseOriginal(false);
-  }, [src, cacheKey]);
+  const thumbSrc = galleryThumbPublicUrl(src, cacheKey);
+  if (!thumbSrc) return null;
 
   // eslint-disable-next-line @next/next/no-img-element
   return (
     <img
-      key={`${src}:${cacheKey ?? ""}:${useOriginal ? "full" : "thumb"}`}
-      src={displaySrc}
+      key={`${src}:${cacheKey ?? ""}`}
+      src={thumbSrc}
       alt={alt}
       loading={loading}
       decoding={decoding}
-      onError={() => {
-        if (!useOriginal && displaySrc !== src) {
-          setUseOriginal(true);
-        }
-      }}
       className={className}
     />
   );

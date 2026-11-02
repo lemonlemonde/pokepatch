@@ -18,8 +18,9 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 2. Bot loads before/after photos for that card (sorted by upload id).
 3. Skips the first **two** overview pairs.
 4. Uses the order card’s catalog name / set / thumbnail for the PNG chip (those are required when the order is dragged into To do).
-5. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames — **one pair per Edge worker** — then posts them as Discord attachments and deletes staged files.
-6. After Discord delivery, copies those same **source** before/after photos (not the stitch PNGs) into a **published** gallery item, prefilled with the card’s catalog name/set/thumb and order-card damage tags. The status reply includes admin + public gallery links so you can open the item and tweak damage/meta.
+5. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames — **one pair per Edge worker**.
+6. Then gallery-publishes those same **source** before/after photos (not the stitch PNGs) — **one pair per Edge worker**, including required `.thumb.webp` siblings. Any gallery failure deletes the partial item (no orphan half-published rows).
+7. Finally posts Discord PNG attachments, edits the status with an **Edit** admin gallery link, and deletes staged files.
 
 Cards without enough before/after pairs get a note in the reply.
 
@@ -82,8 +83,8 @@ Invite the bot to your server with `applications.commands` scope.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - **Why hops:** Supabase Edge Functions cap CPU time per worker (docs say 2s; the worker is killed a few seconds later with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one worker. Each hop runs in a fresh worker with a fresh budget.
 - **Hop transport:** the job (interaction token, pair paths, staged files) is POSTed to `${SUPABASE_URL}/functions/v1/discord-clamperl` with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. `index.ts` routes those requests before Discord signature verification; a bad signature is 401. A worker that has already spent >3s of stitch time answers `503` so the dispatcher retries and lands on a fresh isolate. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.
-- Discord gets one follow-up with PNG attachments, then a final status reply (done / gallery links / errors). No per-pair progress spam. Staged Storage objects under `clamperl/<order>/card<n>/<jobId>/` are deleted in a `finally` by the final hop (and on any failure). Each job start also sweeps that scratch prefix for orphans older than ~1h (killed workers), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
+- After stitch hops, gallery hops copy **one source pair + required thumbs** per fresh worker (same CPU hop pattern). Then one Discord follow-up with PNG attachments and a Done status with **Edit:**. No per-stitch progress spam (gallery pair N/M only). Staged Storage objects under `clamperl/<order>/card<n>/<jobId>/` are deleted in a `finally` by the final hop (and on any failure). Each job start also sweeps that scratch prefix for orphans older than ~1h (killed workers), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted (and are not uploaded to the gallery).
-- Gallery publish uses the **source** before/after files for the stitched pairs only — never the carousel PNGs. Status reply links to `/admin/gallery/?item=<id>` (edit) and `/gallery/?item=<id>` (public).
+- Gallery publish uses the **source** before/after files for the stitched pairs only — never the carousel PNGs. Thumbs are required; a failed thumb cleans up the whole gallery item. Status reply links to `/admin/gallery/?item=<id>` (Edit). Admin/public UIs do **not** fall back to the full object when a thumb is missing.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.

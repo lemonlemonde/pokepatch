@@ -4,8 +4,8 @@
  *
  * Chip title/thumb come from the order card’s catalog fields (enforced when the
  * order enters To do). Each hop stitches ONE pair in a fresh Edge worker (CPU
- * time cap), stages the PNG, then POSTs the job back for the next pair. The
- * final hop posts Discord attachments and deletes scratch files.
+ * time cap), then gallery-publishes ONE source pair (+ required thumbs) per
+ * worker. The final hop posts Discord attachments and deletes scratch files.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -34,7 +34,13 @@ import {
   isOwnerOrderDisplayId,
 } from "../_shared/ownerOrder.ts";
 import { sanitizeDamageTags } from "../_shared/damageTags.ts";
-import { publishGalleryFromCardPairs } from "../_shared/publishGalleryFromCardPairs.ts";
+import {
+  cleanupGalleryItem,
+  createPublishedGalleryItem,
+  publishGalleryPairWithThumbs,
+  setGalleryItemCatalogThumbnail,
+  touchGalleryItemUpdatedAt,
+} from "../_shared/publishGalleryFromCardPairs.ts";
 
 const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   before: ["before", "progress_front", "progress_back"],
@@ -108,6 +114,16 @@ type ClamperlJob = {
   pairs: { before: string; after: string }[];
   /** Index into `pairs` for the next hop to stitch. */
   next: number;
+  /**
+   * Gallery publish phase (after all stitches). One pair + required thumbs per
+   * hop so ImageScript stays under the Edge CPU cap.
+   */
+  galleryItemId: string | null;
+  galleryNext: number;
+  galleryAdminUrl: string | null;
+  galleryPairCount: number;
+  /** Set when gallery publish fails after cleanup — Discord PNGs still deliver. */
+  galleryError: string | null;
   /** Hops dispatched so far (loop guard). */
   hops: number;
   staged: StagedPng[];
@@ -332,7 +348,8 @@ function sleep(ms: number): Promise<void> {
 /** Hand the job to a fresh worker. Resolves once that worker has accepted (202). */
 async function dispatchHop(job: ClamperlJob): Promise<void> {
   job.hops += 1;
-  if (job.hops > job.pairs.length + 3) {
+  // Stitch hops + gallery hops (one pair each) + finalize slack.
+  if (job.hops > job.pairs.length * 2 + 5) {
     throw new Error(`hop loop guard tripped (${job.hops} hops)`);
   }
   const body = JSON.stringify(job);
@@ -398,7 +415,10 @@ export async function handleClamperlHop(
     !Array.isArray(job.pairs) ||
     typeof job.next !== "number" ||
     job.next < 0 ||
-    job.next > job.pairs.length
+    job.next > job.pairs.length ||
+    typeof job.galleryNext !== "number" ||
+    job.galleryNext < 0 ||
+    job.galleryNext > job.pairs.length
   ) {
     return new Response("Unsupported hop payload", { status: 400 });
   }
@@ -476,37 +496,82 @@ async function stitchNextPair(
 }
 
 /**
- * Copy the formatted pairs' *source* before/after photos into a published
- * gallery item (never the Instagram stitch PNGs). Best-effort — Discord
- * delivery still succeeds if this fails.
+ * One gallery hop: create the item on the first call, then copy + thumb-encode
+ * exactly one source pair. On failure, delete any partial gallery item, record
+ * `galleryError`, and skip remaining gallery hops (Discord finalize still runs).
  */
-async function publishJobPairsToGallery(
+async function publishNextGalleryPair(
   job: ClamperlJob,
   supabase: SupabaseClient
-): Promise<{ adminUrl: string; publicUrl: string; pairCount: number } | null> {
-  if (job.pairs.length === 0) return null;
+): Promise<void> {
+  const pairIndex = job.galleryNext;
+  const pairNum = pairIndex + 1;
+  const total = job.pairs.length;
 
-  const catalogFrontBytes = job.catalogFrontBase64
-    ? base64ToBytes(job.catalogFrontBase64)
-    : null;
+  try {
+    if (!job.galleryItemId) {
+      await setStatus(
+        job,
+        `${orderLabel(job.orderDisplayId)} · card ${job.cardIndex} · publishing gallery…`
+      );
+      const created = await createPublishedGalleryItem(supabase, {
+        title: job.cardLabel,
+        setName: job.setLabel,
+        damageTags: job.damageTags ?? [],
+        tcgCardId: job.tcgCardId ?? null,
+        tcgLookupTitle: job.cardLabel,
+        tcgLookupSetName: job.setLabel,
+      });
+      job.galleryItemId = created.id;
+      job.galleryAdminUrl = created.adminUrl;
+    }
 
-  return publishGalleryFromCardPairs(supabase, {
-    title: job.cardLabel,
-    setName: job.setLabel,
-    damageTags: job.damageTags ?? [],
-    tcgCardId: job.tcgCardId ?? null,
-    tcgLookupTitle: job.cardLabel,
-    tcgLookupSetName: job.setLabel,
-    pairs: job.pairs.map((pair) => ({
-      beforePath: pair.before,
-      afterPath: pair.after,
-    })),
-    sourceBucket: BUCKET,
-    catalogFrontBytes,
-  });
+    await setStatus(
+      job,
+      `${orderLabel(job.orderDisplayId)} · card ${job.cardIndex} · gallery pair **${pairNum}/${total}**`
+    );
+
+    const pair = job.pairs[pairIndex];
+    const heavyStarted = performance.now();
+    try {
+      await publishGalleryPairWithThumbs(supabase, {
+        itemId: job.galleryItemId,
+        sortOrder: pairIndex,
+        pair: { beforePath: pair.before, afterPath: pair.after },
+        sourceBucket: BUCKET,
+      });
+    } finally {
+      isolateHeavyMs += performance.now() - heavyStarted;
+    }
+
+    job.galleryNext = pairIndex + 1;
+    job.galleryPairCount = job.galleryNext;
+
+    if (job.galleryNext >= total) {
+      if (job.catalogFrontBase64) {
+        await setGalleryItemCatalogThumbnail(
+          supabase,
+          job.galleryItemId,
+          base64ToBytes(job.catalogFrontBase64)
+        );
+      } else {
+        await touchGalleryItemUpdatedAt(supabase, job.galleryItemId);
+      }
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (job.galleryItemId) {
+      await cleanupGalleryItem(supabase, job.galleryItemId);
+    }
+    job.galleryItemId = null;
+    job.galleryAdminUrl = null;
+    job.galleryPairCount = 0;
+    job.galleryError = message;
+    job.galleryNext = job.pairs.length;
+  }
 }
 
-/** Last hop: post staged PNGs to Discord, publish gallery, report, delete scratch. */
+/** Last hop: post staged PNGs + Done/Edit status, delete scratch. */
 async function finalizeJob(
   job: ClamperlJob,
   supabase: SupabaseClient
@@ -537,6 +602,15 @@ async function finalizeJob(
       return;
     }
 
+    const galleryLine = job.galleryError
+      ? `Gallery publish failed: ${job.galleryError}`
+      : job.galleryItemId && job.galleryAdminUrl
+        ? [
+            `Gallery · **${job.galleryPairCount}** source pair(s) published`,
+            `Edit: ${job.galleryAdminUrl}`,
+          ].join("\n")
+        : "";
+
     // Finished PNGs are small (1080×1350); reloading them is network, not CPU.
     const files: DiscordUploadFile[] = [];
     for (const item of staged) {
@@ -552,21 +626,6 @@ async function finalizeJob(
       { content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)` },
       files
     );
-
-    let galleryLine = "";
-    try {
-      const gallery = await publishJobPairsToGallery(job, supabase);
-      if (gallery) {
-        galleryLine = [
-          `Gallery · **${gallery.pairCount}** source pair(s) published`,
-          `Edit: ${gallery.adminUrl}`,
-          `Public: ${gallery.publicUrl}`,
-        ].join("\n");
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      galleryLine = `Gallery publish failed: ${message}`;
-    }
 
     await setStatus(
       job,
@@ -600,6 +659,12 @@ async function failJob(
 ): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   if (supabase) {
+    if (job.galleryItemId) {
+      await cleanupGalleryItem(supabase, job.galleryItemId);
+      job.galleryItemId = null;
+      job.galleryAdminUrl = null;
+      job.galleryPairCount = 0;
+    }
     await removePaths(
       supabase,
       job.staged.map((item) => item.path)
@@ -608,13 +673,21 @@ async function failJob(
   await setStatus(job, `Generate failed: ${message}`);
 }
 
-/** One worker's share: stitch the next pair and hand off, or finalize. */
+/**
+ * One worker's share: stitch next pair, or publish next gallery pair (with
+ * required thumbs), or finalize Discord delivery.
+ */
 async function runHop(job: ClamperlJob): Promise<void> {
   let supabase: SupabaseClient | null = null;
   try {
     supabase = getServiceClient();
     if (job.next < job.pairs.length) {
       await stitchNextPair(job, supabase);
+      await dispatchHop(job);
+      return;
+    }
+    if (job.galleryNext < job.pairs.length) {
+      await publishNextGalleryPair(job, supabase);
       await dispatchHop(job);
       return;
     }
@@ -752,6 +825,11 @@ async function startClamperlJob(params: {
       afterCount,
       pairs,
       next: 0,
+      galleryItemId: null,
+      galleryNext: 0,
+      galleryAdminUrl: null,
+      galleryPairCount: 0,
+      galleryError: null,
       hops: 0,
       staged: [],
       skippedLarge: [],

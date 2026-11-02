@@ -353,7 +353,7 @@ function GalleryItemCard({ item, index, onOpen, highlighted = false }) {
       style={{ animationDelay: `${100 + index * 100}ms` }}
     >
       <div className="flex flex-col space-y-4 p-5">
-        <div className="flex min-h-[5.5rem] flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="flex min-w-0 items-start gap-3">
             {item.thumbnail ? (
               <CardThumbnail
