@@ -91,7 +91,8 @@ type ClamperlJob = {
   cardIndex: number;
   cardLabel: string;
   setLabel: string;
-  catalogImageUrl: string | null;
+  /** Catalog art as base64 (fetched once at job start; avoids re-fetch per hop). */
+  catalogFrontBase64: string | null;
   sizeLimit: number;
   beforeCount: number;
   afterCount: number;
@@ -148,6 +149,22 @@ function attachmentSizeLimit(interaction: Interaction): number {
 
 function mb(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
 }
 
 /** Structured Edge logs — Supabase → Edge Functions → discord-clamperl → Logs. */
@@ -339,6 +356,7 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
   const body = JSON.stringify(job);
   const signature = await hopSignature(body);
   const url = selfUrl();
+  const secret = hopSecret();
 
   let lastError = "";
   for (let attempt = 1; attempt <= HOP_MAX_ATTEMPTS; attempt += 1) {
@@ -348,8 +366,8 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
         headers: {
           "Content-Type": "application/json",
           // verify_jwt is off for this function; bearer keeps hops working if it flips.
-          Authorization: `Bearer ${hopSecret()}`,
-          apikey: hopSecret(),
+          Authorization: `Bearer ${secret}`,
+          apikey: secret,
           [HOP_HEADER]: signature,
         },
         body,
@@ -402,7 +420,16 @@ export async function handleClamperlHop(
   } catch {
     return new Response("Bad hop JSON", { status: 400 });
   }
-  if (job.v !== 1 || !Array.isArray(job.pairs) || !job.jobId) {
+  if (
+    job.v !== 1 ||
+    !job.jobId ||
+    !job.applicationId ||
+    !job.token ||
+    !Array.isArray(job.pairs) ||
+    typeof job.next !== "number" ||
+    job.next < 0 ||
+    job.next > job.pairs.length
+  ) {
     return new Response("Unsupported hop payload", { status: 400 });
   }
 
@@ -434,18 +461,10 @@ async function buildOverlay(job: ClamperlJob): Promise<CarouselOverlay> {
   const overlay: CarouselOverlay = {
     card: job.cardLabel,
     set: job.setLabel,
-    frontBytes: null,
+    frontBytes: job.catalogFrontBase64
+      ? base64ToBytes(job.catalogFrontBase64)
+      : null,
   };
-  if (job.catalogImageUrl) {
-    try {
-      const res = await fetch(job.catalogImageUrl);
-      if (res.ok) {
-        overlay.frontBytes = new Uint8Array(await res.arrayBuffer());
-      }
-    } catch {
-      overlay.frontBytes = null;
-    }
-  }
   await prepareCarouselOverlay(overlay);
   return overlay;
 }
@@ -490,9 +509,10 @@ async function stitchNextPair(
     );
   };
 
-  await Promise.all([preloadInstaAssets(), mark("download", undefined, { beforePath, afterPath })]);
-  const overlay = await buildOverlay(job);
-  const [beforeBytes, afterBytes] = await Promise.all([
+  await mark("download", undefined, { beforePath, afterPath });
+  const [, overlay, beforeBytes, afterBytes] = await Promise.all([
+    preloadInstaAssets(),
+    buildOverlay(job),
     downloadStorageBytes(supabase, beforePath),
     downloadStorageBytes(supabase, afterPath),
   ]);
@@ -776,11 +796,32 @@ async function startClamperlJob(params: {
         after: afterRows[i].storage_path,
       });
     }
+    if (pairs.length > FILES_PER_MESSAGE) {
+      await reply(
+        `Order **#${orderDisplayId}** · card **${cardIndex}** · Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card would produce **${pairs.length}**.`
+      );
+      return;
+    }
+
     const notes: string[] = [];
     if (beforeCount !== afterCount) {
       notes.push(
         `before **${beforeCount}** ≠ after **${afterCount}** — paired **${pairCount}**, skipped first **${SKIP_OVERVIEW_PAIRS}** overview → **${pairs.length}** post(s)`
       );
+    }
+
+    let catalogFrontBase64: string | null = null;
+    if (card.catalog_image_url) {
+      try {
+        const res = await fetch(String(card.catalog_image_url));
+        if (res.ok) {
+          catalogFrontBase64 = bytesToBase64(
+            new Uint8Array(await res.arrayBuffer())
+          );
+        }
+      } catch {
+        catalogFrontBase64 = null;
+      }
     }
 
     const job: ClamperlJob = {
@@ -792,9 +833,7 @@ async function startClamperlJob(params: {
       cardIndex,
       cardLabel,
       setLabel,
-      catalogImageUrl: card.catalog_image_url
-        ? String(card.catalog_image_url)
-        : null,
+      catalogFrontBase64,
       sizeLimit: attachmentSizeLimit(interaction),
       beforeCount,
       afterCount,
