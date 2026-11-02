@@ -71,6 +71,13 @@ import {
   tracksOrderContract,
 } from "@/lib/orderStatus";
 import { formatMoney, orderEarnedTotalFromStored } from "@/lib/servicePricing";
+import {
+  advanceQueueRotation,
+  defaultQueueRotation,
+  pickNextTodoOrder,
+  readQueueRotation,
+  writeQueueRotation,
+} from "@/lib/adminQueueRotation";
 
 const ADMIN_TABS = [
   {
@@ -247,6 +254,55 @@ function OrderRevenueSummary({ completedTotal, pipelineTotal }) {
         </span>
       </p>
     </div>
+  );
+}
+
+/** Banner for the next To do → In progress pull (2 priority : 1 regular). */
+function NextQueuePullBanner({ order, onFocusOrder }) {
+  if (!order) return null;
+
+  const previewUrls = Array.isArray(order.preview_urls)
+    ? order.preview_urls.filter(Boolean)
+    : [];
+  const previewPaths = Array.isArray(order.preview_paths)
+    ? order.preview_paths
+    : [];
+  const thumbUrl = previewUrls[0] ?? null;
+  const thumbPath = previewPaths[0] ?? null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onFocusOrder?.(order.id)}
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition hover:border-ink/35 ${
+        order.is_priority
+          ? "border-ink/25 bg-ink/[0.07]"
+          : "border-ink/15 bg-ink/[0.03]"
+      }`}
+      aria-label={`Next up: order ${order.display_id}${
+        order.customer_name ? `, ${order.customer_name}` : ""
+      }. Click to find it in To do.`}
+    >
+      <span className="shrink-0 rounded-md bg-mint px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-night">
+        Next
+      </span>
+      <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
+        #{order.display_id}
+      </span>
+      {order.is_priority ? <CustomerPriorityBadge /> : null}
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+        {order.customer_name || "—"}
+      </span>
+      <span className="relative aspect-[3/4] w-7 shrink-0 overflow-hidden rounded bg-night/50">
+        {thumbUrl ? (
+          <KanbanThumbImg
+            url={thumbUrl}
+            storagePath={thumbPath}
+            className="h-full w-full object-cover"
+          />
+        ) : null}
+      </span>
+    </button>
   );
 }
 
@@ -452,6 +508,7 @@ function KanbanCard({
   showPendingChip = false,
   onSetPendingKind,
   suppressInspect = false,
+  isNext = false,
 }) {
   const panelElRef = useRef(null);
   const cursorRef = useRef({ x: 0, y: 0 });
@@ -567,9 +624,11 @@ function KanbanCard({
       onMouseMove={handleMouseMove}
       onMouseLeave={scheduleClose}
       className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition hover:border-ink/40 active:cursor-grabbing ${
-        order.is_priority
-          ? "border-ink/30 bg-ink/[0.08]"
-          : "border-ink/10 bg-ink/[0.03]"
+        isNext
+          ? "border-mint bg-mint/15 ring-2 ring-mint/70"
+          : order.is_priority
+            ? "border-ink/30 bg-ink/[0.08]"
+            : "border-ink/10 bg-ink/[0.03]"
       } ${dragging ? "opacity-50" : ""}`}
     >
       {order.is_priority ? (
@@ -577,6 +636,11 @@ function KanbanCard({
           className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-ink/70"
           aria-hidden="true"
         />
+      ) : null}
+      {isNext ? (
+        <span className="shrink-0 rounded bg-mint px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-night">
+          Next
+        </span>
       ) : null}
       <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
         #{order.display_id}
@@ -860,6 +924,7 @@ function KanbanBoard({
   onCreateOrder,
   onPublishQueue,
   suppressInspect = false,
+  queueRotation,
 }) {
   const [dragOrderId, setDragOrderId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { statusId, index }
@@ -881,10 +946,26 @@ function KanbanBoard({
     }),
     [columns]
   );
+  const nextTodoOrder = useMemo(
+    () => pickNextTodoOrder(columns.new ?? [], queueRotation),
+    [columns.new, queueRotation]
+  );
   const dragOrder = useMemo(
     () => orders.find((order) => order.id === dragOrderId) ?? null,
     [orders, dragOrderId]
   );
+
+  function focusTodoOrder(orderId) {
+    const targetId = String(orderId);
+    for (const row of document.querySelectorAll(
+      "[data-kanban-row][data-order-id]"
+    )) {
+      if (row.getAttribute("data-order-id") === targetId) {
+        row.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        return;
+      }
+    }
+  }
 
   function setDropTargetStable(next) {
     const prev = dropTargetRef.current;
@@ -1048,6 +1129,7 @@ function KanbanBoard({
           <div
             key={order.id}
             data-kanban-row
+            data-order-id={order.id}
             className="relative"
             draggable
             onDragStart={(event) => handleDragStart(event, order.id)}
@@ -1061,6 +1143,11 @@ function KanbanBoard({
               showPendingChip={status.id === "pending"}
               onSetPendingKind={onSetPendingKind}
               suppressInspect={suppressInspect}
+              isNext={
+                status.id === "new" &&
+                nextTodoOrder != null &&
+                order.id === nextTodoOrder.id
+              }
             />
           </div>
         ))}
@@ -1205,6 +1292,11 @@ function KanbanBoard({
         </div>
       </div>
 
+      <NextQueuePullBanner
+        order={nextTodoOrder}
+        onFocusOrder={focusTodoOrder}
+      />
+
       <div className="grid grid-cols-1 gap-4 sm:h-[min(72vh,calc(100dvh-14rem))] sm:grid-cols-2 xl:grid-cols-4">
         {ACTIVE_ORDER_STATUSES.map((status) =>
           renderColumn(status, { closed: false })
@@ -1339,6 +1431,13 @@ export default function AdminApp() {
   const [noteOnlySending, setNoteOnlySending] = useState(false);
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [queueRotation, setQueueRotation] = useState(() =>
+    defaultQueueRotation()
+  );
+
+  useEffect(() => {
+    setQueueRotation(readQueueRotation());
+  }, []);
 
   const unsavedOrderEdit = editorDirty && tab === "orders-edit";
   const { requestLeave, disarmHistoryTrap, dialog: unsavedChangesDialog } =
@@ -1700,6 +1799,18 @@ export default function AdminApp() {
           : DEFAULT_PENDING_KIND
         : null;
 
+    const fromStatus = normalizeOrderStatus(moving.status);
+    const pulledFromTodo =
+      fromStatus === "new" && nextStatus === "in_progress";
+    const previousRotation = pulledFromTodo ? queueRotation : null;
+    if (pulledFromTodo) {
+      setQueueRotation((current) => {
+        const next = advanceQueueRotation(current, Boolean(moving.is_priority));
+        writeQueueRotation(next);
+        return next;
+      });
+    }
+
     setOrders((current) => {
       const wasClosed = isClosedOrderStatus(moving.status);
       const nextClosed = isClosedOrderStatus(nextStatus);
@@ -1756,6 +1867,10 @@ export default function AdminApp() {
       }
     } catch (err) {
       setOrders(previous);
+      if (previousRotation) {
+        setQueueRotation(previousRotation);
+        writeQueueRotation(previousRotation);
+      }
       setListError(err.message || "Could not update order status.");
       throw err;
     }
@@ -2153,6 +2268,7 @@ export default function AdminApp() {
                 suppressInspect={Boolean(
                   movePrompt || queueCatalogPrompt || deleteTargets?.length
                 )}
+                queueRotation={queueRotation}
               />
               <CreateOrderDialog
                 open={createOrderOpen}
