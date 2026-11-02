@@ -189,11 +189,10 @@ export default function CardDetailSection({
   const restorationCount =
     photoGroups.before.length + photoGroups.after.length;
   const previewGroups = [
-    { key: "customer", title: "Customer photos", items: customerPhotoItems },
     { key: "before", title: "Before", items: savedPhotoItems(photoGroups.before) },
     { key: "after", title: "After", items: savedPhotoItems(photoGroups.after) },
   ];
-  const previewCount = customerPhotoItems.length + restorationCount;
+  const previewCount = restorationCount;
   const canOpenInStudio =
     Boolean(orderId) &&
     !cardIdStr.startsWith("tmp-") &&
@@ -746,7 +745,7 @@ export default function CardDetailSection({
                   disabled={previewCount === 0}
                   onClick={() => setPreviewOpen(true)}
                   aria-label="Preview photos"
-                  title="Preview every photo on this card"
+                  title="Preview before and after photos"
                   className={PHOTO_ACTION_BUTTON_CLASS}
                 >
                   <MagnifierIcon />
