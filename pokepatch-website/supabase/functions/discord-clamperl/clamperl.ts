@@ -21,6 +21,7 @@ import {
 import { BUCKET } from "../_shared/discordOrderMessages.ts";
 import {
   SKIP_OVERVIEW_PAIRS,
+  prepareCarouselOverlay,
   preloadInstaAssets,
   stitchCarouselPairPng,
   type CarouselOverlay,
@@ -250,6 +251,7 @@ async function generateForCard(params: {
       overlay.frontBytes = null;
     }
   }
+  await prepareCarouselOverlay(overlay);
 
   const jobId = crypto.randomUUID();
   const staged: StagedPng[] = [];
@@ -270,6 +272,7 @@ async function generateForCard(params: {
     ]);
 
     // One stitch at a time — concurrent ImageScript freezes on Edge.
+    // Source photos are downscaled inside stitch to avoid Edge OOM.
     const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
     const filename = `pokepatch-pair-${pairNum}.png`;
 
