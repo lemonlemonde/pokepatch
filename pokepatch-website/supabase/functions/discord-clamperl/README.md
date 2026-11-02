@@ -19,6 +19,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 3. Skips the first **two** overview pairs.
 4. Uses the order card’s catalog name / set / thumbnail for the PNG chip (those are required when the order is dragged into To do).
 5. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames — **one pair per Edge worker** — then posts them as Discord attachments and deletes staged files.
+6. After Discord delivery, copies those same **source** before/after photos (not the stitch PNGs) into a **published** gallery item, prefilled with the card’s catalog name/set/thumb and order-card damage tags. The status reply includes admin + public gallery links so you can open the item and tweak damage/meta.
 
 Cards without enough before/after pairs get a note in the reply.
 
@@ -84,5 +85,6 @@ Invite the bot to your server with `applications.commands` scope.
 - Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/<order>/card<n>/<jobId>/` are deleted in a `finally` by the final hop (and on any failure). Each job start also sweeps that scratch prefix for orphans older than ~1h (killed workers), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
 - Progress updates include the current sub-step (`download` → `measure` → `compose` → `decode_after` → `decode_before` → `encode` → `upload` → `staged`) and the worker/hop number. Matching JSON lines (`hop_start`, `hop_dispatched`, `pair_done`, `job_done`, `job_error`, …) are written to Edge logs (`console.log` prefix `clamperl`) in Supabase → Edge Functions → `discord-clamperl` → Logs.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
-- First two before/after pairs are treated as overview and never posted.
+- First two before/after pairs are treated as overview and never posted (and are not uploaded to the gallery).
+- Gallery publish uses the **source** before/after files for the stitched pairs only — never the carousel PNGs. Status reply links to `/admin/gallery/?item=<id>` (edit) and `/gallery/?item=<id>` (public).
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import StudioOpenableThumb from "@/components/StudioOpenableThumb";
 import { StudioCroppableThumb } from "@/components/StudioSlotEditor";
 import { expandDroppedFiles } from "@/lib/extractZipImages";
+import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/damageTags";
 import useStableObjectUrls from "@/lib/useStableObjectUrls";
 
 const DRAG_TYPE = "text/pokepatch-pair-item";
@@ -12,8 +13,15 @@ const ROLES = [
   { key: "after", label: "After" },
 ];
 
-export function createPair() {
-  return { id: crypto.randomUUID(), before: null, after: null };
+export function createPair(partial = {}) {
+  const { damage_tags: rawDamage, ...rest } = partial ?? {};
+  return {
+    id: crypto.randomUUID(),
+    before: null,
+    after: null,
+    ...rest,
+    damage_tags: normalizeDamageTags(rawDamage),
+  };
 }
 
 function isImage(file) {
@@ -429,6 +437,19 @@ export default function StudioFolderBoard({
     setPairs((prev) => [...prev, createPair()]);
   }
 
+  function togglePairDamage(pairId, tagId) {
+    setPairs((prev) =>
+      prev.map((pair) => {
+        if (pair.id !== pairId) return pair;
+        const current = normalizeDamageTags(pair.damage_tags);
+        const next = current.includes(tagId)
+          ? current.filter((id) => id !== tagId)
+          : [...current, tagId];
+        return { ...pair, damage_tags: next };
+      }),
+    );
+  }
+
   function removePair(pairId) {
     setPairs((prev) => {
       const next = prev.filter((pair) => pair.id !== pairId);
@@ -466,7 +487,8 @@ export default function StudioFolderBoard({
           </p>
           <p className="mt-1 text-xs text-ink/45">
             Upload folders on each side, then drag photos into Before / After
-            slots. Each complete pair becomes one post.
+            slots. Each complete pair becomes one post. Optional damage tags
+            on a pair fill the gallery damage section when you publish.
           </p>
         </div>
 
@@ -564,6 +586,37 @@ export default function StudioFolderBoard({
                       );
                     })}
                   </div>
+                  {pairReady ? (
+                    <div className="mt-3 border-t border-ink/10 pt-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink/45">
+                        Damage (gallery)
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {DAMAGE_TAGS.map((tag) => {
+                          const checked = (
+                            pair.damage_tags ?? []
+                          ).includes(tag.id);
+                          return (
+                            <button
+                              key={tag.id}
+                              type="button"
+                              aria-pressed={checked}
+                              onClick={() =>
+                                togglePairDamage(pair.id, tag.id)
+                              }
+                              className={`rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors duration-150 ${
+                                checked
+                                  ? "border-ink/45 bg-ink/20 text-ink ring-1 ring-ink/25"
+                                  : "border-ink/10 bg-ink/[0.03] text-ink/70 hover:border-ink/35 hover:bg-ink/10 hover:text-ink"
+                              }`}
+                            >
+                              {tag.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

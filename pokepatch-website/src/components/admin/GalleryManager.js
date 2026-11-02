@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import GalleryCardSearch from "@/components/admin/GalleryCardSearch";
 import { tcgCardImageUrl } from "@/lib/tcgCardImage";
 import {
@@ -107,7 +107,7 @@ function emptyDraft() {
     tcg_lookup_set_name: "",
     tcg_card_id: "",
     damage_tags: [],
-    published: false,
+    published: true,
   };
 }
 
@@ -115,7 +115,7 @@ function itemToDraft(item) {
   return {
     title: item.title ?? "",
     set_name: item.set_name ?? "",
-    card_number: item.card_number ?? "",
+    card_number: "",
     tcg_lookup_title: item.tcg_lookup_title ?? "",
     tcg_lookup_set_name: item.tcg_lookup_set_name ?? "",
     tcg_card_id: item.tcg_card_id ?? "",
@@ -357,7 +357,7 @@ function cardFromItem(item) {
     id: item.tcg_card_id,
     name: item.title || item.tcg_lookup_title || "",
     set_name: item.set_name || item.tcg_lookup_set_name || "",
-    number: item.card_number ?? "",
+    number: "",
     image_small: tcgCardImageUrl({ id: item.tcg_card_id }),
   };
 }
@@ -372,6 +372,9 @@ function itemHasStudioImagePairs(item) {
 
 export default function GalleryManager() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const deepLinkItemId = (searchParams.get("item") ?? "").trim();
+  const deepLinkHandledRef = useRef("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState("");
@@ -439,6 +442,16 @@ export default function GalleryManager() {
     syncEditorFromItem(item, { resetStaged: true });
   }
 
+  // Deep-link from Studio / clamperl: `/admin/gallery/?item=<uuid>`
+  useEffect(() => {
+    if (!deepLinkItemId || loading) return;
+    if (deepLinkHandledRef.current === deepLinkItemId) return;
+    const match = items.find((row) => row.id === deepLinkItemId);
+    if (!match) return;
+    deepLinkHandledRef.current = deepLinkItemId;
+    syncEditorFromItem(match, { resetStaged: true });
+  }, [deepLinkItemId, items, loading]);
+
   function startCreate() {
     setSelectedId(null);
     setDraft(emptyDraft());
@@ -464,7 +477,7 @@ export default function GalleryManager() {
         item = await createGalleryItem({
           title: (card.name ?? "").trim(),
           set_name: (card.set_name ?? "").trim(),
-          card_number: (card.number ?? "").trim(),
+          card_number: "",
           tcg_lookup_title: (card.name ?? "").trim(),
           tcg_lookup_set_name: (card.set_name ?? "").trim(),
           tcg_card_id: card.id,
@@ -538,7 +551,7 @@ export default function GalleryManager() {
         item = await createGalleryItem({
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
-          card_number: draft.card_number.trim(),
+          card_number: "",
           tcg_lookup_title: draft.tcg_lookup_title.trim(),
           tcg_lookup_set_name: draft.tcg_lookup_set_name.trim(),
           tcg_card_id: draft.tcg_card_id.trim(),
@@ -549,7 +562,7 @@ export default function GalleryManager() {
         item = await saveGalleryItem(item.id, {
           title: draft.title.trim(),
           set_name: draft.set_name.trim(),
-          card_number: draft.card_number.trim(),
+          card_number: "",
           tcg_lookup_title: draft.tcg_lookup_title.trim(),
           tcg_lookup_set_name: draft.tcg_lookup_set_name.trim(),
           tcg_card_id: draft.tcg_card_id.trim(),
@@ -840,17 +853,6 @@ export default function GalleryManager() {
               }
               className={fieldClassName()}
               placeholder="e.g. Ascended Heroes"
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-sm font-semibold text-ink">Card number</span>
-            <input
-              value={draft.card_number}
-              onChange={(event) =>
-                setDraft({ ...draft, card_number: event.target.value })
-              }
-              className={fieldClassName()}
-              placeholder="e.g. 277/297"
             />
           </label>
         </div>
@@ -1187,7 +1189,6 @@ export default function GalleryManager() {
                           ? `${formatPostedRelative(item.created_at)} · `
                           : ""}
                         {item.set_name ? `${item.set_name} · ` : ""}
-                        {item.card_number ? `${item.card_number} · ` : ""}
                         {(item.pairs ?? []).length} pair
                         {(item.pairs ?? []).length === 1 ? "" : "s"}
                         {(item.damage_tags ?? []).length

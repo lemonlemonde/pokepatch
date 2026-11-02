@@ -372,17 +372,9 @@ function GalleryItemCard({ item, index, onOpen, highlighted = false }) {
               <h3 className="line-clamp-2 text-lg font-medium tracking-tight text-ink">
                 {item.title}
               </h3>
-              {(item.setName || item.cardNumber) ? (
+              {item.setName ? (
                 <p className="mt-1 text-xs font-bold uppercase tracking-wide text-ink/50">
-                  {item.setName ? <span>{item.setName}</span> : null}
-                  {item.setName && item.cardNumber ? (
-                    <span className="mx-1.5 font-normal text-ink/35">·</span>
-                  ) : null}
-                  {item.cardNumber ? (
-                    <span className="font-semibold normal-case tracking-wide text-ink/45">
-                      {item.cardNumber.replace(/^#\s*/, "")}
-                    </span>
-                  ) : null}
+                  {item.setName}
                 </p>
               ) : null}
               {postedLabel ? (
