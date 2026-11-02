@@ -14,13 +14,13 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 
 ## `/clamperl` (carousel before/after)
 
-1. `/clamperl order:42 card:3` — `order` + `card` required. Optional: `name`, `set`, `thumbnail` (https image URL).
-2. Bot loads before/after photos for that card (sorted by upload id), skips the first **two** overview pairs, and checks there is something to stitch.
-3. Searches the local TCG catalog (`tcg_cards` / `search_tcg_cards`) using `name`/`set` when provided, otherwise the order card’s typed name/set.
-4. Replies with a **select menu**: catalog hits (up to 22), plus optional **Use my name / set / thumbnail**, **Keep linked catalog**, and **Labels only (no catalog thumb)**. Picking a catalog hit also writes `tcg_card_id` + catalog fields on the order card (same as admin).
-5. After you pick, stitches **lossless 1080×1350 PNG** frames — **one pair per Edge worker** — posts them as Discord attachments, then deletes staged files.
+1. `/clamperl order:42 card:3` — one card (both options required)
+2. Bot loads before/after photos for that card (sorted by upload id).
+3. Skips the first **two** overview pairs.
+4. Uses the order card’s catalog name / set / thumbnail for the PNG chip (those are required when the order is dragged into To do).
+5. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames — **one pair per Edge worker** — then posts them as Discord attachments and deletes staged files.
 
-If there is nothing to choose (no search hits, no overrides, no linked catalog), it generates immediately with order labels and no thumb. Cards without enough before/after pairs get a note in the reply.
+Cards without enough before/after pairs get a note in the reply.
 
 ---
 
@@ -43,7 +43,7 @@ supabase secrets set DISCORD_CLAMPERL_PUBLIC_KEY="hex-public-key"
 
 ### Register the `/clamperl` slash command (once per app)
 
-Re-run this whenever options change (required after adding `name` / `set` / `thumbnail`):
+Re-run this whenever options change:
 
 ```bash
 export CLAMPERL_APP_ID="clamperl-application-id"
@@ -68,24 +68,6 @@ curl -s -X PUT \
         "description": "Card number (1 = first in the order)",
         "type": 4,
         "required": true
-      },
-      {
-        "name": "name",
-        "description": "Optional card name (search + chip override)",
-        "type": 3,
-        "required": false
-      },
-      {
-        "name": "set",
-        "description": "Optional set name (search + chip override)",
-        "type": 3,
-        "required": false
-      },
-      {
-        "name": "thumbnail",
-        "description": "Optional https image URL for the chip thumb",
-        "type": 3,
-        "required": false
       }
     ]
   }]'
@@ -96,7 +78,6 @@ Invite the bot to your server with `applications.commands` scope.
 ## Notes
 
 - Own cards: pass `order:-1` (same permanent portfolio as wooper). Card index is still 1-based within that order.
-- Catalog picker state lives briefly under `clamperl/pending/<pickId>.json` in Storage and is deleted after a choice (or by the hourly scratch sweep).
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - **Why hops:** Supabase Edge Functions cap CPU time per worker (docs say 2s; the worker is killed a few seconds later with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one worker. Each hop runs in a fresh worker with a fresh budget.
 - **Hop transport:** the job (interaction token, pair paths, staged files, trail) is POSTed to `${SUPABASE_URL}/functions/v1/discord-clamperl` with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. `index.ts` routes those requests before Discord signature verification; a bad signature is 401. A worker that has already spent >3s of stitch time answers `503` so the dispatcher retries and lands on a fresh isolate. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.

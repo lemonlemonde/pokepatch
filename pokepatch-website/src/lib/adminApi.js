@@ -624,6 +624,23 @@ export async function adminApplyOrderCardTcg(orderCardId, tcgCardId) {
   return payload.card;
 }
 
+/** Persist card + set labels from the queue catalog dialog. */
+export async function adminSetOrderCardLabels(orderCardId, cardName, setName) {
+  const payload = await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "order_card_set_labels",
+      order_card_id: orderCardId,
+      card_name: cardName,
+      set_name: setName,
+    },
+  });
+  if (!payload.card) {
+    throw new Error("Could not save card labels.");
+  }
+  return payload.card;
+}
+
 export async function adminUploadOrderCardCatalog(orderCardId, file) {
   const formData = new FormData();
   formData.append("kind", "order_card_catalog");
