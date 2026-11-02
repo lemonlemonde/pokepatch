@@ -32,34 +32,8 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
-/** Discord allows at most 10 files per message. */
+/** Discord allows at most 10 files per message — hard fail above this. */
 const FILES_PER_MESSAGE = 10;
-/**
- * Keep each multipart under this so Edge + Discord don't hang/OOM on a
- * multi-PNG upload (lossless 1080×1350 frames are multi‑MB each).
- */
-const MAX_BATCH_BYTES = 8 * 1024 * 1024;
-
-function chunkFilesForDiscord(files: DiscordUploadFile[]): DiscordUploadFile[][] {
-  const batches: DiscordUploadFile[][] = [];
-  let current: DiscordUploadFile[] = [];
-  let currentBytes = 0;
-  for (const file of files) {
-    const nextBytes = currentBytes + file.bytes.byteLength;
-    if (
-      current.length > 0 &&
-      (current.length >= FILES_PER_MESSAGE || nextBytes > MAX_BATCH_BYTES)
-    ) {
-      batches.push(current);
-      current = [];
-      currentBytes = 0;
-    }
-    current.push(file);
-    currentBytes += file.bytes.byteLength;
-  }
-  if (current.length > 0) batches.push(current);
-  return batches;
-}
 
 type CardImageRow = {
   id: number;
@@ -315,66 +289,47 @@ async function generateForCard(params: {
     };
   }
 
-  const totalMb = (
-    files.reduce((sum, file) => sum + file.bytes.byteLength, 0) /
-    (1024 * 1024)
-  ).toFixed(1);
+  if (files.length > FILES_PER_MESSAGE) {
+    return {
+      ok: false,
+      cardIndex,
+      cardLabel,
+      reason: `Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card has **${files.length}**`,
+    };
+  }
+
+  const totalBytes = files.reduce(
+    (sum, file) => sum + file.bytes.byteLength,
+    0
+  );
+  const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
   await onStatus(
     `Order **#${orderDisplayId}** · Card ${cardIndex} · uploading **${files.length}** PNG(s) (${totalMb} MB)…`
   );
+  console.log(
+    "clamperl upload",
+    JSON.stringify({
+      cardIndex,
+      files: files.length,
+      bytes: totalBytes,
+      sizes: files.map((file) => file.bytes.byteLength),
+    })
+  );
 
-  // Prefer fewer messages, but split by size. If a multi-file post fails,
-  // fall back to one PNG per message (that path is proven on Discord/Edge).
-  const batches = chunkFilesForDiscord(files);
-  let posted = 0;
-  for (let b = 0; b < batches.length; b += 1) {
-    const batch = batches[b];
-    const label =
-      batches.length === 1
-        ? `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`
-        : `Card ${cardIndex} · ${cardLabel} · PNGs (${b + 1}/${batches.length})`;
-    try {
-      console.log(
-        "clamperl upload batch",
-        JSON.stringify({
-          cardIndex,
-          batch: b + 1,
-          files: batch.length,
-          bytes: batch.reduce((sum, file) => sum + file.bytes.byteLength, 0),
-        })
-      );
-      await followupWithFiles(
-        applicationId,
-        token,
-        { content: label },
-        batch
-      );
-      posted += batch.length;
-    } catch (batchErr) {
-      console.error("clamperl multi-file upload failed; falling back", batchErr);
-      if (batch.length === 1) throw batchErr;
-      for (const file of batch) {
-        await followupWithFiles(
-          applicationId,
-          token,
-          {
-            content: `Card ${cardIndex} · ${cardLabel} · ${file.filename}`,
-          },
-          [file]
-        );
-        posted += 1;
-      }
-      notes.push(
-        `multi-file Discord upload failed for card ${cardIndex}; posted PNGs one-by-one instead`
-      );
-    }
-  }
+  await followupWithFiles(
+    applicationId,
+    token,
+    {
+      content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`,
+    },
+    files
+  );
 
   return {
     ok: true,
     cardIndex,
     cardLabel,
-    posted,
+    posted: files.length,
     beforeCount,
     afterCount,
     workCount,

@@ -407,6 +407,13 @@ export type DiscordUploadFile = {
   contentType?: string;
 };
 
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+}
+
 function multipartWithFiles(payload: Json, files: DiscordUploadFile[]): FormData {
   const form = new FormData();
   const attachments = files.map((file, index) => ({
@@ -424,9 +431,10 @@ function multipartWithFiles(payload: Json, files: DiscordUploadFile[]): FormData
     const file = files[index];
     form.append(
       `files[${index}]`,
-      new File([file.bytes], file.filename, {
+      new Blob([bytesToArrayBuffer(file.bytes)], {
         type: file.contentType ?? "application/octet-stream",
-      })
+      }),
+      file.filename
     );
   }
   return form;
@@ -467,14 +475,33 @@ export async function followupWithFiles(
   payload: Json,
   files: DiscordUploadFile[] = []
 ): Promise<void> {
-  const res = await discordRequest(
-    `/webhooks/${applicationId}/${token}`,
-    {
-      method: "POST",
-      auth: false,
-      body: multipartWithFiles(payload, files),
-    }
+  const totalBytes = files.reduce(
+    (sum, file) => sum + file.bytes.byteLength,
+    0
   );
+  // Large multi-PNG posts need headroom; fail instead of hanging forever.
+  const timeoutMs = Math.min(
+    120_000,
+    Math.max(30_000, 15_000 + Math.ceil(totalBytes / 1024))
+  );
+  let res: Response;
+  try {
+    res = await discordRequest(
+      `/webhooks/${applicationId}/${token}?wait=true`,
+      {
+        method: "POST",
+        auth: false,
+        body: multipartWithFiles(payload, files),
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("discord followup (files) transport failed", message);
+    throw new Error(
+      `Discord follow-up upload failed after ${(timeoutMs / 1000).toFixed(0)}s (${(totalBytes / (1024 * 1024)).toFixed(1)} MB): ${message}`
+    );
+  }
   if (!res.ok) {
     const detail = await readError(res);
     console.error("discord followup (files) failed", detail);
