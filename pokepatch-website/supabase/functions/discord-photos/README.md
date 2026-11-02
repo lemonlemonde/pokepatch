@@ -28,6 +28,12 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use wooper.
 
 Up to **20 photos per side** per card. Files over 15MB are rejected. **Each upload replaces that side** (DB rows + storage); `after` is untouched when uploading `before` and vice versa.
 
+**Status + customer email** (customer orders only — not my-cards `#-1`):
+
+- First **before** photo on a card → card becomes **in progress** (order advances to in progress when it was still earlier in the pipeline) and the customer gets the same changelog-style notify as admin Move & notify (“Your card is now in progress”).
+- First **after** photo on a card → card becomes **completed**; when every active card is completed the order becomes **ready for pickup**, and the customer is notified (“…completed” / “ready for pickup”).
+- Replacing photos on a card that is already in that status does **not** re-notify.
+
 ---
 
 ## Setup
@@ -65,4 +71,4 @@ curl -s -X PUT \
 
 ## Schema
 
-wooper needs migration `card_images_before_after` (`before` / `after` image types).
+wooper needs `card_images_before_after` (`before` / `after` image types) plus the before→in_progress / after→completed triggers (`cards_in_progress_when_before_photo`, `cards_complete_when_after_photo`).
