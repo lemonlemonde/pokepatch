@@ -4,7 +4,7 @@
  *
  * Loads before/after photos (sorted by id), skips the first two overview pairs,
  * index-pairs the rest, stitches lossless PNGs matching Studio's carousel layout,
- * and replies with downloadable attachments.
+ * stages each PNG to Storage, and replies with one Discord message (embeds + links).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -13,9 +13,8 @@ import {
   CallbackType,
   EPHEMERAL,
   editOriginal,
-  followupWithFiles,
+  followup,
   json,
-  type DiscordUploadFile,
   type Interaction,
   type Json,
 } from "../_shared/discord.ts";
@@ -32,8 +31,10 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
-/** Discord allows at most 10 files per message — hard fail above this. */
-const FILES_PER_MESSAGE = 10;
+/** Discord allows at most 10 embeds per message — hard fail above this. */
+const MAX_EMBED_IMAGES = 10;
+/** Keep staged PNGs browsable from Discord history. */
+const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
 
 type CardImageRow = {
   id: number;
@@ -155,9 +156,16 @@ type CardGenerateResult =
       reason: string;
     };
 
+type StagedPng = {
+  path: string;
+  filename: string;
+  byteLength: number;
+};
+
 /**
- * Download + stitch pairs one at a time (never parallel ImageScript), then
- * post every PNG for this card in as few Discord messages as possible.
+ * Stitch pairs one at a time. Holding multiple finished PNGs in Edge memory
+ * OOMs/hangs ImageScript on later pairs, so each PNG is staged to Storage
+ * immediately, then the card is posted as one Discord message (embeds + links).
  */
 async function generateForCard(params: {
   supabase: SupabaseClient;
@@ -171,6 +179,7 @@ async function generateForCard(params: {
   onPairProgress: (state: {
     pair: number;
     total: number;
+    phase: "stitching" | "staged";
   }) => Promise<void>;
   onStatus: (content: string) => Promise<void>;
 }): Promise<CardGenerateResult> {
@@ -244,13 +253,18 @@ async function generateForCard(params: {
     }
   }
 
-  const files: DiscordUploadFile[] = [];
+  const jobId = crypto.randomUUID();
+  const staged: StagedPng[] = [];
   const skippedLarge: string[] = [];
 
   for (let offset = 0; offset < workCount; offset += 1) {
     const i = SKIP_OVERVIEW_PAIRS + offset;
     const pairNum = offset + 1;
-    await onPairProgress({ pair: pairNum, total: workCount });
+    await onPairProgress({
+      pair: pairNum,
+      total: workCount,
+      phase: "stitching",
+    });
 
     const [beforeBytes, afterBytes] = await Promise.all([
       downloadStorageBytes(supabase, beforeRows[i].storage_path),
@@ -270,14 +284,37 @@ async function generateForCard(params: {
       continue;
     }
 
-    files.push({
-      filename,
-      bytes: png,
-      contentType: "image/png",
+    const path =
+      `clamperl/${orderDisplayId}/card${cardIndex}/${jobId}/${filename}`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(path, png, {
+        contentType: "image/png",
+        upsert: true,
+      });
+    if (uploadError) {
+      throw new Error(
+        `Failed to stage ${filename} to storage: ${uploadError.message}`
+      );
+    }
+    staged.push({ path, filename, byteLength: png.byteLength });
+    console.log(
+      "clamperl staged",
+      JSON.stringify({
+        cardIndex,
+        pair: pairNum,
+        bytes: png.byteLength,
+        path,
+      })
+    );
+    await onPairProgress({
+      pair: pairNum,
+      total: workCount,
+      phase: "staged",
     });
   }
 
-  if (files.length === 0) {
+  if (staged.length === 0) {
     return {
       ok: false,
       cardIndex,
@@ -289,47 +326,52 @@ async function generateForCard(params: {
     };
   }
 
-  if (files.length > FILES_PER_MESSAGE) {
+  if (staged.length > MAX_EMBED_IMAGES) {
     return {
       ok: false,
       cardIndex,
       cardLabel,
-      reason: `Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card has **${files.length}**`,
+      reason: `Discord allows at most **${MAX_EMBED_IMAGES}** images per message; this card has **${staged.length}**`,
     };
   }
 
-  const totalBytes = files.reduce(
-    (sum, file) => sum + file.bytes.byteLength,
-    0
-  );
-  const totalMb = (totalBytes / (1024 * 1024)).toFixed(1);
+  const totalMb = (
+    staged.reduce((sum, file) => sum + file.byteLength, 0) /
+    (1024 * 1024)
+  ).toFixed(1);
   await onStatus(
-    `Order **#${orderDisplayId}** · Card ${cardIndex} · uploading **${files.length}** PNG(s) (${totalMb} MB)…`
-  );
-  console.log(
-    "clamperl upload",
-    JSON.stringify({
-      cardIndex,
-      files: files.length,
-      bytes: totalBytes,
-      sizes: files.map((file) => file.bytes.byteLength),
-    })
+    `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
   );
 
-  await followupWithFiles(
-    applicationId,
-    token,
-    {
-      content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`,
-    },
-    files
-  );
+  // Embed title `url` is the download target — keep content short (Discord 2000 cap).
+  const embeds: Json[] = [];
+  for (let i = 0; i < staged.length; i += 1) {
+    const item = staged[i];
+    const { data: signed, error: signError } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(item.path, SIGNED_URL_EXPIRES_IN);
+    if (signError || !signed?.signedUrl) {
+      throw new Error(
+        `Failed to sign ${item.filename}: ${signError?.message ?? "no url"}`
+      );
+    }
+    embeds.push({
+      title: `Pair ${i + 1} · ${item.filename}`,
+      url: signed.signedUrl,
+      image: { url: signed.signedUrl },
+    });
+  }
+
+  await followup(applicationId, token, {
+    content: `Card ${cardIndex} · ${cardLabel} · **${staged.length}** PNG(s)\n_Click a pair title (or open the image) to download._`,
+    embeds,
+  });
 
   return {
     ok: true,
     cardIndex,
     cardLabel,
-    posted: files.length,
+    posted: staged.length,
     beforeCount,
     afterCount,
     workCount,
@@ -413,7 +455,7 @@ export async function runClamperlJob(params: {
     const notes: string[] = [];
     let postedFiles = 0;
 
-    // One card at a time; stitch pairs sequentially, then upload that card's PNGs together.
+    // One card at a time; stitch/stage pairs sequentially, then one Discord post.
     for (let t = 0; t < targets.length; t += 1) {
       const target = targets[t];
       const result = await generateForCard({
@@ -428,15 +470,19 @@ export async function runClamperlJob(params: {
         onStatus: async (content) => {
           await editOriginal(applicationId, token, content);
         },
-        onPairProgress: async ({ pair, total }) => {
+        onPairProgress: async ({ pair, total, phase }) => {
+          const step =
+            phase === "stitching"
+              ? `stitching pair **${pair}/${total}**`
+              : `staged pair **${pair}/${total}**`;
           await editOriginal(
             applicationId,
             token,
             [
               `Order **#${orderDisplayId}**`,
               multiCard
-                ? `Card **${target.cardIndex}/${targets.length}** · stitching pair **${pair}/${total}**`
-                : `Card ${target.cardIndex} · stitching pair **${pair}/${total}**`,
+                ? `Card **${target.cardIndex}/${targets.length}** · ${step}`
+                : `Card ${target.cardIndex} · ${step}`,
               okCards.length > 0
                 ? `Done:\n${okCards.map((line) => `• ${line}`).join("\n")}`
                 : "",
@@ -504,7 +550,7 @@ export async function runClamperlJob(params: {
           ? `Omitted (too large):\n${skippedLarge.join("\n")}`
           : "",
         notes.length > 0 ? `Notes:\n${notes.map((line) => `• ${line}`).join("\n")}` : "",
-        `_PNGs are in the follow-up message(s)._`,
+        `_PNGs are in the follow-up message(s) — click a pair title to download._`,
       ]
         .filter(Boolean)
         .join("\n")
