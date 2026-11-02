@@ -477,7 +477,9 @@ export async function followupWithFiles(
     }
   );
   if (!res.ok) {
-    console.error("discord followup (files) failed", await readError(res));
+    const detail = await readError(res);
+    console.error("discord followup (files) failed", detail);
+    throw new Error(`Discord follow-up failed: ${detail}`);
   }
 }
 
