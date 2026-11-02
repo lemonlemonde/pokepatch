@@ -12,11 +12,13 @@ export default function ServiceCard({
 }) {
   return (
     <div className="flex h-full flex-col marketing-panel p-4 sm:p-6">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="text-lg font-medium tracking-tight text-ink">{title}</h3>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h3 className="min-w-0 text-lg font-medium tracking-tight text-ink">
+          {title}
+        </h3>
         {price && (
           <div
-            className={`flex shrink-0 rounded-lg bg-ink/5 px-3 py-2 text-right ring-1 ring-ink/10 ${
+            className={`flex max-w-full shrink-0 rounded-lg bg-ink/5 px-3 py-2 text-right ring-1 ring-ink/10 ${
               priceStacked
                 ? "flex-col items-end gap-0.5"
                 : "items-baseline gap-1"

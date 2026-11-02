@@ -1,7 +1,7 @@
 /**
  * Single source of truth for PokePatch pricing.
  *
- * Per-card list rates, bulk discounts, and high-value surcharges all live here.
+ * Per-card list rates and high-value surcharges all live here.
  * Homepage marketing cards, admin quote defaults, HV auto-fill, and receipt math
  * read from these constants — update prices here only, then mirror keys /
  * titles / list prices / HV tiers in supabase/functions/_shared/servicePricing.ts
@@ -25,7 +25,7 @@ const SERVICE_UNIT = "/ card";
  * Keep in sync with FAQ wording on the homepage.
  */
 export const CARD_WHITENING_WARNING =
-  "Only for very small whitening dots on edges and corners. Grading companies like PSA may potentially detect added ink and mark the card as altered.";
+  "The more whitening there is, the higher the risk that PSA may mark the card as altered.";
 
 /** True for either Card Whitening tier (shared risk copy applies to both). */
 export function isWhiteningServiceKey(serviceKey) {
@@ -75,7 +75,7 @@ export const QUOTE_SERVICES = [
     key: SERVICE_KEYS.WHITENING_MAJOR,
     title: "Major Whitening",
     listPrice: 40,
-    features: ["Larger areas of whitening, or whitening across the whole card"],
+    features: ["Large whitening throughout the card"],
     warning: CARD_WHITENING_WARNING,
     accent: "ink",
   },
@@ -297,31 +297,6 @@ export function syncDraftPriorityQuote(draft) {
 }
 
 /**
- * Order-level bulk discount, applied to the whole order (not per service).
- * Highest matching tier wins.
- */
-export const BULK_DISCOUNT_TIERS = [
-  { minCards: 10, percent: 7.5 },
-  { minCards: 25, percent: 10 },
-];
-
-/** Discount % for a card count; 0 when below the first tier. */
-export function bulkDiscountPercentForCardCount(cardCount) {
-  const count = Math.floor(Number(cardCount));
-  if (!Number.isFinite(count)) return 0;
-  let percent = 0;
-  for (const tier of BULK_DISCOUNT_TIERS) {
-    if (count >= tier.minCards) percent = tier.percent;
-  }
-  return percent;
-}
-
-/** Short admin/customer hint for the bulk tiers. */
-export const BULK_TIER_RANGES_LABEL = BULK_DISCOUNT_TIERS.map(
-  (tier) => `${tier.minCards}+ cards → ${tier.percent}% off`
-).join(", ");
-
-/**
  * High-value surcharge tiers from Raw NM market value.
  * Highest matching tier wins; values below the first tier are 0%.
  */
@@ -414,6 +389,7 @@ function whiteningMarketingCard() {
     title: "Card Whitening",
     price: `${servicePriceDisplay(minor)}–${servicePriceDisplay(major)}`,
     unit: SERVICE_UNIT,
+    priceStacked: true,
     features: [
       ...minor.features.map((feature) => `Minor — ${feature}`),
       ...major.features.map((feature) => `Major — ${feature}`),
@@ -474,23 +450,9 @@ const PRIORITY_PRICING_MARKETING = {
   bulkLabel: "Pricing",
 };
 
-const BULK_PRICING_MARKETING = {
-  title: "Bulk discount",
-  features: ["Off the whole order"],
-  bulk: BULK_DISCOUNT_TIERS.map((tier) => ({
-    label: `${tier.minCards}+ cards`,
-    value: `${tier.percent}% off`,
-  })),
-  bulkLabel: "Discounts",
-};
-
 /** Homepage extras — purchasable options only. */
 export function marketingExtras() {
-  return [
-    slabMarketingPanel(),
-    PRIORITY_PRICING_MARKETING,
-    BULK_PRICING_MARKETING,
-  ].filter(Boolean);
+  return [slabMarketingPanel(), PRIORITY_PRICING_MARKETING].filter(Boolean);
 }
 
 /** Homepage high-value fee module — same visual weight as extras. */

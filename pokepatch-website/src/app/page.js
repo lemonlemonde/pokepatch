@@ -70,7 +70,7 @@ const faqs = [
   {
     question: "How long does restoration take?",
     answer:
-      "Anywhere from a few hours to 2 weeks, depending on the number of cards, restoration type, and any pickup or shipping logistics.",
+      "The restoration work itself can take anywhere from a few hours to a month or more, depending on the damage, number of cards, and restoration type. That doesn't include time waiting in the queue before we start.",
   },
   {
     question: "Can whitening on cards be fixed?",
