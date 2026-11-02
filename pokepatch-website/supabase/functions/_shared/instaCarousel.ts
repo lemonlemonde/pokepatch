@@ -519,14 +519,27 @@ async function drawBranding(
   );
 }
 
+export type StitchPhase =
+  | "measure"
+  | "decode_after"
+  | "decode_before"
+  | "compose"
+  | "encode";
+
 /**
  * Stitch one before/after pair into a 1080×1350 PNG.
+ * Optional `onPhase` reports ImageScript steps for Discord / Edge logs.
  */
 export async function stitchCarouselPairPng(
   beforeBytes: Uint8Array,
   afterBytes: Uint8Array,
-  overlay: CarouselOverlay = {}
+  overlay: CarouselOverlay = {},
+  onPhase?: (
+    phase: StitchPhase,
+    extra?: Record<string, unknown>
+  ) => void | Promise<void>
 ): Promise<Uint8Array> {
+  const started = Date.now();
   const assets = await ensureAssets();
 
   const hasCardInfo = Boolean(
@@ -547,15 +560,28 @@ export async function stitchCarouselPairPng(
 
   // Measure first (no pre-shrink), then decode→cover one side at a time so
   // peak RAM stays near one full phone photo.
+  await onPhase?.("measure", {
+    detail: `before ${(beforeBytes.byteLength / (1024 * 1024)).toFixed(1)}MB / after ${(afterBytes.byteLength / (1024 * 1024)).toFixed(1)}MB`,
+  });
   const beforeSize = await measureImageBytes(beforeBytes);
   const afterSize = await measureImageBytes(afterBytes);
+  const measureDetail =
+    `${beforeSize.w}×${beforeSize.h} / ${afterSize.w}×${afterSize.h}`;
   console.log(
     "clamperl stitch measure",
     JSON.stringify({
       before: [beforeSize.w, beforeSize.h, beforeBytes.byteLength],
       after: [afterSize.w, afterSize.h, afterBytes.byteLength],
+      ms: Date.now() - started,
     })
   );
+  await onPhase?.("measure", {
+    detail: measureDetail,
+    before: beforeSize,
+    after: afterSize,
+    beforeBytes: beforeBytes.byteLength,
+    afterBytes: afterBytes.byteLength,
+  });
 
   const leftMetrics = containSize(
     beforeSize.w,
@@ -582,8 +608,16 @@ export async function stitchCarouselPairPng(
     brandLift +
     Math.max(0, Math.floor((bandH - stackH) / 2));
 
+  await onPhase?.("decode_after", {
+    detail: `${afterSize.w}×${afterSize.h} → ${tw}×${th}`,
+  });
   const rightCard = prepareCard(await Image.decode(afterBytes), tw, th);
+  await onPhase?.("decode_before", {
+    detail: `${beforeSize.w}×${beforeSize.h} → ${tw}×${th}`,
+  });
   const leftCard = prepareCard(await Image.decode(beforeBytes), tw, th);
+
+  await onPhase?.("compose", { detail: `slot ${tw}×${th}` });
   const [beforeLabel, afterLabel] = await Promise.all([
     renderTrackedLabel(assets.font, "before", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
     renderTrackedLabel(assets.font, "after", LABEL_FONT, LABEL_TRACKING, LABEL_COLOR),
@@ -633,5 +667,11 @@ export async function stitchCarouselPairPng(
     await drawCardInfo(canvas, assets, overlay, contentBottom + CHIP_GAP);
   }
 
-  return await canvas.encodePNG();
+  await onPhase?.("encode");
+  const png = await canvas.encodePNG();
+  console.log(
+    "clamperl stitch encode",
+    JSON.stringify({ bytes: png.byteLength, ms: Date.now() - started })
+  );
+  return png;
 }
