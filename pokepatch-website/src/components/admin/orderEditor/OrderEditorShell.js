@@ -53,7 +53,9 @@ function OrderEditorContent({
   externalError,
   onSendMessage,
   noteOnlySending,
+  variant = "order",
 }) {
+  const isPortfolio = variant === "my-cards";
   const searchParams = useSearchParams();
   const [noteOnlyOpen, setNoteOnlyOpen] = useState(false);
   // undefined = follow the URL / default; null = all collapsed.
@@ -92,20 +94,27 @@ function OrderEditorContent({
   const expandedCardId =
     manualExpandId === undefined ? autoExpandId : manualExpandId;
 
-  const preview = buildQuotePreview(draft);
-  const priorityCardCount = priorityBillableCards(draft.cards).length;
-  const total = computeQuoteTotal({
-    items: preview.items,
-    cards: preview.cards,
-    adjustments: preview.adjustments,
-    isPriority: priorityCardCount > 0 || Boolean(draft.is_priority),
-    cardCount: preview.cardCount,
-  });
-  const afterCompletionTotal = adminLedgerTotal(draft.after_completion_amounts);
-  const costsTotal = adminLedgerTotal(draft.restoration_costs);
-  const earnedTotal =
-    Math.round((total + afterCompletionTotal - costsTotal) * 100) / 100;
-  const showEarned = afterCompletionTotal !== 0 || costsTotal !== 0;
+  let total = 0;
+  let earnedTotal = 0;
+  let showEarned = false;
+  if (!isPortfolio) {
+    const preview = buildQuotePreview(draft);
+    const priorityCardCount = priorityBillableCards(draft.cards).length;
+    total = computeQuoteTotal({
+      items: preview.items,
+      cards: preview.cards,
+      adjustments: preview.adjustments,
+      isPriority: priorityCardCount > 0 || Boolean(draft.is_priority),
+      cardCount: preview.cardCount,
+    });
+    const afterCompletionTotal = adminLedgerTotal(
+      draft.after_completion_amounts
+    );
+    const costsTotal = adminLedgerTotal(draft.restoration_costs);
+    earnedTotal =
+      Math.round((total + afterCompletionTotal - costsTotal) * 100) / 100;
+    showEarned = afterCompletionTotal !== 0 || costsTotal !== 0;
+  }
 
   useEffect(() => {
     if (scrollCardId) scrollToCard(scrollCardId);
@@ -116,18 +125,22 @@ function OrderEditorContent({
     function onKeyDown(event) {
       if ((event.metaKey || event.ctrlKey) && event.key === "s") {
         event.preventDefault();
-        if (dirty && !saving) requestSave();
+        if (!dirty || saving) return;
+        if (isPortfolio) void performSave({ notify: false });
+        else requestSave();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [dirty, saving, requestSave]);
+  }, [dirty, saving, requestSave, performSave, isPortfolio]);
 
   function handleAddCard() {
     onError?.("");
     const card = emptyAdminCard();
-    card.card_name = "New card";
-    card.is_priority = Boolean(draft.is_priority);
+    card.card_name = isPortfolio
+      ? `My card ${(draft.cards?.length ?? 0) + 1}`
+      : "New card";
+    card.is_priority = isPortfolio ? false : Boolean(draft.is_priority);
     updateDraft((base) => ({
       ...base,
       cards: [...base.cards, card],
@@ -142,10 +155,22 @@ function OrderEditorContent({
 
   function handleRemoveCard(cardId) {
     if ((draft.cards ?? []).length <= 1) {
-      onError?.("Orders need at least one card.");
+      onError?.(
+        isPortfolio
+          ? "Keep at least one card."
+          : "Orders need at least one card."
+      );
       return;
     }
-    if (!window.confirm("Remove this card from the order?")) return;
+    if (
+      !window.confirm(
+        isPortfolio
+          ? "Remove this card?"
+          : "Remove this card from the order?"
+      )
+    ) {
+      return;
+    }
     onError?.("");
     updateDraft((base) => {
       const id = String(cardId);
@@ -165,29 +190,38 @@ function OrderEditorContent({
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className={`mx-auto ${isPortfolio ? "max-w-3xl" : "max-w-5xl"}`}>
       {/* Sticky action bar, pinned just below the floating site navbar. */}
       <div className="sticky top-20 z-40 sm:top-24 mb-4 rounded-2xl border border-ink/10 bg-[#0a0714]/90 px-4 py-3 backdrop-blur sm:px-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="shrink-0 font-mono text-[11px] uppercase tracking-[0.16em] text-ink/50 transition hover:text-ink"
-          >
-            ← {backLabel}
-          </button>
-          <div className="hidden h-5 w-px bg-ink/15 sm:block" aria-hidden="true" />
-          <h1 className="text-base font-medium tabular-nums tracking-tight text-ink sm:text-lg">
-            Order #{displayId}
+          {onBack ? (
+            <>
+              <button
+                type="button"
+                onClick={onBack}
+                className="shrink-0 font-mono text-[11px] uppercase tracking-[0.16em] text-ink/50 transition hover:text-ink"
+              >
+                ← {backLabel}
+              </button>
+              <div
+                className="hidden h-5 w-px bg-ink/15 sm:block"
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+          <h1 className="text-base font-medium tracking-tight text-ink sm:text-lg">
+            {isPortfolio ? "My cards" : `Order #${displayId}`}
           </h1>
-          <span
-            className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${orderStatusBadgeClass(
-              draft.status,
-              draft.pending_kind
-            )}`}
-          >
-            {orderDisplayLabel(draft.status, draft.pending_kind)}
-          </span>
+          {!isPortfolio ? (
+            <span
+              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${orderStatusBadgeClass(
+                draft.status,
+                draft.pending_kind
+              )}`}
+            >
+              {orderDisplayLabel(draft.status, draft.pending_kind)}
+            </span>
+          ) : null}
           {dirty ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-ink/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink">
               <span
@@ -199,32 +233,36 @@ function OrderEditorContent({
           ) : null}
 
           <div className="ml-auto flex items-center gap-2">
-            <div className="mr-1 hidden text-right leading-tight sm:block">
-              <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
-                Quote
-              </p>
-              <p className="text-sm font-bold tabular-nums text-ink">
-                {formatMoney(total)}
-              </p>
-              {showEarned ? (
-                <>
-                  <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
-                    Earned
-                  </p>
-                  <p className="text-sm font-bold tabular-nums text-status-green">
-                    {formatMoney(earnedTotal)}
-                  </p>
-                </>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => setNoteOnlyOpen(true)}
-              disabled={!draft.customer_email?.trim() || noteOnlySending}
-              className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80 transition hover:border-ink/30 hover:text-ink disabled:opacity-40"
-            >
-              Message
-            </button>
+            {!isPortfolio ? (
+              <div className="mr-1 hidden text-right leading-tight sm:block">
+                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
+                  Quote
+                </p>
+                <p className="text-sm font-bold tabular-nums text-ink">
+                  {formatMoney(total)}
+                </p>
+                {showEarned ? (
+                  <>
+                    <p className="mt-1 font-mono text-[9px] uppercase tracking-[0.18em] text-ink/40">
+                      Earned
+                    </p>
+                    <p className="text-sm font-bold tabular-nums text-status-green">
+                      {formatMoney(earnedTotal)}
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            {!isPortfolio ? (
+              <button
+                type="button"
+                onClick={() => setNoteOnlyOpen(true)}
+                disabled={!draft.customer_email?.trim() || noteOnlySending}
+                className="rounded-lg border border-ink/15 px-3 py-2 text-sm font-semibold text-ink/80 transition hover:border-ink/30 hover:text-ink disabled:opacity-40"
+              >
+                Message
+              </button>
+            ) : null}
             {dirty ? (
               <button
                 type="button"
@@ -237,7 +275,11 @@ function OrderEditorContent({
             ) : null}
             <button
               type="button"
-              onClick={requestSave}
+              onClick={() =>
+                isPortfolio
+                  ? void performSave({ notify: false })
+                  : requestSave()
+              }
               disabled={saving || !dirty}
               className="rounded-lg bg-ink px-4 py-2 text-sm font-bold text-night transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
             >
@@ -253,7 +295,13 @@ function OrderEditorContent({
         ) : null}
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div
+        className={
+          isPortfolio
+            ? "space-y-4"
+            : "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]"
+        }
+      >
         <main className="min-w-0 space-y-4">
           <section className="space-y-2">
             <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.12em] text-ink/45">
@@ -262,7 +310,11 @@ function OrderEditorContent({
 
             {cards.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-ink/15 px-4 py-10 text-center">
-                <p className="text-sm text-ink/45">No cards on this order yet.</p>
+                <p className="text-sm text-ink/45">
+                  {isPortfolio
+                    ? "No cards yet. Add one, or upload with wooper order -1."
+                    : "No cards on this order yet."}
+                </p>
                 <button
                   type="button"
                   onClick={handleAddCard}
@@ -293,6 +345,7 @@ function OrderEditorContent({
                           ? () => handleRemoveCard(card.id)
                           : undefined
                       }
+                      showCommerce={!isPortfolio}
                     />
                   </div>
                 ))}
@@ -308,63 +361,69 @@ function OrderEditorContent({
             )}
           </section>
 
-          <QuoteSection />
+          {!isPortfolio ? <QuoteSection /> : null}
         </main>
 
-        <aside className="space-y-4">
-          <CustomerPanel />
-          <OrderPanel />
-          <ContractPanel orderId={orderId} displayId={displayId} />
-          <AdminOrderMessagesPanel orderId={orderId} />
-        </aside>
+        {!isPortfolio ? (
+          <aside className="space-y-4">
+            <CustomerPanel />
+            <OrderPanel />
+            <ContractPanel orderId={orderId} displayId={displayId} />
+            <AdminOrderMessagesPanel orderId={orderId} />
+          </aside>
+        ) : null}
       </div>
 
-      <OrderSaveChangesDialog
-        open={savePromptOpen}
-        variant="save"
-        displayId={displayId}
-        customerEmail={draft.customer_email}
-        thumbByCardId={buildCardThumbById(draft.cards ?? [])}
-        beforePayload={beforePayload}
-        afterPayload={afterPayload}
-        saving={saving}
-        willSplit={willSplit}
-        onCancel={() => {
-          if (!saving) setSavePromptOpen(false);
-        }}
-        onConfirm={async (opts) => {
-          const result = await performSave(opts);
-          if (result.ok && result.notifyError) {
-            onError?.(result.notifyError);
-          }
-          if (result.ok && result.split?.split) {
-            const newId = result.split.new_display_id;
-            window.alert(
-              newId != null
-                ? `Order updated. Priority cards were split into order #${newId}.`
-                : "Order updated. Priority cards were split into a new order."
-            );
-          }
-        }}
-      />
+      {!isPortfolio ? (
+        <>
+          <OrderSaveChangesDialog
+            open={savePromptOpen}
+            variant="save"
+            displayId={displayId}
+            customerEmail={draft.customer_email}
+            thumbByCardId={buildCardThumbById(draft.cards ?? [])}
+            beforePayload={beforePayload}
+            afterPayload={afterPayload}
+            saving={saving}
+            willSplit={willSplit}
+            onCancel={() => {
+              if (!saving) setSavePromptOpen(false);
+            }}
+            onConfirm={async (opts) => {
+              const result = await performSave(opts);
+              if (result.ok && result.notifyError) {
+                onError?.(result.notifyError);
+              }
+              if (result.ok && result.split?.split) {
+                const newId = result.split.new_display_id;
+                window.alert(
+                  newId != null
+                    ? `Order updated. Priority cards were split into order #${newId}.`
+                    : "Order updated. Priority cards were split into a new order."
+                );
+              }
+            }}
+          />
 
-      <OrderNoteOnlyDialog
-        open={noteOnlyOpen}
-        displayId={displayId}
-        customerEmail={draft.customer_email}
-        sending={noteOnlySending}
-        onCancel={() => {
-          if (!noteOnlySending) setNoteOnlyOpen(false);
-        }}
-        onSend={async (payload) => {
-          try {
-            await onSendMessage?.(payload);
-            setNoteOnlyOpen(false);
-          } catch {
-            // Error surfaced via onError in parent.
-          }
-        }}
-      />
+          <OrderNoteOnlyDialog
+            open={noteOnlyOpen}
+            displayId={displayId}
+            customerEmail={draft.customer_email}
+            sending={noteOnlySending}
+            onCancel={() => {
+              if (!noteOnlySending) setNoteOnlyOpen(false);
+            }}
+            onSend={async (payload) => {
+              try {
+                await onSendMessage?.(payload);
+                setNoteOnlyOpen(false);
+              } catch {
+                // Error surfaced via onError in parent.
+              }
+            }}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -387,6 +446,7 @@ export default function OrderEditorShell(props) {
         externalError={props.externalError}
         onSendMessage={props.onSendMessage}
         noteOnlySending={props.noteOnlySending ?? false}
+        variant={props.variant ?? "order"}
       />
     </OrderEditorProvider>
   );
