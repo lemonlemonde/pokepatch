@@ -166,7 +166,7 @@ type StagedPng = {
 /**
  * Stitch pairs one at a time. Holding multiple finished PNGs in Edge memory
  * OOMs/hangs ImageScript on later pairs, so each PNG is staged to Storage
- * immediately, then the card is posted as one Discord message (embeds + links).
+ * immediately, then the card is posted as Discord attachments and scratch is deleted.
  */
 async function generateForCard(params: {
   supabase: SupabaseClient;
@@ -252,10 +252,13 @@ async function generateForCard(params: {
     }
   }
   await prepareCarouselOverlay(overlay);
+  // Clear any leftover scratch from killed runs before this job stages more.
+  await sweepClamperlScratch(supabase);
 
   const jobId = crypto.randomUUID();
   const staged: StagedPng[] = [];
   const skippedLarge: string[] = [];
+  let result: CardGenerateResult | undefined;
 
   try {
     for (let offset = 0; offset < workCount; offset += 1) {
@@ -313,7 +316,7 @@ async function generateForCard(params: {
     }
 
     if (staged.length === 0) {
-      return {
+      result = {
         ok: false,
         cardIndex,
         cardLabel,
@@ -322,73 +325,128 @@ async function generateForCard(params: {
             ? `generated but all over Discord size limit`
             : `no posts generated`,
       };
-    }
-
-    if (staged.length > FILES_PER_MESSAGE) {
-      return {
+    } else if (staged.length > FILES_PER_MESSAGE) {
+      result = {
         ok: false,
         cardIndex,
         cardLabel,
         reason: `Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card has **${staged.length}**`,
       };
+    } else {
+      const totalMb = (
+        staged.reduce((sum, file) => sum + file.byteLength, 0) /
+        (1024 * 1024)
+      ).toFixed(1);
+      await onStatus(
+        `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
+      );
+
+      // Finished PNGs are small (1080×1350); safe to reload for one Discord post.
+      const files: DiscordUploadFile[] = [];
+      for (const item of staged) {
+        const bytes = await downloadStorageBytes(supabase, item.path);
+        files.push({
+          filename: item.filename,
+          bytes,
+          contentType: "image/png",
+        });
+      }
+
+      await followupWithFiles(
+        applicationId,
+        token,
+        {
+          content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`,
+        },
+        files
+      );
+
+      result = {
+        ok: true,
+        cardIndex,
+        cardLabel,
+        posted: staged.length,
+        beforeCount,
+        afterCount,
+        workCount,
+        skippedLarge,
+        notes,
+      };
     }
-
-    const totalMb = (
-      staged.reduce((sum, file) => sum + file.byteLength, 0) /
-      (1024 * 1024)
-    ).toFixed(1);
-    await onStatus(
-      `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
-    );
-
-    // Finished PNGs are small (1080×1350); safe to reload for one Discord post.
-    const files: DiscordUploadFile[] = [];
-    for (const item of staged) {
-      const bytes = await downloadStorageBytes(supabase, item.path);
-      files.push({
-        filename: item.filename,
-        bytes,
-        contentType: "image/png",
-      });
-    }
-
-    await followupWithFiles(
-      applicationId,
-      token,
-      {
-        content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`,
-      },
-      files
-    );
-
-    return {
-      ok: true,
-      cardIndex,
-      cardLabel,
-      posted: staged.length,
-      beforeCount,
-      afterCount,
-      workCount,
-      skippedLarge,
-      notes,
-    };
   } finally {
     // Drop staged objects after Discord post (or on failure) so Storage does not grow.
-    await removeStaged(
+    const cleanupError = await removeStaged(
       supabase,
       staged.map((item) => item.path)
     );
+    if (cleanupError && result?.ok) {
+      result.notes.push(`storage cleanup warning: ${cleanupError}`);
+    }
   }
+
+  if (!result) {
+    throw new Error("clamperl generateForCard ended without a result");
+  }
+  return result;
 }
 
+/** @returns error message on failure, otherwise null */
 async function removeStaged(
   supabase: SupabaseClient,
   paths: string[]
-): Promise<void> {
-  if (paths.length === 0) return;
+): Promise<string | null> {
+  if (paths.length === 0) return null;
   const { error } = await supabase.storage.from(BUCKET).remove(paths);
   if (error) {
     console.error("clamperl staged cleanup failed", error.message, paths);
+    return error.message;
+  }
+  return null;
+}
+
+/** Orphans older than this are safe to delete (avoids racing a concurrent /clamperl). */
+const SCRATCH_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * Delete stale objects under `clamperl/` (scratch prefix). Catches orphans left
+ * when an Edge isolate dies before `finally` runs, without wiping in-flight jobs.
+ */
+async function sweepClamperlScratch(supabase: SupabaseClient): Promise<void> {
+  const paths: string[] = [];
+  const cutoff = Date.now() - SCRATCH_MAX_AGE_MS;
+
+  async function walk(prefix: string): Promise<void> {
+    const { data, error } = await supabase.storage.from(BUCKET).list(prefix, {
+      limit: 1000,
+    });
+    if (error) {
+      console.error("clamperl scratch list failed", prefix, error.message);
+      return;
+    }
+    for (const entry of data ?? []) {
+      const full = prefix ? `${prefix}/${entry.name}` : entry.name;
+      // Folders from list() have id null / no metadata in some API versions.
+      const isFile =
+        entry.id != null || (entry.metadata && entry.metadata.size != null);
+      if (!isFile) {
+        await walk(full);
+        continue;
+      }
+      const created = entry.created_at
+        ? Date.parse(String(entry.created_at))
+        : NaN;
+      // Missing timestamps: treat as stale so old orphans still get cleared.
+      if (Number.isFinite(created) && created > cutoff) continue;
+      paths.push(full);
+    }
+  }
+
+  await walk("clamperl");
+  if (paths.length === 0) return;
+  console.log("clamperl scratch sweep", JSON.stringify({ count: paths.length }));
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.error("clamperl scratch sweep failed", error.message, paths.length);
   }
 }
 

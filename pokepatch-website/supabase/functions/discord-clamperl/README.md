@@ -80,7 +80,7 @@ Invite the bot to your server with `applications.commands` scope.
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Pairs are stitched **one at a time** and staged to Storage between pairs. Source photos are covered straight to the final carousel slot (no extra pre-shrink); Edge memory is kept down by decoding one side at a time.
-- Discord gets one follow-up with PNG attachments; staged Storage objects are deleted right after that post. Uneven before/after counts are called out in the status reply.
+- Discord gets one follow-up with PNG attachments. Staged Storage objects under `clamperl/` are deleted in a `finally` after each job. Each run also sweeps that scratch prefix for orphans older than ~1h (killed Edge isolates), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.
