@@ -4,7 +4,8 @@
  *
  * Loads before/after photos (sorted by id), skips the first two overview pairs,
  * index-pairs the rest, stitches lossless PNGs matching Studio's carousel layout,
- * stages each PNG to Storage, and replies with one Discord message (embeds + links).
+ * stages each PNG to Storage while stitching, posts them as Discord attachments,
+ * then deletes the staged files so Storage does not grow unbounded.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -13,8 +14,9 @@ import {
   CallbackType,
   EPHEMERAL,
   editOriginal,
-  followup,
+  followupWithFiles,
   json,
+  type DiscordUploadFile,
   type Interaction,
   type Json,
 } from "../_shared/discord.ts";
@@ -32,10 +34,8 @@ const SIDE_IMAGE_TYPES: Record<"before" | "after", string[]> = {
   after: ["after", "final_front", "final_back"],
 };
 
-/** Discord allows at most 10 embeds per message — hard fail above this. */
-const MAX_EMBED_IMAGES = 10;
-/** Keep staged PNGs browsable from Discord history. */
-const SIGNED_URL_EXPIRES_IN = 60 * 60 * 24 * 365;
+/** Discord allows at most 10 attachments per message — hard fail above this. */
+const FILES_PER_MESSAGE = 10;
 
 type CardImageRow = {
   id: number;
@@ -257,124 +257,139 @@ async function generateForCard(params: {
   const staged: StagedPng[] = [];
   const skippedLarge: string[] = [];
 
-  for (let offset = 0; offset < workCount; offset += 1) {
-    const i = SKIP_OVERVIEW_PAIRS + offset;
-    const pairNum = offset + 1;
-    await onPairProgress({
-      pair: pairNum,
-      total: workCount,
-      phase: "stitching",
-    });
-
-    const [beforeBytes, afterBytes] = await Promise.all([
-      downloadStorageBytes(supabase, beforeRows[i].storage_path),
-      downloadStorageBytes(supabase, afterRows[i].storage_path),
-    ]);
-
-    const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
-    const filename = `pokepatch-pair-${pairNum}.png`;
-
-    if (png.byteLength > sizeLimit) {
-      skippedLarge.push(
-        `${filename} (${Math.ceil(png.byteLength / (1024 * 1024))}MB > limit)`
-      );
-      continue;
-    }
-
-    const path =
-      `clamperl/${orderDisplayId}/card${cardIndex}/${jobId}/${filename}`;
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET)
-      .upload(path, png, {
-        contentType: "image/png",
-        upsert: true,
-      });
-    if (uploadError) {
-      throw new Error(
-        `Failed to stage ${filename} to storage: ${uploadError.message}`
-      );
-    }
-    staged.push({ path, filename, byteLength: png.byteLength });
-    console.log(
-      "clamperl staged",
-      JSON.stringify({
-        cardIndex,
+  try {
+    for (let offset = 0; offset < workCount; offset += 1) {
+      const i = SKIP_OVERVIEW_PAIRS + offset;
+      const pairNum = offset + 1;
+      await onPairProgress({
         pair: pairNum,
-        bytes: png.byteLength,
-        path,
-      })
-    );
-    await onPairProgress({
-      pair: pairNum,
-      total: workCount,
-      phase: "staged",
-    });
-  }
+        total: workCount,
+        phase: "stitching",
+      });
 
-  if (staged.length === 0) {
-    return {
-      ok: false,
-      cardIndex,
-      cardLabel,
-      reason:
-        skippedLarge.length > 0
-          ? `generated but all over Discord size limit`
-          : `no posts generated`,
-    };
-  }
+      const [beforeBytes, afterBytes] = await Promise.all([
+        downloadStorageBytes(supabase, beforeRows[i].storage_path),
+        downloadStorageBytes(supabase, afterRows[i].storage_path),
+      ]);
 
-  if (staged.length > MAX_EMBED_IMAGES) {
-    return {
-      ok: false,
-      cardIndex,
-      cardLabel,
-      reason: `Discord allows at most **${MAX_EMBED_IMAGES}** images per message; this card has **${staged.length}**`,
-    };
-  }
+      const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
+      const filename = `pokepatch-pair-${pairNum}.png`;
 
-  const totalMb = (
-    staged.reduce((sum, file) => sum + file.byteLength, 0) /
-    (1024 * 1024)
-  ).toFixed(1);
-  await onStatus(
-    `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
-  );
+      if (png.byteLength > sizeLimit) {
+        skippedLarge.push(
+          `${filename} (${Math.ceil(png.byteLength / (1024 * 1024))}MB > limit)`
+        );
+        continue;
+      }
 
-  // Embed title `url` is the download target — keep content short (Discord 2000 cap).
-  const embeds: Json[] = [];
-  for (let i = 0; i < staged.length; i += 1) {
-    const item = staged[i];
-    const { data: signed, error: signError } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(item.path, SIGNED_URL_EXPIRES_IN);
-    if (signError || !signed?.signedUrl) {
-      throw new Error(
-        `Failed to sign ${item.filename}: ${signError?.message ?? "no url"}`
+      const path =
+        `clamperl/${orderDisplayId}/card${cardIndex}/${jobId}/${filename}`;
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(path, png, {
+          contentType: "image/png",
+          upsert: true,
+        });
+      if (uploadError) {
+        throw new Error(
+          `Failed to stage ${filename} to storage: ${uploadError.message}`
+        );
+      }
+      staged.push({ path, filename, byteLength: png.byteLength });
+      console.log(
+        "clamperl staged",
+        JSON.stringify({
+          cardIndex,
+          pair: pairNum,
+          bytes: png.byteLength,
+          path,
+        })
       );
+      await onPairProgress({
+        pair: pairNum,
+        total: workCount,
+        phase: "staged",
+      });
     }
-    embeds.push({
-      title: `Pair ${i + 1} · ${item.filename}`,
-      url: signed.signedUrl,
-      image: { url: signed.signedUrl },
-    });
+
+    if (staged.length === 0) {
+      return {
+        ok: false,
+        cardIndex,
+        cardLabel,
+        reason:
+          skippedLarge.length > 0
+            ? `generated but all over Discord size limit`
+            : `no posts generated`,
+      };
+    }
+
+    if (staged.length > FILES_PER_MESSAGE) {
+      return {
+        ok: false,
+        cardIndex,
+        cardLabel,
+        reason: `Discord allows at most **${FILES_PER_MESSAGE}** attachments per message; this card has **${staged.length}**`,
+      };
+    }
+
+    const totalMb = (
+      staged.reduce((sum, file) => sum + file.byteLength, 0) /
+      (1024 * 1024)
+    ).toFixed(1);
+    await onStatus(
+      `Order **#${orderDisplayId}** · Card ${cardIndex} · posting **${staged.length}** PNG(s) (${totalMb} MB)…`
+    );
+
+    // Finished PNGs are small (1080×1350); safe to reload for one Discord post.
+    const files: DiscordUploadFile[] = [];
+    for (const item of staged) {
+      const bytes = await downloadStorageBytes(supabase, item.path);
+      files.push({
+        filename: item.filename,
+        bytes,
+        contentType: "image/png",
+      });
+    }
+
+    await followupWithFiles(
+      applicationId,
+      token,
+      {
+        content: `Card ${cardIndex} · ${cardLabel} · **${files.length}** PNG(s)`,
+      },
+      files
+    );
+
+    return {
+      ok: true,
+      cardIndex,
+      cardLabel,
+      posted: staged.length,
+      beforeCount,
+      afterCount,
+      workCount,
+      skippedLarge,
+      notes,
+    };
+  } finally {
+    // Drop staged objects after Discord post (or on failure) so Storage does not grow.
+    await removeStaged(
+      supabase,
+      staged.map((item) => item.path)
+    );
   }
+}
 
-  await followup(applicationId, token, {
-    content: `Card ${cardIndex} · ${cardLabel} · **${staged.length}** PNG(s)\n_Click a pair title (or open the image) to download._`,
-    embeds,
-  });
-
-  return {
-    ok: true,
-    cardIndex,
-    cardLabel,
-    posted: staged.length,
-    beforeCount,
-    afterCount,
-    workCount,
-    skippedLarge,
-    notes,
-  };
+async function removeStaged(
+  supabase: SupabaseClient,
+  paths: string[]
+): Promise<void> {
+  if (paths.length === 0) return;
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  if (error) {
+    console.error("clamperl staged cleanup failed", error.message, paths);
+  }
 }
 
 export async function runClamperlJob(params: {
@@ -483,7 +498,7 @@ export async function runClamperlJob(params: {
         result.notes.length > 0
           ? `Notes:\n${result.notes.map((line) => `• ${line}`).join("\n")}`
           : "",
-        `_PNGs are in the follow-up — click a pair title to download._`,
+        `_PNGs are in the follow-up message._`,
       ]
         .filter(Boolean)
         .join("\n")

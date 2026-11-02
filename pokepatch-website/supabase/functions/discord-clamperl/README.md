@@ -18,7 +18,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use `/clamperl`.
 2. Bot loads before/after photos for that card (sorted by upload id).
 3. Skips the first **two** overview pairs.
 4. Index-pairs the rest and stitches **lossless 1080×1350 PNG** carousel frames (same 4:5 layout as Admin Studio).
-5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), then posts one Discord follow-up with image embeds + download links.
+5. Stitches pairs one at a time (staging each PNG to Storage so Edge doesn’t OOM), posts them as Discord attachments in one follow-up, then deletes the staged files.
 
 Cards without enough before/after pairs get a note in the reply.
 
@@ -80,7 +80,7 @@ Invite the bot to your server with `applications.commands` scope.
 
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
 - Pairs are stitched **one at a time** and staged to Storage between pairs. Source photos are covered straight to the final carousel slot (no extra pre-shrink); Edge memory is kept down by decoding one side at a time.
-- Discord gets one follow-up (image embeds; click through to download). Uneven before/after counts are called out in the status reply.
+- Discord gets one follow-up with PNG attachments; staged Storage objects are deleted right after that post. Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - First two before/after pairs are treated as overview and never posted.
 - Fonts/logo are fetched once per isolate (Nunito via jsDelivr; logo from pokepatch.cards). Edge does not bundle loose `Deno.readFile` assets.
