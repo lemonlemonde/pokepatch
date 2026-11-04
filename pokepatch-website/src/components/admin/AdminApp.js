@@ -131,9 +131,11 @@ function tabFromPathname(pathname) {
 }
 
 function previewUrlsFromOrder(order) {
+  // List rows ship signed preview_urls from the board summary API.
   if (Array.isArray(order.preview_urls) && order.preview_urls.length > 0) {
     return order.preview_urls.filter(Boolean);
   }
+  // Detail get/create payloads nest thumbs under cards[].images instead.
   const urls = [];
   for (const card of order.cards ?? []) {
     for (const image of card.images ?? []) {
@@ -141,7 +143,7 @@ function previewUrlsFromOrder(order) {
       if (image.signed_thumb_url || image.signed_url) {
         urls.push(image.signed_thumb_url || image.signed_url);
       }
-      if (urls.length >= 4) return urls;
+      if (urls.length >= 1) return urls;
     }
   }
   return urls;
@@ -163,6 +165,14 @@ function sumOrderAmounts(orders) {
 function orderToKanbanSummary(order) {
   const status = normalizeOrderStatus(order.status);
   const isClosed = isClosedOrderStatus(status);
+  const detailCards = Array.isArray(order.cards) ? order.cards : null;
+  const card_count = order.card_count ?? detailCards?.length ?? 0;
+  const cards_completed =
+    order.cards_completed != null
+      ? Number(order.cards_completed)
+      : detailCards
+        ? detailCards.filter((card) => card.status === "completed").length
+        : null;
   return {
     id: order.id,
     display_id: order.display_id,
@@ -178,8 +188,8 @@ function orderToKanbanSummary(order) {
         : null,
     completed_at: isClosed ? (order.completed_at ?? null) : null,
     status_changed_at: order.status_changed_at ?? null,
-    card_count: order.card_count ?? order.cards?.length ?? 0,
-    cards_completed: order.cards_completed ?? null,
+    card_count,
+    cards_completed,
     is_priority: Boolean(order.is_priority),
     queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
@@ -1477,11 +1487,23 @@ export default function AdminApp() {
           ...order,
           ...summary,
           is_priority: Boolean(refreshed.is_priority ?? summary.is_priority),
-          // Preserve list value when a detail payload omits contract_signed.
+          // Preserve list-only fields when detail get omits them.
           contract_signed:
             typeof refreshed.contract_signed === "boolean"
               ? refreshed.contract_signed
               : order.contract_signed,
+          queue_position:
+            refreshed.queue_position != null
+              ? refreshed.queue_position
+              : order.queue_position,
+          preview_paths:
+            summary.preview_paths?.length > 0
+              ? summary.preview_paths
+              : order.preview_paths,
+          preview_urls:
+            summary.preview_urls?.length > 0
+              ? summary.preview_urls
+              : order.preview_urls,
         };
       })
     );
@@ -1492,14 +1514,9 @@ export default function AdminApp() {
     setListError("");
     try {
       const rows = await adminListOrders();
-      setOrders(
-        rows.map((order) =>
-          orderToKanbanSummary({
-            ...order,
-            quote_total: orderEarnedTotalFromStored(order),
-          })
-        )
-      );
+      // List returns board summary + server quote_total; do not recompute
+      // from quote_items/cards (those are detail-only now).
+      setOrders(rows.map((order) => orderToKanbanSummary(order)));
     } catch (err) {
       setListError(err.message || "Could not load orders.");
     } finally {
