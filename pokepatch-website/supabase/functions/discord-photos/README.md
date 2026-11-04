@@ -30,8 +30,8 @@ Up to **20 photos per side** per card. Files over 15MB are rejected. **Each uplo
 
 **Status + customer email** (customer orders only — not my-cards `#-1`):
 
-- First **before** photo on a card → card becomes **in progress** (order advances to in progress when it was still earlier in the pipeline) and the customer gets the same changelog-style notify as admin Move & notify (“Your card is now in progress”).
-- First **after** photo on a card → card becomes **completed**; when every active card is completed the order becomes **ready for pickup**, and the customer is notified (“…completed” / “ready for pickup”).
+- First **before** photo on a card → card becomes **in progress** (order advances to in progress when it was still earlier in the pipeline). Customer is emailed only if the **order** status changed (e.g. queue → in progress) — not for mid-job per-card flips.
+- First **after** photo on a card → card becomes **completed**; when every active card is completed the order becomes **ready for pickup**, and the customer is notified of that order-status change.
 - Replacing photos on a card that is already in that status does **not** re-notify.
 
 ---

@@ -12,9 +12,7 @@ import {
   SERVICE_KEYS,
 } from "@/lib/servicePricing";
 import {
-  customerCardStatusLabel,
   customerOrderStatusLabel,
-  normalizeCardStatus,
   normalizeOrderStatus,
   normalizePendingKind,
 } from "@/lib/orderStatus";
@@ -250,7 +248,7 @@ export function buildCardThumbById(cards = []) {
 /**
  * Build customer-facing changelog grouped by card.
  * Order section: order status, adjustments (discount/surcharge/etc), quote total change.
- * Card sections: card status, services, high-value fees.
+ * Card sections: services, high-value fees, notes (not per-card status — too noisy).
  * @returns {{ cardGroups: CardChangelogGroup[], orderChanges: string[], quoteSummary: string | null, text: string, hasChangelog: boolean }}
  */
 export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
@@ -389,18 +387,9 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     );
   }
 
-  // Per-card status changes (surviving cards only).
-  for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
-    const before = beforeCards.get(cardId)?.row;
-    const after = afterCards.get(cardId)?.row;
-    if (!before || !after) continue;
-    const beforeStatus = normalizeCardStatus(before.status);
-    const afterStatus = normalizeCardStatus(after.status);
-    if (beforeStatus === afterStatus) continue;
-    ensureCardGroup(cardId).changes.push(
-      `Status: ${customerCardStatusLabel(beforeStatus)} → ${customerCardStatusLabel(afterStatus)}`
-    );
-  }
+  // Per-card status is intentionally omitted from customer changelogs —
+  // customers are notified on quote save, contract send, and whole-order
+  // status changes only.
 
   // Per-card admin note changes.
   for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
@@ -649,42 +638,6 @@ export function summarizeChangelog(changelog = {}) {
   else if (added > 1) phrases.push("New cards have been added");
   if (removed === 1) phrases.push("A card has been removed");
   else if (removed > 1) phrases.push("Cards have been removed");
-
-  let completedCards = 0;
-  let inProgressCards = 0;
-  let otherCardStatus = 0;
-  for (const group of cardGroups) {
-    if (group.status !== "modified") continue;
-    for (const line of group.changes ?? []) {
-      if (!String(line).startsWith("Status:")) continue;
-      const toLabel = String(line).split("→").pop()?.trim()?.toLowerCase();
-      if (toLabel === "completed") completedCards += 1;
-      else if (toLabel === "in progress") inProgressCards += 1;
-      else otherCardStatus += 1;
-    }
-  }
-  // When the order itself became ready, card-completion lines are redundant.
-  if (completedCards >= 1 && !orderReadyPhrase) {
-    phrases.push(
-      completedCards === 1
-        ? "A card on your order has been completed"
-        : "Some cards on your order have been completed"
-    );
-  }
-  if (inProgressCards >= 1) {
-    phrases.push(
-      inProgressCards === 1
-        ? "Your card is now in progress"
-        : "Your cards are now in progress"
-    );
-  }
-  if (otherCardStatus >= 1 && completedCards === 0 && inProgressCards === 0) {
-    phrases.push(
-      otherCardStatus === 1
-        ? "A card status has been updated"
-        : "Card statuses have been updated"
-    );
-  }
 
   const quoteTouched =
     Boolean(quoteSummary) ||

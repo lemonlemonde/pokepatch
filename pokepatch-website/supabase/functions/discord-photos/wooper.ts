@@ -8,7 +8,7 @@
  *
  * DB triggers flip card/order status on first before → in_progress and first
  * after → completed (order → ready when all active cards are done). Wooper then
- * emails the customer via the shared changelog notify path when status changes.
+ * emails the customer only when the *order* status changes (not per-card flips).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -100,19 +100,15 @@ function orderStatusLabel(status: string): string {
 }
 
 /**
- * Email the customer when a wooper upload flips card (and maybe order) status.
- * Uses the same customer_messages + changelog path as admin Move & notify.
+ * Email the customer when a wooper upload flips the *order* status.
+ * Per-card status flips alone do not notify (too noisy mid-job).
  */
-async function notifyStatusChange(params: {
+async function notifyOrderStatusChange(params: {
   supabase: SupabaseClient;
   orderId: string;
   orderDisplayId: number;
   customerEmail: string | null;
   userId: string | null;
-  cardId: string;
-  cardLabel: string;
-  fromCardStatus: string;
-  toCardStatus: string;
   fromOrderStatus: string;
   toOrderStatus: string;
 }): Promise<string | null> {
@@ -122,50 +118,22 @@ async function notifyStatusChange(params: {
     orderDisplayId,
     customerEmail,
     userId,
-    cardId,
-    cardLabel,
-    fromCardStatus,
-    toCardStatus,
     fromOrderStatus,
     toOrderStatus,
   } = params;
 
-  if (fromCardStatus === toCardStatus && fromOrderStatus === toOrderStatus) {
-    return null;
-  }
+  if (fromOrderStatus === toOrderStatus) return null;
 
   const email = String(customerEmail ?? "").trim().toLowerCase();
   if (!email) return "no customer email on order";
 
-  const cardGroups: NonNullable<ChangelogPayload["cardGroups"]> = [];
-  if (fromCardStatus !== toCardStatus) {
-    cardGroups.push({
-      cardId,
-      label: cardLabel,
-      status: "modified",
-      changes: [
-        `Status: ${cardStatusLabel(fromCardStatus)} → ${cardStatusLabel(toCardStatus)}`,
-      ],
-    });
-  }
+  const changelog: ChangelogPayload = {
+    orderChanges: [
+      `Status: ${orderStatusLabel(fromOrderStatus)} → ${orderStatusLabel(toOrderStatus)}`,
+    ],
+  };
 
-  const orderChanges: string[] = [];
-  if (fromOrderStatus !== toOrderStatus) {
-    orderChanges.push(
-      `Status: ${orderStatusLabel(fromOrderStatus)} → ${orderStatusLabel(toOrderStatus)}`
-    );
-  }
-
-  const changelog: ChangelogPayload = { cardGroups, orderChanges };
-
-  let subject = "Your order has been updated";
-  if (toCardStatus === "in_progress" && fromCardStatus !== "in_progress") {
-    subject = "Your card is now in progress";
-  } else if (toOrderStatus === "ready" && fromOrderStatus !== "ready") {
-    subject = "Your order is now ready for pickup";
-  } else if (toCardStatus === "completed" && fromCardStatus !== "completed") {
-    subject = "A card on your order has been completed";
-  }
+  const subject = `Your order is now ${orderStatusLabel(toOrderStatus).toLowerCase()}`;
 
   const result = await sendCustomerEmail({
     supabase,
@@ -601,8 +569,8 @@ async function uploadAttachments(params: {
     // DB triggers flip card/order status on before → in_progress (only when
     // the card has no after photos yet) and after → completed (order → ready
     // when every active card is done). Replacing photos on a card that already
-    // has afters is an edit only. Notify once when the status actually
-    // changed — same changelog email as admin notify.
+    // has afters is an edit only. Customer email only when the *order* status
+    // changes — not for mid-job per-card flips.
     if (uploaded > 0) {
       const [{ data: cardAfter }, { data: orderAfter }] = await Promise.all([
         supabase.from("cards").select("status").eq("id", cardId).maybeSingle(),
@@ -617,8 +585,6 @@ async function uploadAttachments(params: {
         .trim()
         .toLowerCase();
 
-      const statusChanged =
-        fromCardStatus !== toCardStatus || fromOrderStatus !== toOrderStatus;
       if (fromCardStatus !== toCardStatus) {
         lines.push(
           `Card **${cardStatusLabel(fromCardStatus)}** → **${cardStatusLabel(toCardStatus)}**.`
@@ -630,8 +596,8 @@ async function uploadAttachments(params: {
         );
       }
 
-      if (statusChanged && !ownerPortfolio) {
-        const notifyError = await notifyStatusChange({
+      if (fromOrderStatus !== toOrderStatus && !ownerPortfolio) {
+        const notifyError = await notifyOrderStatusChange({
           supabase,
           orderId: String(order.id),
           orderDisplayId: Number(order.display_id),
@@ -640,10 +606,6 @@ async function uploadAttachments(params: {
               ? order.customer_email
               : null,
           userId: typeof order.user_id === "string" ? order.user_id : null,
-          cardId,
-          cardLabel,
-          fromCardStatus,
-          toCardStatus,
           fromOrderStatus,
           toOrderStatus,
         });
