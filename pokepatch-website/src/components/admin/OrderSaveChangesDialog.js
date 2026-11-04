@@ -143,7 +143,12 @@ export default function OrderSaveChangesDialog({
 
   useEffect(() => {
     if (!open) return;
-    setMode(canNotify ? "notify" : "only");
+    // Default to notify when there is a customer-facing diff (quote / order
+    // status / etc.) or this is a queue move. Card-status-only edits no longer
+    // produce a changelog, so those open on Save only.
+    const worthNotifying =
+      canNotify && (variant === "move" || Boolean(built.hasChangelog));
+    setMode(worthNotifying ? "notify" : "only");
     setSubject(
       built.summary ||
         (displayId != null
@@ -157,7 +162,7 @@ export default function OrderSaveChangesDialog({
       quoteSummary: built.quoteSummary,
     });
     setError("");
-  }, [open, canNotify, built, displayId]);
+  }, [open, canNotify, built, displayId, variant]);
 
   const { mounted, visible } = useOverlayPresence(open);
 
