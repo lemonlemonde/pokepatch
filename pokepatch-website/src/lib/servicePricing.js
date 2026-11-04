@@ -528,6 +528,15 @@ function normalizeCardKey(name, setName) {
   return `${(name || "").trim().toLowerCase()}|${(setName || "").trim().toLowerCase()}`;
 }
 
+/** Card id from card_id / card_pick when present; otherwise null. */
+function quoteItemExplicitCardId(item) {
+  const explicitId =
+    item?.card_id ??
+    (item?.card_pick && item.card_pick !== "custom" ? item.card_pick : null);
+  if (explicitId == null || String(explicitId) === "") return null;
+  return String(explicitId);
+}
+
 /** True when a card is canceled and must not contribute to quote totals. */
 export function cardIsCanceledForQuote(card) {
   const status = String(card?.status ?? "")
@@ -563,9 +572,8 @@ export function billableQuoteItems(items = [], cards = []) {
   if (canceledById.size === 0 && canceledByKey.size === 0) return list;
 
   return list.filter((item) => {
-    if (item?.card_pick && item.card_pick !== "custom") {
-      return !canceledById.has(String(item.card_pick));
-    }
+    const explicitId = quoteItemExplicitCardId(item);
+    if (explicitId) return !canceledById.has(explicitId);
     const key = normalizeCardKey(item?.card_name, item?.set_name);
     if (key !== "|" && canceledByKey.has(key)) return false;
     return true;
@@ -1138,12 +1146,23 @@ export function quoteItemLineTotal(item) {
   return Math.round((Number(item?.quote_base_amount) || 0) * 100) / 100;
 }
 
-/** Group quote lines by card name/set, preserving first-seen order.
+function quoteItemGroupKey(item) {
+  const explicitId = quoteItemExplicitCardId(item);
+  if (explicitId) return `id:${explicitId}`;
+  return `name:${normalizeCardKey(item?.card_name, item?.set_name)}`;
+}
+
+/** Group quote lines by card id (preferred) or name/set, preserving first-seen order.
  * Canceled cards are omitted (their amounts are excluded from the quote).
  */
 export function groupQuoteItemsByCard(items = [], cards = []) {
   const billableItems = billableQuoteItems(items, cards);
   const billableCards = billableQuoteCards(cards);
+  const cardById = new Map(
+    billableCards
+      .filter((card) => card?.id != null)
+      .map((card) => [String(card.id), card])
+  );
   const cardByKey = new Map(
     billableCards.map((card) => [
       normalizeCardKey(card.card_name, card.set_name),
@@ -1153,10 +1172,14 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
   const groups = [];
   const indexByKey = new Map();
   for (const item of billableItems) {
-    const key = normalizeCardKey(item?.card_name, item?.set_name);
+    const key = quoteItemGroupKey(item);
     let group = indexByKey.get(key);
     if (!group) {
-      const card = cardByKey.get(key) ?? null;
+      const explicitId = quoteItemExplicitCardId(item);
+      const card =
+        (explicitId ? cardById.get(explicitId) : null) ??
+        cardByKey.get(normalizeCardKey(item?.card_name, item?.set_name)) ??
+        null;
       const highValueSurcharge = quoteCardHvAmount(card);
       group = {
         key,
@@ -1181,8 +1204,18 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
 
   // Cards with HV but no quote services still need a receipt row.
   for (const card of billableCards) {
-    const key = normalizeCardKey(card.card_name, card.set_name);
+    const key =
+      card?.id != null
+        ? `id:${String(card.id)}`
+        : `name:${normalizeCardKey(card.card_name, card.set_name)}`;
     if (indexByKey.has(key)) continue;
+    // Legacy name-keyed groups may already cover this card.
+    if (
+      card?.id != null &&
+      indexByKey.has(`name:${normalizeCardKey(card.card_name, card.set_name)}`)
+    ) {
+      continue;
+    }
     const highValueSurcharge = quoteCardHvAmount(card);
     if (highValueSurcharge <= 0) continue;
     groups.push({
