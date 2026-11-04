@@ -14,6 +14,11 @@ import {
 } from "../_shared/pokemonTcg.ts";
 import { sanitizeDamageTags } from "../_shared/damageTags.ts";
 import { OWNER_ORDER_DISPLAY_ID } from "../_shared/ownerOrder.ts";
+import {
+  normalizeQuoteBulkCounts,
+  orderQuoteTotal,
+  roundMoney,
+} from "../_shared/servicePricing.ts";
 
 const BUCKET = "card-photos";
 const GALLERY_BUCKET = "gallery";
@@ -442,31 +447,157 @@ function isOrderContractSigned(
   return row?.status === "signed" && Boolean(row?.signed_path);
 }
 
+/**
+ * PostgREST puts `.in()` values in the GET query string. Too many UUIDs →
+ * URL too long → Deno `TypeError: error sending request`. Cap each request.
+ * ~100 × 39 bytes ≈ 4KB of filter — well under common proxy limits.
+ */
+const POSTGREST_IN_CHUNK = 100;
+
+async function mapInChunks<T>(
+  ids: string[],
+  run: (
+    chunk: string[]
+  ) => Promise<{ data: T[] | null; error: { message?: string } | null }>
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += POSTGREST_IN_CHUNK) {
+    const chunk = ids.slice(i, i + POSTGREST_IN_CHUNK);
+    const { data, error } = await run(chunk);
+    if (error) throw error;
+    if (data?.length) out.push(...data);
+  }
+  return out;
+}
+
 async function fetchContractSignedByOrderId(
   supabase: ReturnType<typeof getServiceClient>,
   orderIds: string[]
 ) {
   const byOrder = new Map<string, boolean>();
   if (orderIds.length === 0) return byOrder;
-  const { data, error } = await supabase
-    .from("order_contracts")
-    .select("order_id, status, signed_path")
-    .in("order_id", orderIds);
-  // Match quote_items: missing table / select errors → treat as empty.
-  if (error) return byOrder;
-  for (const row of data ?? []) {
-    byOrder.set(row.order_id as string, isOrderContractSigned(row));
+  try {
+    const rows = await mapInChunks<{
+      order_id: string;
+      status?: string | null;
+      signed_path?: string | null;
+    }>(orderIds, (chunk) =>
+      supabase
+        .from("order_contracts")
+        .select("order_id, status, signed_path")
+        .in("order_id", chunk)
+    );
+    for (const row of rows) {
+      byOrder.set(row.order_id, isOrderContractSigned(row));
+    }
+  } catch {
+    // Match prior behavior: missing table / select errors → treat as empty.
   }
   return byOrder;
 }
 
+/** Sum after-completion / restoration ledger rows (mirrors client adminLedgerTotal). */
+function adminLedgerTotal(rows: unknown): number {
+  if (!Array.isArray(rows)) return 0;
+  return roundMoney(
+    rows.reduce((sum: number, row) => {
+      if (!row || typeof row !== "object") return sum;
+      const amount = Number(
+        (row as { amount_dollars?: unknown }).amount_dollars
+      );
+      return sum + (Number.isFinite(amount) ? amount : 0);
+    }, 0)
+  );
+}
+
+/**
+ * Fold legacy quote_override_* columns into bulk counts when v2 adjustments
+ * are empty — same rule as client unpackQuoteAdjustments.
+ */
+function listQuoteBulkCounts(order: Record<string, unknown>): unknown {
+  const stored = order.quote_bulk_counts;
+  const overrideAmount = Number(order.quote_override_amount);
+  const overrideLabel = String(order.quote_override_label ?? "").trim();
+  if (!Number.isFinite(overrideAmount) || overrideAmount === 0) return stored;
+
+  const normalized = normalizeQuoteBulkCounts(stored);
+  if (normalized.adjustments.length > 0) return stored;
+
+  return {
+    version: 2,
+    adjustments: [
+      {
+        kind: overrideAmount < 0 ? "discount" : "surcharge",
+        description:
+          overrideLabel || (overrideAmount < 0 ? "Discount" : "Surcharge"),
+        amount_dollars: Math.abs(overrideAmount),
+        amount_percent: null,
+      },
+    ],
+    ...(normalized.card_hv?.length ? { card_hv: normalized.card_hv } : {}),
+  };
+}
+
+/** Kanban money: quote + after-completion − restoration (client orderEarnedTotalFromStored). */
+function listOrderEarnedTotal(
+  order: Record<string, unknown>,
+  cards: { id: string; status?: string | null; is_priority?: boolean | null }[],
+  items: { card_id?: string | null; quote_base_amount: number | string }[]
+): number {
+  const quote = orderQuoteTotal({
+    cards,
+    items,
+    quoteBulkCounts: listQuoteBulkCounts(order),
+  }).total;
+  const afterCompletion = adminLedgerTotal(order.after_completion_amounts);
+  const costs = adminLedgerTotal(order.restoration_costs);
+  return roundMoney(quote + afterCompletion - costs);
+}
+
+type ListCardRow = {
+  id: string;
+  order_id: string;
+  status: string | null;
+  is_priority?: boolean | null;
+};
+
+type ListQuoteItemRow = {
+  order_id: string;
+  card_id?: string | null;
+  quote_base_amount: number | string;
+};
+
+async function fetchListCards(
+  supabase: ReturnType<typeof getServiceClient>,
+  orderIds: string[]
+): Promise<ListCardRow[]> {
+  try {
+    return await mapInChunks<ListCardRow>(orderIds, (chunk) =>
+      supabase
+        .from("cards")
+        .select("id, order_id, status, is_priority")
+        .in("order_id", chunk)
+    );
+  } catch (err) {
+    const message = `${(err as { message?: string })?.message ?? ""} ${
+      (err as { details?: string })?.details ?? ""
+    } ${(err as { code?: string })?.code ?? ""}`;
+    if (!/is_priority|42703/i.test(message)) throw err;
+    const rows = await mapInChunks<ListCardRow>(orderIds, (chunk) =>
+      supabase.from("cards").select("id, order_id, status").in("order_id", chunk)
+    );
+    return rows.map((row) => ({ ...row, is_priority: false }));
+  }
+}
+
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
   const listSelectNoQuote =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, completed_at, status_changed_at, queue_priority, is_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, is_priority";
   const listSelectLegacy =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at";
 
   let { data: orders, error: ordersError } = await supabase
     .from("orders")
@@ -533,27 +664,22 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   });
 
   const orderIds = orders.map((o) => o.id as string);
-  const [
-    { data: cards, error: cardsError },
-    quoteItemsResult,
-    authUsers,
-    contractSignedByOrder,
-  ] = await Promise.all([
-    supabase
-      .from("cards")
-      .select("id, order_id, status, sort_order, card_name, set_name")
-      .in("order_id", orderIds)
-      .order("sort_order", { ascending: true })
-      .order("id", { ascending: true }),
-    supabase
-      .from("order_quote_items")
-      .select("order_id, quote_base_amount, card_name, set_name")
-      .in("order_id", orderIds),
-    listAllAuthUsers(supabase),
-    fetchContractSignedByOrderId(supabase, orderIds),
-  ]);
-  if (cardsError) throw cardsError;
-  const quoteItems = quoteItemsResult.error ? [] : quoteItemsResult.data ?? [];
+
+  const [cards, quoteItems, authUsers, contractSignedByOrder] =
+    await Promise.all([
+      fetchListCards(supabase, orderIds),
+      mapInChunks<ListQuoteItemRow>(orderIds, async (chunk) => {
+        const result = await supabase
+          .from("order_quote_items")
+          .select("order_id, card_id, quote_base_amount")
+          .in("order_id", chunk);
+        // Table may not exist until migration; treat as empty.
+        if (result.error) return { data: [], error: null };
+        return result;
+      }),
+      listAllAuthUsers(supabase),
+      fetchContractSignedByOrderId(supabase, orderIds),
+    ]);
   const emailSet = authEmailSet(authUsers);
   const emailToUserId = new Map(authUsers.map((u) => [u.email, u.id]));
   const namesByUserId = await fetchAccountNamesForOrders(
@@ -565,10 +691,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const countByOrder = new Map<string, number>();
   const completedCountByOrder = new Map<string, number>();
   const cardOrderById = new Map<string, string>();
-  const cardsByOrder = new Map<string, Array<Record<string, unknown>>>();
-  for (const card of cards ?? []) {
-    const orderId = card.order_id as string;
-    const cardId = card.id as string;
+  const cardsByOrder = new Map<string, ListCardRow[]>();
+  for (const card of cards) {
+    const orderId = card.order_id;
     countByOrder.set(orderId, (countByOrder.get(orderId) ?? 0) + 1);
     if (card.status === "completed") {
       completedCountByOrder.set(
@@ -576,52 +701,80 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
         (completedCountByOrder.get(orderId) ?? 0) + 1
       );
     }
-    cardOrderById.set(cardId, orderId);
+    cardOrderById.set(card.id, orderId);
     const cardList = cardsByOrder.get(orderId) ?? [];
-    cardList.push({
-      id: cardId,
-      status: card.status ?? null,
-      card_name: card.card_name ?? null,
-      set_name: card.set_name ?? null,
-    });
+    cardList.push(card);
     cardsByOrder.set(orderId, cardList);
   }
 
-  const quoteItemsByOrder = new Map<string, typeof quoteItems>();
+  const quoteItemsByOrder = new Map<string, ListQuoteItemRow[]>();
   for (const item of quoteItems) {
-    const orderId = item.order_id as string;
-    const list = quoteItemsByOrder.get(orderId) ?? [];
+    const list = quoteItemsByOrder.get(item.order_id) ?? [];
     list.push(item);
-    quoteItemsByOrder.set(orderId, list);
+    quoteItemsByOrder.set(item.order_id, list);
   }
 
-  const cardIds = (cards ?? []).map((c) => c.id as string);
+  // Kanban needs one customer thumb per order — not every image row.
+  const cardIds = cards.map((c) => c.id);
   const previewPathsByOrder = new Map<string, string[]>();
+  if (cardIds.length > 0) {
+    const customerImages = await mapInChunks<{
+      id: number;
+      card_id: string;
+      storage_path: string;
+    }>(cardIds, (chunk) =>
+      supabase
+        .from("card_images")
+        .select("id, card_id, storage_path")
+        .in("card_id", chunk)
+        .eq("image_type", "customer")
+        .order("id", { ascending: true })
+    );
+    // Same as before: earliest customer image id wins per order.
+    customerImages.sort((a, b) => a.id - b.id);
+    for (const image of customerImages) {
+      const orderId = cardOrderById.get(image.card_id);
+      if (!orderId || previewPathsByOrder.has(orderId)) continue;
+      const path = String(image.storage_path ?? "");
+      if (!path) continue;
+      previewPathsByOrder.set(orderId, [path]);
+    }
+  }
+
+  // Photo-albums task only cares about in_progress / ready — skip before/after
+  // scans for every other order.
+  const albumOrderIds = new Set(
+    orders
+      .filter((o) => {
+        const status = String(o.status ?? "");
+        return status === "in_progress" || status === "ready";
+      })
+      .map((o) => o.id as string)
+  );
   const beforeCards = new Set<string>();
   const afterCards = new Set<string>();
-  if (cardIds.length > 0) {
-    const { data: imageRows, error: imagesError } = await supabase
-      .from("card_images")
-      .select("id, card_id, storage_path, image_type")
-      .in("card_id", cardIds)
-      .in("image_type", ["customer", "before", "after"])
-      .order("id", { ascending: true });
-    if (imagesError) throw imagesError;
-
-    for (const image of imageRows ?? []) {
-      const cardId = image.card_id as string;
+  const albumCardIds = cards
+    .filter(
+      (card) =>
+        albumOrderIds.has(card.order_id) &&
+        String(card.status ?? "") !== "canceled"
+    )
+    .map((card) => card.id);
+  if (albumCardIds.length > 0) {
+    const sideImages = await mapInChunks<{
+      card_id: string;
+      image_type: string;
+    }>(albumCardIds, (chunk) =>
+      supabase
+        .from("card_images")
+        .select("card_id, image_type")
+        .in("card_id", chunk)
+        .in("image_type", ["before", "after"])
+    );
+    for (const image of sideImages) {
       const imageType = String(image.image_type ?? "");
-      if (imageType === "before") beforeCards.add(cardId);
-      if (imageType === "after") afterCards.add(cardId);
-      if (imageType !== "customer") continue;
-
-      const orderId = cardOrderById.get(cardId);
-      if (!orderId) continue;
-      const paths = previewPathsByOrder.get(orderId) ?? [];
-      // Kanban only needs one preview thumb per order.
-      if (paths.length >= 1) continue;
-      paths.push(image.storage_path as string);
-      previewPathsByOrder.set(orderId, paths);
+      if (imageType === "before") beforeCards.add(image.card_id);
+      if (imageType === "after") afterCards.add(image.card_id);
     }
   }
 
@@ -640,25 +793,42 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       })
       .filter((row): row is { path: string; url: string } => Boolean(row));
     const orderCards = cardsByOrder.get(orderId) ?? [];
-    const activeCards = orderCards.filter(
-      (card) => String(card.status ?? "") !== "canceled"
-    );
+    const needsAlbumFlag = albumOrderIds.has(orderId);
+    const activeCards = needsAlbumFlag
+      ? orderCards.filter(
+          (card) => String(card.status ?? "") !== "canceled"
+        )
+      : [];
     const has_restoration_album =
+      needsAlbumFlag &&
       activeCards.length > 0 &&
-      activeCards.every((card) => {
-        const id = String(card.id ?? "");
-        return beforeCards.has(id) && afterCards.has(id);
-      });
+      activeCards.every(
+        (card) => beforeCards.has(card.id) && afterCards.has(card.id)
+      );
+    const named = withAccountName(order, emailToUserId, namesByUserId);
     return {
-      ...withAccountName(order, emailToUserId, namesByUserId),
+      id: named.id,
+      display_id: named.display_id,
+      created_at: named.created_at,
+      customer_name: named.customer_name,
+      customer_email: named.customer_email ?? "",
+      delivery_method: named.delivery_method,
+      status: named.status,
+      pending_kind: named.pending_kind ?? null,
+      completed_at: named.completed_at ?? null,
+      status_changed_at: named.status_changed_at ?? null,
+      is_priority: Boolean(named.is_priority),
       has_account: orderHasAccount(order, emailSet),
-      quote_items: quoteItemsByOrder.get(orderId) ?? [],
-      cards: orderCards,
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
       queue_position: queuePositionById.get(orderId) ?? null,
       preview_paths: preview.map((row) => row.path),
       preview_urls: preview.map((row) => row.url),
+      quote_total: listOrderEarnedTotal(
+        order as Record<string, unknown>,
+        orderCards,
+        quoteItemsByOrder.get(orderId) ?? []
+      ),
       contract_signed: contractSignedByOrder.get(orderId) ?? false,
       has_restoration_album,
     };
