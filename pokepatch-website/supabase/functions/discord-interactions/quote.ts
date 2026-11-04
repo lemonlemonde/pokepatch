@@ -215,6 +215,9 @@ export async function saveCardQuote(params: {
     .filter((item) => !cardItemIds.has(item.id))
     .map((item) => ({
       id: item.id,
+      ...(item.card_id != null && String(item.card_id) !== ""
+        ? { card_id: item.card_id }
+        : {}),
       card_name: item.card_name,
       set_name: item.set_name ?? "",
       service_key: item.service_key,
@@ -223,6 +226,7 @@ export async function saveCardQuote(params: {
       high_value_surcharge: item.high_value_surcharge ?? null,
     }));
   const added = lines.map((line) => ({
+    card_id: card.id,
     card_name: cardName,
     set_name: setName,
     service_key: line.service_key,

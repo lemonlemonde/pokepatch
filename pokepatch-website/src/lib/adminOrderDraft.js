@@ -75,7 +75,17 @@ export function copyFileList(fileList) {
   return copied;
 }
 
+/** Resolve a quote line to a card id. Prefer card_id / card_pick; name+set is legacy fallback. */
 export function findMatchingOrderCardId(item, cards) {
+  const explicit =
+    item?.card_id ??
+    (item?.card_pick && item.card_pick !== "custom" ? item.card_pick : null);
+  if (explicit != null && String(explicit) !== "") {
+    const byId = (cards ?? []).find(
+      (card) => String(card.id) === String(explicit)
+    );
+    if (byId?.id != null) return String(byId.id);
+  }
   const name = (item?.card_name || "").trim().toLowerCase();
   const set = (item?.set_name || "").trim().toLowerCase();
   if (!name) return null;
@@ -227,10 +237,7 @@ export function orderToDraft(order) {
     .map((item) => {
       const card_name = item.card_name ?? "";
       const set_name = item.set_name ?? "";
-      const matchedId = findMatchingOrderCardId(
-        { card_name, set_name },
-        orderCards
-      );
+      const matchedId = findMatchingOrderCardId(item, orderCards);
       return {
         id: item.id ?? newClientId(),
         card_pick: matchedId ?? "",
@@ -369,6 +376,7 @@ export function draftPayload(draft) {
         return {
           id: item.id,
           sort_order: index,
+          ...(linked?.id != null ? { card_id: linked.id } : {}),
           card_name,
           set_name,
           service_key: item.service_key,

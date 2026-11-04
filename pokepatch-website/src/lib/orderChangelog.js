@@ -59,6 +59,15 @@ function isPhotoFolderChange(line) {
 }
 
 function findCardIdForQuoteItem(item, cards) {
+  const explicit =
+    item?.card_id ??
+    (item?.card_pick && item.card_pick !== "custom" ? item.card_pick : null);
+  if (explicit != null && String(explicit) !== "") {
+    const byId = (cards ?? []).find(
+      (card) => String(card.id) === String(explicit)
+    );
+    if (byId?.id != null) return String(byId.id);
+  }
   const name = (item?.card_name ?? "").trim().toLowerCase();
   const set = (item?.set_name ?? "").trim().toLowerCase();
   if (!name) return null;

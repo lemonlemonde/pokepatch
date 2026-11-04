@@ -1040,7 +1040,7 @@ async function fetchOrderGraph(
     supabase
       .from("order_quote_items")
       .select(
-        "id, order_id, sort_order, card_name, set_name, service_key, service_label, quote_base_amount, high_value_surcharge"
+        "id, order_id, sort_order, card_id, card_name, set_name, service_key, service_label, quote_base_amount, high_value_surcharge"
       )
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true }),

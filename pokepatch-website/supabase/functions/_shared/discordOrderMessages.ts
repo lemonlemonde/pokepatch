@@ -106,6 +106,7 @@ export type CardRow = {
 export type QuoteItemRow = {
   id: string;
   sort_order: number;
+  card_id?: string | null;
   card_name: string;
   set_name: string | null;
   service_key: string;
@@ -138,18 +139,26 @@ function normalizeCardKey(name: unknown, setName: unknown): string {
 }
 
 /**
- * Quote lines belong to a card by name + set (order_quote_items has no card
- * id). Same matching as the admin editor's findMatchingOrderCardId.
+ * Quote lines belong to a card by card_id when set; name + set is legacy
+ * fallback (same as admin findMatchingOrderCardId).
  */
 export function quoteItemsForCard(items: QuoteItemRow[], card: CardRow): QuoteItemRow[] {
+  const cardId = String(card.id);
   const key = normalizeCardKey(card.card_name, card.set_name);
-  return items.filter(
-    (item) => normalizeCardKey(item.card_name, item.set_name) === key
-  );
+  return items.filter((item) => {
+    if (item.card_id != null && String(item.card_id) !== "") {
+      return String(item.card_id) === cardId;
+    }
+    return normalizeCardKey(item.card_name, item.set_name) === key;
+  });
 }
 
-/** First card (by sort order) matching an item's name + set, else null. */
+/** Prefer persisted card_id; else first card matching name + set. */
 function cardIdForQuoteItem(item: QuoteItemRow, cards: CardRow[]): string | null {
+  if (item.card_id != null && String(item.card_id) !== "") {
+    const byId = cards.find((card) => String(card.id) === String(item.card_id));
+    if (byId) return String(byId.id);
+  }
   const key = normalizeCardKey(item.card_name, item.set_name);
   const match = cards.find((card) => normalizeCardKey(card.card_name, card.set_name) === key);
   return match ? String(match.id) : null;
@@ -264,7 +273,7 @@ export async function loadOrderQuoteItems(
   const { data, error } = await supabase
     .from("order_quote_items")
     .select(
-      "id, sort_order, card_name, set_name, service_key, service_label, quote_base_amount, high_value_surcharge"
+      "id, sort_order, card_id, card_name, set_name, service_key, service_label, quote_base_amount, high_value_surcharge"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true });
