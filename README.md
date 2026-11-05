@@ -367,6 +367,7 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 |----------|--------|------|
 | `create_order(p_payload jsonb)` | `anon` | Public form; writes working + original in one transaction |
 | `update_order(...)` | `service_role` only | Admin edits to working tables. Order status/pending_kind changes email the customer (`notify-order-status`); Discord stays INSERT-only |
+| `update_order_kanban(...)` | `service_role` only | Same write as `update_order`, without the status email (kanban Move only) |
 | `search_tcg_cards(p_name, p_set, p_number, p_page, p_page_size)` | `service_role` only | Ranked catalog search (substring, then `pg_trgm` similarity; newest set first) |
 
 RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
@@ -472,12 +473,12 @@ Operational setup: [`pokepatch-website/supabase/functions/notify/README.md`](pok
 | Trigger | Discord | Email |
 |---------|---------|-------|
 | `orders` INSERT | `New Order #N` header → thread with **one message per card** (tags, description, photos, **Add quote** button) and a **wrap-up** | "We received your quote request" confirmation |
-| `orders` UPDATE of `status` / `pending_kind` | — | "Your order is now …" (`notify-order-status`; not per-card) |
+| `orders` UPDATE of `status` / `pending_kind` | — | "Your order is now …" (`notify-order-status`; not per-card). Kanban Move only is silent. |
 | `quote_requests` INSERT (legacy) | `New Quote Request #N` | — |
 
 **Quoting from Discord:** each order gets a thread off its header message. Inside, the **Add quote** button on each card message opens a modal (service checklist at list price, market value for the high-value fee, note to customer); submitting writes through `update_order` and re-renders the card message. The last message in the thread is the **wrap-up**: every contact method the customer provided, a quote overview + total, the copy-and-paste outreach message, and **Save & notify** (emails the quote summary via the same `customer_messages` + Resend path as the admin editor). Handled by [`discord-interactions`](pokepatch-website/supabase/functions/discord-interactions/README.md) (quotes Discord app). Before/after photo uploads stay on a separate app → [`discord-photos`](pokepatch-website/supabase/functions/discord-photos/README.md). Instagram carousel PNG generation is a third app → [`discord-clamperl`](pokepatch-website/supabase/functions/discord-clamperl/README.md) (`/clamperl`).
 
-**Important:** `notify` (Discord + quote confirmation) is **INSERT-only**. Do not point an `orders` UPDATE webhook at `notify`. Customer emails when the **order** status changes go through [`notify-order-status`](pokepatch-website/supabase/functions/notify-order-status/) (`AFTER UPDATE OF status, pending_kind`). Per-card status flips do not email.
+**Important:** `notify` (Discord + quote confirmation) is **INSERT-only**. Do not point an `orders` UPDATE webhook at `notify`. Customer emails when the **order** status changes go through [`notify-order-status`](pokepatch-website/supabase/functions/notify-order-status/) (`AFTER UPDATE OF status, pending_kind`), except kanban **Move only**. Per-card status flips do not email.
 
 ### Supabase secrets
 
@@ -510,13 +511,13 @@ Browser (/admin)
       → read/write working order tables
       → Storage uploads for card photos (same pool as customer uploads)
       → gallery_items CRUD + gallery bucket uploads
-      → no Discord (order-status emails still fire if status changes)
+      → no Discord (order-status emails still fire if status changes, except kanban Move only)
 ```
 
 ### UI behavior
 
 - **Kanban** columns: New → In progress → Completed → Delivered
-- Drag between columns updates `status` immediately
+- Drag between columns: **Move only** (no email) or **Move & notify**
 - Click a card to open the editor; field changes require **Save**
 - Staged card photos upload on Save
 - Kanban list loads summaries only; full order detail (with signed photo URLs) loads when a card is opened

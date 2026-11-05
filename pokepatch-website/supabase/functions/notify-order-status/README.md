@@ -12,8 +12,7 @@ Typical sources:
 
 - First before photo → order `in_progress`
 - Last after photo / all cards completed → order `ready`
-- Admin save auto-advance from card statuses
-- Admin kanban / `set_status`
+- Admin editor save (including auto-advance from card statuses)
 - Discord quoting flipping pending quote → pending drop-off
 
 Skipped:
@@ -21,7 +20,8 @@ Skipped:
 - Owner portfolio (`display_id = -1`)
 - No customer email
 - Unchanged customer-facing label
-- `pending` → `canceled` (cron: `cancel-stale-quotes`; admin: forced Save/Move & notify)
+- `pending` → `canceled` (cron: `cancel-stale-quotes`; admin editor save still notifies)
+- Kanban drag (`update_order_kanban`) — Move only is silent; Move & notify is the optional email
 - The same from → to status email already sent in the last 10 minutes (wooper / admin-api backups)
 
 ## Local

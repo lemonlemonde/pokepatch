@@ -2569,14 +2569,13 @@ Deno.serve(async (req) => {
       if (status === "pending") {
         orderPatch.pending_kind = pendingKindRaw ?? "quote";
       }
-      const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
-      const { error } = await supabase.rpc("update_order", {
+      // Board move dialog: optional customer email via Move & notify only.
+      const { error } = await supabase.rpc("update_order_kanban", {
         p_order_id: orderId,
         p_order: orderPatch,
       });
       if (error) throw error;
 
-      await fireOrderStatusNotify(supabase, orderId, statusBefore);
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
@@ -2594,13 +2593,11 @@ Deno.serve(async (req) => {
       if (!PENDING_KIND_IDS.has(pendingKind)) {
         return jsonResponse(req, { ok: false, error: "invalid pending_kind" }, 400);
       }
-      const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
-      const { error } = await supabase.rpc("update_order", {
+      const { error } = await supabase.rpc("update_order_kanban", {
         p_order_id: orderId,
         p_order: { pending_kind: pendingKind },
       });
       if (error) throw error;
-      await fireOrderStatusNotify(supabase, orderId, statusBefore);
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
