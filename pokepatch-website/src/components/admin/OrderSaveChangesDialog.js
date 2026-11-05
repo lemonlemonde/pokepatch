@@ -137,20 +137,23 @@ export default function OrderSaveChangesDialog({
   const toStatus = normalizeOrderStatus(afterPayload?.order?.status);
   const pendingToCanceled = fromStatus === "pending" && toStatus === "canceled";
   const orderStatusChanged = fromStatus !== toStatus;
-  const extraNotifyChangelog = useMemo(
-    () =>
-      pendingToCanceled
-        ? {
-            cardGroups: built.cardGroups,
-            orderChanges: built.orderChanges,
-            quoteSummary: built.quoteSummary,
-          }
-        : changelogWithoutOrderStatus(built),
-    [built, pendingToCanceled]
-  );
+  const isKanbanMove = variant === "move";
+  const extraNotifyChangelog = useMemo(() => {
+    // Kanban drag is the one path that may skip the auto status email, so
+    // Move & notify still includes the status line. Editor saves strip it
+    // because that email already went out automatically.
+    if (isKanbanMove || pendingToCanceled) {
+      return {
+        cardGroups: built.cardGroups,
+        orderChanges: built.orderChanges,
+        quoteSummary: built.quoteSummary,
+      };
+    }
+    return changelogWithoutOrderStatus(built);
+  }, [built, isKanbanMove, pendingToCanceled]);
   const hasExtraNotifyDiff =
     changelogHasNonStatusDiff(built) || pendingToCanceled;
-  const forceNotify = canNotify && pendingToCanceled;
+  const forceNotify = canNotify && pendingToCanceled && !isKanbanMove;
   const [mode, setMode] = useState("notify"); // 'only' | 'notify'
   const [subject, setSubject] = useState("");
   const [note, setNote] = useState("");
@@ -163,10 +166,10 @@ export default function OrderSaveChangesDialog({
 
   useEffect(() => {
     if (!open) return;
-    // Order-status emails go out automatically. Extra notify is for quote /
-    // notes — except pending → canceled, which has no auto email (cron + this
-    // dialog own that copy).
-    const worthNotifying = canNotify && (forceNotify || hasExtraNotifyDiff);
+    // Kanban drag: default to notify, but Move only is truly silent.
+    // Editor save: status emails already went out; extra notify is quote/notes.
+    const worthNotifying =
+      canNotify && (isKanbanMove || forceNotify || hasExtraNotifyDiff);
     setMode(worthNotifying ? "notify" : "only");
     const extraSummary = summarizeChangelog(extraNotifyChangelog);
     setSubject(
@@ -188,6 +191,7 @@ export default function OrderSaveChangesDialog({
     extraNotifyChangelog,
     forceNotify,
     hasExtraNotifyDiff,
+    isKanbanMove,
   ]);
 
   const { mounted, visible } = useOverlayPresence(open);
@@ -296,7 +300,7 @@ export default function OrderSaveChangesDialog({
               save. You&apos;ll stay on this order with the remaining cards.
             </p>
           ) : null}
-          {orderStatusChanged && !pendingToCanceled && canNotify ? (
+          {orderStatusChanged && !pendingToCanceled && canNotify && !isKanbanMove ? (
             <p className="mt-3 text-xs text-ink/55">
               The customer is emailed automatically when the order status
               changes. Use notify only for extra notes or quote updates.

@@ -60,7 +60,7 @@ function isOrderStatusChangeLine(line) {
   return String(line ?? "").trim().startsWith("Status:");
 }
 
-/** Drop order-status lines — those emails go out automatically. */
+/** Drop order-status lines — editor save already emailed those automatically. */
 export function changelogWithoutOrderStatus(changelog) {
   const orderChanges = (changelog?.orderChanges ?? []).filter(
     (line) => !isOrderStatusChangeLine(line)
@@ -413,7 +413,7 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   }
 
   // Per-card status is intentionally omitted from customer changelogs —
-  // customers are emailed automatically on whole-order status changes only.
+  // customers are notified on whole-order status changes, not per-card flips.
 
   // Per-card admin note changes.
   for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {

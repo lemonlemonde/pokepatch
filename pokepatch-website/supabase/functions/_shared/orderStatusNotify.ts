@@ -157,7 +157,8 @@ function changelogHasStatusLine(
 
 /**
  * pending quote → canceled is emailed by cancel-stale-quotes (cron) or the
- * admin move dialog (forced notify). Skip the generic auto email there.
+ * admin editor save dialog (forced notify). Skip the generic auto email there.
+ * Kanban Move only is skipped earlier via update_order_kanban.
  */
 function shouldSkipAutomaticOrderStatusEmail(
   from: OrderStatusSnapshot,

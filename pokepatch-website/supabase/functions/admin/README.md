@@ -86,7 +86,7 @@ supabase functions deploy admin-api --no-verify-jwt
 
 - Does **not** modify `notify`, `quote_requests`, or `*_original` tables
 - Admin writes go to **working** tables only via `update_order` (service role)
-- No `orders` UPDATE webhook on `notify` — admin edits stay silent on Discord. Status/pending_kind changes email the customer via `notify-order-status`.
+- No `orders` UPDATE webhook on `notify` — admin edits stay silent on Discord. Status/pending_kind changes email the customer via `notify-order-status`, except kanban Move only.
 - Customer submission photos are read-only in the UI
 
 ## Frontend
