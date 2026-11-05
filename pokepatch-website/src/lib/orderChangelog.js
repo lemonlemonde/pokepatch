@@ -56,6 +56,31 @@ function isPhotoFolderChange(line) {
   return String(line ?? "").startsWith("Photo album");
 }
 
+function isOrderStatusChangeLine(line) {
+  return String(line ?? "").trim().startsWith("Status:");
+}
+
+/** Drop order-status lines — those emails go out automatically. */
+export function changelogWithoutOrderStatus(changelog) {
+  const orderChanges = (changelog?.orderChanges ?? []).filter(
+    (line) => !isOrderStatusChangeLine(line)
+  );
+  return {
+    cardGroups: changelog?.cardGroups ?? [],
+    orderChanges,
+    quoteSummary: changelog?.quoteSummary ?? null,
+  };
+}
+
+export function changelogHasNonStatusDiff(changelog) {
+  const stripped = changelogWithoutOrderStatus(changelog);
+  return (
+    (stripped.cardGroups?.length ?? 0) > 0 ||
+    (stripped.orderChanges?.length ?? 0) > 0 ||
+    Boolean(stripped.quoteSummary)
+  );
+}
+
 function findCardIdForQuoteItem(item, cards) {
   const explicit =
     item?.card_id ??
@@ -388,8 +413,7 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   }
 
   // Per-card status is intentionally omitted from customer changelogs —
-  // customers are notified on quote save, contract send, and whole-order
-  // status changes only.
+  // customers are emailed automatically on whole-order status changes only.
 
   // Per-card admin note changes.
   for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
