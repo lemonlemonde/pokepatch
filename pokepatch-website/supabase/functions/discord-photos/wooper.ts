@@ -7,13 +7,12 @@
  * otherwise `after`; if both sides are filled the upload is rejected.
  *
  * DB triggers flip card/order status on first before → in_progress and first
- * after → completed (order → ready when all active cards are done). Wooper then
- * emails the customer only when the *order* status changes (not per-card flips).
+ * after → completed (order → ready when all active cards are done). The
+ * customer is emailed only when the *order* status changes (not per-card flips).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getServiceClient } from "../_shared/adminSession.ts";
-import { sendCustomerEmail } from "../_shared/customerMessages.ts";
 import {
   CallbackType,
   EPHEMERAL,
@@ -27,13 +26,17 @@ import {
   type Interaction,
   type Json,
 } from "../_shared/discord.ts";
+import {
+  customerOrderStatusLabel,
+  notifyOrderStatusAfterChange,
+  snapshotFromOrderRow,
+} from "../_shared/orderStatusNotify.ts";
 import { BUCKET } from "../_shared/discordOrderMessages.ts";
 import {
   OWNER_ORDER_DISPLAY_ID,
   isAllowedOrderDisplayId,
   isOwnerOrderDisplayId,
 } from "../_shared/ownerOrder.ts";
-import type { ChangelogPayload } from "../_shared/resend.ts";
 
 const PENDING_PREFIX = "wooper-pending/";
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
@@ -55,15 +58,6 @@ const SIDE_IMAGE_TYPES: Record<string, string[]> = {
 const CARD_STATUS_LABEL: Record<string, string> = {
   todo: "In queue",
   in_progress: "In progress",
-  completed: "Completed",
-  canceled: "Canceled",
-};
-
-const ORDER_STATUS_LABEL: Record<string, string> = {
-  pending: "Pending",
-  new: "In queue",
-  in_progress: "In progress",
-  ready: "Ready for pickup",
   completed: "Completed",
   canceled: "Canceled",
 };
@@ -92,61 +86,6 @@ function normalizeCardStatus(value: unknown): string {
 
 function cardStatusLabel(status: string): string {
   return CARD_STATUS_LABEL[normalizeCardStatus(status)] ?? status;
-}
-
-function orderStatusLabel(status: string): string {
-  const key = String(status ?? "").trim().toLowerCase();
-  return ORDER_STATUS_LABEL[key] ?? status;
-}
-
-/**
- * Email the customer when a wooper upload flips the *order* status.
- * Per-card status flips alone do not notify (too noisy mid-job).
- */
-async function notifyOrderStatusChange(params: {
-  supabase: SupabaseClient;
-  orderId: string;
-  orderDisplayId: number;
-  customerEmail: string | null;
-  userId: string | null;
-  fromOrderStatus: string;
-  toOrderStatus: string;
-}): Promise<string | null> {
-  const {
-    supabase,
-    orderId,
-    orderDisplayId,
-    customerEmail,
-    userId,
-    fromOrderStatus,
-    toOrderStatus,
-  } = params;
-
-  if (fromOrderStatus === toOrderStatus) return null;
-
-  const email = String(customerEmail ?? "").trim().toLowerCase();
-  if (!email) return "no customer email on order";
-
-  const changelog: ChangelogPayload = {
-    orderChanges: [
-      `Status: ${orderStatusLabel(fromOrderStatus)} → ${orderStatusLabel(toOrderStatus)}`,
-    ],
-  };
-
-  const subject = `Your order is now ${orderStatusLabel(toOrderStatus).toLowerCase()}`;
-
-  const result = await sendCustomerEmail({
-    supabase,
-    orderId,
-    orderDisplayId,
-    to: email,
-    userId,
-    subject,
-    body: "",
-    changelog,
-  });
-  if (!result.ok) return result.error;
-  return null;
 }
 
 function sanitizeFilename(name: string): string {
@@ -381,7 +320,9 @@ async function uploadAttachments(params: {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, display_id, status, customer_email, user_id")
+      .select(
+        "id, display_id, status, pending_kind, delivery_method, customer_email, user_id"
+      )
       .eq("display_id", orderDisplayId)
       .maybeSingle();
     if (orderError) throw orderError;
@@ -396,7 +337,12 @@ async function uploadAttachments(params: {
       return;
     }
 
-    const fromOrderStatus = String(order.status ?? "").trim().toLowerCase();
+    const fromOrder = snapshotFromOrderRow(order);
+    const fromOrderLabel = customerOrderStatusLabel(
+      order.status,
+      order.pending_kind,
+      order.delivery_method,
+    );
 
     let { data: cards, error: cardsError } = await supabase
       .from("cards")
@@ -576,44 +522,46 @@ async function uploadAttachments(params: {
         supabase.from("cards").select("status").eq("id", cardId).maybeSingle(),
         supabase
           .from("orders")
-          .select("status")
+          .select(
+            "id, display_id, status, pending_kind, delivery_method, customer_email, user_id"
+          )
           .eq("id", String(order.id))
           .maybeSingle(),
       ]);
       const toCardStatus = normalizeCardStatus(cardAfter?.status);
-      const toOrderStatus = String(orderAfter?.status ?? fromOrderStatus)
-        .trim()
-        .toLowerCase();
+      const toOrderLabel = customerOrderStatusLabel(
+        orderAfter?.status ?? order.status,
+        orderAfter?.pending_kind ?? order.pending_kind,
+        orderAfter?.delivery_method ?? order.delivery_method,
+      );
 
       if (fromCardStatus !== toCardStatus) {
         lines.push(
           `Card **${cardStatusLabel(fromCardStatus)}** → **${cardStatusLabel(toCardStatus)}**.`
         );
       }
-      if (fromOrderStatus !== toOrderStatus) {
+      if (fromOrderLabel !== toOrderLabel) {
         lines.push(
-          `Order **${orderStatusLabel(fromOrderStatus)}** → **${orderStatusLabel(toOrderStatus)}**.`
+          `Order **${fromOrderLabel}** → **${toOrderLabel}**.`
         );
       }
 
-      if (fromOrderStatus !== toOrderStatus && !ownerPortfolio) {
-        const notifyError = await notifyOrderStatusChange({
+      if (fromOrderLabel !== toOrderLabel && !ownerPortfolio) {
+        const notifyResult = await notifyOrderStatusAfterChange(
           supabase,
-          orderId: String(order.id),
-          orderDisplayId: Number(order.display_id),
-          customerEmail:
-            typeof order.customer_email === "string"
-              ? order.customer_email
-              : null,
-          userId: typeof order.user_id === "string" ? order.user_id : null,
-          fromOrderStatus,
-          toOrderStatus,
-        });
-        lines.push(
-          notifyError
-            ? `Customer notify failed: ${notifyError}`
-            : "Customer notified."
+          String(order.id),
+          fromOrder,
         );
+        if (notifyResult.error) {
+          lines.push(`Customer notify failed: ${notifyResult.error}`);
+        } else if (
+          notifyResult.sent ||
+          notifyResult.skipped === "already_notified"
+        ) {
+          lines.push("Customer notified.");
+        } else if (notifyResult.skipped === "no_email") {
+          lines.push("Customer not notified (no email on order).");
+        }
       }
     }
 

@@ -43,6 +43,10 @@ import {
   type QuoteItemRow,
 } from "../_shared/discordOrderMessages.ts";
 import {
+  notifyOrderStatusAfterChange,
+  snapshotFromOrderRow,
+} from "../_shared/orderStatusNotify.ts";
+import {
   HV_TIER_RANGES_LABEL,
   QUOTE_SERVICES,
   serviceByKey,
@@ -315,7 +319,15 @@ async function processQuoteModal(interaction: Interaction): Promise<void> {
       return;
     }
 
+    const statusBefore = snapshotFromOrderRow(context.order);
     await saveCardQuote({ supabase, context, lines, marketValue, note });
+    await notifyOrderStatusAfterChange(
+      supabase,
+      String(context.order.id),
+      statusBefore,
+    ).catch((err) => {
+      console.error("quote: order-status notify failed", context.order.id, err);
+    });
 
     // Reload so the confirmation and the card message reflect what's stored.
     const rendered = await renderCardMessageFromDb(supabase, parsed.id);

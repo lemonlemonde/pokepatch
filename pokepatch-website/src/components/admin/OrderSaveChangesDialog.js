@@ -9,6 +9,8 @@ import {
 } from "@/components/ExpandReveal";
 import {
   buildOrderChangelog,
+  changelogHasNonStatusDiff,
+  changelogWithoutOrderStatus,
   summarizeChangelog,
 } from "@/lib/orderChangelog";
 import {
@@ -131,6 +133,24 @@ export default function OrderSaveChangesDialog({
   }, [afterPayload, beforePayload, variant]);
 
   const canNotify = Boolean(customerEmail?.trim());
+  const fromStatus = normalizeOrderStatus(beforePayload?.order?.status);
+  const toStatus = normalizeOrderStatus(afterPayload?.order?.status);
+  const pendingToCanceled = fromStatus === "pending" && toStatus === "canceled";
+  const orderStatusChanged = fromStatus !== toStatus;
+  const extraNotifyChangelog = useMemo(
+    () =>
+      pendingToCanceled
+        ? {
+            cardGroups: built.cardGroups,
+            orderChanges: built.orderChanges,
+            quoteSummary: built.quoteSummary,
+          }
+        : changelogWithoutOrderStatus(built),
+    [built, pendingToCanceled]
+  );
+  const hasExtraNotifyDiff =
+    changelogHasNonStatusDiff(built) || pendingToCanceled;
+  const forceNotify = canNotify && pendingToCanceled;
   const [mode, setMode] = useState("notify"); // 'only' | 'notify'
   const [subject, setSubject] = useState("");
   const [note, setNote] = useState("");
@@ -143,26 +163,32 @@ export default function OrderSaveChangesDialog({
 
   useEffect(() => {
     if (!open) return;
-    // Default to notify when there is a customer-facing diff (quote / order
-    // status / etc.) or this is a queue move. Card-status-only edits no longer
-    // produce a changelog, so those open on Save only.
-    const worthNotifying =
-      canNotify && (variant === "move" || Boolean(built.hasChangelog));
+    // Order-status emails go out automatically. Extra notify is for quote /
+    // notes — except pending → canceled, which has no auto email (cron + this
+    // dialog own that copy).
+    const worthNotifying = canNotify && (forceNotify || hasExtraNotifyDiff);
     setMode(worthNotifying ? "notify" : "only");
+    const extraSummary = summarizeChangelog(extraNotifyChangelog);
     setSubject(
-      built.summary ||
+      extraSummary ||
+        built.summary ||
         (displayId != null
           ? `Update on your order #${displayId}`
           : "Update on your order")
     );
     setNote("");
-    setDraftChangelog({
-      cardGroups: built.cardGroups,
-      orderChanges: built.orderChanges,
-      quoteSummary: built.quoteSummary,
-    });
+    setDraftChangelog(extraNotifyChangelog);
     setError("");
-  }, [open, canNotify, built, displayId, variant]);
+  }, [
+    open,
+    canNotify,
+    built,
+    displayId,
+    variant,
+    extraNotifyChangelog,
+    forceNotify,
+    hasExtraNotifyDiff,
+  ]);
 
   const { mounted, visible } = useOverlayPresence(open);
 
@@ -270,6 +296,12 @@ export default function OrderSaveChangesDialog({
               save. You&apos;ll stay on this order with the remaining cards.
             </p>
           ) : null}
+          {orderStatusChanged && !pendingToCanceled && canNotify ? (
+            <p className="mt-3 text-xs text-ink/55">
+              The customer is emailed automatically when the order status
+              changes. Use notify only for extra notes or quote updates.
+            </p>
+          ) : null}
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -290,11 +322,18 @@ export default function OrderSaveChangesDialog({
                 name="notify-mode"
                 className="mt-1"
                 checked={mode === "only"}
-                disabled={saving}
+                disabled={saving || forceNotify}
                 onChange={() => setMode("only")}
               />
-              <span className="block text-sm font-semibold text-ink">
-                {onlyLabel}
+              <span>
+                <span className="block text-sm font-semibold text-ink">
+                  {onlyLabel}
+                </span>
+                {forceNotify ? (
+                  <span className="mt-0.5 block text-xs text-ink/50">
+                    Canceling a pending quote emails the customer.
+                  </span>
+                ) : null}
               </span>
             </label>
             <label

@@ -15,6 +15,11 @@ import {
 import { sanitizeDamageTags } from "../_shared/damageTags.ts";
 import { OWNER_ORDER_DISPLAY_ID } from "../_shared/ownerOrder.ts";
 import {
+  loadOrderStatusSnapshot,
+  notifyOrderStatusAfterChange,
+  type OrderStatusSnapshot,
+} from "../_shared/orderStatusNotify.ts";
+import {
   normalizeQuoteBulkCounts,
   orderQuoteTotal,
   roundMoney,
@@ -90,6 +95,20 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+async function fireOrderStatusNotify(
+  supabase: ReturnType<typeof getServiceClient>,
+  orderId: string,
+  before: OrderStatusSnapshot | null,
+): Promise<void> {
+  try {
+    const result = await notifyOrderStatusAfterChange(supabase, orderId, before);
+    if (result.error) {
+      console.error("order-status notify failed", orderId, result.error);
+    }
+  } catch (err) {
+    console.error("order-status notify failed", orderId, err);
+  }
+}
 
 async function deleteOrderAndPhotos(
   supabase: ReturnType<typeof getServiceClient>,
@@ -1535,6 +1554,8 @@ async function handleOrderUpload(
     return jsonResponse(req, { ok: false, error: "card not found" }, 404);
   }
 
+  const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
+
   const { count, error: countError } = await supabase
     .from("card_images")
     .select("id", { count: "exact", head: true })
@@ -1580,6 +1601,8 @@ async function handleOrderUpload(
     signPaths(supabase, [path]),
     signPathsPreferThumb(supabase, [path]),
   ]);
+
+  await fireOrderStatusNotify(supabase, orderId, statusBefore);
 
   return jsonResponse(req, {
     ok: true,
@@ -2546,12 +2569,14 @@ Deno.serve(async (req) => {
       if (status === "pending") {
         orderPatch.pending_kind = pendingKindRaw ?? "quote";
       }
+      const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
       const { error } = await supabase.rpc("update_order", {
         p_order_id: orderId,
         p_order: orderPatch,
       });
       if (error) throw error;
 
+      await fireOrderStatusNotify(supabase, orderId, statusBefore);
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
@@ -2569,11 +2594,13 @@ Deno.serve(async (req) => {
       if (!PENDING_KIND_IDS.has(pendingKind)) {
         return jsonResponse(req, { ok: false, error: "invalid pending_kind" }, 400);
       }
+      const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
       const { error } = await supabase.rpc("update_order", {
         p_order_id: orderId,
         p_order: { pending_kind: pendingKind },
       });
       if (error) throw error;
+      await fireOrderStatusNotify(supabase, orderId, statusBefore);
       const order = await fetchOrderGraph(supabase, orderId);
       return jsonResponse(req, { ok: true, order });
     }
@@ -2730,6 +2757,7 @@ Deno.serve(async (req) => {
         }
       }
 
+      const statusBefore = await loadOrderStatusSnapshot(supabase, orderId);
       const { error: rpcError } = await supabase.rpc("update_order", {
         p_order_id: orderId,
         p_order: orderPatch,
@@ -2791,6 +2819,7 @@ Deno.serve(async (req) => {
       }
 
 
+      await fireOrderStatusNotify(supabase, orderId, statusBefore);
       const order = await fetchOrderGraph(supabase, orderId);
       if (!order) {
         return jsonResponse(req, { ok: false, error: "order not found after save" }, 404);

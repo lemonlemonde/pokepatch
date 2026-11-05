@@ -24,7 +24,7 @@ If `DISCORD_QUOTES_BOT_TOKEN` / `DISCORD_QUOTES_CHANNEL_ID` are unset, messages 
 
 The service role key never touches the frontend — only this server-side function.
 
-Admin `update_order` calls do **not** notify (no webhook on UPDATE).
+Admin `update_order` does **not** post to Discord (this function is INSERT-only). Order-status customer emails are [`notify-order-status`](../notify-order-status/README.md).
 
 ---
 
@@ -99,7 +99,9 @@ Supabase dashboard → **Database → Webhooks**:
 - Events: **Insert**
 - Type: **Supabase Edge Functions** → `notify`
 
-Do **not** add an UPDATE webhook on `orders` — admin edits must stay silent.
+Do **not** add an UPDATE webhook on `orders` that points at **this** `notify` function — admin edits must not post to Discord.
+
+Customer emails on status change use a **separate** function: [`notify-order-status`](../notify-order-status/README.md) (`AFTER UPDATE OF status, pending_kind`). That path does not post to Discord.
 
 ---
 
