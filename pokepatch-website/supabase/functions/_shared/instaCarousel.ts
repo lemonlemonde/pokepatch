@@ -18,7 +18,7 @@ const NUNITO_ITALIC_URL =
   `https://cdn.jsdelivr.net/gh/googlefonts/nunito@${NUNITO_REF}/fonts/variable/Nunito-Italic%5Bwght%5D.ttf`;
 const LOGO_URL = "https://pokepatch.cards/email/pokepatch-icon.png";
 
-/** Overview pairs skipped at the start of each side (before[0..1], after[0..1]). */
+/** Overview pairs skipped at the start of the last-N aligned slice. */
 export const SKIP_OVERVIEW_PAIRS = 2;
 
 const BACKGROUND = 0x000000ff;

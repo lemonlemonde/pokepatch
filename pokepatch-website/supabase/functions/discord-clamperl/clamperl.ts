@@ -110,7 +110,7 @@ type ClamperlJob = {
   sizeLimit: number;
   beforeCount: number;
   afterCount: number;
-  /** Storage paths per pair, overview pairs already skipped. */
+  /** Storage paths per pair: last N of each side (N = after count), overview skipped. */
   pairs: { before: string; after: string }[];
   /** Index into `pairs` for the next hop to stitch. */
   next: number;
@@ -202,6 +202,31 @@ async function downloadStorageBytes(
     throw new Error(`storage download failed: ${path}`);
   }
   return new Uint8Array(await data.arrayBuffer());
+}
+
+/**
+ * N = after count. Take the last N photos on each side (extra prefix befores
+ * are dropped), then skip the first SKIP_OVERVIEW_PAIRS of that slice.
+ */
+function selectClamperlPairs(
+  beforeRows: CardImageRow[],
+  afterRows: CardImageRow[]
+): {
+  alignedCount: number;
+  pairs: { before: string; after: string }[];
+} {
+  const n = afterRows.length;
+  const beforeAligned = beforeRows.slice(-n);
+  const afterAligned = afterRows.slice(-n);
+  const alignedCount = Math.min(beforeAligned.length, afterAligned.length);
+  const pairs: { before: string; after: string }[] = [];
+  for (let i = SKIP_OVERVIEW_PAIRS; i < alignedCount; i += 1) {
+    pairs.push({
+      before: beforeAligned[i].storage_path,
+      after: afterAligned[i].storage_path,
+    });
+  }
+  return { alignedCount, pairs };
 }
 
 async function loadSideImages(
@@ -774,20 +799,12 @@ async function startClamperlJob(params: {
       );
       return;
     }
-    const pairCount = Math.min(beforeCount, afterCount);
-    if (pairCount <= SKIP_OVERVIEW_PAIRS) {
+    const { alignedCount, pairs } = selectClamperlPairs(beforeRows, afterRows);
+    if (alignedCount <= SKIP_OVERVIEW_PAIRS) {
       await reply(
-        `${prefix}\n• ${cardLabel}: only **${pairCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** are overview (before **${beforeCount}**, after **${afterCount}**)`
+        `${prefix}\n• ${cardLabel}: only **${alignedCount}** pair(s); first **${SKIP_OVERVIEW_PAIRS}** of the last **${alignedCount}** are overview (before **${beforeCount}**, after **${afterCount}**)`
       );
       return;
-    }
-
-    const pairs: ClamperlJob["pairs"] = [];
-    for (let i = SKIP_OVERVIEW_PAIRS; i < pairCount; i += 1) {
-      pairs.push({
-        before: beforeRows[i].storage_path,
-        after: afterRows[i].storage_path,
-      });
     }
     if (pairs.length > FILES_PER_MESSAGE) {
       await reply(
@@ -799,7 +816,7 @@ async function startClamperlJob(params: {
     const notes: string[] = [];
     if (beforeCount !== afterCount) {
       notes.push(
-        `before **${beforeCount}** ≠ after **${afterCount}** — paired **${pairCount}**, skipped first **${SKIP_OVERVIEW_PAIRS}** overview → **${pairs.length}** post(s)`
+        `before **${beforeCount}** ≠ after **${afterCount}** — used last **${alignedCount}**, skipped first **${SKIP_OVERVIEW_PAIRS}** overview → **${pairs.length}** post(s)`
       );
     }
 
