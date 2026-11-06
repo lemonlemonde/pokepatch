@@ -6,16 +6,6 @@ const ACCENTS = {
     badge: "bg-sky/25 text-ink",
     glow: "from-sky/15 via-transparent to-transparent",
   },
-  peach: {
-    bar: "bg-peach",
-    badge: "bg-peach/30 text-ink",
-    glow: "from-peach/15 via-transparent to-transparent",
-  },
-  mint: {
-    bar: "bg-mint",
-    badge: "bg-mint/25 text-ink",
-    glow: "from-mint/15 via-transparent to-transparent",
-  },
   ink: {
     bar: "bg-ink/40",
     badge: "bg-ink/10 text-ink/80",

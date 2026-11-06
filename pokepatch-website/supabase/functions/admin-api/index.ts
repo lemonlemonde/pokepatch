@@ -645,7 +645,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     }
   }
   if (ordersError) throw ordersError;
-  // Owner portfolio (#-1) stays out of kanban / photo-album / all-orders lists.
+  // Owner portfolio (#-1) stays out of kanban / all-orders lists.
   orders = (orders ?? []).filter(
     (order) => Number(order.display_id) !== OWNER_ORDER_DISPLAY_ID
   );
@@ -760,43 +760,6 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
     }
   }
 
-  // Photo-albums task only cares about in_progress / ready — skip before/after
-  // scans for every other order.
-  const albumOrderIds = new Set(
-    orders
-      .filter((o) => {
-        const status = String(o.status ?? "");
-        return status === "in_progress" || status === "ready";
-      })
-      .map((o) => o.id as string)
-  );
-  const beforeCards = new Set<string>();
-  const afterCards = new Set<string>();
-  const albumCardIds = cards
-    .filter(
-      (card) =>
-        albumOrderIds.has(card.order_id) &&
-        String(card.status ?? "") !== "canceled"
-    )
-    .map((card) => card.id);
-  if (albumCardIds.length > 0) {
-    const sideImages = await mapInChunks<{
-      card_id: string;
-      image_type: string;
-    }>(albumCardIds, (chunk) =>
-      supabase
-        .from("card_images")
-        .select("card_id, image_type")
-        .in("card_id", chunk)
-        .in("image_type", ["before", "after"])
-    );
-    for (const image of sideImages) {
-      const imageType = String(image.image_type ?? "");
-      if (imageType === "before") beforeCards.add(image.card_id);
-      if (imageType === "after") afterCards.add(image.card_id);
-    }
-  }
-
   const allPreviewPaths = [...previewPathsByOrder.values()].flat();
   // Thumbs only — never fall back to signing full-size originals for the
   // kanban. A missing sibling renders a placeholder instead of a 30MB PNG.
@@ -812,18 +775,6 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       })
       .filter((row): row is { path: string; url: string } => Boolean(row));
     const orderCards = cardsByOrder.get(orderId) ?? [];
-    const needsAlbumFlag = albumOrderIds.has(orderId);
-    const activeCards = needsAlbumFlag
-      ? orderCards.filter(
-          (card) => String(card.status ?? "") !== "canceled"
-        )
-      : [];
-    const has_restoration_album =
-      needsAlbumFlag &&
-      activeCards.length > 0 &&
-      activeCards.every(
-        (card) => beforeCards.has(card.id) && afterCards.has(card.id)
-      );
     const named = withAccountName(order, emailToUserId, namesByUserId);
     return {
       id: named.id,
@@ -849,7 +800,6 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
         quoteItemsByOrder.get(orderId) ?? []
       ),
       contract_signed: contractSignedByOrder.get(orderId) ?? false,
-      has_restoration_album,
     };
   });
 }
