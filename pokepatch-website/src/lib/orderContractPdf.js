@@ -63,6 +63,7 @@ export const AGREEMENT_TAIL = [
 
 export const RESULTS_AND_ALTERATION_PARAS = [
   "PokéPatch does not guarantee that a restored card will be considered unaltered by a grading company, marketplace, collector, or any other third party. There is always a risk that a restored card may be identified, labeled, or graded as altered. Customer accepts that risk and agrees that PokéPatch is not responsible for any such determination, or for any resulting loss in value, salability, or collectibility.",
+  "Whitening restoration carries particular risk. Whether a card treated for whitening will pass PSA grading or later be identified as altered depends on the nature of the whitening itself, and often cannot be known until after restoration is complete, including after ink is applied.",
   "Customer accepts that restoration may not perfectly repair every form of damage on a card. Some damage may remain visible or incompletely corrected after restoration.",
   "The Restoration Fee is payment for a reasonable attempt to restore the card(s) and for reasonable results, not for perfect or guaranteed results. Payment remains due on that basis even if the outcome is not perfect, or if a card is later graded or otherwise treated as altered.",
 ];
