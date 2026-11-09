@@ -612,8 +612,10 @@ async function fetchListCards(
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, todo_entered_at, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
   const listSelectNoQuote =
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, todo_entered_at, is_priority";
+  const listSelectNoTodoEntered =
     "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, is_priority";
   const listSelectLegacy =
     "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at";
@@ -631,16 +633,25 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       orders = retry.data;
       ordersError = null;
     } else {
-      const legacy = await supabase
+      const noTodo = await supabase
         .from("orders")
-        .select(listSelectLegacy)
+        .select(listSelectNoTodoEntered)
         .order("created_at", { ascending: false });
-      if (!legacy.error) {
-        orders = (legacy.data ?? []).map((order) => ({
-          ...order,
-          is_priority: false,
-        }));
+      if (!noTodo.error) {
+        orders = noTodo.data;
         ordersError = null;
+      } else {
+        const legacy = await supabase
+          .from("orders")
+          .select(listSelectLegacy)
+          .order("created_at", { ascending: false });
+        if (!legacy.error) {
+          orders = (legacy.data ?? []).map((order) => ({
+            ...order,
+            is_priority: false,
+          }));
+          ordersError = null;
+        }
       }
     }
   }
@@ -652,16 +663,21 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   if (!orders.length) return [];
 
   // 1-based place among status=new — same order as admin To do column /
-  // sortOrdersForStatusColumn (priority, then status_changed_at).
+  // sortOrdersForStatusColumn (priority, then todo_entered_at).
   const queuePositionById = new Map<string, number>();
-  const statusChangedMs = (o: {
+  const todoEnteredMs = (o: {
+    todo_entered_at?: string | null;
     status_changed_at?: string | null;
     created_at?: string | null;
   }) => {
-    const primary = o.status_changed_at
-      ? new Date(o.status_changed_at).getTime()
+    const primary = o.todo_entered_at
+      ? new Date(o.todo_entered_at).getTime()
       : NaN;
     if (!Number.isNaN(primary)) return primary;
+    const changed = o.status_changed_at
+      ? new Date(o.status_changed_at).getTime()
+      : NaN;
+    if (!Number.isNaN(changed)) return changed;
     const fallback = o.created_at ? new Date(o.created_at).getTime() : NaN;
     return Number.isNaN(fallback) ? 0 : fallback;
   };
@@ -671,8 +687,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       const aPriority = Boolean(a.is_priority);
       const bPriority = Boolean(b.is_priority);
       if (aPriority !== bPriority) return aPriority ? -1 : 1;
-      const byChanged = statusChangedMs(a) - statusChangedMs(b);
-      if (byChanged !== 0) return byChanged;
+      const byTodo = todoEnteredMs(a) - todoEnteredMs(b);
+      if (byTodo !== 0) return byTodo;
       const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
       const bt = b.created_at ? new Date(b.created_at as string).getTime() : 0;
       if (at !== bt) return at - bt;
@@ -787,6 +803,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       pending_kind: named.pending_kind ?? null,
       completed_at: named.completed_at ?? null,
       status_changed_at: named.status_changed_at ?? null,
+      todo_entered_at: named.todo_entered_at ?? null,
       is_priority: Boolean(named.is_priority),
       has_account: orderHasAccount(order, emailSet),
       card_count: countByOrder.get(orderId) ?? 0,
@@ -805,9 +822,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority";
 
 const ORDER_STATUS_IDS = new Set([
   "pending",
@@ -1101,6 +1118,16 @@ async function fetchOrderGraph(
       .order("created_at", { ascending: false });
     if (orderId) fallback = fallback.eq("id", orderId);
     let retry = await fallback;
+    if (retry.error) {
+      const noTodoSelect =
+        "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority, is_priority";
+      let noTodo = supabase
+        .from("orders")
+        .select(noTodoSelect)
+        .order("created_at", { ascending: false });
+      if (orderId) noTodo = noTodo.eq("id", orderId);
+      retry = await noTodo;
+    }
     if (retry.error) {
       const legacySelect =
         "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, queue_priority";

@@ -65,7 +65,8 @@ export function advanceQueueRotation(current, pulledIsPriority) {
 
 /**
  * Pick the next To do order under the 2-priority : 1-regular rule.
- * `todoOrders` should already be column-sorted (priority first, then FIFO).
+ * `todoOrders` should already be column-sorted (priority first, then FIFO
+ * within each lane).
  * Falls back to the other lane when the preferred lane is empty.
  */
 export function pickNextTodoOrder(todoOrders, rotation) {
