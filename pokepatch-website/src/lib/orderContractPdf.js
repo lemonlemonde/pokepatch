@@ -108,8 +108,60 @@ export function contractTotalRestorationFee(cards) {
   return hasAny ? cents / 100 : null;
 }
 
+/**
+ * Helvetica is WinAnsi-encoded. pdf-lib throws
+ * `WinAnsi cannot encode "★" (0x2605)` on TCG glyphs in card names
+ * (Gold Star ★, Prism Star ◇, Nidoran♀/♂, Delta Species δ).
+ */
+const WINANSI_REPLACEMENTS = {
+  "\u2605": "*", // ★
+  "\u2606": "*", // ☆
+  "\u25C7": "*", // ◇
+  "\u2640": "(F)", // ♀
+  "\u2642": "(M)", // ♂
+  "\u03B4": "d", // δ
+  "\u0394": "D",
+};
+
+// CP1252 0x80–0x9F: not Latin-1, but Helvetica can still draw them.
+const WINANSI_EXTRA = new Set("€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ");
+
+function isWinAnsiChar(ch) {
+  const code = ch.codePointAt(0);
+  if (code >= 0x20 && code <= 0x7e) return true;
+  if (code >= 0xa0 && code <= 0xff) return true;
+  return WINANSI_EXTRA.has(ch);
+}
+
+function toWinAnsi(text) {
+  let out = "";
+  for (const ch of String(text ?? "")) {
+    const mapped = WINANSI_REPLACEMENTS[ch];
+    if (mapped != null) {
+      out += mapped;
+      continue;
+    }
+    const code = ch.codePointAt(0);
+    if (code === 0x09 || code === 0x0a || code === 0x0d) {
+      out += " ";
+      continue;
+    }
+    if (isWinAnsiChar(ch)) {
+      out += ch;
+      continue;
+    }
+    const folded = ch.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+    if (folded && folded !== ch) {
+      out += toWinAnsi(folded);
+      continue;
+    }
+    out += "?";
+  }
+  return out;
+}
+
 function wrapText(text, font, size, maxWidth) {
-  const words = String(text ?? "").split(/\s+/).filter(Boolean);
+  const words = toWinAnsi(text).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [""];
   const lines = [];
   let current = words[0];
@@ -127,7 +179,7 @@ function wrapText(text, font, size, maxWidth) {
 }
 
 function truncateToWidth(text, font, size, maxWidth) {
-  const raw = String(text ?? "");
+  const raw = toWinAnsi(text);
   if (font.widthOfTextAtSize(raw, size) <= maxWidth) return raw;
   let out = raw;
   while (out.length > 0 && font.widthOfTextAtSize(`${out}…`, size) > maxWidth) {
@@ -540,7 +592,7 @@ function drawLabeledLine(ctx, label, value = "", { lineWidth = 280 } = {}) {
   const labelWidth = ctx.font.widthOfTextAtSize(label, FONT_SIZE);
   const startX = MARGIN_X + labelWidth + 6;
   if (value) {
-    ctx.page.drawText(value, {
+    ctx.page.drawText(toWinAnsi(value), {
       x: startX,
       y: ctx.y,
       size: FONT_SIZE,
