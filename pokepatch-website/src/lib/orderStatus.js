@@ -358,15 +358,28 @@ function timeMs(value, fallback) {
   return Number.isNaN(secondary) ? 0 : secondary;
 }
 
+/** When the order last entered To do; falls back to status_changed_at / created_at. */
+function todoEnteredMs(order) {
+  return timeMs(
+    order?.todo_entered_at,
+    order?.status_changed_at || order?.created_at
+  );
+}
+
 /**
  * Column sort:
  * - completed: most recently completed first (completed_at, then
  *   status_changed_at / created_at)
+ * - To do: paid priority first, then earliest todo_entered_at (when the
+ *   order was dragged into To do). Promoting regular → priority inserts
+ *   at that wait-time, not at the end of the priority lane.
  * - other statuses: paid priority first, then earliest status_changed_at
  *   (when the order entered this column). created_at / id are tiebreakers.
  */
 export function sortOrdersForStatusColumn(orders, statusId) {
-  const completedColumn = normalizeOrderStatus(statusId) === "completed";
+  const status = normalizeOrderStatus(statusId);
+  const completedColumn = status === "completed";
+  const todoColumn = status === "new";
 
   return [...(orders ?? [])].sort((a, b) => {
     if (completedColumn) {
@@ -383,10 +396,11 @@ export function sortOrdersForStatusColumn(orders, statusId) {
     const bPriority = Boolean(b.is_priority);
     if (aPriority !== bPriority) return aPriority ? -1 : 1;
 
-    const byChanged =
-      timeMs(a.status_changed_at, a.created_at) -
-      timeMs(b.status_changed_at, b.created_at);
-    if (byChanged !== 0) return byChanged;
+    const byQueue = todoColumn
+      ? todoEnteredMs(a) - todoEnteredMs(b)
+      : timeMs(a.status_changed_at, a.created_at) -
+        timeMs(b.status_changed_at, b.created_at);
+    if (byQueue !== 0) return byQueue;
     const byCreated = timeMs(a.created_at) - timeMs(b.created_at);
     if (byCreated !== 0) return byCreated;
     return String(a.id ?? "").localeCompare(String(b.id ?? ""));

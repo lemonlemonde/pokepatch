@@ -188,6 +188,7 @@ function orderToKanbanSummary(order) {
         : null,
     completed_at: isClosed ? (order.completed_at ?? null) : null,
     status_changed_at: order.status_changed_at ?? null,
+    todo_entered_at: order.todo_entered_at ?? null,
     card_count,
     cards_completed,
     is_priority: Boolean(order.is_priority),
@@ -1856,6 +1857,10 @@ export default function AdminApp() {
               status: nextStatus,
               pending_kind: pendingKind,
               status_changed_at: new Date().toISOString(),
+              todo_entered_at:
+                nextStatus === "new"
+                  ? new Date().toISOString()
+                  : moving.todo_entered_at ?? null,
               completed_at: nextClosed
                 ? wasClosed
                   ? moving.completed_at
