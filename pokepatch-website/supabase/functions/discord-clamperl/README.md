@@ -5,6 +5,7 @@ Discord **Interactions Endpoint** for the **clamperl** Discord app.
 | Flow | Trigger | File |
 |------|---------|------|
 | **clamperl** (Instagram carousel PNGs) | Slash command `/clamperl` | [`clamperl.ts`](./clamperl.ts) |
+| **hop peer** | Internal POST from the other function | [`discord-clamperl-hop`](../discord-clamperl-hop/README.md) |
 
 Quotes use [`discord-interactions`](../discord-interactions/README.md). Before/after **uploads** use [`discord-photos`](../discord-photos/README.md) (wooper).
 
@@ -41,7 +42,7 @@ supabase secrets set DISCORD_CLAMPERL_PUBLIC_KEY="hex-public-key"
 # DISCORD_ADMIN_USER_IDS already set for wooper/quotes
 ```
 
-`verify_jwt = false` is set for `discord-clamperl` in `supabase/config.toml`.
+`verify_jwt = false` is set for `discord-clamperl` and `discord-clamperl-hop` in `supabase/config.toml`.
 
 ### Register the `/clamperl` slash command (once per app)
 
@@ -81,8 +82,8 @@ Invite the bot to your server with `applications.commands` scope.
 
 - Own cards: pass `order:-1` (same permanent portfolio as wooper). Card index is still 1-based within that order.
 - Exports are **PNG** (lossless). Instagram feed max is 1080×1350; Studio’s 6× JPEG supersample is not used here.
-- **Why hops:** Supabase Edge Functions cap CPU time **per request** (docs say 2s; over that the isolate is killed with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one request. Each hop is a new HTTP request with a fresh CPU budget (it may reuse a warm isolate).
-- **Hop transport:** the job (interaction token, pair paths, staged files) is POSTed to `${SUPABASE_URL}/functions/v1/discord-clamperl` with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. `index.ts` routes those requests before Discord signature verification; a bad signature is 401. Do not 503 a hop just because this isolate already stitched — with one warm worker the self-POST lands on that same worker, and retrying 503 while the dispatcher is still blocked on `fetch()` never leaves it. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.
+- **Why hops:** Supabase Edge Functions cap CPU time **per request** (docs say 2s; over that the isolate is killed with `CPU Time exceeded`, and no `catch`/`finally` runs afterwards — Discord just shows a frozen status). Decoding two 6MP phone JPEGs costs ~2.5s CPU, so a multi-pair card cannot finish in one request. Each hop is a new HTTP request with a fresh CPU budget.
+- **Hop transport:** the job is POSTed to the **peer** function (`discord-clamperl` ↔ `discord-clamperl-hop`) with header `x-clamperl-hop: HMAC-SHA256(body, SUPABASE_SERVICE_ROLE_KEY)`. A self-POST lands on the same isolate while `waitUntil` is still blocked on `fetch()`, and the next stitch/gallery step gets CPU-killed (PNGs stay in scratch, Discord never gets them). `index.ts` on each function routes hop requests before Discord signature verification; a bad signature is 401. The deferred-interaction token stays valid 15 minutes, which comfortably covers a 10-pair chain.
 - After stitch hops, gallery hops copy **one source pair + required thumbs** per hop (same per-request CPU pattern). Then one Discord follow-up with PNG attachments and a Done status with **Edit:**. No per-stitch progress spam (gallery pair N/M only). Staged Storage objects under `clamperl/<order>/card<n>/<jobId>/` are deleted in a `finally` by the final hop (and on any failure). Each job start also sweeps that scratch prefix for orphans older than ~1h (killed workers), without wiping in-flight concurrent jobs. Uneven before/after counts are called out in the status reply.
 - Oversized frames (above the interaction attachment size limit) are skipped with a note in the reply.
 - Pairing uses the last **N** photos on each side (**N** = after count). Extra prefix befores are dropped, then the first two of that slice are treated as overview and never posted (and are not uploaded to the gallery).

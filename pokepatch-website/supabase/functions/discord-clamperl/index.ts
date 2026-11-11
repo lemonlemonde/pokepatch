@@ -3,10 +3,10 @@
  *
  * Slash command `/clamperl order:<n> card:<n>` → carousel 4:5 before/after PNGs.
  *
- * The function also calls **itself**: each carousel pair is stitched in its
- * own HTTP request (Edge per-request CPU cap), handed off via a POST signed
- * with the service role key (`x-clamperl-hop`). Those requests bypass Discord
- * signature checks.
+ * Consecutive hops ping-pong to `discord-clamperl-hop` (and back) so a spent
+ * isolate never receives the next stitch/gallery request. Hops are POSTs signed
+ * with the service role key (`x-clamperl-hop`) and bypass Discord signature
+ * checks.
  *
  * Quotes → `discord-interactions`. Wooper uploads → `discord-photos`.
  *
@@ -22,9 +22,12 @@ import {
 } from "../_shared/discord.ts";
 import {
   HOP_HEADER,
+  configureClamperlHopFunction,
   handleClamperlCommandDeferred,
   handleClamperlHop,
 } from "./clamperl.ts";
+
+configureClamperlHopFunction("discord-clamperl");
 
 declare const EdgeRuntime: {
   waitUntil: (promise: Promise<unknown>) => void;

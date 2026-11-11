@@ -418,6 +418,9 @@ verify_jwt = false
 [functions.discord-clamperl]
 verify_jwt = false
 
+[functions.discord-clamperl-hop]
+verify_jwt = false
+
 [functions.account-signup-notice]
 verify_jwt = false
 
