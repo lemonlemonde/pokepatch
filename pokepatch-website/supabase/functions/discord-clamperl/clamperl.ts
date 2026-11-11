@@ -3,9 +3,10 @@
  * order card (`order` + required `card`).
  *
  * Chip title/thumb come from the order card’s catalog fields (enforced when the
- * order enters To do). Each hop stitches ONE pair in a fresh Edge worker (CPU
- * time cap), then gallery-publishes ONE source pair (+ required thumbs) per
- * worker. The final hop posts Discord attachments and deletes scratch files.
+ * order enters To do). Each hop stitches ONE pair in a new HTTP request (CPU
+ * time is per request), then gallery-publishes ONE source pair (+ required
+ * thumbs) per hop. The final hop posts Discord attachments and deletes scratch
+ * files.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -59,16 +60,9 @@ const REMOVE_BATCH = 100;
 /** Header carrying the HMAC of a hop request body (signed with the service role key). */
 export const HOP_HEADER = "x-clamperl-hop";
 
-/** Hop handoff retries — a 503 means the worker that answered has already burned its CPU budget. */
+/** Hop handoff retries for gateway 502/546 and network blips. */
 const HOP_MAX_ATTEMPTS = 6;
 const HOP_RETRY_DELAY_MS = 1500;
-
-/**
- * Heavy (stitch) wall-time this isolate has already spent. Past this, refuse
- * new hops with 503 so the chain lands on a fresh worker instead of being killed.
- */
-const ISOLATE_HEAVY_BUDGET_MS = 3000;
-let isolateHeavyMs = 0;
 
 type CardImageRow = {
   id: number;
@@ -370,7 +364,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Hand the job to a fresh worker. Resolves once that worker has accepted (202). */
+/** Hand the job to the next hop request. Resolves once that request has accepted (202). */
 async function dispatchHop(job: ClamperlJob): Promise<void> {
   job.hops += 1;
   // Stitch hops + gallery hops (one pair each) + finalize slack.
@@ -399,21 +393,26 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
       });
       if (res.status === 202) return;
       lastError = `${res.status} ${await res.text().catch(() => "")}`.trim();
-      // 503 = busy worker; anything else is unexpected but still worth a retry.
+      // Transient gateway / isolate-boot errors are worth a retry.
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
     await sleep(HOP_RETRY_DELAY_MS);
   }
   throw new Error(
-    `Could not hand off to a fresh worker after ${HOP_MAX_ATTEMPTS} attempts: ${lastError}`
+    `Could not dispatch the next hop after ${HOP_MAX_ATTEMPTS} attempts: ${lastError}`
   );
 }
 
 /**
  * Entry for hop requests (identified by `HOP_HEADER`). Verifies the HMAC,
- * refuses if this isolate is already near its CPU cap, otherwise accepts with
- * 202 and runs the hop in the background.
+ * accepts with 202, and runs the hop in the background.
+ *
+ * Do not 503 when this isolate already stitched: `/clamperl` is low-traffic,
+ * so the self-POST often lands on the same warm worker. CPU time is per
+ * request (not per isolate), and returning 503 while the dispatcher is still
+ * blocked on fetch() keeps that worker alive and retries it until the job
+ * fails.
  */
 export async function handleClamperlHop(
   req: Request,
@@ -448,10 +447,6 @@ export async function handleClamperlHop(
     return new Response("Unsupported hop payload", { status: 400 });
   }
 
-  if (isolateHeavyMs > ISOLATE_HEAVY_BUDGET_MS) {
-    return json({ retry: true, isolateHeavyMs }, 503);
-  }
-
   waitUntil(runHop(job));
   return json({ accepted: true, hop: job.hops, next: job.next }, 202);
 }
@@ -475,7 +470,7 @@ async function buildOverlay(job: ClamperlJob): Promise<CarouselOverlay> {
   return overlay;
 }
 
-/** Stitch `job.pairs[job.next]` in this worker and stage it; advances `job.next`. */
+/** Stitch `job.pairs[job.next]` in this request and stage it; advances `job.next`. */
 async function stitchNextPair(
   job: ClamperlJob,
   supabase: SupabaseClient
@@ -491,13 +486,7 @@ async function stitchNextPair(
     downloadStorageBytes(supabase, afterPath),
   ]);
 
-  const heavyStarted = performance.now();
-  let png: Uint8Array;
-  try {
-    png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
-  } finally {
-    isolateHeavyMs += performance.now() - heavyStarted;
-  }
+  const png = await stitchCarouselPairPng(beforeBytes, afterBytes, overlay);
 
   const filename = `pokepatch-pair-${pairNum}.png`;
   if (png.byteLength > job.sizeLimit) {
@@ -557,17 +546,12 @@ async function publishNextGalleryPair(
     );
 
     const pair = job.pairs[pairIndex];
-    const heavyStarted = performance.now();
-    try {
-      await publishGalleryPairWithThumbs(supabase, {
-        itemId: job.galleryItemId,
-        sortOrder: pairIndex,
-        pair: { beforePath: pair.before, afterPath: pair.after },
-        sourceBucket: BUCKET,
-      });
-    } finally {
-      isolateHeavyMs += performance.now() - heavyStarted;
-    }
+    await publishGalleryPairWithThumbs(supabase, {
+      itemId: job.galleryItemId,
+      sortOrder: pairIndex,
+      pair: { beforePath: pair.before, afterPath: pair.after },
+      sourceBucket: BUCKET,
+    });
 
     job.galleryNext = pairIndex + 1;
     job.galleryPairCount = job.galleryNext;
@@ -699,8 +683,8 @@ async function failJob(
 }
 
 /**
- * One worker's share: stitch next pair, or publish next gallery pair (with
- * required thumbs), or finalize Discord delivery.
+ * One hop: stitch next pair, or publish next gallery pair (with required
+ * thumbs), or finalize Discord delivery.
  */
 async function runHop(job: ClamperlJob): Promise<void> {
   let supabase: SupabaseClient | null = null;
