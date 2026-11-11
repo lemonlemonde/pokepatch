@@ -587,6 +587,7 @@ pokepatch-website/
       discord-interactions/      # Quotes Discord app: quote modal + Save & notify
       discord-photos/             # Wooper Discord app: before/after photo uploads
       discord-clamperl/           # Clamperl Discord app: /clamperl carousel PNG generation
+      discord-clamperl-hop/       # Clamperl hop peer (ping-pong so stitches do not share an isolate)
       admin-auth/
       admin-api/
   scripts/

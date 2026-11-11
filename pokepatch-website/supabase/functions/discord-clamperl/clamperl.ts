@@ -3,10 +3,10 @@
  * order card (`order` + required `card`).
  *
  * Chip title/thumb come from the order card’s catalog fields (enforced when the
- * order enters To do). Each hop stitches ONE pair in a new HTTP request (CPU
- * time is per request), then gallery-publishes ONE source pair (+ required
- * thumbs) per hop. The final hop posts Discord attachments and deletes scratch
- * files.
+ * order enters To do). Each hop stitches ONE pair, then gallery-publishes ONE
+ * source pair (+ required thumbs). Hops ping-pong between this function and
+ * `discord-clamperl-hop` so a spent isolate never handles the next heavy step.
+ * The final hop posts Discord attachments and deletes scratch files.
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -354,10 +354,28 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-function selfUrl(): string {
+type HopFunctionName = "discord-clamperl" | "discord-clamperl-hop";
+
+/** Which function this isolate is serving — set from each function's index.ts. */
+let thisHopFunction: HopFunctionName = "discord-clamperl";
+
+export function configureClamperlHopFunction(name: HopFunctionName): void {
+  thisHopFunction = name;
+}
+
+/**
+ * Next hop always goes to the *other* function so it cannot land on this
+ * isolate (self-POST + waitUntil keeps the spent worker alive and CPU-kills
+ * the next stitch/gallery step).
+ */
+function hopPeerUrl(): string {
   const base = Deno.env.get("SUPABASE_URL") ?? "";
   if (!base) throw new Error("SUPABASE_URL not set");
-  return `${base.replace(/\/$/, "")}/functions/v1/discord-clamperl`;
+  const peer: HopFunctionName =
+    thisHopFunction === "discord-clamperl"
+      ? "discord-clamperl-hop"
+      : "discord-clamperl";
+  return `${base.replace(/\/$/, "")}/functions/v1/${peer}`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -373,7 +391,7 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
   }
   const body = JSON.stringify(job);
   const signature = await hopSignature(body);
-  const url = selfUrl();
+  const url = hopPeerUrl();
   const secret = hopSecret();
 
   let lastError = "";
@@ -408,11 +426,11 @@ async function dispatchHop(job: ClamperlJob): Promise<void> {
  * Entry for hop requests (identified by `HOP_HEADER`). Verifies the HMAC,
  * accepts with 202, and runs the hop in the background.
  *
- * Do not 503 when this isolate already stitched: `/clamperl` is low-traffic,
- * so the self-POST often lands on the same warm worker. CPU time is per
- * request (not per isolate), and returning 503 while the dispatcher is still
- * blocked on fetch() keeps that worker alive and retries it until the job
- * fails.
+ * Hops always POST to the peer function (`discord-clamperl` ↔
+ * `discord-clamperl-hop`). A self-POST lands on this isolate while waitUntil
+ * is still blocked on fetch(), and a second stitch/gallery on that spent
+ * worker gets `CPU Time exceeded` with no catch/finally (Discord never gets
+ * the PNGs; scratch files stay behind).
  */
 export async function handleClamperlHop(
   req: Request,
@@ -447,6 +465,15 @@ export async function handleClamperlHop(
     return new Response("Unsupported hop payload", { status: 400 });
   }
 
+  console.log(
+    "clamperl hop accept",
+    JSON.stringify({
+      fn: thisHopFunction,
+      hops: job.hops,
+      next: job.next,
+      galleryNext: job.galleryNext,
+    })
+  );
   waitUntil(runHop(job));
   return json({ accepted: true, hop: job.hops, next: job.next }, 202);
 }
