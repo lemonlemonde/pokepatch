@@ -4,8 +4,9 @@
  * Slash command `/clamperl order:<n> card:<n>` → carousel 4:5 before/after PNGs.
  *
  * The function also calls **itself**: each carousel pair is stitched in its
- * own worker (Edge CPU cap), handed off via a POST signed with the service role
- * key (`x-clamperl-hop`). Those requests bypass Discord signature checks.
+ * own HTTP request (Edge per-request CPU cap), handed off via a POST signed
+ * with the service role key (`x-clamperl-hop`). Those requests bypass Discord
+ * signature checks.
  *
  * Quotes → `discord-interactions`. Wooper uploads → `discord-photos`.
  *
