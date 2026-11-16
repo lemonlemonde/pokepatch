@@ -490,25 +490,31 @@ async function mapInChunks<T>(
   return out;
 }
 
-async function fetchContractSignedByOrderId(
+type ContractFlags = { signed: boolean; notified: boolean };
+
+async function fetchContractFlagsByOrderId(
   supabase: ReturnType<typeof getServiceClient>,
   orderIds: string[]
 ) {
-  const byOrder = new Map<string, boolean>();
+  const byOrder = new Map<string, ContractFlags>();
   if (orderIds.length === 0) return byOrder;
   try {
     const rows = await mapInChunks<{
       order_id: string;
       status?: string | null;
       signed_path?: string | null;
+      notified_at?: string | null;
     }>(orderIds, (chunk) =>
       supabase
         .from("order_contracts")
-        .select("order_id, status, signed_path")
+        .select("order_id, status, signed_path, notified_at")
         .in("order_id", chunk)
     );
     for (const row of rows) {
-      byOrder.set(row.order_id, isOrderContractSigned(row));
+      byOrder.set(row.order_id, {
+        signed: isOrderContractSigned(row),
+        notified: Boolean(row.notified_at),
+      });
     }
   } catch {
     // Match prior behavior: missing table / select errors → treat as empty.
@@ -700,7 +706,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 
   const orderIds = orders.map((o) => o.id as string);
 
-  const [cards, quoteItems, authUsers, contractSignedByOrder] =
+  const [cards, quoteItems, authUsers, contractFlagsByOrder] =
     await Promise.all([
       fetchListCards(supabase, orderIds),
       mapInChunks<ListQuoteItemRow>(orderIds, async (chunk) => {
@@ -713,7 +719,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
         return result;
       }),
       listAllAuthUsers(supabase),
-      fetchContractSignedByOrderId(supabase, orderIds),
+      fetchContractFlagsByOrderId(supabase, orderIds),
     ]);
   const emailSet = authEmailSet(authUsers);
   const emailToUserId = new Map(authUsers.map((u) => [u.email, u.id]));
@@ -792,6 +798,7 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       .filter((row): row is { path: string; url: string } => Boolean(row));
     const orderCards = cardsByOrder.get(orderId) ?? [];
     const named = withAccountName(order, emailToUserId, namesByUserId);
+    const contractFlags = contractFlagsByOrder.get(orderId);
     return {
       id: named.id,
       display_id: named.display_id,
@@ -816,7 +823,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
         orderCards,
         quoteItemsByOrder.get(orderId) ?? []
       ),
-      contract_signed: contractSignedByOrder.get(orderId) ?? false,
+      contract_signed: contractFlags?.signed ?? false,
+      contract_notified: contractFlags?.notified ?? false,
     };
   });
 }
@@ -1159,7 +1167,7 @@ async function fetchOrderGraph(
     cardsResult,
     quoteItemsResult,
     authUsers,
-    contractSignedByOrder,
+    contractFlagsByOrder,
   ] = await Promise.all([
     supabase
       .from("contacts")
@@ -1211,7 +1219,7 @@ async function fetchOrderGraph(
       .in("order_id", orderIds)
       .order("sort_order", { ascending: true }),
     listAllAuthUsers(supabase),
-    fetchContractSignedByOrderId(supabase, orderIds),
+    fetchContractFlagsByOrderId(supabase, orderIds),
   ]);
   const { data: cards, error: cardsError } = cardsResult;
   if (contactsError) throw contactsError;
@@ -1273,6 +1281,7 @@ async function fetchOrderGraph(
 
   const enriched = orders.map((order) => {
     const id = order.id as string;
+    const contractFlags = contractFlagsByOrder.get(id);
     return {
       ...withAccountName(order, emailToUserId, namesByUserId),
       has_account: orderHasAccount(order, emailSet),
@@ -1286,7 +1295,8 @@ async function fetchOrderGraph(
         })),
       })),
       quote_items: quoteItemsByOrder.get(id) ?? [],
-      contract_signed: contractSignedByOrder.get(id) ?? false,
+      contract_signed: contractFlags?.signed ?? false,
+      contract_notified: contractFlags?.notified ?? false,
     };
   });
 
