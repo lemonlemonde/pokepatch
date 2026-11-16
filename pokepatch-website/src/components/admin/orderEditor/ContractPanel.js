@@ -83,7 +83,7 @@ export default function ContractPanel({ orderId, displayId }) {
     return "Not up to date";
   }, [contract, preview]);
 
-  async function handleDownload() {
+  async function handleDownloadAndNotify() {
     // A new PDF supersedes any existing signature (server resets to unsigned).
     if (
       signedUrl &&
@@ -106,8 +106,11 @@ export default function ContractPanel({ orderId, displayId }) {
       const result = await adminPrepareOrderContract(orderId, payload, file);
       setContract(result.contract);
       setSignedUrl(result.signed_url ?? null);
-      // Keep the orders list/detail "contract signed" icon in sync.
-      onOrderUpdated({ ...order, contract_signed: false });
+      onOrderUpdated({
+        ...order,
+        contract_signed: false,
+        contract_notified: Boolean(result.contract?.notified_at),
+      });
       const url = result.unsigned_url;
       if (!url) {
         popup?.close();
@@ -119,21 +122,17 @@ export default function ContractPanel({ orderId, displayId }) {
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
+      if (!draft.customer_email?.trim()) {
+        setError("Order has no customer email.");
+        return;
+      }
+      setNotifyOpen(true);
     } catch (err) {
       popup?.close();
       setError(err.message || "Failed to prepare contract");
     } finally {
       setBusy(false);
     }
-  }
-
-  function openNotifyPreview() {
-    if (!draft.customer_email?.trim()) {
-      setError("Order has no customer email.");
-      return;
-    }
-    setError("");
-    setNotifyOpen(true);
   }
 
   async function handleNotifySend({ subject, body }) {
@@ -143,6 +142,10 @@ export default function ContractPanel({ orderId, displayId }) {
       const result = await adminMarkOrderContractNotified(orderId);
       setContract(result.contract);
       setSignedUrl(result.signed_url ?? null);
+      onOrderUpdated({
+        ...order,
+        contract_notified: true,
+      });
       await adminSendMessages({
         order_ids: [orderId],
         subject,
@@ -233,25 +236,13 @@ export default function ContractPanel({ orderId, displayId }) {
           <div className="flex flex-wrap gap-1.5 border-t border-ink/10 pt-2.5">
             <button
               type="button"
-              disabled={busy || loading || cards.length === 0}
-              onClick={handleDownload}
+              disabled={
+                busy || loading || notifySending || cards.length === 0
+              }
+              onClick={handleDownloadAndNotify}
               className="rounded-md bg-ink px-2.5 py-1 text-xs font-bold text-night transition hover:brightness-110 disabled:opacity-40"
             >
-              {busy ? "Working…" : "Download PDF"}
-            </button>
-            <button
-              type="button"
-              disabled={
-                busy ||
-                loading ||
-                notifySending ||
-                !contract ||
-                !draft.customer_email?.trim()
-              }
-              onClick={openNotifyPreview}
-              className="rounded-md border border-ink/15 px-2.5 py-1 text-xs font-semibold text-ink/80 transition hover:border-ink/30 hover:text-ink disabled:opacity-40"
-            >
-              Notify customer
+              {busy ? "Working…" : "Download & notify"}
             </button>
           </div>
         </div>

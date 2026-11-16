@@ -199,21 +199,34 @@ function orderToKanbanSummary(order) {
       : [],
     quote_total: orderAmount(order),
     contract_signed: Boolean(order.contract_signed),
+    contract_notified: Boolean(order.contract_notified),
   };
 }
 
-function ContractSignedIcon({ signed }) {
-  const label = signed ? "Contract signed" : "Contract not signed";
+const CONTRACT_ICON = {
+  signed: {
+    label: "Contract signed",
+    tone: "border-status-green/55 bg-status-green/15 text-status-green",
+  },
+  notified: {
+    label: "Customer notified, not signed",
+    tone: "border-status-blue/55 bg-status-blue/15 text-status-blue",
+  },
+  unsigned: {
+    label: "Customer not notified",
+    tone: "border-status-yellow/55 bg-status-yellow/20 text-night",
+  },
+};
+
+function ContractSignedIcon({ signed, notified }) {
+  const state = signed ? "signed" : notified ? "notified" : "unsigned";
+  const { label, tone } = CONTRACT_ICON[state];
   return (
     <span
-      className={`group relative inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${
-        signed
-          ? "border-status-green/55 bg-status-green/15 text-status-green"
-          : "border-status-yellow/55 bg-status-yellow/20 text-night"
-      }`}
+      className={`group relative inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${tone}`}
       aria-label={label}
     >
-      {signed ? (
+      {state === "signed" ? (
         <svg
           viewBox="0 0 24 24"
           className="h-2.5 w-2.5"
@@ -669,7 +682,10 @@ function KanbanCard({
         />
       ) : null}
       {showContractIcon ? (
-        <ContractSignedIcon signed={Boolean(order.contract_signed)} />
+        <ContractSignedIcon
+          signed={Boolean(order.contract_signed)}
+          notified={Boolean(order.contract_notified)}
+        />
       ) : null}
       <button
         type="button"
@@ -750,7 +766,10 @@ function KanbanCard({
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <AccountStatusBadge hasAccount={order.has_account} />
             {showContractIcon ? (
-              <ContractSignedIcon signed={Boolean(order.contract_signed)} />
+              <ContractSignedIcon
+                signed={Boolean(order.contract_signed)}
+                notified={Boolean(order.contract_notified)}
+              />
             ) : null}
           </div>
           <p className="mt-1 text-xs text-ink/60">
@@ -1493,6 +1512,10 @@ export default function AdminApp() {
             typeof refreshed.contract_signed === "boolean"
               ? refreshed.contract_signed
               : order.contract_signed,
+          contract_notified:
+            typeof refreshed.contract_notified === "boolean"
+              ? refreshed.contract_notified
+              : order.contract_notified,
           queue_position:
             refreshed.queue_position != null
               ? refreshed.queue_position
