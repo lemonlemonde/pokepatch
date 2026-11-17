@@ -4,7 +4,12 @@ import {
   jsonResponse,
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
-import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
+import {
+  sendResendEmail,
+  buildStoredMessageBody,
+  hasChangelogContent,
+  type ChangelogPayload,
+} from "../_shared/resend.ts";
 import {
   CATALOG_MAX_PAGE_SIZE,
   fetchPokemonTcgCard,
@@ -3659,17 +3664,9 @@ Deno.serve(async (req) => {
       const messageBody = typeof body.body === "string" ? body.body : "";
       const changelog =
         body.changelog && typeof body.changelog === "object"
-          ? body.changelog
+          ? (body.changelog as ChangelogPayload)
           : null;
-      const hasChangelog =
-        Boolean(changelog) &&
-        ((Array.isArray((changelog as { cardGroups?: unknown }).cardGroups) &&
-          ((changelog as { cardGroups: unknown[] }).cardGroups?.length ?? 0) >
-            0) ||
-          (Array.isArray((changelog as { orderChanges?: unknown }).orderChanges) &&
-            ((changelog as { orderChanges: unknown[] }).orderChanges?.length ??
-              0) > 0) ||
-          Boolean((changelog as { quoteSummary?: unknown }).quoteSummary));
+      const hasChangelog = hasChangelogContent(changelog);
       if (!subject) {
         return jsonResponse(req, { ok: false, error: "subject required" }, 400);
       }
@@ -3782,7 +3779,7 @@ Deno.serve(async (req) => {
           subject,
           body: messageBody,
           orderDisplayId,
-          changelog: hasChangelog ? (changelog as never) : null,
+          changelog: hasChangelog ? changelog : null,
         });
 
         const emailStatus = sendResult.ok ? "sent" : "failed";

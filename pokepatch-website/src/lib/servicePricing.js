@@ -1201,3 +1201,98 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
 
   return groups;
 }
+
+/** True when a stored/email quote receipt has any customer-facing lines. */
+export function quoteReceiptHasContent(receipt) {
+  if (!receipt || typeof receipt !== "object") return false;
+  if ((receipt.cards ?? []).length > 0) return true;
+  if ((receipt.adjustments ?? []).length > 0) return true;
+  if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) {
+    return true;
+  }
+  return false;
+}
+
+/** Paid queue-speed rows on a receipt snapshot. */
+export function receiptQueueFeeRows(receipt) {
+  return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
+}
+
+/**
+ * Snapshot of the admin QuoteReceipt for emails / message history.
+ * Same grouping and totals as the admin order page receipt.
+ */
+export function buildQuoteReceiptPayload({
+  items,
+  cards = null,
+  adjustments = null,
+  isPriority = false,
+  queueSpeed = null,
+  cardCount = null,
+  includeNotes = false,
+} = {}) {
+  const groups = groupQuoteItemsByCard(items, cards);
+  const billableItems = billableQuoteItems(items, cards);
+  const nonPriorityAdjustments = (adjustments ?? []).filter(
+    (row) => !isPriorityAdjustmentRow(row)
+  );
+  const adjustmentLines = quoteAdjustmentLines(
+    nonPriorityAdjustments,
+    billableItems
+  );
+  const queueFees = resolveQueueSpeedFees({
+    cards,
+    adjustments,
+    isPriority,
+    queueSpeed,
+    cardCount,
+  }).map((row) => ({
+    speed: row.speed,
+    description: row.description,
+    amount: row.fee,
+  }));
+  const total = computeQuoteTotal({
+    items,
+    cards,
+    adjustments,
+    isPriority,
+    queueSpeed,
+    cardCount,
+  });
+
+  return {
+    cards: groups.map((group) => {
+      const note = includeNotes
+        ? String(group.card?.admin_note ?? "").trim()
+        : "";
+      return {
+        cardId: group.card?.id != null ? String(group.card.id) : null,
+        label: group.label,
+        subtotal: group.subtotal,
+        lines: [
+          ...group.items.map((item) => ({
+            label:
+              normalizeServiceDisplayTitle(item.service_label) || "Service",
+            amount: quoteItemLineTotal(item),
+          })),
+          ...(group.highValueSurcharge > 0
+            ? [
+                {
+                  label: "High-value fee",
+                  amount: group.highValueSurcharge,
+                },
+              ]
+            : []),
+        ],
+        ...(note ? { note } : {}),
+      };
+    }),
+    adjustments: adjustmentLines.map((line) => ({
+      description: line.description,
+      amount: line.amount,
+      amountPercent: line.amountPercent ?? null,
+    })),
+    queueFees,
+    total,
+  };
+}

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import QuoteReceipt from "@/components/QuoteReceipt";
+import { quoteReceiptHasContent } from "@/lib/servicePricing";
 import {
   CARD_STATUSES,
   ORDER_STATUSES,
@@ -12,21 +14,22 @@ import {
 /**
  * Visual changelog: New / Removed / Updated card boxes + order lines.
  * editable=true allows removing groups/lines and editing line text.
- */
-/**
  * @param {Record<string, string>} [thumbByCardId] cardId → image URL
  */
 export function ChangelogDiff({
   cardGroups = [],
   orderChanges = [],
   quoteSummary = null,
+  quoteReceipt = null,
   thumbByCardId = null,
   editable = false,
   onChange,
   className = "",
 }) {
-  const hasContent =
+  const hasReceipt = quoteReceiptHasContent(quoteReceipt);
+  const hasDiff =
     cardGroups.length > 0 || orderChanges.length > 0 || Boolean(quoteSummary);
+  const hasContent = hasDiff || hasReceipt;
 
   if (!hasContent) {
     return (
@@ -37,14 +40,18 @@ export function ChangelogDiff({
   }
 
   function update(next) {
-    onChange?.(next);
+    onChange?.({
+      cardGroups,
+      orderChanges,
+      quoteSummary,
+      quoteReceipt,
+      ...next,
+    });
   }
 
   function removeCardGroup(cardId) {
     update({
       cardGroups: cardGroups.filter((g) => g.cardId !== cardId),
-      orderChanges,
-      quoteSummary,
     });
   }
 
@@ -56,8 +63,6 @@ export function ChangelogDiff({
         changes[lineIndex] = text;
         return { ...g, changes };
       }),
-      orderChanges,
-      quoteSummary,
     });
   }
 
@@ -77,28 +82,23 @@ export function ChangelogDiff({
             g.status === "removed" ||
             (g.changes ?? []).length > 0
         ),
-      orderChanges,
-      quoteSummary,
     });
   }
 
   function updateOrderLine(index, text) {
     const next = [...orderChanges];
     next[index] = text;
-    update({ cardGroups, orderChanges: next, quoteSummary });
+    update({ orderChanges: next });
   }
 
   function removeOrderLine(index) {
     update({
-      cardGroups,
       orderChanges: orderChanges.filter((_, i) => i !== index),
-      quoteSummary,
     });
   }
 
   function clearQuoteSummary() {
     update({
-      cardGroups,
       orderChanges: orderChanges.filter(
         (line) => !String(line).startsWith("Quote total")
       ),
@@ -112,6 +112,16 @@ export function ChangelogDiff({
     String(line).startsWith("Quote total")
   );
   const showHeaderQuote = Boolean(quoteSummary) && !quoteInOrder;
+
+  if (!hasDiff && hasReceipt) {
+    return (
+      <QuoteReceipt
+        receipt={quoteReceipt}
+        title="Your quote"
+        className={className}
+      />
+    );
+  }
 
   return (
     <div
@@ -182,6 +192,15 @@ export function ChangelogDiff({
           />
         ))}
       </div>
+      {hasReceipt ? (
+        <div className="border-t border-ink/8 px-3 py-3">
+          <QuoteReceipt
+            receipt={quoteReceipt}
+            title="Your quote"
+            className="bg-ink/[0.06]"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
 } from "@/components/ExpandReveal";
 import {
   buildOrderChangelog,
+  changelogHasContent,
   changelogHasNonStatusDiff,
   changelogWithoutOrderStatus,
   summarizeChangelog,
@@ -147,6 +148,7 @@ export default function OrderSaveChangesDialog({
         cardGroups: built.cardGroups,
         orderChanges: built.orderChanges,
         quoteSummary: built.quoteSummary,
+        quoteReceipt: built.quoteReceipt,
       };
     }
     return changelogWithoutOrderStatus(built);
@@ -161,6 +163,7 @@ export default function OrderSaveChangesDialog({
     cardGroups: [],
     orderChanges: [],
     quoteSummary: null,
+    quoteReceipt: null,
   });
   const [error, setError] = useState("");
 
@@ -216,10 +219,7 @@ export default function OrderSaveChangesDialog({
         ? `Save order #${displayId}`
         : "Save order";
 
-  const hasDiff =
-    (draftChangelog.cardGroups?.length ?? 0) > 0 ||
-    (draftChangelog.orderChanges?.length ?? 0) > 0 ||
-    Boolean(draftChangelog.quoteSummary);
+  const hasDiff = changelogHasContent(draftChangelog);
 
   function handleConfirm() {
     setError("");
@@ -247,6 +247,7 @@ export default function OrderSaveChangesDialog({
               cardGroups: draftChangelog.cardGroups,
               orderChanges: draftChangelog.orderChanges,
               quoteSummary: draftChangelog.quoteSummary,
+              quoteReceipt: draftChangelog.quoteReceipt,
             }
           : null,
       });
@@ -388,6 +389,7 @@ export default function OrderSaveChangesDialog({
                 cardGroups={draftChangelog.cardGroups}
                 orderChanges={draftChangelog.orderChanges}
                 quoteSummary={draftChangelog.quoteSummary}
+                quoteReceipt={draftChangelog.quoteReceipt}
                 thumbByCardId={thumbByCardId}
                 editable
                 onChange={(next) => {
