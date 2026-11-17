@@ -8,14 +8,15 @@ import {
 } from "@/components/ExpandReveal";
 
 /**
- * Confirm before create/save when some cards are priority and some are not.
- * Mixed carts become two orders (priority + standard).
+ * Confirm before create/save when cards mix queue speeds.
+ * Mixed carts become one order per speed.
  */
 export default function PrioritySplitDialog({
   open,
   onCancel,
   onConfirm,
   confirmLabel = "Continue",
+  orderCount = 2,
 }) {
   const { mounted, visible } = useOverlayPresence(open);
 
@@ -49,14 +50,14 @@ export default function PrioritySplitDialog({
             id="priority-split-title"
             className="text-xl font-bold text-ink"
           >
-            This will split into two orders
+            This will split into {orderCount} orders
           </h2>
           <p
             id="priority-split-body"
             className="mt-1.5 text-sm leading-relaxed text-ink/70"
           >
-            Priority cards become their own order. The rest stay on a standard
-            order. Both show up under My Orders.
+            Cards on different queue speeds can&apos;t share an order. Each
+            speed becomes its own order under My Orders.
           </p>
         </div>
         <div className="flex flex-col-reverse gap-2 px-5 py-4 sm:flex-row sm:justify-end">

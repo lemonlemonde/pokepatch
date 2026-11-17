@@ -26,9 +26,15 @@ import {
 import {
   CARD_WHITENING_WARNING,
   hasMixedCardPriority,
-  priorityServicePricingHint,
 } from "@/lib/servicePricing";
+import {
+  QUEUE_SPEED_STANDARD,
+  cardQueueSpeed,
+  isPaidQueueSpeed,
+  uniqueQueueSpeeds,
+} from "@/lib/queueSpeed";
 import PrioritySplitDialog from "@/components/PrioritySplitDialog";
+import QueueSpeedPicker from "@/components/QueueSpeedPicker";
 import { supabase } from "@/lib/supabaseClient";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import {
@@ -71,7 +77,7 @@ function draftFromOrder(order) {
     setName: card.set_name ?? "",
     damageTags: normalizeDamageTags(card.damage_tags),
     description: card.description ?? "",
-    isPriority: Boolean(card.is_priority),
+    queueSpeed: cardQueueSpeed(card),
     existingImages: (card.images ?? [])
       .filter((image) => (image.image_type ?? "customer") === "customer")
       .map((image) => ({
@@ -110,7 +116,7 @@ function newEmptyCard() {
     setName: "",
     damageTags: [],
     description: "",
-    isPriority: false,
+    queueSpeed: QUEUE_SPEED_STANDARD,
     existingImages: [],
     newFiles: [],
   };
@@ -378,7 +384,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           set_name: card.setName.trim() || null,
           description: card.description.trim() || null,
           damage_tags: normalizeDamageTags(card.damageTags),
-          is_priority: Boolean(card.isPriority),
+          queue_speed: cardQueueSpeed(card),
+          is_priority: isPaidQueueSpeed(cardQueueSpeed(card)),
           images,
         });
       }
@@ -441,10 +448,23 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       setStatus("idle");
       if (data?.split) {
         setErrorMessage("");
+        const extras = Array.isArray(data?.split_result?.new_orders)
+          ? data.split_result.new_orders
+          : [];
+        const ids = extras
+          .map((row) => row?.display_id)
+          .filter((id) => id != null);
+        const fallback = data?.split_result?.new_display_id;
+        const label =
+          ids.length > 1
+            ? `orders #${ids.join(" and #")}`
+            : ids.length === 1
+              ? `order #${ids[0]}`
+              : fallback != null
+                ? `order #${fallback}`
+                : "separate orders";
         window.alert(
-          data?.split_result?.new_display_id != null
-            ? `Saved. Priority cards were moved to order #${data.split_result.new_display_id}.`
-            : "Saved. Priority cards were split into a separate order."
+          `Saved. Mixed queue speeds were split into ${label}.`
         );
       }
       onSaved?.(data);
@@ -668,9 +688,10 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
           <p className="mt-1 text-sm text-ink/70">
-            Add up to {MAX_CARDS} cards. For more than {MAX_CARDS} cards, submit
-            as 1 card entry with a photo of the entire bulk lot and a combined
-            description, submit a separate order, or reach out.
+            Add up to {MAX_CARDS} cards. Queue speed is chosen per card. For
+            more than {MAX_CARDS} cards, submit as 1 card entry with a photo of
+            the entire bulk lot and a combined description, submit a separate
+            order, or reach out.
           </p>
         </div>
 
@@ -715,37 +736,13 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 ) : null}
               </div>
 
-              <label
-                className={`${optionClassName()} ${
-                  card.isPriority
-                    ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
-                    : ""
-                }`.trim()}
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(card.isPriority)}
-                  disabled={busy}
-                  onChange={(event) =>
-                    updateCard(card.id, { isPriority: event.target.checked })
-                  }
-                  className="mt-1 h-4 w-4 shrink-0 accent-ink"
-                />
-                <span className="text-sm leading-relaxed text-ink/80">
-                  <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
-                    <span>Priority service</span>
-                    {card.isPriority ? (
-                      <span className="rounded-full border border-ink/25 bg-ink/10 px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink">
-                        Active
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mt-1 block text-ink/65">
-                    {priorityServicePricingHint(1)} Faster queue for this card
-                    only.
-                  </span>
-                </span>
-              </label>
+              <QueueSpeedPicker
+                name={`edit-queue-${card.id}`}
+                cardNumber={index + 1}
+                value={cardQueueSpeed(card)}
+                disabled={busy}
+                onChange={(queueSpeed) => updateCard(card.id, { queueSpeed })}
+              />
 
               <div>
                 <label
@@ -1021,8 +1018,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             className="rounded-lg border border-ink/15 bg-ink/[0.05] px-4 py-3 text-sm text-ink/75"
             role="status"
           >
-            Saving with mixed priority will split priority cards into a
-            separate order.
+            Saving with mixed queue speeds will split this into separate
+            orders — one per speed.
           </p>
         ) : null}
         {showValidationError ? (
@@ -1096,6 +1093,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       />
       <PrioritySplitDialog
         open={splitConfirmOpen}
+        orderCount={Math.max(2, uniqueQueueSpeeds(completeCards).length)}
         confirmLabel="Save and split"
         onCancel={() => {
           setSplitConfirmOpen(false);

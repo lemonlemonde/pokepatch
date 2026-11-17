@@ -295,9 +295,9 @@ export default function OrderSaveChangesDialog({
           ) : null}
           {willSplit && variant === "save" ? (
             <p className="mt-3 rounded-xl border border-ink/15 bg-ink/[0.06] px-3 py-2 text-sm text-ink/80">
-              Priority cards will move to a{" "}
-              <strong className="font-semibold text-ink">new order</strong> on
-              save. You&apos;ll stay on this order with the remaining cards.
+              Cards on other queue speeds will move to{" "}
+              <strong className="font-semibold text-ink">their own orders</strong>{" "}
+              on save. You&apos;ll stay on this order with the remaining cards.
             </p>
           ) : null}
           {orderStatusChanged && !pendingToCanceled && canNotify && !isKanbanMove ? (

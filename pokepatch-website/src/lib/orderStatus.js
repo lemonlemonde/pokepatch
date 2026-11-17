@@ -1,3 +1,5 @@
+import { compareQueueSpeed, normalizeQueueSpeed } from "@/lib/queueSpeed";
+
 export const ORDER_STATUSES = [
   { id: "pending", label: "Pending" },
   { id: "new", label: "To do", customerLabel: "In queue" },
@@ -245,11 +247,23 @@ export function customerOrderStatusLabel(
  * Status chip for My Orders: show "#N in queue" only while status is To do
  * (`queue_position` is null once the order moves to in progress / later).
  */
-export function customerOrderStatusChipLabel(order, { isPriority = false } = {}) {
+export function customerOrderStatusChipLabel(
+  order,
+  { isPriority = false, queueSpeed = null } = {},
+) {
   if (order?.queue_position != null) {
-    return isPriority
-      ? `Priority · #${order.queue_position} in queue`
-      : `#${order.queue_position} in queue`;
+    const speed = normalizeQueueSpeed(
+      queueSpeed ?? order?.queue_speed,
+      { isPriority },
+    );
+    if (speed === "immediate") {
+      return `Immediate · #${order.queue_position} in queue`;
+    }
+    if (speed === "express") return `Rush · #${order.queue_position} in queue`;
+    if (speed === "fast" || isPriority) {
+      return `Priority · #${order.queue_position} in queue`;
+    }
+    return `#${order.queue_position} in queue`;
   }
   return customerOrderStatusLabel(
     order?.status,
@@ -370,10 +384,10 @@ function todoEnteredMs(order) {
  * Column sort:
  * - completed: most recently completed first (completed_at, then
  *   status_changed_at / created_at)
- * - To do: paid priority first, then earliest todo_entered_at (when the
- *   order was dragged into To do). Promoting regular → priority inserts
- *   at that wait-time, not at the end of the priority lane.
- * - other statuses: paid priority first, then earliest status_changed_at
+ * - To do: Immediate, then Rush, then Priority, then Standard, then FIFO
+ *   (when the order was dragged into To do). Promoting a waiting order
+ *   inserts at that wait-time, not at the end of the new lane.
+ * - other statuses: same speed order, then earliest status_changed_at
  *   (when the order entered this column). created_at / id are tiebreakers.
  */
 export function sortOrdersForStatusColumn(orders, statusId) {
@@ -392,9 +406,11 @@ export function sortOrdersForStatusColumn(orders, statusId) {
       return String(b.id ?? "").localeCompare(String(a.id ?? ""));
     }
 
-    const aPriority = Boolean(a.is_priority);
-    const bPriority = Boolean(b.is_priority);
-    if (aPriority !== bPriority) return aPriority ? -1 : 1;
+    const bySpeed = compareQueueSpeed(
+      normalizeQueueSpeed(a.queue_speed, { isPriority: a.is_priority }),
+      normalizeQueueSpeed(b.queue_speed, { isPriority: b.is_priority }),
+    );
+    if (bySpeed !== 0) return bySpeed;
 
     const byQueue = todoColumn
       ? todoEnteredMs(a) - todoEnteredMs(b)

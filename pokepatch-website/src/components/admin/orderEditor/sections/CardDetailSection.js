@@ -19,7 +19,14 @@ import {
   serviceSelectLabel,
 } from "@/lib/servicePricing";
 import { DAMAGE_TAGS, labeledDamageTags, normalizeDamageTags } from "@/lib/gallery";
-import { PriorityStarIcon } from "@/components/CustomerPriorityBadge";
+import { QueueSpeedMark } from "@/components/QueueSpeedBadge";
+import {
+  QUEUE_SPEED_LABEL,
+  QUEUE_SPEED_STANDARD,
+  cardQueueSpeed,
+  cycleQueueSpeed,
+  queueSpeedControlClass,
+} from "@/lib/queueSpeed";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -563,18 +570,19 @@ export default function CardDetailSection({
           <button
             type="button"
             disabled={saving}
-            aria-pressed={Boolean(card.is_priority)}
-            aria-label={
-              card.is_priority ? "Priority service on" : "Priority service off"
-            }
-            onClick={() => updateCard({ is_priority: !card.is_priority })}
-            className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${
-              card.is_priority
-                ? "border-status-yellow/55 bg-status-yellow/15 text-status-yellow"
-                : "border-ink/15 bg-transparent text-ink/30 hover:border-ink/30 hover:text-ink/55"
-            }`}
+            aria-label={`Queue speed ${QUEUE_SPEED_LABEL[cardQueueSpeed(card)]}. Click to cycle.`}
+            onClick={() => {
+              const next = cycleQueueSpeed(cardQueueSpeed(card));
+              updateCard({
+                queue_speed: next,
+                is_priority: next !== QUEUE_SPEED_STANDARD,
+              });
+            }}
+            className={`inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${queueSpeedControlClass(
+              cardQueueSpeed(card)
+            )}`}
           >
-            <PriorityStarIcon className="h-3 w-3" />
+            <QueueSpeedMark speed={cardQueueSpeed(card)} className="h-3 w-3" />
           </button>
         ) : null}
       </div>

@@ -16,7 +16,6 @@ import {
   computeQuoteTotal,
   formatMoney,
   adminLedgerTotal,
-  priorityBillableCards,
 } from "@/lib/servicePricing";
 import OrderNoteOnlyDialog from "@/components/admin/OrderNoteOnlyDialog";
 import OrderSaveChangesDialog from "@/components/admin/OrderSaveChangesDialog";
@@ -99,12 +98,12 @@ function OrderEditorContent({
   let showEarned = false;
   if (!isPortfolio) {
     const preview = buildQuotePreview(draft);
-    const priorityCardCount = priorityBillableCards(draft.cards).length;
     total = computeQuoteTotal({
       items: preview.items,
       cards: preview.cards,
       adjustments: preview.adjustments,
-      isPriority: priorityCardCount > 0 || Boolean(draft.is_priority),
+      isPriority: Boolean(draft.is_priority),
+      queueSpeed: draft.queue_speed,
       cardCount: preview.cardCount,
     });
     const afterCompletionTotal = adminLedgerTotal(
@@ -140,6 +139,7 @@ function OrderEditorContent({
     card.card_name = isPortfolio
       ? `My card ${(draft.cards?.length ?? 0) + 1}`
       : "New card";
+    card.queue_speed = isPortfolio ? "standard" : (draft.queue_speed || "standard");
     card.is_priority = isPortfolio ? false : Boolean(draft.is_priority);
     updateDraft((base) => ({
       ...base,
@@ -395,11 +395,23 @@ function OrderEditorContent({
                 onError?.(result.notifyError);
               }
               if (result.ok && result.split?.split) {
-                const newId = result.split.new_display_id;
+                const extras = Array.isArray(result.split.new_orders)
+                  ? result.split.new_orders
+                  : [];
+                const ids = extras
+                  .map((row) => row?.display_id)
+                  .filter((id) => id != null);
+                const fallback = result.split.new_display_id;
+                const label =
+                  ids.length > 1
+                    ? `orders #${ids.join(" and #")}`
+                    : ids.length === 1
+                      ? `order #${ids[0]}`
+                      : fallback != null
+                        ? `order #${fallback}`
+                        : "a new order";
                 window.alert(
-                  newId != null
-                    ? `Order updated. Priority cards were split into order #${newId}.`
-                    : "Order updated. Priority cards were split into a new order."
+                  `Order updated. Mixed queue speeds were split into ${label}.`
                 );
               }
             }}

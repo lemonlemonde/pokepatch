@@ -13,6 +13,7 @@ import {
   hvPercentFromMarketValue,
   hvSurchargeFromMarketValue,
   orderIsPriorityFromCards,
+  orderQueueSpeedFromCards,
   packAdminLedger,
   packQuoteAdjustments,
   parseMoneyInput,
@@ -20,6 +21,7 @@ import {
   unpackAdminLedger,
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
+import { cardQueueSpeed, isPaidQueueSpeed } from "@/lib/queueSpeed";
 import { normalizeDamageTags } from "@/lib/gallery";
 
 export const MAX_ADMIN_PHOTOS_PER_CARD = 20;
@@ -42,6 +44,7 @@ export function emptyAdminCard() {
     market_value_raw_nm: "",
     status: DEFAULT_CARD_STATUS,
     is_priority: false,
+    queue_speed: "standard",
     tcg_card_id: "",
     catalog_image_url: "",
     catalog_card_name: "",
@@ -257,32 +260,48 @@ export function orderToDraft(order) {
   });
   const after_completion_amounts = unpackAdminLedger(order.after_completion_amounts);
   const restoration_costs = unpackAdminLedger(order.restoration_costs);
-  const orderPriority = Boolean(order.is_priority);
-  let cards = orderCards.map((card) => ({
-    id: card.id,
-    card_name: card.card_name ?? "",
-    set_name: card.set_name ?? "",
-    description: card.description ?? "",
-    damage_tags: normalizeDamageTags(card.damage_tags),
-    admin_note: card.admin_note ?? "",
-    market_value_raw_nm:
-      card.market_value_raw_nm != null
-        ? String(card.market_value_raw_nm)
-        : "",
-    status: normalizeCardStatus(card.status),
-    is_priority:
-      card.is_priority == null ? orderPriority : Boolean(card.is_priority),
-    tcg_card_id: card.tcg_card_id ?? "",
-    catalog_image_url: card.catalog_image_url ?? "",
-    catalog_card_name: card.catalog_card_name ?? "",
-    catalog_set_name: card.catalog_set_name ?? "",
-    images: card.images ?? [],
-    pending_files: [],
-    pending_image_deletes: [],
-  }));
-  // Priority order with no card flags (stale rows / older API): treat all as priority.
-  if (orderPriority && !cards.some((card) => card.is_priority)) {
-    cards = cards.map((card) => ({ ...card, is_priority: true }));
+  const orderSpeed = cardQueueSpeed({
+    queue_speed: order.queue_speed,
+    is_priority: order.is_priority,
+  });
+  let cards = orderCards.map((card) => {
+    const speed = cardQueueSpeed({
+      queue_speed: card.queue_speed,
+      is_priority:
+        card.is_priority == null ? isPaidQueueSpeed(orderSpeed) : card.is_priority,
+    });
+    return {
+      id: card.id,
+      card_name: card.card_name ?? "",
+      set_name: card.set_name ?? "",
+      description: card.description ?? "",
+      damage_tags: normalizeDamageTags(card.damage_tags),
+      admin_note: card.admin_note ?? "",
+      market_value_raw_nm:
+        card.market_value_raw_nm != null
+          ? String(card.market_value_raw_nm)
+          : "",
+      status: normalizeCardStatus(card.status),
+      queue_speed: speed,
+      is_priority: isPaidQueueSpeed(speed),
+      tcg_card_id: card.tcg_card_id ?? "",
+      catalog_image_url: card.catalog_image_url ?? "",
+      catalog_card_name: card.catalog_card_name ?? "",
+      catalog_set_name: card.catalog_set_name ?? "",
+      images: card.images ?? [],
+      pending_files: [],
+      pending_image_deletes: [],
+    };
+  });
+  if (
+    isPaidQueueSpeed(orderSpeed) &&
+    !cards.some((card) => isPaidQueueSpeed(card.queue_speed))
+  ) {
+    cards = cards.map((card) => ({
+      ...card,
+      queue_speed: orderSpeed,
+      is_priority: true,
+    }));
   }
   const quote_card_hv = quoteCardHvFromMarkets(cards);
 
@@ -303,6 +322,7 @@ export function orderToDraft(order) {
     heard_about_source: order.heard_about_source ?? "",
     photos_drive_url: order.photos_drive_url ?? "",
     status: normalizeOrderStatus(order.status),
+    queue_speed: orderQueueSpeedFromCards(cards),
     is_priority: orderIsPriorityFromCards(cards),
     pending_kind: isPendingOrderStatus(order.status)
       ? normalizePendingKind(order.pending_kind)
@@ -330,6 +350,7 @@ export function draftPayload(draft) {
       delivery_method: draft.delivery_method,
       general_notes: draft.general_notes.trim(),
       photos_drive_url: draft.photos_drive_url.trim(),
+      queue_speed: orderQueueSpeedFromCards(draft.cards),
       is_priority: orderIsPriorityFromCards(draft.cards),
       status,
       ...(status === "pending"
@@ -360,7 +381,8 @@ export function draftPayload(draft) {
       admin_note: card.admin_note.trim(),
       market_value_raw_nm: moneyFieldToPayload(card.market_value_raw_nm),
       status: normalizeCardStatus(card.status),
-      is_priority: Boolean(card.is_priority),
+      queue_speed: cardQueueSpeed(card),
+      is_priority: isPaidQueueSpeed(cardQueueSpeed(card)),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))

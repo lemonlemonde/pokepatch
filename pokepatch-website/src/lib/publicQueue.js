@@ -40,12 +40,13 @@ function parseLane(rows) {
     lane_position: Number(row.lane_position) || 0,
     card_count: Number(row.card_count) || 0,
     is_priority: Boolean(row.is_priority),
+    queue_speed: row.queue_speed || (row.is_priority ? "fast" : "standard"),
     cards: parseCards(row.cards),
   }));
 }
 
 /**
- * Public anonymized board: in progress + priority/standard waiting lanes,
+ * Public anonymized board: in progress + immediate/express/priority/standard,
  * each order carrying its non-canceled cards. No customer PII.
  */
 export async function fetchPublicQueue() {
@@ -54,7 +55,9 @@ export async function fetchPublicQueue() {
   if (error) throw error;
   return {
     in_progress: parseLane(data?.in_progress),
-    priority: parseLane(data?.priority),
-    regular: parseLane(data?.regular),
+    immediate: parseLane(data?.immediate),
+    express: parseLane(data?.express),
+    fast: parseLane(data?.fast ?? data?.priority),
+    standard: parseLane(data?.standard ?? data?.regular),
   };
 }

@@ -16,6 +16,11 @@ import {
   normalizeOrderStatus,
   normalizePendingKind,
 } from "@/lib/orderStatus";
+import {
+  QUEUE_SPEED_ADJUSTMENT_LABEL,
+  QUEUE_SPEED_LABEL,
+  normalizeQueueSpeed,
+} from "@/lib/queueSpeed";
 
 function cardLabel(card, index = 0) {
   const name = String(card?.card_name ?? "").trim();
@@ -188,6 +193,7 @@ function quoteFingerprint(payload) {
     items,
     bulk: order.quote_bulk_counts ?? null,
     is_priority: Boolean(order.is_priority),
+    queue_speed: order.queue_speed ?? null,
   });
 }
 
@@ -218,6 +224,7 @@ function quoteTotalFromPayload(payload) {
             set_name: fromPayload.set_name,
             status: fromPayload.status,
             is_priority: Boolean(fromPayload.is_priority),
+            queue_speed: fromPayload.queue_speed,
           }
         : { id };
     }),
@@ -228,6 +235,7 @@ function quoteTotalFromPayload(payload) {
     cards,
     adjustments,
     isPriority: Boolean(order.is_priority),
+    queueSpeed: order.queue_speed,
   });
 }
 
@@ -400,16 +408,24 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
-  const beforePriority = Boolean(beforePayload?.order?.is_priority);
-  const afterPriority = Boolean(afterPayload?.order?.is_priority);
+  const beforeSpeed = String(
+    beforePayload?.order?.queue_speed ??
+      (beforePayload?.order?.is_priority ? "fast" : "standard")
+  );
+  const afterSpeed = String(
+    afterPayload?.order?.queue_speed ??
+      (afterPayload?.order?.is_priority ? "fast" : "standard")
+  );
   if (
     beforePayload?.order != null &&
     afterPayload?.order != null &&
-    beforePriority !== afterPriority
+    beforeSpeed !== afterSpeed
   ) {
-    orderChanges.push(
-      afterPriority ? "Added: Priority service" : "Removed: Priority service"
-    );
+    const label = (speed) => {
+      const key = normalizeQueueSpeed(speed);
+      return QUEUE_SPEED_ADJUSTMENT_LABEL[key] ?? `${QUEUE_SPEED_LABEL[key]} queue`;
+    };
+    orderChanges.push(`Queue: ${label(beforeSpeed)} → ${label(afterSpeed)}`);
   }
 
   // Per-card status is intentionally omitted from customer changelogs —
