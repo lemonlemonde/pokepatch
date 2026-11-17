@@ -35,7 +35,7 @@ import {
   parsePrefixedCustomId,
   type OrderContext,
 } from "../_shared/discordOrderMessages.ts";
-import { formatChangelogPlainText } from "../_shared/resend.ts";
+import { formatChangelogPlainText, hasChangelogContent } from "../_shared/resend.ts";
 
 const FIELD = { SUBJECT: "subject", MESSAGE: "message" } as const;
 const MAX_SUBJECT_CHARS = 120;
@@ -61,7 +61,7 @@ function notifyModal(params: {
 
   const previewLines = [
     `**To:** ${email}`,
-    "**Quote summary that will be emailed:**",
+    "**Quote that will be emailed:**",
     "```",
     preview.length > MAX_PREVIEW_CHARS ? `${preview.slice(0, MAX_PREVIEW_CHARS)}…` : preview,
     "```",
@@ -95,7 +95,7 @@ function notifyModal(params: {
             customId: FIELD.MESSAGE,
             style: TextInputStyle.PARAGRAPH,
             required: false,
-            placeholder: "Shown above the quote summary in the email. Leave blank to send just the summary.",
+            placeholder: "Shown above the quote in the email. Leave blank to send just the quote.",
             maxLength: MAX_MESSAGE_CHARS,
           }),
           "Same as the admin editor's Save & notify"
@@ -136,7 +136,7 @@ export async function handleNotifyButton(interaction: Interaction): Promise<Resp
   );
 }
 
-/** Email the stored quote (as a changelog) and log it like the admin editor does. */
+/** Email the stored quote receipt and log it like the admin editor does. */
 export function sendQuoteNotification(params: {
   supabase: SupabaseClient;
   context: OrderContext;
@@ -145,8 +145,7 @@ export function sendQuoteNotification(params: {
 }): ReturnType<typeof sendCustomerEmail> {
   const { supabase, context, subject, message } = params;
   const changelog = buildQuoteChangelog(context);
-  const hasChangelog =
-    (changelog.cardGroups?.length ?? 0) > 0 || (changelog.orderChanges?.length ?? 0) > 0;
+  const hasChangelog = hasChangelogContent(changelog);
   return sendCustomerEmail({
     supabase,
     orderId: context.order.id,

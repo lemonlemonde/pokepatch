@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
+import QueueSpeedBadge from "@/components/QueueSpeedBadge";
+import {
+  isPaidQueueSpeed,
+  normalizeQueueSpeed,
+  queueSpeedRailClass,
+  queueSpeedSurfaceClass,
+} from "@/lib/queueSpeed";
 import SectionHeading from "@/components/SectionHeading";
 import { useAuth } from "@/contexts/AuthContext";
 import { isAdminAllowedEmail } from "@/lib/adminAccess";
@@ -192,6 +198,9 @@ function orderToKanbanSummary(order) {
     card_count,
     cards_completed,
     is_priority: Boolean(order.is_priority),
+    queue_speed: normalizeQueueSpeed(order.queue_speed, {
+      isPriority: order.is_priority,
+    }),
     queue_position: order.queue_position ?? null,
     preview_urls: previewUrlsFromOrder(order),
     preview_paths: Array.isArray(order.preview_paths)
@@ -284,7 +293,7 @@ function OrderRevenueSummary({ completedTotal, pipelineTotal }) {
   );
 }
 
-/** Banner for the next To do → In progress pull (2 priority : 1 regular). */
+/** Banner for the next To do → In progress pull (Immediate first, then 3 Rush : 2 Priority : 1 Standard). */
 function NextQueuePullBanner({ order, onFocusOrder }) {
   if (!order) return null;
 
@@ -301,11 +310,10 @@ function NextQueuePullBanner({ order, onFocusOrder }) {
     <button
       type="button"
       onClick={() => onFocusOrder?.(order.id)}
-      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition hover:border-ink/35 ${
+      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition hover:border-ink/35 ${queueSpeedSurfaceClass(
+        order.queue_speed,
         order.is_priority
-          ? "border-ink/25 bg-ink/[0.07]"
-          : "border-ink/15 bg-ink/[0.03]"
-      }`}
+      )}`}
       aria-label={`Next up: order ${order.display_id}${
         order.customer_name ? `, ${order.customer_name}` : ""
       }. Click to find it in To do.`}
@@ -316,7 +324,10 @@ function NextQueuePullBanner({ order, onFocusOrder }) {
       <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
         #{order.display_id}
       </span>
-      {order.is_priority ? <CustomerPriorityBadge /> : null}
+      <QueueSpeedBadge
+        speed={order.queue_speed}
+        isPriority={order.is_priority}
+      />
       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
         {order.customer_name || "—"}
       </span>
@@ -653,14 +664,17 @@ function KanbanCard({
       className={`relative flex w-full cursor-grab items-center gap-1.5 rounded-lg border px-2 py-1.5 text-left transition hover:border-ink/40 active:cursor-grabbing ${
         isNext
           ? "border-mint bg-mint/15 ring-2 ring-mint/70"
-          : order.is_priority
-            ? "border-ink/30 bg-ink/[0.08]"
-            : "border-ink/10 bg-ink/[0.03]"
+          : queueSpeedSurfaceClass(order.queue_speed, order.is_priority)
       } ${dragging ? "opacity-50" : ""}`}
     >
-      {order.is_priority ? (
+      {isPaidQueueSpeed(
+        normalizeQueueSpeed(order.queue_speed, { isPriority: order.is_priority })
+      ) ? (
         <span
-          className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-ink/70"
+          className={`absolute inset-y-1 left-0 w-0.5 rounded-full ${queueSpeedRailClass(
+            order.queue_speed,
+            order.is_priority
+          )}`}
           aria-hidden="true"
         />
       ) : null}
@@ -672,7 +686,10 @@ function KanbanCard({
       <span className="shrink-0 text-sm font-bold tabular-nums text-ink">
         #{order.display_id}
       </span>
-      {order.is_priority ? <CustomerPriorityBadge /> : null}
+      <QueueSpeedBadge
+        speed={order.queue_speed}
+        isPriority={order.is_priority}
+      />
       {showPendingChip ? (
         <PendingKindChip
           order={order}
@@ -743,11 +760,12 @@ function KanbanCard({
         <div className="flex items-start justify-between gap-3">
           <p className="min-w-0 text-sm font-bold tabular-nums text-ink">
             #{order.display_id}
-            {order.is_priority ? (
-              <span className="ml-2 inline-flex align-middle">
-                <CustomerPriorityBadge />
-              </span>
-            ) : null}
+            <span className="ml-2 inline-flex align-middle">
+              <QueueSpeedBadge
+                speed={order.queue_speed}
+                isPriority={order.is_priority}
+              />
+            </span>
           </p>
           <p
             className={`shrink-0 text-sm font-bold tabular-nums ${
@@ -1507,6 +1525,10 @@ export default function AdminApp() {
           ...order,
           ...summary,
           is_priority: Boolean(refreshed.is_priority ?? summary.is_priority),
+          queue_speed: normalizeQueueSpeed(
+            refreshed.queue_speed ?? summary.queue_speed,
+            { isPriority: refreshed.is_priority ?? summary.is_priority }
+          ),
           // Preserve list-only fields when detail get omits them.
           contract_signed:
             typeof refreshed.contract_signed === "boolean"
@@ -1850,7 +1872,12 @@ export default function AdminApp() {
     const previousRotation = pulledFromTodo ? queueRotation : null;
     if (pulledFromTodo) {
       setQueueRotation((current) => {
-        const next = advanceQueueRotation(current, Boolean(moving.is_priority));
+        const next = advanceQueueRotation(
+          current,
+          normalizeQueueSpeed(moving.queue_speed, {
+            isPriority: moving.is_priority,
+          })
+        );
         writeQueueRotation(next);
         return next;
       });

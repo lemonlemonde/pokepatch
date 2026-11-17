@@ -1,11 +1,15 @@
 import {
+  billableQuoteCards,
   billableQuoteItems,
+  buildQuoteReceiptPayload,
   computeQuoteTotal,
   defaultServiceLabel,
   formatMoney,
   normalizeServiceDisplayTitle,
   quoteAdjustmentSignedAmount,
   quoteItemsSubtotal,
+  quoteReceiptHasContent,
+  receiptQueueFeeRows,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
   cardsWithQuoteHv,
@@ -16,6 +20,11 @@ import {
   normalizeOrderStatus,
   normalizePendingKind,
 } from "@/lib/orderStatus";
+import {
+  QUEUE_SPEED_ADJUSTMENT_LABEL,
+  QUEUE_SPEED_LABEL,
+  normalizeQueueSpeed,
+} from "@/lib/queueSpeed";
 
 function cardLabel(card, index = 0) {
   const name = String(card?.card_name ?? "").trim();
@@ -60,6 +69,10 @@ function isOrderStatusChangeLine(line) {
   return String(line ?? "").trim().startsWith("Status:");
 }
 
+function isCurrentNoteLine(line) {
+  return String(line ?? "").startsWith("Note:");
+}
+
 /** Drop order-status lines — editor save already emailed those automatically. */
 export function changelogWithoutOrderStatus(changelog) {
   const orderChanges = (changelog?.orderChanges ?? []).filter(
@@ -69,16 +82,22 @@ export function changelogWithoutOrderStatus(changelog) {
     cardGroups: changelog?.cardGroups ?? [],
     orderChanges,
     quoteSummary: changelog?.quoteSummary ?? null,
+    quoteReceipt: changelog?.quoteReceipt ?? null,
   };
 }
 
-export function changelogHasNonStatusDiff(changelog) {
-  const stripped = changelogWithoutOrderStatus(changelog);
+export function changelogHasContent(changelog) {
+  if (!changelog || typeof changelog !== "object") return false;
   return (
-    (stripped.cardGroups?.length ?? 0) > 0 ||
-    (stripped.orderChanges?.length ?? 0) > 0 ||
-    Boolean(stripped.quoteSummary)
+    (changelog.cardGroups?.length ?? 0) > 0 ||
+    (changelog.orderChanges?.length ?? 0) > 0 ||
+    Boolean(changelog.quoteSummary) ||
+    quoteReceiptHasContent(changelog.quoteReceipt)
   );
+}
+
+export function changelogHasNonStatusDiff(changelog) {
+  return changelogHasContent(changelogWithoutOrderStatus(changelog));
 }
 
 function findCardIdForQuoteItem(item, cards) {
@@ -188,7 +207,30 @@ function quoteFingerprint(payload) {
     items,
     bulk: order.quote_bulk_counts ?? null,
     is_priority: Boolean(order.is_priority),
+    queue_speed: order.queue_speed ?? null,
   });
+}
+
+function quoteReceiptFromPayload(payload) {
+  if (!payload) return null;
+  const order = payload.order ?? {};
+  const items = payload.quote_items ?? [];
+  const cards = payload.cards ?? [];
+  const adjustments = unpackQuoteAdjustments(order.quote_bulk_counts, {
+    overrideLabel: "",
+    overrideAmount: null,
+  });
+  const cardHvMap = unpackQuoteCardHv(order.quote_bulk_counts);
+  const receipt = buildQuoteReceiptPayload({
+    items,
+    cards: cardsWithQuoteHv(cards, cardHvMap),
+    adjustments,
+    isPriority: Boolean(order.is_priority),
+    queueSpeed: order.queue_speed,
+    cardCount: billableQuoteCards(cards).length,
+    includeNotes: true,
+  });
+  return quoteReceiptHasContent(receipt) ? receipt : null;
 }
 
 function quoteTotalFromPayload(payload) {
@@ -218,6 +260,7 @@ function quoteTotalFromPayload(payload) {
             set_name: fromPayload.set_name,
             status: fromPayload.status,
             is_priority: Boolean(fromPayload.is_priority),
+            queue_speed: fromPayload.queue_speed,
           }
         : { id };
     }),
@@ -228,6 +271,7 @@ function quoteTotalFromPayload(payload) {
     cards,
     adjustments,
     isPriority: Boolean(order.is_priority),
+    queueSpeed: order.queue_speed,
   });
 }
 
@@ -272,15 +316,16 @@ export function buildCardThumbById(cards = []) {
 
 /**
  * Build customer-facing changelog grouped by card.
- * Order section: order status, adjustments (discount/surcharge/etc), quote total change.
- * Card sections: services, high-value fees, notes (not per-card status — too noisy).
- * @returns {{ cardGroups: CardChangelogGroup[], orderChanges: string[], quoteSummary: string | null, text: string, hasChangelog: boolean }}
+ * Quote changes attach a full `quoteReceipt` (same breakdown as the admin
+ * order-page receipt). Remaining changelog is non-quote: status, photos,
+ * added/removed cards, leftover notes.
+ * @returns {{ cardGroups: CardChangelogGroup[], orderChanges: string[], quoteSummary: string | null, quoteReceipt: object | null, text: string, hasChangelog: boolean }}
  */
 export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
   const beforeCards = indexById(beforePayload?.cards);
   const afterCards = indexById(afterPayload?.cards);
   const cardGroupsMap = new Map();
-  const orderChanges = [];
+  let orderChanges = [];
 
   function ensureCardGroup(cardId, { label, status, sortIndex } = {}) {
     let group = cardGroupsMap.get(cardId);
@@ -400,16 +445,24 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
-  const beforePriority = Boolean(beforePayload?.order?.is_priority);
-  const afterPriority = Boolean(afterPayload?.order?.is_priority);
+  const beforeSpeed = String(
+    beforePayload?.order?.queue_speed ??
+      (beforePayload?.order?.is_priority ? "fast" : "standard")
+  );
+  const afterSpeed = String(
+    afterPayload?.order?.queue_speed ??
+      (afterPayload?.order?.is_priority ? "fast" : "standard")
+  );
   if (
     beforePayload?.order != null &&
     afterPayload?.order != null &&
-    beforePriority !== afterPriority
+    beforeSpeed !== afterSpeed
   ) {
-    orderChanges.push(
-      afterPriority ? "Added: Priority service" : "Removed: Priority service"
-    );
+    const label = (speed) => {
+      const key = normalizeQueueSpeed(speed);
+      return QUEUE_SPEED_ADJUSTMENT_LABEL[key] ?? `${QUEUE_SPEED_LABEL[key]} queue`;
+    };
+    orderChanges.push(`Queue: ${label(beforeSpeed)} → ${label(afterSpeed)}`);
   }
 
   // Per-card status is intentionally omitted from customer changelogs —
@@ -573,13 +626,48 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     });
   }
 
-  const cardGroups = [...cardGroupsMap.values()]
+  let cardGroups = [...cardGroupsMap.values()]
     .filter((group) => group.status === "added" || group.status === "removed" || group.changes.length > 0)
     .sort((a, b) => a.sortIndex - b.sortIndex);
 
-  // Order section: status (above), adjustments (above), and total change only.
+  const quoteChanged =
+    quoteFingerprint(beforePayload) !== quoteFingerprint(afterPayload);
+  const quoteReceipt = quoteChanged
+    ? quoteReceiptFromPayload(afterPayload)
+    : null;
+
+  // Receipt replaces quote diffs so the customer sees the same breakdown as
+  // the admin order page (card, nested prices, total) instead of Added/Updated.
   let quoteSummary = null;
-  if (quoteFingerprint(beforePayload) !== quoteFingerprint(afterPayload)) {
+  if (quoteReceiptHasContent(quoteReceipt)) {
+    const receiptCardIds = new Set(
+      (quoteReceipt.cards ?? [])
+        .map((card) => card.cardId)
+        .filter(Boolean)
+        .map((id) => String(id))
+    );
+    orderChanges = orderChanges.filter((line) => !isQuoteRelatedChange(line));
+    cardGroups = cardGroups
+      .map((group) => ({
+        ...group,
+        changes: (group.changes ?? []).filter((line) => {
+          if (isQuoteRelatedChange(line)) return false;
+          if (
+            isCurrentNoteLine(line) &&
+            receiptCardIds.has(String(group.cardId))
+          ) {
+            return false;
+          }
+          return true;
+        }),
+      }))
+      .filter(
+        (group) =>
+          group.status === "added" ||
+          group.status === "removed" ||
+          (group.changes ?? []).length > 0
+      );
+  } else if (quoteChanged) {
     const beforeTotal = quoteTotalFromPayload(beforePayload);
     const afterTotal = quoteTotalFromPayload(afterPayload);
     if (beforeTotal !== afterTotal) {
@@ -593,15 +681,14 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     }
   }
 
-  const text = formatOrderChangelogText({ cardGroups, orderChanges, quoteSummary });
-  const hasChangelog =
-    cardGroups.length > 0 || orderChanges.length > 0 || Boolean(quoteSummary);
-
   const changelog = {
     cardGroups,
     orderChanges,
     quoteSummary,
+    quoteReceipt: quoteReceiptHasContent(quoteReceipt) ? quoteReceipt : null,
   };
+  const text = formatOrderChangelogText(changelog);
+  const hasChangelog = changelogHasContent(changelog);
 
   return {
     ...changelog,
@@ -615,7 +702,7 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
  * Short customer-facing subject. Up to two phrases join with " + ".
  * More than that collapses to "multiple changes", except when the order
  * became ready — that signal is kept as "…ready… + other updates".
- * @param {{ cardGroups?: CardChangelogGroup[], orderChanges?: string[], quoteSummary?: string | null }} changelog
+ * @param {{ cardGroups?: CardChangelogGroup[], orderChanges?: string[], quoteSummary?: string | null, quoteReceipt?: object | null }} changelog
  */
 export function summarizeChangelog(changelog = {}) {
   const phrases = [];
@@ -665,6 +752,7 @@ export function summarizeChangelog(changelog = {}) {
 
   const quoteTouched =
     Boolean(quoteSummary) ||
+    quoteReceiptHasContent(changelog.quoteReceipt) ||
     orderChanges.some(isQuoteRelatedChange) ||
     cardGroups.some((g) => (g.changes ?? []).some(isQuoteRelatedChange));
   if (quoteTouched) {
@@ -686,7 +774,12 @@ export function summarizeChangelog(changelog = {}) {
     phrases.push("A note has been added to your order");
   }
 
-  if (phrases.length === 0 && (cardGroups.length > 0 || orderChanges.length > 0)) {
+  if (
+    phrases.length === 0 &&
+    (cardGroups.length > 0 ||
+      orderChanges.length > 0 ||
+      quoteReceiptHasContent(changelog.quoteReceipt))
+  ) {
     phrases.push("Your order has been updated");
   }
 
@@ -698,17 +791,60 @@ export function summarizeChangelog(changelog = {}) {
   return phrases.join(" + ");
 }
 
+function formatReceiptPercent(percent) {
+  const n = Number(percent);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
+function formatQuoteReceiptPlainText(receipt) {
+  if (!quoteReceiptHasContent(receipt)) return "";
+  const lines = [];
+  (receipt.cards ?? []).forEach((card, index) => {
+    const prefix = index > 0 ? "+ " : "";
+    lines.push(`${prefix}${card.label}  ${formatMoney(card.subtotal)}`);
+    for (const line of card.lines ?? []) {
+      lines.push(`  ${line.label}  ${formatMoney(line.amount)}`);
+    }
+    if (card.note) lines.push(`  Note: ${card.note}`);
+  });
+  for (const adj of receipt.adjustments ?? []) {
+    const sign = adj.amount >= 0 ? "+ " : "− ";
+    const pct = formatReceiptPercent(adj.amountPercent);
+    const pctText = pct ? ` (${pct}%)` : "";
+    lines.push(
+      `${sign}${adj.description}${pctText}  ${formatMoney(adj.amount)}`
+    );
+  }
+  for (const row of receiptQueueFeeRows(receipt)) {
+    lines.push(`+ ${row.description}  ${formatMoney(row.amount)}`);
+  }
+  lines.push(`= Total  ${formatMoney(receipt.total)}`);
+  return lines.join("\n");
+}
+
 export function formatOrderChangelogText({
   cardGroups = [],
   orderChanges = [],
   quoteSummary = null,
+  quoteReceipt = null,
 } = {}) {
-  if (!cardGroups.length && !orderChanges.length && !quoteSummary) return "";
+  const receiptText = formatQuoteReceiptPlainText(quoteReceipt);
+  if (
+    !cardGroups.length &&
+    !orderChanges.length &&
+    !quoteSummary &&
+    !receiptText
+  ) {
+    return "";
+  }
   const lines = [];
   const quoteInOrder = orderChanges.some((line) =>
     String(line).startsWith("Quote total")
   );
-  if (quoteSummary && !quoteInOrder) lines.push(quoteSummary, "");
+  if (quoteSummary && !quoteInOrder && !receiptText) {
+    lines.push(quoteSummary, "");
+  }
 
   if (orderChanges.length) {
     lines.push("Order");
@@ -727,6 +863,10 @@ export function formatOrderChangelogText({
       lines.push(`  - ${change}`);
     }
     lines.push("");
+  }
+
+  if (receiptText) {
+    lines.push("Your quote", receiptText);
   }
 
   while (lines[lines.length - 1] === "") lines.pop();

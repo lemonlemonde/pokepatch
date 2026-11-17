@@ -1,6 +1,40 @@
+import { formatMoney } from "./servicePricing.ts";
+
 export type ResendSendResult =
   | { ok: true; id: string | null }
   | { ok: false; error: string };
+
+export type QuoteReceiptLine = {
+  label?: string;
+  amount?: number;
+};
+
+export type QuoteReceiptCard = {
+  cardId?: string | null;
+  label?: string;
+  subtotal?: number;
+  lines?: QuoteReceiptLine[];
+  note?: string;
+};
+
+export type QuoteReceiptAdjustment = {
+  description?: string;
+  amount?: number;
+  amountPercent?: number | null;
+};
+
+export type QuoteReceiptQueueFee = {
+  speed?: string;
+  description?: string;
+  amount?: number;
+};
+
+export type QuoteReceiptPayload = {
+  cards?: QuoteReceiptCard[];
+  adjustments?: QuoteReceiptAdjustment[];
+  queueFees?: QuoteReceiptQueueFee[];
+  total?: number;
+};
 
 export type ChangelogPayload = {
   cardGroups?: Array<{
@@ -11,6 +45,7 @@ export type ChangelogPayload = {
   }>;
   orderChanges?: string[];
   quoteSummary?: string | null;
+  quoteReceipt?: QuoteReceiptPayload | null;
 };
 
 const SITE_URL = "https://pokepatch.cards";
@@ -120,22 +155,176 @@ function formatDiffLineHtml(text: string): string {
   return `<span style="color:#C9B8C8;">${escapeHtml(text)}</span>`;
 }
 
-function hasChangelogContent(changelog?: ChangelogPayload | null): boolean {
+export function quoteReceiptHasContent(
+  receipt?: QuoteReceiptPayload | null
+): boolean {
+  if (!receipt || typeof receipt !== "object") return false;
+  if ((receipt.cards?.length ?? 0) > 0) return true;
+  if ((receipt.adjustments?.length ?? 0) > 0) return true;
+  if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) return true;
+  return false;
+}
+
+function receiptQueueFeeRows(
+  receipt?: QuoteReceiptPayload | null
+): QuoteReceiptQueueFee[] {
+  return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
+}
+
+export function hasChangelogContent(changelog?: ChangelogPayload | null): boolean {
   if (!changelog || typeof changelog !== "object") return false;
   return (
     (changelog.cardGroups?.length ?? 0) > 0 ||
     (changelog.orderChanges?.length ?? 0) > 0 ||
-    Boolean(changelog.quoteSummary)
+    Boolean(changelog.quoteSummary) ||
+    quoteReceiptHasContent(changelog.quoteReceipt)
+  );
+}
+
+function formatReceiptPercent(percent: unknown): string | null {
+  const n = Number(percent);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
+function padReceiptLine(label: string, amount: unknown, indent = 0): string {
+  const left = `${" ".repeat(indent)}${label}`;
+  const right = formatMoney(amount);
+  const gap = Math.max(2, 46 - left.length - right.length);
+  return `${left}${" ".repeat(gap)}${right}`;
+}
+
+export function formatQuoteReceiptPlainText(
+  receipt?: QuoteReceiptPayload | null
+): string {
+  if (!quoteReceiptHasContent(receipt)) return "";
+  const lines: string[] = [];
+  (receipt?.cards ?? []).forEach((card, index) => {
+    const prefix = index > 0 ? "+ " : "";
+    lines.push(padReceiptLine(`${prefix}${String(card.label ?? "Card")}`, card.subtotal));
+    for (const line of card.lines ?? []) {
+      lines.push(
+        padReceiptLine(String(line.label ?? "Service"), line.amount, 2)
+      );
+    }
+    if (card.note) lines.push(`  Note: ${card.note}`);
+  });
+  for (const adj of receipt?.adjustments ?? []) {
+    const sign = Number(adj.amount) >= 0 ? "+ " : "− ";
+    const pct = formatReceiptPercent(adj.amountPercent);
+    const pctText = pct ? ` (${pct}%)` : "";
+    lines.push(
+      padReceiptLine(
+        `${sign}${String(adj.description ?? "Adjustment")}${pctText}`,
+        adj.amount
+      )
+    );
+  }
+  for (const row of receiptQueueFeeRows(receipt)) {
+    lines.push(
+      padReceiptLine(
+        `+ ${String(row.description ?? "Queue fee")}`,
+        row.amount
+      )
+    );
+  }
+  lines.push(padReceiptLine("= Total", receipt?.total));
+  return lines.join("\n");
+}
+
+function formatQuoteReceiptHtml(receipt?: QuoteReceiptPayload | null): string {
+  if (!quoteReceiptHasContent(receipt)) return "";
+  const cards = receipt?.cards ?? [];
+  const adjustments = receipt?.adjustments ?? [];
+  const queueFees = receiptQueueFeeRows(receipt);
+
+  const cardBlocks = cards.map((card, index) => {
+    const prefix =
+      index > 0
+        ? `<span style="color:#8A7A89;font-weight:400;">+ </span>`
+        : "";
+    const lineRows = (card.lines ?? [])
+      .map(
+        (line) =>
+          `<tr>` +
+          `<td style="padding:5px 0 0 10px;font-size:13px;line-height:1.45;color:#C9B8C8;">${escapeHtml(String(line.label ?? "Service"))}</td>` +
+          `<td style="padding:5px 0 0;font-size:13px;line-height:1.45;font-weight:700;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(line.amount))}</td>` +
+          `</tr>`
+      )
+      .join("");
+    const noteRow = card.note
+      ? `<tr><td colspan="2" style="padding:8px 0 0 10px;font-size:12px;line-height:1.5;color:#8A7A89;">${escapeHtml(String(card.note))}</td></tr>`
+      : "";
+    const breakdown =
+      lineRows || noteRow
+        ? `<tr><td colspan="2" style="padding:8px 12px 10px;">` +
+          `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid rgba(243,233,242,0.12);">` +
+          `${lineRows}${noteRow}</table></td></tr>`
+        : "";
+    const headerPad = breakdown ? "10px 12px 4px" : "10px 12px";
+    return (
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 10px;border:1px solid rgba(243,233,242,0.14);border-radius:8px;background:rgba(243,233,242,0.05);">` +
+      `<tr>` +
+      `<td style="padding:${headerPad};font-size:14px;font-weight:700;color:#F3E9F2;line-height:1.4;">${prefix}${escapeHtml(String(card.label ?? "Card"))}</td>` +
+      `<td style="padding:${headerPad};font-size:14px;font-weight:700;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(card.subtotal))}</td>` +
+      `</tr>` +
+      breakdown +
+      `</table>`
+    );
+  }).join("");
+
+  const extraRows: string[] = [];
+  for (const adj of adjustments) {
+    const sign = Number(adj.amount) >= 0 ? "+ " : "− ";
+    const pct = formatReceiptPercent(adj.amountPercent);
+    const pctHtml = pct
+      ? `<span style="color:#8A7A89;"> (${escapeHtml(pct)}%)</span>`
+      : "";
+    extraRows.push(
+      `<tr>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#C9B8C8;">` +
+        `<span style="color:#8A7A89;">${sign}</span>${escapeHtml(String(adj.description ?? "Adjustment"))}${pctHtml}</td>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(adj.amount))}</td>` +
+      `</tr>`
+    );
+  }
+  for (const row of queueFees) {
+    extraRows.push(
+      `<tr>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#C9B8C8;">` +
+        `<span style="color:#8A7A89;">+ </span>${escapeHtml(String(row.description ?? "Queue fee"))}</td>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(row.amount))}</td>` +
+      `</tr>`
+    );
+  }
+
+  return (
+    `<div style="margin:0 0 1.25rem;border:1px solid rgba(243,233,242,0.2);border-radius:12px;background:rgba(243,233,242,0.06);overflow:hidden;">` +
+      `<div style="padding:10px 14px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#8A7A89;">Your quote</div>` +
+      `<div style="padding:4px 12px 12px;">` +
+        cardBlocks +
+        (extraRows.length > 0
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${extraRows.join("")}</table>`
+          : "") +
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:4px;border-top:1px dashed rgba(243,233,242,0.25);">` +
+          `<tr>` +
+            `<td style="padding:10px 2px 2px;font-size:15px;font-weight:700;color:#F3E9F2;">= Total</td>` +
+            `<td style="padding:10px 2px 2px;font-size:16px;font-weight:800;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(receipt?.total))}</td>` +
+          `</tr>` +
+        `</table>` +
+      `</div>` +
+    `</div>`
   );
 }
 
 export function formatChangelogPlainText(changelog?: ChangelogPayload | null): string {
   if (!hasChangelogContent(changelog)) return "";
   const lines: string[] = [];
+  const hasReceipt = quoteReceiptHasContent(changelog?.quoteReceipt);
   const quoteInOrderText = (changelog?.orderChanges ?? []).some((line) =>
     String(line).startsWith("Quote total")
   );
-  if (changelog?.quoteSummary && !quoteInOrderText) {
+  if (changelog?.quoteSummary && !quoteInOrderText && !hasReceipt) {
     lines.push(String(changelog.quoteSummary), "");
   }
   if ((changelog?.orderChanges?.length ?? 0) > 0) {
@@ -155,6 +344,10 @@ export function formatChangelogPlainText(changelog?: ChangelogPayload | null): s
     }
     lines.push("");
   }
+  const receiptText = formatQuoteReceiptPlainText(changelog?.quoteReceipt);
+  if (receiptText) {
+    lines.push("Your quote", receiptText, "");
+  }
   while (lines.length && lines[lines.length - 1] === "") lines.pop();
   return lines.join("\n");
 }
@@ -162,10 +355,11 @@ export function formatChangelogPlainText(changelog?: ChangelogPayload | null): s
 function formatChangelogHtml(changelog?: ChangelogPayload | null): string {
   if (!hasChangelogContent(changelog)) return "";
   const blocks: string[] = [];
+  const hasReceipt = quoteReceiptHasContent(changelog?.quoteReceipt);
   const quoteInOrder = (changelog?.orderChanges ?? []).some((line) =>
     String(line).startsWith("Quote total")
   );
-  if (changelog?.quoteSummary && !quoteInOrder) {
+  if (changelog?.quoteSummary && !quoteInOrder && !hasReceipt) {
     blocks.push(
       `<p style="margin:0 0 0.75rem;font-size:13px;line-height:1.5;">${formatDiffLineHtml(String(changelog.quoteSummary))}</p>`
     );
@@ -228,7 +422,11 @@ function formatChangelogHtml(changelog?: ChangelogPayload | null): string {
         }</div></div>`
     );
   }
-  return `<div style="margin:0 0 1.25rem;">${blocks.join("")}</div>`;
+  const receiptHtml = formatQuoteReceiptHtml(changelog?.quoteReceipt);
+  const changelogBlocks = blocks.length
+    ? `<div style="margin:0 0 1.25rem;">${blocks.join("")}</div>`
+    : "";
+  return `${changelogBlocks}${receiptHtml}`;
 }
 
 function buildPlainTextEmail(options: {

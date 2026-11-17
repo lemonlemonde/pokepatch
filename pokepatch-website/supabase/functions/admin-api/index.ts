@@ -4,7 +4,12 @@ import {
   jsonResponse,
 } from "../_shared/adminCors.ts";
 import { getServiceClient, requireSession } from "../_shared/adminSession.ts";
-import { sendResendEmail, buildStoredMessageBody } from "../_shared/resend.ts";
+import {
+  sendResendEmail,
+  buildStoredMessageBody,
+  hasChangelogContent,
+  type ChangelogPayload,
+} from "../_shared/resend.ts";
 import {
   CATALOG_MAX_PAGE_SIZE,
   fetchPokemonTcgCard,
@@ -567,7 +572,12 @@ function listQuoteBulkCounts(order: Record<string, unknown>): unknown {
 /** Kanban money: quote + after-completion − restoration (client orderEarnedTotalFromStored). */
 function listOrderEarnedTotal(
   order: Record<string, unknown>,
-  cards: { id: string; status?: string | null; is_priority?: boolean | null }[],
+  cards: {
+    id: string;
+    status?: string | null;
+    is_priority?: boolean | null;
+    queue_speed?: string | null;
+  }[],
   items: { card_id?: string | null; quote_base_amount: number | string }[]
 ): number {
   const quote = orderQuoteTotal({
@@ -585,7 +595,19 @@ type ListCardRow = {
   order_id: string;
   status: string | null;
   is_priority?: boolean | null;
+  queue_speed?: string | null;
 };
+
+function queueSpeedRank(row: {
+  queue_speed?: unknown;
+  is_priority?: unknown;
+}): number {
+  const speed = String(row.queue_speed ?? "").trim().toLowerCase();
+  if (speed === "immediate") return 3;
+  if (speed === "express") return 2;
+  if (speed === "fast" || Boolean(row.is_priority)) return 1;
+  return 0;
+}
 
 type ListQuoteItemRow = {
   order_id: string;
@@ -601,28 +623,32 @@ async function fetchListCards(
     return await mapInChunks<ListCardRow>(orderIds, (chunk) =>
       supabase
         .from("cards")
-        .select("id, order_id, status, is_priority")
+        .select("id, order_id, status, is_priority, queue_speed")
         .in("order_id", chunk)
     );
   } catch (err) {
     const message = `${(err as { message?: string })?.message ?? ""} ${
       (err as { details?: string })?.details ?? ""
     } ${(err as { code?: string })?.code ?? ""}`;
-    if (!/is_priority|42703/i.test(message)) throw err;
+    if (!/is_priority|queue_speed|42703/i.test(message)) throw err;
     const rows = await mapInChunks<ListCardRow>(orderIds, (chunk) =>
       supabase.from("cards").select("id, order_id, status").in("order_id", chunk)
     );
-    return rows.map((row) => ({ ...row, is_priority: false }));
+    return rows.map((row) => ({
+      ...row,
+      is_priority: false,
+      queue_speed: "standard",
+    }));
   }
 }
 
 async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClient>) {
   const listSelectFull =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, todo_entered_at, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at, todo_entered_at, is_priority, queue_speed, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
   const listSelectNoQuote =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, todo_entered_at, is_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, todo_entered_at, is_priority, queue_speed";
   const listSelectNoTodoEntered =
-    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, is_priority";
+    "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, completed_at, status_changed_at, is_priority, queue_speed";
   const listSelectLegacy =
     "id, display_id, created_at, customer_name, customer_email, user_id, delivery_method, status, pending_kind, completed_at, status_changed_at";
 
@@ -690,9 +716,8 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
   const newOrders = [...orders]
     .filter((o) => o.status === "new")
     .sort((a, b) => {
-      const aPriority = Boolean(a.is_priority);
-      const bPriority = Boolean(b.is_priority);
-      if (aPriority !== bPriority) return aPriority ? -1 : 1;
+      const bySpeed = queueSpeedRank(b) - queueSpeedRank(a);
+      if (bySpeed !== 0) return bySpeed;
       const byTodo = todoEnteredMs(a) - todoEnteredMs(b);
       if (byTodo !== 0) return byTodo;
       const at = a.created_at ? new Date(a.created_at as string).getTime() : 0;
@@ -812,6 +837,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
       status_changed_at: named.status_changed_at ?? null,
       todo_entered_at: named.todo_entered_at ?? null,
       is_priority: Boolean(named.is_priority),
+      queue_speed:
+        String(named.queue_speed ?? "").trim() ||
+        (named.is_priority ? "fast" : "standard"),
       has_account: orderHasAccount(order, emailSet),
       card_count: countByOrder.get(orderId) ?? 0,
       cards_completed: completedCountByOrder.get(orderId) ?? 0,
@@ -830,9 +858,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed";
 
 const ORDER_STATUS_IDS = new Set([
   "pending",
@@ -1177,14 +1205,14 @@ async function fetchOrderGraph(
       const withCatalog = await supabase
         .from("cards")
         .select(
-          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name"
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name"
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true });
       if (
         !withCatalog.error ||
-        !/tcg_card_id|catalog_image_url|catalog_card_name|catalog_set_name|is_priority|42703/i.test(
+        !/tcg_card_id|catalog_image_url|catalog_card_name|catalog_set_name|is_priority|queue_speed|42703/i.test(
           `${withCatalog.error.message ?? ""} ${withCatalog.error.details ?? ""} ${withCatalog.error.code ?? ""}`
         )
       ) {
@@ -1203,6 +1231,7 @@ async function fetchOrderGraph(
         data: (legacy.data ?? []).map((card) => ({
           ...card,
           is_priority: false,
+          queue_speed: "standard",
           tcg_card_id: null,
           catalog_image_url: null,
           catalog_card_name: null,
@@ -2753,9 +2782,14 @@ Deno.serve(async (req) => {
       let splitResult: Record<string, unknown> | null = null;
       if (cards) {
         const priorityPayload = cards.map(
-          (card: { id?: unknown; is_priority?: unknown }) => ({
+          (card: {
+            id?: unknown;
+            is_priority?: unknown;
+            queue_speed?: unknown;
+          }) => ({
             id: card?.id,
             is_priority: Boolean(card?.is_priority),
+            queue_speed: card?.queue_speed ?? null,
           })
         );
         const { data: splitData, error: splitError } = await supabase.rpc(
@@ -3630,17 +3664,9 @@ Deno.serve(async (req) => {
       const messageBody = typeof body.body === "string" ? body.body : "";
       const changelog =
         body.changelog && typeof body.changelog === "object"
-          ? body.changelog
+          ? (body.changelog as ChangelogPayload)
           : null;
-      const hasChangelog =
-        Boolean(changelog) &&
-        ((Array.isArray((changelog as { cardGroups?: unknown }).cardGroups) &&
-          ((changelog as { cardGroups: unknown[] }).cardGroups?.length ?? 0) >
-            0) ||
-          (Array.isArray((changelog as { orderChanges?: unknown }).orderChanges) &&
-            ((changelog as { orderChanges: unknown[] }).orderChanges?.length ??
-              0) > 0) ||
-          Boolean((changelog as { quoteSummary?: unknown }).quoteSummary));
+      const hasChangelog = hasChangelogContent(changelog);
       if (!subject) {
         return jsonResponse(req, { ok: false, error: "subject required" }, 400);
       }
@@ -3753,7 +3779,7 @@ Deno.serve(async (req) => {
           subject,
           body: messageBody,
           orderDisplayId,
-          changelog: hasChangelog ? (changelog as never) : null,
+          changelog: hasChangelog ? changelog : null,
         });
 
         const emailStatus = sendResult.ok ? "sent" : "failed";

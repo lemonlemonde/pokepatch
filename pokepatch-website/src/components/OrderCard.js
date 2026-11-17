@@ -11,7 +11,7 @@ import {
   customerOrderStatusChipLabel,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
-import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
+import QueueSpeedBadge from "@/components/QueueSpeedBadge";
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -85,9 +85,9 @@ export default function OrderCard({ order }) {
   });
   const isPriority =
     Boolean(order.is_priority) || hasPriorityAdjustment(listQuoteAdjustments);
-  // Star badge carries priority; keep queue chip text without a Priority prefix.
   const statusChipLabel = customerOrderStatusChipLabel(order, {
-    isPriority: false,
+    isPriority,
+    queueSpeed: order.queue_speed,
   });
   const unreadCount = Math.max(
     0,
@@ -127,7 +127,10 @@ export default function OrderCard({ order }) {
       ) : null}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          {isPriority ? <CustomerPriorityBadge /> : null}
+          <QueueSpeedBadge
+            speed={order.queue_speed}
+            isPriority={isPriority}
+          />
           <Link
             href={detailHref}
             className={`tracking-tight text-ink hover:underline ${

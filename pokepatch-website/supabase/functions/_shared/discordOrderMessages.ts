@@ -31,12 +31,17 @@ import {
 } from "./outreach.ts";
 import {
   SERVICE_KEYS,
+  adjustmentSignedAmount,
   formatMoney,
+  isPriorityAdjustmentRow,
+  normalizeQuoteBulkCounts,
+  normalizeServiceDisplayTitle,
   orderQuoteTotal,
+  queueSpeedFeesFromCards,
   roundMoney,
   storedCardHvAmount,
 } from "./servicePricing.ts";
-import type { ChangelogPayload } from "./resend.ts";
+import type { ChangelogPayload, QuoteReceiptPayload } from "./resend.ts";
 
 export const BUCKET = "card-photos";
 /** Signed URLs expire; 1 year keeps Discord history browsable. */
@@ -100,6 +105,7 @@ export type CardRow = {
   market_value_raw_nm: number | string | null;
   status: string | null;
   is_priority: boolean | null;
+  queue_speed?: string | null;
   sort_order: number | null;
 };
 
@@ -198,10 +204,10 @@ export function cardLabel(card: CardRow, index: number): string {
 }
 
 function serviceLabel(item: QuoteItemRow): string {
-  return (
-    String(item.service_label ?? "").trim() ||
-    (item.service_key === SERVICE_KEYS.CUSTOM ? "Custom" : item.service_key)
-  );
+  const labeled = normalizeServiceDisplayTitle(item.service_label);
+  if (labeled) return labeled;
+  if (item.service_key === SERVICE_KEYS.CUSTOM) return "Custom";
+  return String(item.service_key ?? "Service");
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +263,7 @@ export async function loadOrderCards(
   const { data, error } = await supabase
     .from("cards")
     .select(
-      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, sort_order"
+      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, sort_order"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true })
@@ -429,6 +435,7 @@ export function orderTotals(context: OrderContext) {
       id: String(card.id),
       status: card.status,
       is_priority: card.is_priority,
+      queue_speed: card.queue_speed,
     })),
     items: context.quoteItems.map((item) => ({
       card_id: cardIdForQuoteItem(item, context.cards),
@@ -454,37 +461,79 @@ export function quoteProgress(context: OrderContext): { quoted: number; active: 
 }
 
 /**
- * Email changelog built from the stored quote (no "before" snapshot exists in
- * Discord). Uses the same line wording as the admin editor's changelog so the
- * Resend template renders it identically.
+ * Full quote receipt matching the admin order-page breakdown (per-card
+ * services + HV, adjustments, queue-speed fees, total). Used for Save &
+ * notify emails instead of an "Added/Updated" changelog.
  */
-export function buildQuoteChangelog(context: OrderContext): ChangelogPayload {
-  const cardGroups: NonNullable<ChangelogPayload["cardGroups"]> = [];
+export function buildQuoteReceiptFromContext(
+  context: OrderContext
+): QuoteReceiptPayload | null {
+  const totals = orderTotals(context);
+  const cards: NonNullable<QuoteReceiptPayload["cards"]> = [];
   for (const entry of cardQuotes(context)) {
-    if (entry.canceled) continue;
-    const changes: string[] = entry.items.map(
-      (item) => `Added: ${serviceLabel(item)}: ${formatMoney(item.quote_base_amount)}`
-    );
+    if (entry.canceled || !entry.quoted) continue;
+    const lines = entry.items.map((item) => ({
+      label: serviceLabel(item) || "Service",
+      amount: roundMoney(Number(item.quote_base_amount) || 0),
+    }));
     if (entry.hvAmount > 0) {
-      changes.push(`Added: High-value fee: ${formatMoney(entry.hvAmount)}`);
+      lines.push({ label: "High-value fee", amount: entry.hvAmount });
     }
     const note = String(entry.card.admin_note ?? "").trim();
-    if (note) changes.push(`Note: ${note}`);
-    if (changes.length === 0) continue;
-    cardGroups.push({
+    cards.push({
       cardId: String(entry.card.id),
       label: cardLabel(entry.card, entry.index),
-      status: "modified",
-      changes,
+      subtotal: entry.subtotal,
+      lines,
+      ...(note ? { note } : {}),
     });
   }
-  const totals = orderTotals(context);
-  const orderChanges: string[] = [];
-  if (totals.priorityFee > 0) orderChanges.push("Added: Priority service");
+
+  const stored = normalizeQuoteBulkCounts(context.order.quote_bulk_counts);
+  const adjustments = stored.adjustments
+    .filter((row) => !isPriorityAdjustmentRow(row))
+    .map((row) => {
+      const amount = adjustmentSignedAmount(row, totals.servicesSubtotal);
+      const percentRaw = row.amount_percent;
+      const amountPercent =
+        percentRaw == null || percentRaw === ""
+          ? null
+          : Number.isFinite(Number(percentRaw))
+            ? Math.abs(Number(percentRaw))
+            : null;
+      return {
+        description: String(row.description ?? "").trim() || "Adjustment",
+        amount,
+        amountPercent,
+      };
+    })
+    .filter((row) => row.amount !== 0);
+
+  const queueFees = queueSpeedFeesFromCards(
+    context.cards.map((card) => ({
+      id: String(card.id),
+      status: card.status,
+      is_priority: card.is_priority,
+      queue_speed: card.queue_speed,
+    }))
+  );
+
+  if (cards.length === 0 && adjustments.length === 0 && queueFees.length === 0) {
+    return null;
+  }
+  return { cards, adjustments, queueFees, total: totals.total };
+}
+
+/**
+ * Email payload for Discord Save & notify — full quote receipt, same shape
+ * as the admin editor so the Resend template renders identically.
+ */
+export function buildQuoteChangelog(context: OrderContext): ChangelogPayload {
   return {
-    cardGroups,
-    orderChanges,
-    quoteSummary: `Quote total: ${formatMoney(totals.total)}`,
+    cardGroups: [],
+    orderChanges: [],
+    quoteSummary: null,
+    quoteReceipt: buildQuoteReceiptFromContext(context),
   };
 }
 
@@ -575,7 +624,14 @@ export function buildCardMessage(params: {
   const heading =
     `## #${order.display_id} · Card ${cardIndex + 1}/${cardCount}\n` +
     `**${escapeMarkdown(name)}**${setName ? ` · ${escapeMarkdown(setName)}` : ""}` +
-    (card.is_priority ? "  ⭐ Priority" : "");
+    (String(card.queue_speed ?? "").toLowerCase() === "immediate"
+      ? "  ▶ Immediate"
+      : String(card.queue_speed ?? "").toLowerCase() === "express"
+        ? "  ⚡ Rush"
+        : String(card.queue_speed ?? "").toLowerCase() === "fast" ||
+            card.is_priority
+          ? "  ⭐ Priority"
+          : "");
 
   const tags = damageTagLabels(card.damage_tags);
   const description = String(card.description ?? "").trim();

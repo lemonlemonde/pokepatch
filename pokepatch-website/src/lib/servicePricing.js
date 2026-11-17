@@ -8,6 +8,21 @@
  * (Discord quote flow).
  */
 
+import {
+  QUEUE_SPEED_STANDARD,
+  PAID_QUEUE_SPEEDS,
+  cardQueueSpeed,
+  hasMixedQueueSpeed,
+  isPaidQueueSpeed,
+  isQueueSpeedAdjustmentRow,
+  normalizeQueueSpeed,
+  paidQueueSpeedsFromCards,
+  queueSpeedAdjustmentLabel,
+  queueSpeedDescription,
+  queueSpeedFee,
+  uniqueQueueSpeeds,
+} from "@/lib/queueSpeed";
+
 export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
   PRESSING: "precision_pressing",
@@ -140,162 +155,121 @@ export function serviceSelectLabel(service) {
   return price ? `${service.title} (${price})` : service.title;
 }
 
-/** Paid priority service — flat fee per priority card. */
-export const PRIORITY_FEE_PER_CARD = 15;
-
-/** Dollar fee for priority on an order with `cardCount` priority cards. */
-export function priorityServiceFee(cardCount) {
-  const n = Math.floor(Number(cardCount));
-  if (!Number.isFinite(n) || n <= 0) return 0;
-  return Math.round(n * PRIORITY_FEE_PER_CARD * 100) / 100;
-}
-
-export function priorityServiceDescription(cardCount) {
-  const n = Math.floor(Number(cardCount));
-  const count = Number.isFinite(n) && n > 0 ? n : 0;
-  if (count <= 1) {
-    return `Priority service ($${PRIORITY_FEE_PER_CARD} per card)`;
-  }
-  return `Priority service (${count} × $${PRIORITY_FEE_PER_CARD})`;
-}
-
-/** Customer-facing priority pricing copy (quote form, etc.). */
-export function priorityServicePricingHint(cardCount) {
-  const n = Math.floor(Number(cardCount));
-  const count = Number.isFinite(n) && n > 0 ? n : 1;
-  const rate = `$${PRIORITY_FEE_PER_CARD} per card`;
-  if (count <= 1) {
-    return `${rate}.`;
-  }
-  return `${rate}. ${count} cards: ${formatMoney(priorityServiceFee(count))} total.`;
-}
-
-/** Billable cards marked priority (`is_priority` or draft `isPriority`). */
 export function priorityBillableCards(cards) {
-  return billableQuoteCards(cards).filter(
-    (card) => Boolean(card?.is_priority) || Boolean(card?.isPriority)
+  return billableQuoteCards(cards).filter((card) =>
+    isPaidQueueSpeed(cardQueueSpeed(card))
   );
 }
 
-/** True when some cards are priority and some are not (matches server mix check). */
 export function hasMixedCardPriority(cards) {
-  const list = cards ?? [];
-  if (list.length < 2) return false;
-  let hasPriority = false;
-  let hasStandard = false;
-  for (const card of list) {
-    if (Boolean(card?.is_priority) || Boolean(card?.isPriority)) {
-      hasPriority = true;
-    } else {
-      hasStandard = true;
-    }
-    if (hasPriority && hasStandard) return true;
-  }
-  return false;
+  return hasMixedQueueSpeed(cards);
 }
 
-/**
- * Homogeneous priority flag for an order: true only when every billable card
- * is priority (mixed carts split before this applies on the server).
- */
-export function orderIsPriorityFromCards(cards) {
+export function orderQueueSpeedFromCards(cards) {
   const billable = billableQuoteCards(cards);
-  if (billable.length === 0) return false;
-  return billable.every(
-    (card) => Boolean(card?.is_priority) || Boolean(card?.isPriority)
-  );
+  const speeds = uniqueQueueSpeeds(billable.length ? billable : cards);
+  if (speeds.length === 1) return speeds[0];
+  return QUEUE_SPEED_STANDARD;
 }
 
-export const PRIORITY_ADJUSTMENT_LABEL = "Priority service";
+export function orderIsPriorityFromCards(cards) {
+  return isPaidQueueSpeed(orderQueueSpeedFromCards(cards));
+}
 
 export function isPriorityAdjustmentRow(row) {
-  const normalized = normalizeQuoteAdjustment(row);
-  if (!normalized) return false;
-  return (
-    normalized.description.trim().toLowerCase() ===
-    PRIORITY_ADJUSTMENT_LABEL.toLowerCase()
-  );
+  return isQueueSpeedAdjustmentRow(row);
 }
 
 export function hasPriorityAdjustment(adjustments) {
-  return (adjustments ?? []).some(isPriorityAdjustmentRow);
+  return (adjustments ?? []).some(isQueueSpeedAdjustmentRow);
 }
 
-/**
- * How many billable cards the priority fee should cover.
- * Prefer per-card flags; fall back to all billable / `cardCount` when the
- * order-level flag or a stored Priority service adjustment says priority.
- */
+export function resolveQueueSpeedFees({
+  cards = null,
+  adjustments = null,
+  queueSpeed = null,
+  isPriority = false,
+  cardCount = null,
+} = {}) {
+  const counts = Object.fromEntries(PAID_QUEUE_SPEEDS.map((speed) => [speed, 0]));
+  if (Array.isArray(cards) && cards.length > 0) {
+    Object.assign(counts, paidQueueSpeedsFromCards(cards));
+    if (PAID_QUEUE_SPEEDS.every((speed) => counts[speed] === 0)) {
+      const speed = normalizeQueueSpeed(queueSpeed, {
+        isPriority: Boolean(isPriority) || hasPriorityAdjustment(adjustments),
+      });
+      if (speed in counts) {
+        counts[speed] = billableQuoteCards(cards).length;
+      }
+    }
+  } else {
+    const speed = normalizeQueueSpeed(queueSpeed, {
+      isPriority: Boolean(isPriority) || hasPriorityAdjustment(adjustments),
+    });
+    if (speed in counts) {
+      counts[speed] = Math.max(0, Number(cardCount) || 0);
+    }
+  }
+  return PAID_QUEUE_SPEEDS.filter((speed) => counts[speed] > 0).map((speed) => ({
+    speed,
+    count: counts[speed],
+    fee: queueSpeedFee(speed, counts[speed]),
+    description: queueSpeedDescription(speed, counts[speed]),
+  }));
+}
+
 export function resolvePriorityCardCount({
   cards = null,
   adjustments = null,
   isPriority = false,
+  queueSpeed = null,
   cardCount = null,
 } = {}) {
-  const wantsPriority =
-    Boolean(isPriority) || hasPriorityAdjustment(adjustments);
-  if (Array.isArray(cards) && cards.length > 0) {
-    const marked = priorityBillableCards(cards).length;
-    if (marked > 0) return marked;
-    if (wantsPriority) return billableQuoteCards(cards).length;
-    return 0;
-  }
-  if (wantsPriority) return Math.max(0, Number(cardCount) || 0);
-  return 0;
+  return resolveQueueSpeedFees({
+    cards,
+    adjustments,
+    isPriority,
+    queueSpeed,
+    cardCount,
+  }).reduce((sum, row) => sum + row.count, 0);
 }
 
-/** Editor/storage row for the order-level priority surcharge. */
-export function priorityQuoteAdjustment(cardCount) {
-  const fee = priorityServiceFee(cardCount);
-  return {
+export function queueSpeedQuoteAdjustment(speed, cardCount, existing = null) {
+  const fee = queueSpeedFee(speed, cardCount);
+  const next = {
     ...emptyQuoteAdjustment("surcharge"),
-    description: PRIORITY_ADJUSTMENT_LABEL,
+    description: queueSpeedAdjustmentLabel(speed),
     amount_dollars: String(fee),
     amount_percent: "",
   };
-}
-
-/** Keep priority surcharge row in sync with the order flag and card count. */
-export function syncPriorityQuoteAdjustments(
-  isPriority,
-  cardCount,
-  adjustments = []
-) {
-  const list = adjustments ?? [];
-  const existing = list.find(isPriorityAdjustmentRow);
-  const without = list.filter((row) => !isPriorityAdjustmentRow(row));
-  if (!isPriority) return without;
-  const fee = priorityServiceFee(cardCount);
-  if (fee <= 0) return without;
-  const next = priorityQuoteAdjustment(cardCount);
   if (existing?.id) next.id = existing.id;
-  return [...without, next];
+  return next;
 }
 
-/**
- * Recompute order-level priority flag + Priority service quote row from
- * per-card `is_priority`. Fee uses priority card count only. Mixed drafts
- * still show a fee preview for priority cards; save splits into two orders.
- */
+export function syncQueueSpeedQuoteAdjustments(cards, adjustments = []) {
+  const list = adjustments ?? [];
+  const without = list.filter((row) => !isQueueSpeedAdjustmentRow(row));
+  const counts = paidQueueSpeedsFromCards(cards);
+  const next = [...without];
+  for (const speed of PAID_QUEUE_SPEEDS) {
+    if (counts[speed] <= 0) continue;
+    const existing = list.find((row) => isQueueSpeedAdjustmentRow(row, speed));
+    next.push(queueSpeedQuoteAdjustment(speed, counts[speed], existing));
+  }
+  return next;
+}
+
 export function syncDraftPriorityQuote(draft) {
   if (!draft) return draft;
-  const priorityCards = priorityBillableCards(draft.cards);
-  const priorityCount = priorityCards.length;
-  const isPriority = orderIsPriorityFromCards(draft.cards);
-  // Preview fee whenever any card is priority (including mixed pre-split).
-  const feeActive = priorityCount > 0;
-  const hasPriorityRow = hasPriorityAdjustment(draft.quote_adjustments);
-  if (!feeActive && !hasPriorityRow && !draft.is_priority) {
-    if (draft.is_priority === isPriority) return draft;
-    return { ...draft, is_priority: isPriority };
-  }
-  const nextAdjustments = syncPriorityQuoteAdjustments(
-    feeActive,
-    priorityCount,
+  const queueSpeed = orderQueueSpeedFromCards(draft.cards);
+  const isPriority = isPaidQueueSpeed(queueSpeed);
+  const nextAdjustments = syncQueueSpeedQuoteAdjustments(
+    draft.cards,
     draft.quote_adjustments ?? []
   );
   if (
     draft.is_priority === isPriority &&
+    draft.queue_speed === queueSpeed &&
     JSON.stringify(nextAdjustments) ===
       JSON.stringify(draft.quote_adjustments ?? [])
   ) {
@@ -303,6 +277,7 @@ export function syncDraftPriorityQuote(draft) {
   }
   return {
     ...draft,
+    queue_speed: queueSpeed,
     is_priority: isPriority,
     quote_adjustments: nextAdjustments,
   };
@@ -453,18 +428,9 @@ function slabMarketingPanel() {
   };
 }
 
-const PRIORITY_PRICING_MARKETING = {
-  title: "Priority",
-  features: ["Per card — mixed carts become two orders"],
-  bulk: [
-    { label: "Per card", value: `$${PRIORITY_FEE_PER_CARD}` },
-  ],
-  bulkLabel: "Pricing",
-};
-
-/** Homepage extras — purchasable options only. */
+/** Homepage extras — purchasable restoration options only. Queue lives in its own section. */
 export function marketingExtras() {
-  return [slabMarketingPanel(), PRIORITY_PRICING_MARKETING].filter(Boolean);
+  return [slabMarketingPanel()].filter(Boolean);
 }
 
 /** Homepage high-value fee module — same visual weight as extras. */
@@ -991,30 +957,29 @@ export function computeQuoteTotal({
   cards = null,
   adjustments = null,
   isPriority = false,
+  queueSpeed = null,
   cardCount = null,
 } = {}) {
   const billableCards = billableQuoteCards(cards);
   const billableItems = billableQuoteItems(items, cards);
   const subtotal = quoteItemsSubtotal(billableItems);
   const cardHv = quoteCardsHvTotal(billableCards);
-  // Priority is always recomputed from active cards; ignore stale stored rows.
-  const nonPriorityAdjustments = (adjustments ?? []).filter(
-    (row) => !isPriorityAdjustmentRow(row)
+  const nonQueueAdjustments = (adjustments ?? []).filter(
+    (row) => !isQueueSpeedAdjustmentRow(row)
   );
   const adjustmentTotal = quoteAdjustmentsTotal(
-    nonPriorityAdjustments,
+    nonQueueAdjustments,
     billableItems
   );
-  const priorityCount = resolvePriorityCardCount({
+  const queueFee = resolveQueueSpeedFees({
     cards,
     adjustments,
     isPriority,
+    queueSpeed,
     cardCount,
-  });
-  const priorityFee =
-    priorityCount > 0 ? priorityServiceFee(priorityCount) : 0;
+  }).reduce((sum, row) => sum + row.fee, 0);
   return (
-    Math.round((subtotal + cardHv + adjustmentTotal + priorityFee) * 100) / 100
+    Math.round((subtotal + cardHv + adjustmentTotal + queueFee) * 100) / 100
   );
 }
 
@@ -1039,6 +1004,7 @@ export function orderQuoteTotalFromStored(order) {
     cards,
     adjustments,
     isPriority: Boolean(order.is_priority),
+    queueSpeed: order.queue_speed,
     cardCount,
   });
 }
@@ -1138,13 +1104,17 @@ export function hasQuoteData({
   cards = null,
   adjustments = null,
   isPriority = false,
+  queueSpeed = null,
 } = {}) {
   const billableItems = billableQuoteItems(items, cards);
   const billableCards = billableQuoteCards(cards);
   if (billableItems.length > 0) return true;
   if (quoteCardsHvTotal(billableCards) > 0) return true;
   if (quoteAdjustmentLines(adjustments, billableItems).length > 0) return true;
-  if (isPriority) return true;
+  if (isPriority || isPaidQueueSpeed(queueSpeed)) return true;
+  if (resolveQueueSpeedFees({ cards, adjustments, isPriority, queueSpeed }).length > 0) {
+    return true;
+  }
   return false;
 }
 
@@ -1242,4 +1212,99 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
   }
 
   return groups;
+}
+
+/** True when a stored/email quote receipt has any customer-facing lines. */
+export function quoteReceiptHasContent(receipt) {
+  if (!receipt || typeof receipt !== "object") return false;
+  if ((receipt.cards ?? []).length > 0) return true;
+  if ((receipt.adjustments ?? []).length > 0) return true;
+  if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) {
+    return true;
+  }
+  return false;
+}
+
+/** Paid queue-speed rows on a receipt snapshot. */
+export function receiptQueueFeeRows(receipt) {
+  return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
+}
+
+/**
+ * Snapshot of the admin QuoteReceipt for emails / message history.
+ * Same grouping and totals as the admin order page receipt.
+ */
+export function buildQuoteReceiptPayload({
+  items,
+  cards = null,
+  adjustments = null,
+  isPriority = false,
+  queueSpeed = null,
+  cardCount = null,
+  includeNotes = false,
+} = {}) {
+  const groups = groupQuoteItemsByCard(items, cards);
+  const billableItems = billableQuoteItems(items, cards);
+  const nonPriorityAdjustments = (adjustments ?? []).filter(
+    (row) => !isPriorityAdjustmentRow(row)
+  );
+  const adjustmentLines = quoteAdjustmentLines(
+    nonPriorityAdjustments,
+    billableItems
+  );
+  const queueFees = resolveQueueSpeedFees({
+    cards,
+    adjustments,
+    isPriority,
+    queueSpeed,
+    cardCount,
+  }).map((row) => ({
+    speed: row.speed,
+    description: row.description,
+    amount: row.fee,
+  }));
+  const total = computeQuoteTotal({
+    items,
+    cards,
+    adjustments,
+    isPriority,
+    queueSpeed,
+    cardCount,
+  });
+
+  return {
+    cards: groups.map((group) => {
+      const note = includeNotes
+        ? String(group.card?.admin_note ?? "").trim()
+        : "";
+      return {
+        cardId: group.card?.id != null ? String(group.card.id) : null,
+        label: group.label,
+        subtotal: group.subtotal,
+        lines: [
+          ...group.items.map((item) => ({
+            label:
+              normalizeServiceDisplayTitle(item.service_label) || "Service",
+            amount: quoteItemLineTotal(item),
+          })),
+          ...(group.highValueSurcharge > 0
+            ? [
+                {
+                  label: "High-value fee",
+                  amount: group.highValueSurcharge,
+                },
+              ]
+            : []),
+        ],
+        ...(note ? { note } : {}),
+      };
+    }),
+    adjustments: adjustmentLines.map((line) => ({
+      description: line.description,
+      amount: line.amount,
+      amountPercent: line.amountPercent ?? null,
+    })),
+    queueFees,
+    total,
+  };
 }

@@ -8,6 +8,7 @@ import FaqItem from "@/components/FaqItem";
 import FeaturedRestorations from "@/components/FeaturedRestorations";
 import HomeStructuredData from "@/components/HomeStructuredData";
 import QueueCount from "@/components/QueueCount";
+import QueueSpeedGuide from "@/components/QueueSpeedGuide";
 import {
   marketingExtras,
   marketingHighValue,
@@ -19,6 +20,7 @@ import {
   WHITENING_FAQ_QUESTION,
   servicePriceDisplay,
 } from "@/lib/servicePricing";
+import { queueSpeedFaqEntries } from "@/lib/queueSpeed";
 
 const steps = [
   {
@@ -74,6 +76,7 @@ const faqs = [
     answer:
       "The restoration work itself can take anywhere from a few hours to a month or more, depending on the damage, number of cards, and restoration type. That doesn't include time waiting in the queue before we start.",
   },
+  ...queueSpeedFaqEntries(),
   {
     id: WHITENING_FAQ_ID,
     question: WHITENING_FAQ_QUESTION,
@@ -190,6 +193,15 @@ export default function Home() {
               <div className="h-px min-w-0 flex-1 bg-ink/10" aria-hidden="true" />
             </div>
             <ServiceModifiersCard panels={extras} />
+          </ScrollReveal>
+        </section>
+
+        <section className="marketing-section">
+          <MarketingSectionHeading note="Queue">
+            Want it sooner?
+          </MarketingSectionHeading>
+          <ScrollReveal>
+            <QueueSpeedGuide />
           </ScrollReveal>
         </section>
 

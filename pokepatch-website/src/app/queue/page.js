@@ -4,7 +4,13 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import MarketingSectionHeading from "@/components/marketing/MarketingSectionHeading";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
+import QueueSpeedBadge from "@/components/QueueSpeedBadge";
+import {
+  QUEUE_SPEED_EXPRESS,
+  QUEUE_SPEED_FAST,
+  QUEUE_SPEED_IMMEDIATE,
+  queueSpeedQueueIntro,
+} from "@/lib/queueSpeed";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
@@ -230,7 +236,10 @@ function InProgressStrip({
                   ) : null}
                 </span>
                 <span className="mt-1.5 flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.12em] text-ink/50">
-                  {order.is_priority ? <CustomerPriorityBadge /> : null}
+                  <QueueSpeedBadge
+                    speed={order.queue_speed}
+                    isPriority={order.is_priority}
+                  />
                   <span className="tabular-nums">
                     {cardCountLabel(order.card_count)}
                   </span>
@@ -334,7 +343,8 @@ function QueueRow({ order, laneTitle, open, onToggle, rowRef, mine }) {
 
 function WaitingLane({
   title,
-  priority = false,
+  speed = null,
+  hint = null,
   emptyLabel,
   orders,
   openId,
@@ -344,15 +354,20 @@ function WaitingLane({
 }) {
   return (
     <section aria-label={title} className="min-w-0">
-      <div className="mb-3 flex items-center gap-2">
+      <div className="mb-1.5 flex items-center gap-2">
         <h2 className="text-base font-medium tracking-tight text-ink">
           {title}
         </h2>
-        {priority ? <CustomerPriorityBadge /> : null}
+        {speed ? <QueueSpeedBadge speed={speed} /> : null}
         <span className="font-mono text-[10px] tabular-nums text-ink/40">
           {orders.length}
         </span>
       </div>
+      {hint ? (
+        <p className="mb-3 text-xs leading-snug text-ink/50">{hint}</p>
+      ) : (
+        <div className="mb-3" />
+      )}
 
       {orders.length === 0 ? (
         <p className="rounded-lg border border-dashed border-ink/10 px-3 py-4 text-center text-xs text-ink/45">
@@ -498,9 +513,11 @@ function QueuePageInner() {
   }
 
   const inProgress = board?.in_progress ?? [];
-  const priority = board?.priority ?? [];
-  const regular = board?.regular ?? [];
-  const waitingCount = priority.length + regular.length;
+  const immediate = board?.immediate ?? [];
+  const express = board?.express ?? [];
+  const fast = board?.fast ?? [];
+  const standard = board?.standard ?? [];
+  const waitingCount = express.length + fast.length + standard.length;
   const updatedLabel = formatUpdatedAt(updatedAt);
 
   return (
@@ -526,6 +543,10 @@ function QueuePageInner() {
       >
         Current queue
       </MarketingSectionHeading>
+
+      <p className="mb-8 max-w-2xl text-sm leading-relaxed text-ink/60 sm:-mt-4 sm:mb-10 md:-mt-6">
+        {queueSpeedQueueIntro()}
+      </p>
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -566,14 +587,44 @@ function QueuePageInner() {
             )}
           </section>
 
+          <section
+            aria-label="Starting next"
+            className="rounded-xl border border-mint/30 bg-mint/[0.07] p-4 sm:p-5"
+          >
+            <LaneLabel trailing={immediate.length}>Starting next</LaneLabel>
+            <WaitingLane
+              title="Immediate"
+              speed={QUEUE_SPEED_IMMEDIATE}
+              hint="Skip the waiting lanes — we start these cards next."
+              emptyLabel="No Immediate orders right now."
+              orders={immediate}
+              openId={openId}
+              onToggle={handleToggle}
+              registerRef={registerRef}
+              mineIds={mineIds}
+            />
+          </section>
+
           <section aria-label="Waiting">
-            <LaneLabel trailing={waitingCount}>Waiting</LaneLabel>
-            <div className="grid items-start gap-6 sm:grid-cols-2 sm:gap-8">
+            <LaneLabel trailing={waitingCount}>Waiting in line</LaneLabel>
+            <div className="grid items-start gap-6 sm:grid-cols-3 sm:gap-6">
+              <WaitingLane
+                title="Rush"
+                speed={QUEUE_SPEED_EXPRESS}
+                hint="Ahead of Priority."
+                emptyLabel="No Rush orders waiting."
+                orders={express}
+                openId={openId}
+                onToggle={handleToggle}
+                registerRef={registerRef}
+                mineIds={mineIds}
+              />
               <WaitingLane
                 title="Priority"
-                priority
-                emptyLabel="No priority orders waiting."
-                orders={priority}
+                speed={QUEUE_SPEED_FAST}
+                hint="Ahead of Standard."
+                emptyLabel="No Priority orders waiting."
+                orders={fast}
                 openId={openId}
                 onToggle={handleToggle}
                 registerRef={registerRef}
@@ -581,8 +632,9 @@ function QueuePageInner() {
               />
               <WaitingLane
                 title="Standard"
-                emptyLabel="No standard orders waiting."
-                orders={regular}
+                hint="Regular wait."
+                emptyLabel="No Standard orders waiting."
+                orders={standard}
                 openId={openId}
                 onToggle={handleToggle}
                 registerRef={registerRef}

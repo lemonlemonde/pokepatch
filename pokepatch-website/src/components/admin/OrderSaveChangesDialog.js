@@ -9,6 +9,7 @@ import {
 } from "@/components/ExpandReveal";
 import {
   buildOrderChangelog,
+  changelogHasContent,
   changelogHasNonStatusDiff,
   changelogWithoutOrderStatus,
   summarizeChangelog,
@@ -147,6 +148,7 @@ export default function OrderSaveChangesDialog({
         cardGroups: built.cardGroups,
         orderChanges: built.orderChanges,
         quoteSummary: built.quoteSummary,
+        quoteReceipt: built.quoteReceipt,
       };
     }
     return changelogWithoutOrderStatus(built);
@@ -161,6 +163,7 @@ export default function OrderSaveChangesDialog({
     cardGroups: [],
     orderChanges: [],
     quoteSummary: null,
+    quoteReceipt: null,
   });
   const [error, setError] = useState("");
 
@@ -216,10 +219,7 @@ export default function OrderSaveChangesDialog({
         ? `Save order #${displayId}`
         : "Save order";
 
-  const hasDiff =
-    (draftChangelog.cardGroups?.length ?? 0) > 0 ||
-    (draftChangelog.orderChanges?.length ?? 0) > 0 ||
-    Boolean(draftChangelog.quoteSummary);
+  const hasDiff = changelogHasContent(draftChangelog);
 
   function handleConfirm() {
     setError("");
@@ -247,6 +247,7 @@ export default function OrderSaveChangesDialog({
               cardGroups: draftChangelog.cardGroups,
               orderChanges: draftChangelog.orderChanges,
               quoteSummary: draftChangelog.quoteSummary,
+              quoteReceipt: draftChangelog.quoteReceipt,
             }
           : null,
       });
@@ -295,9 +296,9 @@ export default function OrderSaveChangesDialog({
           ) : null}
           {willSplit && variant === "save" ? (
             <p className="mt-3 rounded-xl border border-ink/15 bg-ink/[0.06] px-3 py-2 text-sm text-ink/80">
-              Priority cards will move to a{" "}
-              <strong className="font-semibold text-ink">new order</strong> on
-              save. You&apos;ll stay on this order with the remaining cards.
+              Cards on other queue speeds will move to{" "}
+              <strong className="font-semibold text-ink">their own orders</strong>{" "}
+              on save. You&apos;ll stay on this order with the remaining cards.
             </p>
           ) : null}
           {orderStatusChanged && !pendingToCanceled && canNotify && !isKanbanMove ? (
@@ -388,6 +389,7 @@ export default function OrderSaveChangesDialog({
                 cardGroups={draftChangelog.cardGroups}
                 orderChanges={draftChangelog.orderChanges}
                 quoteSummary={draftChangelog.quoteSummary}
+                quoteReceipt={draftChangelog.quoteReceipt}
                 thumbByCardId={thumbByCardId}
                 editable
                 onChange={(next) => {

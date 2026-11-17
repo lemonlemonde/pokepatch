@@ -8,6 +8,7 @@ import {
   adminMarkMessagesRead,
   adminMessageHistory,
 } from "@/lib/adminApi";
+import { changelogHasContent } from "@/lib/orderChangelog";
 
 function formatMessageTime(value) {
   if (!value) return "";
@@ -78,10 +79,7 @@ export default function AdminOrderMessagesPanel({ orderId }) {
           const isCustomer = message.sender === "customer";
           const open = expandedId === message.id;
           const changelog = message.changelog;
-          const hasChangelog =
-            (changelog?.cardGroups?.length ?? 0) > 0 ||
-            (changelog?.orderChanges?.length ?? 0) > 0 ||
-            Boolean(changelog?.quoteSummary);
+          const hasChangelog = changelogHasContent(changelog);
           return (
             <li
               key={message.id}
@@ -141,6 +139,7 @@ export default function AdminOrderMessagesPanel({ orderId }) {
                       cardGroups={changelog.cardGroups ?? []}
                       orderChanges={changelog.orderChanges ?? []}
                       quoteSummary={changelog.quoteSummary ?? null}
+                      quoteReceipt={changelog.quoteReceipt ?? null}
                     />
                   </div>
                 ) : null}

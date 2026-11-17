@@ -3,27 +3,14 @@
 import { useEffect, useState } from "react";
 import { ExpandPanel, REVEAL_EASE } from "@/components/ExpandReveal";
 
-function FaqAnswer({ items, answer }) {
-  if (items) {
-    return (
-      <dl className="space-y-2">
-        {items.map((item) => (
-          <div key={item.label} className="flex flex-col gap-0.5">
-            <dt className="font-medium text-ink">{item.label}</dt>
-            <dd>{item.text}</dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-
+function AnswerBody({ answer }) {
   const paragraphs = String(answer ?? "")
     .split(/\n\n+/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
   if (paragraphs.length <= 1) {
-    return <div>{answer}</div>;
+    return answer ? <div>{answer}</div> : null;
   }
 
   return (
@@ -31,6 +18,27 @@ function FaqAnswer({ items, answer }) {
       {paragraphs.map((paragraph, index) => (
         <p key={index}>{paragraph}</p>
       ))}
+    </div>
+  );
+}
+
+function FaqAnswer({ items, answer }) {
+  const hasItems = Boolean(items?.length);
+  if (!answer && !hasItems) return null;
+
+  return (
+    <div className="space-y-4">
+      {answer ? <AnswerBody answer={answer} /> : null}
+      {hasItems ? (
+        <dl className="space-y-3">
+          {items.map((item) => (
+            <div key={item.label} className="flex flex-col gap-0.5">
+              <dt className="font-medium text-ink">{item.label}</dt>
+              <dd>{item.text}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }

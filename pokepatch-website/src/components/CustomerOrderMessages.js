@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChangelogDiff } from "@/components/ChangelogDiff";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
+import { changelogHasContent } from "@/lib/orderChangelog";
 import { supabase } from "@/lib/supabaseClient";
 
 function formatMessageTime(value) {
@@ -194,10 +195,7 @@ export default function CustomerOrderMessages({
     const unread = !isCustomer && !message.read_at;
     const highlighted = highlightedMessageIds.has(message.id);
     const changelog = message.changelog;
-    const hasChangelog =
-      (changelog?.cardGroups?.length ?? 0) > 0 ||
-      (changelog?.orderChanges?.length ?? 0) > 0 ||
-      Boolean(changelog?.quoteSummary);
+    const hasChangelog = changelogHasContent(changelog);
     const body = messageBodyText(message.body);
 
     return (
@@ -255,6 +253,7 @@ export default function CustomerOrderMessages({
                   cardGroups={changelog.cardGroups ?? []}
                   orderChanges={changelog.orderChanges ?? []}
                   quoteSummary={changelog.quoteSummary ?? null}
+                  quoteReceipt={changelog.quoteReceipt ?? null}
                 />
               </div>
             ) : null}
