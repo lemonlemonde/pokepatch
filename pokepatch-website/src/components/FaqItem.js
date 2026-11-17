@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ExpandPanel, REVEAL_EASE } from "@/components/ExpandReveal";
 
 function FaqAnswer({ items, answer }) {
@@ -16,14 +16,44 @@ function FaqAnswer({ items, answer }) {
       </dl>
     );
   }
-  return <div>{answer}</div>;
-}
 
-export default function FaqItem({ question, answer, items }) {
-  const [open, setOpen] = useState(false);
+  const paragraphs = String(answer ?? "")
+    .split(/\n\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length <= 1) {
+    return <div>{answer}</div>;
+  }
 
   return (
-    <div className="border-t border-ink/10">
+    <div className="space-y-3">
+      {paragraphs.map((paragraph, index) => (
+        <p key={index}>{paragraph}</p>
+      ))}
+    </div>
+  );
+}
+
+export default function FaqItem({ id, question, answer, items }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!id) return undefined;
+
+    function openIfHashMatches() {
+      if (window.location.hash === `#${id}`) {
+        setOpen(true);
+      }
+    }
+
+    openIfHashMatches();
+    window.addEventListener("hashchange", openIfHashMatches);
+    return () => window.removeEventListener("hashchange", openIfHashMatches);
+  }, [id]);
+
+  return (
+    <div id={id} className="scroll-mt-28 border-t border-ink/10">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}

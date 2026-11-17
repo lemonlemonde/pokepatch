@@ -19,7 +19,7 @@ export function faqPageJsonLd(faqs) {
       name: faqQuestionForSchema(question),
       acceptedAnswer: {
         "@type": "Answer",
-        text: answer,
+        text: String(answer ?? "").replace(/\s+/g, " ").trim(),
       },
     })),
   };
