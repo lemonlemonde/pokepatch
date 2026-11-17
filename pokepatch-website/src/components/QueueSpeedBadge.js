@@ -1,11 +1,28 @@
 import {
   QUEUE_SPEED_EXPRESS,
+  QUEUE_SPEED_FAST,
   QUEUE_SPEED_IMMEDIATE,
   QUEUE_SPEED_LABEL,
-  isPaidQueueSpeed,
   normalizeQueueSpeed,
   queueSpeedControlClass,
 } from "@/lib/queueSpeed";
+
+function StandardClockIcon({ className = "h-2.5 w-2.5" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        d="M12 3.1a8.9 8.9 0 1 0 0 17.8 8.9 8.9 0 0 0 0-17.8zM5.6 12a6.4 6.4 0 1 1 12.8 0 6.4 6.4 0 0 1-12.8 0z"
+      />
+      <path d="M12 7.15c.4 0 .72.32.72.72v4.05l2.78 1.8a.72.72 0 1 1-.76 1.22l-3.12-2.02A.72.72 0 0 1 11.28 12.3V7.87c0-.4.32-.72.72-.72z" />
+    </svg>
+  );
+}
 
 function PriorityStarIcon({ className = "h-2.5 w-2.5" }) {
   return (
@@ -53,7 +70,10 @@ export function QueueSpeedMark({ speed, className = "h-2.5 w-2.5" }) {
   if (speed === QUEUE_SPEED_EXPRESS) {
     return <RushBoltIcon className={className} />;
   }
-  return <PriorityStarIcon className={className} />;
+  if (speed === QUEUE_SPEED_FAST) {
+    return <PriorityStarIcon className={className} />;
+  }
+  return <StandardClockIcon className={className} />;
 }
 
 function toneClass(speed) {
@@ -61,7 +81,7 @@ function toneClass(speed) {
 }
 
 /**
- * Speed mark for customer + admin UI. Standard has no badge.
+ * Speed mark for customer + admin UI.
  * Hover shows a CSS tooltip — not a native title (unreliable).
  */
 export default function QueueSpeedBadge({
@@ -70,7 +90,6 @@ export default function QueueSpeedBadge({
   className = "",
 }) {
   const normalized = normalizeQueueSpeed(speed, { isPriority });
-  if (!isPaidQueueSpeed(normalized)) return null;
   const label = QUEUE_SPEED_LABEL[normalized];
   return (
     <span

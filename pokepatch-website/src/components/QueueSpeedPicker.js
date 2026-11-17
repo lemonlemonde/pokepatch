@@ -40,7 +40,6 @@ function SpeedOption({
   selected,
   disabled,
   onChange,
-  showMark = true,
 }) {
   const checked = selected === speed;
   const tone = OPTION_TONE[speed];
@@ -64,16 +63,14 @@ function SpeedOption({
       />
       <span className="flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-2">
-          {showMark ? (
-            <span
-              className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${queueSpeedControlClass(
-                speed
-              )}`}
-              aria-hidden="true"
-            >
-              <QueueSpeedMark speed={speed} className="h-2.5 w-2.5" />
-            </span>
-          ) : null}
+          <span
+            className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${queueSpeedControlClass(
+              speed
+            )}`}
+            aria-hidden="true"
+          >
+            <QueueSpeedMark speed={speed} className="h-2.5 w-2.5" />
+          </span>
           <span className="text-sm font-bold text-ink">
             {QUEUE_SPEED_LABEL[speed]}
           </span>
@@ -112,11 +109,11 @@ export default function QueueSpeedPicker({
   return (
     <fieldset disabled={disabled} className="min-w-0">
       <legend className="mb-1 text-sm font-bold text-ink">
-        How soon should we start {cardLabel}?
+        Queue speed for {cardLabel}
       </legend>
       <p className="mb-3 text-xs leading-snug text-ink/55">
-        This choice applies to {cardLabel} only. If other cards use a different
-        speed, they become a separate order.
+        Applies to {cardLabel} only. Cards on a different speed become a
+        separate order.
       </p>
 
       <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink/45">
@@ -131,7 +128,6 @@ export default function QueueSpeedPicker({
             selected={selected}
             disabled={disabled}
             onChange={onChange}
-            showMark={speed !== QUEUE_SPEED_STANDARD}
           />
         ))}
       </div>
