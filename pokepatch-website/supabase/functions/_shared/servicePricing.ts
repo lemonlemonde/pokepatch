@@ -33,6 +33,21 @@ export const QUOTE_SERVICES: QuoteService[] = [
   { key: SERVICE_KEYS.SLAB, title: "Slab Cracking", listPrice: 10 },
 ];
 
+const LEGACY_SERVICE_DISPLAY_TITLES: Record<string, string> = {
+  "Precision Pressing": "Minor Damage",
+  Flattening: "Minor Damage",
+  "Advanced Restoration": "Major Damage",
+  "Heavy Damage": "Major Damage",
+  "Card Whitening": "Minor Whitening",
+};
+
+/** Normalize a quote line label for display (receipts, Discord, email). */
+export function normalizeServiceDisplayTitle(title: unknown): string {
+  const trimmed = String(title ?? "").trim();
+  if (!trimmed) return trimmed;
+  return LEGACY_SERVICE_DISPLAY_TITLES[trimmed] ?? trimmed;
+}
+
 export function serviceByKey(key: string): QuoteService | null {
   return QUOTE_SERVICES.find((service) => service.key === key) ?? null;
 }
@@ -110,6 +125,21 @@ const QUEUE_SPEED_LABELS = new Set([
   "fast queue",
   "priority service",
 ]);
+
+const QUEUE_SPEED_ADJUSTMENT_LABEL: Record<string, string> = {
+  fast: "Priority queue",
+  express: "Rush queue",
+  immediate: "Immediate start",
+};
+
+export function queueSpeedDescription(speed: string, cardCount: number): string {
+  const label = QUEUE_SPEED_ADJUSTMENT_LABEL[speed] ?? "Priority queue";
+  const rate = QUEUE_SPEED_FEE[speed] ?? 0;
+  const n = Math.floor(Number(cardCount));
+  const count = Number.isFinite(n) && n > 0 ? n : 0;
+  if (count <= 1) return `${label} ($${rate} per card)`;
+  return `${label} (${count} × $${rate})`;
+}
 
 /** Stored shape of orders.quote_bulk_counts (version 2). */
 export type CardHvRow = {
@@ -259,18 +289,40 @@ function isCanceledStatus(status: unknown): boolean {
   return s === "canceled" || s === "cancelled";
 }
 
-function isPriorityAdjustment(row: Record<string, unknown>): boolean {
+export function isPriorityAdjustmentRow(row: Record<string, unknown>): boolean {
   return QUEUE_SPEED_LABELS.has(String(row.description ?? "").trim().toLowerCase());
 }
 
 function cardQueueSpeed(card: TotalCard): string {
   const raw = String(card.queue_speed ?? "").trim().toLowerCase();
-  if (raw === "fast" || raw === "express" || raw === "standard" || raw === "immediate") return raw;
+  if (raw === "fast" || raw === "express" || raw === "standard" || raw === "immediate") {
+    return raw;
+  }
   return card.is_priority ? "fast" : "standard";
 }
 
+export function queueSpeedFeesFromCards(cards: TotalCard[]): Array<{
+  speed: string;
+  description: string;
+  amount: number;
+}> {
+  const counts: Record<string, number> = { fast: 0, express: 0, immediate: 0 };
+  for (const card of cards) {
+    if (isCanceledStatus(card.status)) continue;
+    const speed = cardQueueSpeed(card);
+    if (speed in counts) counts[speed] += 1;
+  }
+  return (["fast", "express", "immediate"] as const)
+    .filter((speed) => counts[speed] > 0)
+    .map((speed) => ({
+      speed,
+      description: queueSpeedDescription(speed, counts[speed]),
+      amount: roundMoney(counts[speed] * (QUEUE_SPEED_FEE[speed] ?? 0)),
+    }));
+}
+
 /** Signed $ for one adjustment row; percent rows apply to the services subtotal. */
-function adjustmentSignedAmount(row: Record<string, unknown>, subtotal: number): number {
+export function adjustmentSignedAmount(row: Record<string, unknown>, subtotal: number): number {
   const kind = String(row.kind ?? "adjustment");
   let dollars = Number(row.amount_dollars);
   if (!Number.isFinite(dollars) || dollars === 0) {
@@ -317,7 +369,7 @@ export function orderQuoteTotal(params: {
   );
   const adjustmentsTotal = roundMoney(
     stored.adjustments
-      .filter((row) => !isPriorityAdjustment(row))
+      .filter((row) => !isPriorityAdjustmentRow(row))
       .reduce((sum, row) => sum + adjustmentSignedAmount(row, servicesSubtotal), 0)
   );
   const priorityFee = roundMoney(
