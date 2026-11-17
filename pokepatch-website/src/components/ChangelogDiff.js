@@ -14,8 +14,6 @@ import {
 /**
  * Visual changelog: New / Removed / Updated card boxes + order lines.
  * editable=true allows removing groups/lines and editing line text.
- */
-/**
  * @param {Record<string, string>} [thumbByCardId] cardId → image URL
  */
 export function ChangelogDiff({

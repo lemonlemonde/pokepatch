@@ -1207,31 +1207,15 @@ export function quoteReceiptHasContent(receipt) {
   if (!receipt || typeof receipt !== "object") return false;
   if ((receipt.cards ?? []).length > 0) return true;
   if ((receipt.adjustments ?? []).length > 0) return true;
-  if (
-    (receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)
-  ) {
+  if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) {
     return true;
   }
-  if (Number(receipt.priority?.amount) > 0) return true;
   return false;
 }
 
-/** Queue-speed rows for a receipt, including a legacy single `priority` field. */
+/** Paid queue-speed rows on a receipt snapshot. */
 export function receiptQueueFeeRows(receipt) {
-  const fees = (receipt?.queueFees ?? []).filter(
-    (row) => Number(row?.amount) > 0
-  );
-  if (fees.length > 0) return fees;
-  if (Number(receipt?.priority?.amount) > 0) {
-    return [
-      {
-        speed: "fast",
-        description: receipt.priority.description || "Priority queue",
-        amount: receipt.priority.amount,
-      },
-    ];
-  }
-  return [];
+  return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
 }
 
 /**

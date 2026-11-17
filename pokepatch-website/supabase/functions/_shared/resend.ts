@@ -33,7 +33,6 @@ export type QuoteReceiptPayload = {
   cards?: QuoteReceiptCard[];
   adjustments?: QuoteReceiptAdjustment[];
   queueFees?: QuoteReceiptQueueFee[];
-  priority?: { description?: string; amount?: number } | null;
   total?: number;
 };
 
@@ -163,25 +162,13 @@ export function quoteReceiptHasContent(
   if ((receipt.cards?.length ?? 0) > 0) return true;
   if ((receipt.adjustments?.length ?? 0) > 0) return true;
   if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) return true;
-  if (Number(receipt.priority?.amount) > 0) return true;
   return false;
 }
 
 function receiptQueueFeeRows(
   receipt?: QuoteReceiptPayload | null
 ): QuoteReceiptQueueFee[] {
-  const fees = (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
-  if (fees.length > 0) return fees;
-  if (Number(receipt?.priority?.amount) > 0) {
-    return [
-      {
-        speed: "fast",
-        description: receipt?.priority?.description || "Priority queue",
-        amount: receipt?.priority?.amount,
-      },
-    ];
-  }
-  return [];
+  return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
 }
 
 export function hasChangelogContent(changelog?: ChangelogPayload | null): boolean {

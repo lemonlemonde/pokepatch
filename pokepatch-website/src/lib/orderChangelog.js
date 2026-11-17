@@ -9,6 +9,7 @@ import {
   quoteAdjustmentSignedAmount,
   quoteItemsSubtotal,
   quoteReceiptHasContent,
+  receiptQueueFeeRows,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
   cardsWithQuoteHv,
@@ -796,13 +797,12 @@ function formatReceiptPercent(percent) {
   return n % 1 === 0 ? String(n) : n.toFixed(2);
 }
 
-export function formatQuoteReceiptPlainText(receipt) {
+function formatQuoteReceiptPlainText(receipt) {
   if (!quoteReceiptHasContent(receipt)) return "";
   const lines = [];
   (receipt.cards ?? []).forEach((card, index) => {
     const prefix = index > 0 ? "+ " : "";
-    lines.push(`${prefix}${card.label}`);
-    lines.push(`  ${formatMoney(card.subtotal)}`);
+    lines.push(`${prefix}${card.label}  ${formatMoney(card.subtotal)}`);
     for (const line of card.lines ?? []) {
       lines.push(`  ${line.label}  ${formatMoney(line.amount)}`);
     }
@@ -816,17 +816,8 @@ export function formatQuoteReceiptPlainText(receipt) {
       `${sign}${adj.description}${pctText}  ${formatMoney(adj.amount)}`
     );
   }
-  const queueFees = (receipt.queueFees ?? []).filter(
-    (row) => Number(row?.amount) > 0
-  );
-  if (queueFees.length > 0) {
-    for (const row of queueFees) {
-      lines.push(`+ ${row.description}  ${formatMoney(row.amount)}`);
-    }
-  } else if (Number(receipt.priority?.amount) > 0) {
-    lines.push(
-      `+ ${receipt.priority.description}  ${formatMoney(receipt.priority.amount)}`
-    );
+  for (const row of receiptQueueFeeRows(receipt)) {
+    lines.push(`+ ${row.description}  ${formatMoney(row.amount)}`);
   }
   lines.push(`= Total  ${formatMoney(receipt.total)}`);
   return lines.join("\n");

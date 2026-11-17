@@ -95,7 +95,7 @@ function notifyModal(params: {
             customId: FIELD.MESSAGE,
             style: TextInputStyle.PARAGRAPH,
             required: false,
-            placeholder: "Shown above the quote summary in the email. Leave blank to send just the summary.",
+            placeholder: "Shown above the quote in the email. Leave blank to send just the quote.",
             maxLength: MAX_MESSAGE_CHARS,
           }),
           "Same as the admin editor's Save & notify"
@@ -136,7 +136,7 @@ export async function handleNotifyButton(interaction: Interaction): Promise<Resp
   );
 }
 
-/** Email the stored quote (as a changelog) and log it like the admin editor does. */
+/** Email the stored quote receipt and log it like the admin editor does. */
 export function sendQuoteNotification(params: {
   supabase: SupabaseClient;
   context: OrderContext;

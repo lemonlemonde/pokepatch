@@ -3779,7 +3779,7 @@ Deno.serve(async (req) => {
           subject,
           body: messageBody,
           orderDisplayId,
-          changelog: hasChangelog ? (changelog as never) : null,
+          changelog: hasChangelog ? changelog : null,
         });
 
         const emailStatus = sendResult.ok ? "sent" : "failed";
