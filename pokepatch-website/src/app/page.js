@@ -13,9 +13,11 @@ import {
   marketingExtras,
   marketingHighValue,
   marketingServices,
-  CARD_WHITENING_WARNING,
   QUOTE_SERVICES,
   SERVICE_KEYS,
+  WHITENING_FAQ_ID,
+  WHITENING_FAQ_PARAGRAPHS,
+  WHITENING_FAQ_QUESTION,
   servicePriceDisplay,
 } from "@/lib/servicePricing";
 import { queueSpeedFaqEntries } from "@/lib/queueSpeed";
@@ -76,8 +78,11 @@ const faqs = [
   },
   ...queueSpeedFaqEntries(),
   {
-    question: "Can whitening on cards be fixed?",
-    answer: `${CARD_WHITENING_WARNING} ${whiteningPricingSentence}`,
+    id: WHITENING_FAQ_ID,
+    question: WHITENING_FAQ_QUESTION,
+    answer: [...WHITENING_FAQ_PARAGRAPHS, whiteningPricingSentence].join(
+      "\n\n"
+    ),
   },
   {
     question: "Is shipping covered?",
@@ -200,7 +205,7 @@ export default function Home() {
           </ScrollReveal>
         </section>
 
-        <section className="marketing-section">
+        <section id="faq" className="marketing-section scroll-mt-28">
           <MarketingSectionHeading note="FAQ">
             Good to know
           </MarketingSectionHeading>

@@ -36,11 +36,23 @@ export const SERVICE_KEYS = {
 const SERVICE_UNIT = "/ card";
 
 /**
- * Shared risk copy for Card Whitening (homepage, quote form, admin).
- * Keep in sync with FAQ wording on the homepage.
+ * Short risk line for Card Whitening (service cards, quote form notes, admin).
+ * Full customer copy lives in WHITENING_FAQ_* and the homepage FAQ.
  */
 export const CARD_WHITENING_WARNING =
   "The more whitening there is, the higher the risk that PSA may mark the card as altered.";
+
+/** Homepage FAQ hash and quote-form link target. */
+export const WHITENING_FAQ_ID = "faq-whitening";
+export const WHITENING_FAQ_HREF = `/#${WHITENING_FAQ_ID}`;
+export const WHITENING_FAQ_QUESTION = "Can whitening on cards be fixed?";
+
+/** Full whitening FAQ body, without the pricing sentence. */
+export const WHITENING_FAQ_PARAGRAPHS = [
+  "Whitening restoration is not guaranteed. Whether a specific area of whitening can be improved cannot be determined until after ink is applied — and even then, the ink may not stick, and the result may not come out perfect.",
+  "We've successfully graded many cards through PSA and BGS that have been colored in the past. That does not mean there is no alteration risk. Every card with restored whitening carries an alteration risk. The more whitening there is, the higher that risk.",
+  "The whitening fee is due whether or not the fix is successful.",
+];
 
 /** True for either Card Whitening tier (shared risk copy applies to both). */
 export function isWhiteningServiceKey(serviceKey) {

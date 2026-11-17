@@ -9,6 +9,7 @@ import {
 } from "@/components/CardPhotoPreviews";
 import Button from "@/components/Button";
 import WhiteningDisclaimerDialog from "@/components/WhiteningDisclaimerDialog";
+import WhiteningFaqAcknowledgment from "@/components/WhiteningFaqAcknowledgment";
 import { useAuth } from "@/contexts/AuthContext";
 import { CONTACT_TYPES } from "@/lib/contacts";
 import {
@@ -139,9 +140,24 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [whiteningDisclaimerCardId, setWhiteningDisclaimerCardId] =
     useState(null);
+  const [whiteningFaqAcked, setWhiteningFaqAcked] = useState(false);
   const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
   const splitConfirmedRef = useRef(false);
   const formRef = useRef(null);
+  const initialWhiteningCardIds = useMemo(
+    () =>
+      new Set(
+        seed.cards
+          .filter((card) => (card.damageTags ?? []).includes("whitening"))
+          .map((card) => card.id)
+      ),
+    [seed]
+  );
+  const addedWhitening = draft.cards.some(
+    (card) =>
+      (card.damageTags ?? []).includes("whitening") &&
+      !initialWhiteningCardIds.has(card.id)
+  );
 
   useEffect(() => {
     if (!user || !supabase || profileLoadedRef.current) return;
@@ -287,6 +303,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       // Only when there are literally no card rows; started or blank rows get
       // per-field errors below so this never reads as "no cards" otherwise.
       noCards: draft.cards.length === 0,
+      whiteningFaqAck: addedWhitening && !whiteningFaqAcked,
     };
     const cardFieldErrors = (card) => ({
       cardName: card.cardName.trim() === "",
@@ -315,6 +332,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       !errors.deliveryMethod &&
       !errors.contacts &&
       !errors.noCards &&
+      !errors.whiteningFaqAck &&
       !hasCardFieldError
     );
   }
@@ -501,6 +519,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       (fieldErrors.deliveryMethod ||
         fieldErrors.contacts ||
         fieldErrors.noCards ||
+        fieldErrors.whiteningFaqAck ||
         Object.values(fieldErrors.cards ?? {}).some(
           (row) => row.cardName || row.damageTags || row.files
         ))
@@ -1013,6 +1032,22 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       </section>
 
       <div className="space-y-3 border-t border-ink/10 pt-6">
+        {addedWhitening ? (
+          <WhiteningFaqAcknowledgment
+            checked={whiteningFaqAcked}
+            invalid={Boolean(fieldErrors?.whiteningFaqAck)}
+            disabled={busy}
+            actionWord="saving"
+            onChange={(next) => {
+              setWhiteningFaqAcked(next);
+              if (next) {
+                setFieldErrors((prev) =>
+                  prev ? { ...prev, whiteningFaqAck: false } : prev
+                );
+              }
+            }}
+          />
+        ) : null}
         {hasMixedCardPriority(completeCards) ? (
           <p
             className="rounded-lg border border-ink/15 bg-ink/[0.05] px-4 py-3 text-sm text-ink/75"

@@ -93,6 +93,9 @@ export function describeQuoteValidationErrors(errors, cards) {
     lines.push("Add at least one card.");
   }
   lines.push(...describeCardFieldErrors(errors.cards, cards));
+  if (errors.whiteningFaqAck) {
+    lines.push("Confirm you have read the whitening FAQ.");
+  }
   return lines;
 }
 
@@ -119,6 +122,8 @@ export function inlineFieldErrorMessage(key, detail) {
       return "Add at least one photo.";
     case "noCards":
       return "Add at least one card to continue.";
+    case "whiteningFaqAck":
+      return "Confirm you have read the whitening FAQ.";
     default:
       return null;
   }
@@ -228,5 +233,12 @@ export function isOrderEditCardEmpty(card) {
     card.description.trim() === "" &&
     card.existingImages.length === 0 &&
     card.newFiles.length === 0
+  );
+}
+
+/** True when any card row has the whitening damage tag selected. */
+export function cardsHaveWhitening(cards) {
+  return (cards ?? []).some((card) =>
+    (card.damageTags ?? []).includes("whitening")
   );
 }

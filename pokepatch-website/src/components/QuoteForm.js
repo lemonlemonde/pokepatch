@@ -7,6 +7,7 @@ import Button from "@/components/Button";
 import { StagedCardPhotoPreviews } from "@/components/CardPhotoPreviews";
 import QuoteLoginDialog from "@/components/QuoteLoginDialog";
 import WhiteningDisclaimerDialog from "@/components/WhiteningDisclaimerDialog";
+import WhiteningFaqAcknowledgment from "@/components/WhiteningFaqAcknowledgment";
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -32,6 +33,7 @@ import {
 } from "@/lib/queueSpeed";
 import {
   AccountFieldNote,
+  cardsHaveWhitening,
   copyFileList,
   describeQuoteValidationErrors,
   emptyContactValues,
@@ -95,6 +97,7 @@ function getFieldErrors({
   deliveryMethod,
   contactValues,
   cards,
+  whiteningFaqAcked,
 }) {
   const errors = {
     firstName: firstName.trim() === "",
@@ -107,6 +110,7 @@ function getFieldErrors({
     // has started (or left blank) gets per-field errors below instead, so the
     // "no cards" message can never show when something was entered.
     noCards: cards.length === 0,
+    whiteningFaqAck: cardsHaveWhitening(cards) && !whiteningFaqAcked,
   };
 
   const incompleteCards = cards.filter(
@@ -141,6 +145,7 @@ function hasFieldErrors(errors) {
     return true;
   }
   if (errors.noCards) return true;
+  if (errors.whiteningFaqAck) return true;
   return Object.keys(errors.cards).length > 0;
 }
 
@@ -185,6 +190,10 @@ function getFirstErrorElement(errors, cards) {
         document.getElementById(`card_photos_${card.id}`)
       );
     }
+  }
+
+  if (errors.whiteningFaqAck) {
+    return document.getElementById("whitening_faq_ack");
   }
 
   return null;
@@ -235,6 +244,7 @@ export default function QuoteForm() {
   const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const [whiteningDisclaimerCardId, setWhiteningDisclaimerCardId] =
     useState(null);
+  const [whiteningFaqAcked, setWhiteningFaqAcked] = useState(false);
   const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
   const splitConfirmedRef = useRef(false);
   // Set when the visitor chose "continue as guest" on an email that already has
@@ -601,6 +611,7 @@ export default function QuoteForm() {
       deliveryMethod,
       contactValues,
       cards,
+      whiteningFaqAcked,
     });
 
     if (hasFieldErrors(errors)) {
@@ -810,6 +821,7 @@ export default function QuoteForm() {
       setLockedTypes({});
       setPreferredContactId("email");
       setCards([emptyCard()]);
+      setWhiteningFaqAcked(false);
       setFieldErrors(null);
       setCardFileErrors({});
       formRef.current?.reset();
@@ -1420,7 +1432,22 @@ export default function QuoteForm() {
         aria-hidden="true"
       />
 
-      <div className="space-y-2">
+      <div className="space-y-3">
+        {cardsHaveWhitening(cards) ? (
+          <WhiteningFaqAcknowledgment
+            checked={whiteningFaqAcked}
+            invalid={Boolean(fieldErrors?.whiteningFaqAck)}
+            onChange={(next) => {
+              onFormInteraction();
+              setWhiteningFaqAcked(next);
+              if (next) {
+                setFieldErrors((prev) =>
+                  prev ? { ...prev, whiteningFaqAck: false } : prev
+                );
+              }
+            }}
+          />
+        ) : null}
         {hasMixedCardPriority(completeCards) ? (
           <p
             className="rounded-lg border border-ink/15 bg-ink/[0.05] px-4 py-3 text-sm text-ink/75"
