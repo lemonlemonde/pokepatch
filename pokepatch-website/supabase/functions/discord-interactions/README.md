@@ -17,7 +17,7 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use these buttons.
 
 When a customer submits `/quote/`, `notify` posts a header into `DISCORD_QUOTES_CHANNEL_ID`, opens a **thread** (`#42 · Customer`), posts **one message per card**, then a **wrap-up**. Each card message has:
 
-- card name · set, ⭐ if priority
+- card name · set, ⭐ Priority, ⚡ Rush, ▶ Immediate
 - customer damage tags + description
 - every customer photo (media gallery, up to 10)
 - current quote (or _not quoted yet_)

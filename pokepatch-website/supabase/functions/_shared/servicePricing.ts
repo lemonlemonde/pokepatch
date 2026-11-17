@@ -93,9 +93,23 @@ export function roundMoney(amount: number): number {
   return Math.round(amount * 100) / 100;
 }
 
-/** Paid priority service — flat fee per priority card. */
+/** Queue-speed fees — kept for Discord quote totals. */
 export const PRIORITY_FEE_PER_CARD = 15;
-const PRIORITY_ADJUSTMENT_LABEL = "priority service";
+export const EXPRESS_FEE_PER_CARD = 30;
+export const IMMEDIATE_FEE_PER_CARD = 100;
+const QUEUE_SPEED_FEE: Record<string, number> = {
+  fast: PRIORITY_FEE_PER_CARD,
+  express: EXPRESS_FEE_PER_CARD,
+  immediate: IMMEDIATE_FEE_PER_CARD,
+};
+const QUEUE_SPEED_LABELS = new Set([
+  "immediate start",
+  "rush queue",
+  "express queue",
+  "priority queue",
+  "fast queue",
+  "priority service",
+]);
 
 /** Stored shape of orders.quote_bulk_counts (version 2). */
 export type CardHvRow = {
@@ -233,6 +247,7 @@ type TotalCard = {
   id: string;
   status?: string | null;
   is_priority?: boolean | null;
+  queue_speed?: string | null;
 };
 type TotalItem = {
   card_id?: string | null;
@@ -245,7 +260,13 @@ function isCanceledStatus(status: unknown): boolean {
 }
 
 function isPriorityAdjustment(row: Record<string, unknown>): boolean {
-  return String(row.description ?? "").trim().toLowerCase() === PRIORITY_ADJUSTMENT_LABEL;
+  return QUEUE_SPEED_LABELS.has(String(row.description ?? "").trim().toLowerCase());
+}
+
+function cardQueueSpeed(card: TotalCard): string {
+  const raw = String(card.queue_speed ?? "").trim().toLowerCase();
+  if (raw === "fast" || raw === "express" || raw === "standard" || raw === "immediate") return raw;
+  return card.is_priority ? "fast" : "standard";
 }
 
 /** Signed $ for one adjustment row; percent rows apply to the services subtotal. */
@@ -299,8 +320,12 @@ export function orderQuoteTotal(params: {
       .filter((row) => !isPriorityAdjustment(row))
       .reduce((sum, row) => sum + adjustmentSignedAmount(row, servicesSubtotal), 0)
   );
-  const priorityCount = billable.filter((card) => Boolean(card.is_priority)).length;
-  const priorityFee = roundMoney(priorityCount * PRIORITY_FEE_PER_CARD);
+  const priorityFee = roundMoney(
+    billable.reduce((sum, card) => {
+      const speed = cardQueueSpeed(card);
+      return sum + (QUEUE_SPEED_FEE[speed] ?? 0);
+    }, 0)
+  );
 
   return {
     servicesSubtotal,

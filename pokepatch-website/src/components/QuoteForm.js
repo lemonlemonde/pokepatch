@@ -19,11 +19,17 @@ import { useUnsavedChangesGuard } from "@/lib/useUnsavedChangesGuard";
 import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
 import PrioritySplitDialog from "@/components/PrioritySplitDialog";
+import QueueSpeedPicker from "@/components/QueueSpeedPicker";
 import {
-  priorityServicePricingHint,
   CARD_WHITENING_WARNING,
   hasMixedCardPriority,
 } from "@/lib/servicePricing";
+import {
+  QUEUE_SPEED_STANDARD,
+  cardQueueSpeed,
+  isPaidQueueSpeed,
+  uniqueQueueSpeeds,
+} from "@/lib/queueSpeed";
 import {
   AccountFieldNote,
   copyFileList,
@@ -49,7 +55,7 @@ function emptyCard() {
     damageTags: [],
     description: "",
     files: [],
-    isPriority: false,
+    queueSpeed: QUEUE_SPEED_STANDARD,
   };
 }
 
@@ -63,7 +69,7 @@ function initialCard() {
     damageTags: [],
     description: "",
     files: [],
-    isPriority: false,
+    queueSpeed: QUEUE_SPEED_STANDARD,
   };
 }
 
@@ -643,8 +649,13 @@ export default function QuoteForm() {
     }
     splitConfirmedRef.current = false;
 
+    const speeds = uniqueQueueSpeeds(completeCards);
+    const staySpeed = speeds[0] ?? QUEUE_SPEED_STANDARD;
+    const splitOrderIds = {};
+    for (const speed of speeds.slice(1)) {
+      splitOrderIds[speed] = crypto.randomUUID();
+    }
     const orderId = crypto.randomUUID();
-    const priorityOrderId = willSplit ? crypto.randomUUID() : null;
     const cardsPayload = [];
     let phase = "upload";
 
@@ -652,8 +663,9 @@ export default function QuoteForm() {
       for (const card of completeCards) {
         const cardId = crypto.randomUUID();
         const images = [];
+        const speed = cardQueueSpeed(card);
         const cardOrderId =
-          willSplit && card.isPriority ? priorityOrderId : orderId;
+          willSplit && speed !== staySpeed ? splitOrderIds[speed] : orderId;
 
         for (let i = 0; i < card.files.length; i += 1) {
           const { file } = card.files[i];
@@ -680,7 +692,8 @@ export default function QuoteForm() {
           set_name: card.setName.trim() || null,
           description: card.description.trim(),
           damage_tags: normalizeDamageTags(card.damageTags),
-          is_priority: Boolean(card.isPriority),
+          queue_speed: speed,
+          is_priority: isPaidQueueSpeed(speed),
           images,
         });
       }
@@ -725,7 +738,7 @@ export default function QuoteForm() {
           value: contactValues[type.value].trim(),
         })),
         cards: cardsPayload,
-        ...(priorityOrderId ? { priority_order_id: priorityOrderId } : {}),
+        ...(willSplit ? { split_order_ids: splitOrderIds } : {}),
       };
 
       const { data: orderResult, error: rpcError } = await supabase.rpc("create_order", {
@@ -765,12 +778,16 @@ export default function QuoteForm() {
         }
       }
 
-      const priorityCardCount = completeCards.filter((c) => c.isPriority).length;
       capture("quote_form_submitted", {
         card_count: completeCards.length,
         delivery_method: deliveryMethod,
         contact_method_count: filledContactTypes.length,
-        priority_card_count: priorityCardCount,
+        fast_card_count: completeCards.filter(
+          (card) => cardQueueSpeed(card) === "fast"
+        ).length,
+        express_card_count: completeCards.filter(
+          (card) => cardQueueSpeed(card) === "express"
+        ).length,
         split: Boolean(orderResult?.split),
       });
 
@@ -1116,9 +1133,10 @@ export default function QuoteForm() {
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
           <p className="mt-1 text-sm text-ink/70">
-            Add up to {MAX_CARDS} cards. For more than {MAX_CARDS} cards,
-            submit as 1 card entry with a photo of the entire bulk lot and a
-            combined description, submit a separate order, or reach out.
+            Add up to {MAX_CARDS} cards. Queue speed is chosen per card. For
+            more than {MAX_CARDS} cards, submit as 1 card entry with a photo of
+            the entire bulk lot and a combined description, submit a separate
+            order, or reach out.
           </p>
         </div>
 
@@ -1153,6 +1171,16 @@ export default function QuoteForm() {
                   Remove card
                 </button>
               </div>
+
+              <QueueSpeedPicker
+                name={`quote-queue-${card.id}`}
+                cardNumber={index + 1}
+                value={cardQueueSpeed(card)}
+                onChange={(queueSpeed) => {
+                  onFormInteraction();
+                  updateCard(card.id, { queueSpeed });
+                }}
+              />
 
               <div>
                 <label
@@ -1321,31 +1349,6 @@ export default function QuoteForm() {
                   }`}
                 />
               </div>
-
-              <label
-                className={`${optionClassName()} ${
-                  card.isPriority
-                    ? "border-ink/35 bg-ink/[0.08] ring-1 ring-ink/20"
-                    : ""
-                }`.trim()}
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(card.isPriority)}
-                  onChange={(e) => {
-                    onFormInteraction();
-                    updateCard(card.id, { isPriority: e.target.checked });
-                  }}
-                  className="mt-1 h-4 w-4 shrink-0 accent-ink"
-                />
-                <span className="text-sm leading-relaxed text-ink/80">
-                  <span className="font-bold text-ink">Priority service</span>
-                  <span className="mt-1 block text-ink/65">
-                    {priorityServicePricingHint(1)} Faster queue for this card
-                    only.
-                  </span>
-                </span>
-              </label>
             </div>
           );
         })}
@@ -1418,6 +1421,15 @@ export default function QuoteForm() {
       />
 
       <div className="space-y-2">
+        {hasMixedCardPriority(completeCards) ? (
+          <p
+            className="rounded-lg border border-ink/15 bg-ink/[0.05] px-4 py-3 text-sm text-ink/75"
+            role="status"
+          >
+            Cards on different queue speeds become separate orders — one per
+            speed.
+          </p>
+        ) : null}
         {showValidationError && (
           <div
             className="rounded-2xl border-2 border-error bg-error/15 px-4 py-3 text-sm text-ink"
@@ -1467,7 +1479,8 @@ export default function QuoteForm() {
     />
     <PrioritySplitDialog
       open={splitConfirmOpen}
-      confirmLabel="Submit both orders"
+      orderCount={Math.max(2, uniqueQueueSpeeds(completeCards).length)}
+      confirmLabel="Submit separate orders"
       onCancel={() => {
         setSplitConfirmOpen(false);
         splitConfirmedRef.current = false;

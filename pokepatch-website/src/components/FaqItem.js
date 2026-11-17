@@ -4,19 +4,21 @@ import { useState } from "react";
 import { ExpandPanel, REVEAL_EASE } from "@/components/ExpandReveal";
 
 function FaqAnswer({ items, answer }) {
-  if (items) {
-    return (
-      <dl className="space-y-2">
-        {items.map((item) => (
-          <div key={item.label} className="flex flex-col gap-0.5">
-            <dt className="font-medium text-ink">{item.label}</dt>
-            <dd>{item.text}</dd>
-          </div>
-        ))}
-      </dl>
-    );
-  }
-  return <div>{answer}</div>;
+  return (
+    <div className="space-y-4">
+      {answer ? <div>{answer}</div> : null}
+      {items?.length ? (
+        <dl className="space-y-3">
+          {items.map((item) => (
+            <div key={item.label} className="flex flex-col gap-0.5">
+              <dt className="font-medium text-ink">{item.label}</dt>
+              <dd>{item.text}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+    </div>
+  );
 }
 
 export default function FaqItem({ question, answer, items }) {

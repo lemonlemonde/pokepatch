@@ -8,11 +8,9 @@ import {
   groupQuoteItemsByCard,
   isPriorityAdjustmentRow,
   normalizeServiceDisplayTitle,
-  priorityServiceDescription,
-  priorityServiceFee,
   quoteAdjustmentLines,
   quoteItemLineTotal,
-  resolvePriorityCardCount,
+  resolveQueueSpeedFees,
 } from "@/lib/servicePricing";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
@@ -26,6 +24,7 @@ export default function QuoteReceipt({
   cards = null,
   adjustments = null,
   isPriority = false,
+  queueSpeed = null,
   cardCount = null,
   title = "Quote total",
   className = "",
@@ -39,18 +38,20 @@ export default function QuoteReceipt({
     (row) => !isPriorityAdjustmentRow(row)
   );
   const adjustmentLines = quoteAdjustmentLines(nonPriorityAdjustments, lines);
-  const priorityCount = resolvePriorityCardCount({
+  const queueFees = resolveQueueSpeedFees({
     cards,
     adjustments,
     isPriority,
+    queueSpeed,
     cardCount,
   });
-  const priorityFee = priorityServiceFee(priorityCount);
+  const queueFeeTotal = queueFees.reduce((sum, row) => sum + row.fee, 0);
   const total = computeQuoteTotal({
     items,
     cards,
     adjustments,
     isPriority,
+    queueSpeed,
     cardCount,
   });
   const bodyOpen = !collapsible || open;
@@ -59,7 +60,7 @@ export default function QuoteReceipt({
     lines.length === 0 &&
     cardGroups.length === 0 &&
     adjustmentLines.length === 0 &&
-    priorityFee <= 0
+    queueFeeTotal <= 0
   ) {
     return null;
   }
@@ -143,15 +144,18 @@ export default function QuoteReceipt({
         </div>
       ))}
 
-      {priorityFee > 0 ? (
-        <div className="flex items-start justify-between gap-3 text-ink/80">
+      {queueFees.map((row) => (
+        <div
+          key={row.speed}
+          className="flex items-start justify-between gap-3 text-ink/80"
+        >
           <span className="min-w-0">
             <span className="text-ink/45">+ </span>
-            {priorityServiceDescription(priorityCount)}
+            {row.description}
           </span>
-          <span className="shrink-0 tabular-nums">{formatMoney(priorityFee)}</span>
+          <span className="shrink-0 tabular-nums">{formatMoney(row.fee)}</span>
         </div>
-      ) : null}
+      ))}
 
       <div className="flex items-center justify-between gap-3 border-t border-dashed border-ink/20 pt-2 font-sans">
         <span className="font-semibold text-ink">= Total</span>

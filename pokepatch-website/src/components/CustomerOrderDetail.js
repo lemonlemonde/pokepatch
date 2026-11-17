@@ -5,7 +5,8 @@ import Link from "next/link";
 import CustomerOrderEditor from "@/components/CustomerOrderEditor";
 import CustomerOrderContract from "@/components/CustomerOrderContract";
 import CustomerOrderMessages from "@/components/CustomerOrderMessages";
-import CustomerPriorityBadge from "@/components/CustomerPriorityBadge";
+import QueueSpeedBadge from "@/components/QueueSpeedBadge";
+import { paidQueueChromeClass } from "@/lib/queueSpeed";
 import MediaLightbox from "@/components/MediaLightbox";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import RestorationDownloadButton from "@/components/RestorationDownloadButton";
@@ -382,6 +383,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
       cards: quoteCards,
       adjustments: quoteAdjustments,
       isPriority,
+      queueSpeed: order.queue_speed,
     });
 
   function handleSaved(next) {
@@ -418,9 +420,15 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               order.pending_kind
             )}`}
           >
-            {customerOrderStatusChipLabel(order, { isPriority })}
+            {customerOrderStatusChipLabel(order, {
+              isPriority,
+              queueSpeed: order.queue_speed,
+            })}
           </span>
-          {isPriority ? <CustomerPriorityBadge /> : null}
+          <QueueSpeedBadge
+            speed={order.queue_speed}
+            isPriority={isPriority}
+          />
           {order.queue_position != null ? (
             <Link
               href={`/queue/?order=${encodeURIComponent(order.display_id)}`}
@@ -461,10 +469,9 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
           cards={quoteCards}
           adjustments={quoteAdjustments}
           isPriority={isPriority}
+          queueSpeed={order.queue_speed}
           cardCount={billableQuoteCards(quoteCards).length}
-          className={
-            isPriority ? "border-ink/25 bg-ink/[0.07]" : undefined
-          }
+          className={paidQueueChromeClass(order.queue_speed, isPriority) || undefined}
         />
       ) : null}
 

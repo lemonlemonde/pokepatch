@@ -1,8 +1,6 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import {
-  PRIORITY_FEE_PER_CARD,
-  billableQuoteCards,
-} from "@/lib/servicePricing";
+import { billableQuoteCards } from "@/lib/servicePricing";
+import { QUEUE_SPEED_FEE, cardQueueSpeed } from "@/lib/queueSpeed";
 
 export const ORDER_CONTRACTS_BUCKET = "order-contracts";
 export const POKEPATCH_REPRESENTATIVE_NAME = "Ray Li";
@@ -200,9 +198,8 @@ export function contractRestorationFeeForCard(card, draft) {
   const hvEntry = draft?.quote_card_hv?.[cardId];
   const hv = parseExactMoney(hvEntry?.amount_dollars);
   if (hv != null && hv > 0) fee += hv;
-  if (Boolean(card?.is_priority)) {
-    fee += PRIORITY_FEE_PER_CARD;
-  }
+  const speedFee = QUEUE_SPEED_FEE[cardQueueSpeed(card)] ?? 0;
+  if (speedFee > 0) fee += speedFee;
   return fee;
 }
 

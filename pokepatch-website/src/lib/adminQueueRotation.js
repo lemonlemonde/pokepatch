@@ -1,21 +1,28 @@
 /**
- * Admin To do → In progress fairness: pull 2 priority orders, then 1 regular.
+ * Admin To do → In progress fairness:
+ * Immediate always goes next and does not consume the cadence.
+ * Among the rest: Rush × 3, Priority × 2, Standard × 1. Skip empty lanes.
  * Cycle position lives in localStorage so refresh keeps your place.
  */
 
-const ADMIN_QUEUE_ROTATION_KEY = "pokepatch.admin.queueRotation";
-export const PRIORITIES_PER_REGULAR = 2;
+import {
+  QUEUE_PULL_CYCLE,
+  QUEUE_SPEED_IMMEDIATE,
+  QUEUE_SPEED_STANDARD,
+  isImmediateQueueSpeed,
+  normalizeQueueSpeed,
+} from "@/lib/queueSpeed";
 
-function normalizePrioritiesRemaining(value) {
+const ADMIN_QUEUE_ROTATION_KEY = "pokepatch.admin.queueRotation";
+
+function normalizeCycleIndex(value) {
   const n = Number(value);
-  if (!Number.isFinite(n) || n < 0 || n > PRIORITIES_PER_REGULAR) {
-    return PRIORITIES_PER_REGULAR;
-  }
-  return Math.floor(n);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n) % QUEUE_PULL_CYCLE.length;
 }
 
 export function defaultQueueRotation() {
-  return { prioritiesRemaining: PRIORITIES_PER_REGULAR };
+  return { cycleIndex: 0 };
 }
 
 export function readQueueRotation() {
@@ -24,11 +31,11 @@ export function readQueueRotation() {
     const raw = window.localStorage.getItem(ADMIN_QUEUE_ROTATION_KEY);
     if (!raw) return defaultQueueRotation();
     const parsed = JSON.parse(raw);
-    return {
-      prioritiesRemaining: normalizePrioritiesRemaining(
-        parsed?.prioritiesRemaining
-      ),
-    };
+    if (parsed?.cycleIndex != null) {
+      return { cycleIndex: normalizeCycleIndex(parsed.cycleIndex) };
+    }
+    // Legacy 2-priority : 1-regular counter — start a fresh cadence.
+    return defaultQueueRotation();
   } catch {
     return defaultQueueRotation();
   }
@@ -39,52 +46,69 @@ export function writeQueueRotation(state) {
   try {
     window.localStorage.setItem(
       ADMIN_QUEUE_ROTATION_KEY,
-      JSON.stringify({
-        prioritiesRemaining: normalizePrioritiesRemaining(
-          state?.prioritiesRemaining
-        ),
-      })
+      JSON.stringify({ cycleIndex: normalizeCycleIndex(state?.cycleIndex) })
     );
   } catch {
     // ignore quota / private mode
   }
 }
 
-/** After a To do → In progress pull, advance the 2P→1R cadence. */
-export function advanceQueueRotation(current, pulledIsPriority) {
-  if (pulledIsPriority) {
-    return {
-      prioritiesRemaining: Math.max(
-        0,
-        normalizePrioritiesRemaining(current?.prioritiesRemaining) - 1
-      ),
-    };
-  }
-  return { prioritiesRemaining: PRIORITIES_PER_REGULAR };
+function orderSpeed(order) {
+  return normalizeQueueSpeed(order?.queue_speed, {
+    isPriority: order?.is_priority,
+  });
 }
 
 /**
- * Pick the next To do order under the 2-priority : 1-regular rule.
- * `todoOrders` should already be column-sorted (priority first, then FIFO
- * within each lane).
- * Falls back to the other lane when the preferred lane is empty.
+ * After a To do → In progress pull, advance past the lane we just took.
+ * Immediate pulls leave the fairness pointer where it is.
+ */
+export function advanceQueueRotation(current, pulledSpeed) {
+  if (isImmediateQueueSpeed(pulledSpeed)) {
+    return { cycleIndex: normalizeCycleIndex(current?.cycleIndex) };
+  }
+  const start = normalizeCycleIndex(current?.cycleIndex);
+  const speed = normalizeQueueSpeed(pulledSpeed);
+  for (let step = 0; step < QUEUE_PULL_CYCLE.length; step += 1) {
+    const index = (start + step) % QUEUE_PULL_CYCLE.length;
+    if (QUEUE_PULL_CYCLE[index] === speed) {
+      return {
+        cycleIndex: (index + 1) % QUEUE_PULL_CYCLE.length,
+      };
+    }
+  }
+  return { cycleIndex: (start + 1) % QUEUE_PULL_CYCLE.length };
+}
+
+/**
+ * Immediate orders always win. Otherwise 3 Rush : 2 Priority : 1 Standard.
+ * `todoOrders` should already be column-sorted (fastest first, then FIFO
+ * within each lane). Falls back to the next cycle lane that has orders.
  */
 export function pickNextTodoOrder(todoOrders, rotation) {
   const todo = todoOrders ?? [];
   if (todo.length === 0) return null;
 
-  const priority = [];
-  const regular = [];
+  const bySpeed = {
+    immediate: [],
+    express: [],
+    fast: [],
+    standard: [],
+  };
   for (const order of todo) {
-    if (order?.is_priority) priority.push(order);
-    else regular.push(order);
+    const speed = orderSpeed(order);
+    (bySpeed[speed] ?? bySpeed[QUEUE_SPEED_STANDARD]).push(order);
   }
 
-  if (priority.length === 0) return regular[0] ?? null;
-  if (regular.length === 0) return priority[0] ?? null;
-
-  if (normalizePrioritiesRemaining(rotation?.prioritiesRemaining) > 0) {
-    return priority[0];
+  if (bySpeed[QUEUE_SPEED_IMMEDIATE].length) {
+    return bySpeed[QUEUE_SPEED_IMMEDIATE][0];
   }
-  return regular[0];
+
+  const start = normalizeCycleIndex(rotation?.cycleIndex);
+  for (let step = 0; step < QUEUE_PULL_CYCLE.length; step += 1) {
+    const speed = QUEUE_PULL_CYCLE[(start + step) % QUEUE_PULL_CYCLE.length];
+    const lane = bySpeed[speed];
+    if (lane?.length) return lane[0];
+  }
+  return todo[0] ?? null;
 }

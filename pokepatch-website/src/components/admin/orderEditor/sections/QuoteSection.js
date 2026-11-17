@@ -13,6 +13,7 @@ import {
 } from "@/lib/servicePricing";
 import { moneyFieldToPayload, quoteItemIsReady } from "@/lib/adminOrderDraft";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
+import { paidQueueChromeClass } from "@/lib/queueSpeed";
 import {
   GhostButton,
   Panel,
@@ -39,6 +40,7 @@ export function buildQuotePreview(draft) {
       set_name: card.set_name,
       status: card.status,
       is_priority: Boolean(card.is_priority),
+      queue_speed: card.queue_speed,
     })),
     draft.quote_card_hv ?? {}
   );
@@ -314,11 +316,10 @@ export default function QuoteSection() {
               cards={preview.cards}
               adjustments={adjustments}
               isPriority={showPriority}
+              queueSpeed={draft.queue_speed}
               cardCount={preview.cardCount}
               title="Receipt"
-              className={
-                showPriority ? "border-ink/25 bg-ink/[0.07]" : ""
-              }
+              className={paidQueueChromeClass(draft.queue_speed, showPriority)}
             />
           ) : (
             <p className="text-sm text-ink/40">No quote yet.</p>

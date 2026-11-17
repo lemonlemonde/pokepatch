@@ -100,6 +100,7 @@ export type CardRow = {
   market_value_raw_nm: number | string | null;
   status: string | null;
   is_priority: boolean | null;
+  queue_speed?: string | null;
   sort_order: number | null;
 };
 
@@ -257,7 +258,7 @@ export async function loadOrderCards(
   const { data, error } = await supabase
     .from("cards")
     .select(
-      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, sort_order"
+      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, sort_order"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true })
@@ -429,6 +430,7 @@ export function orderTotals(context: OrderContext) {
       id: String(card.id),
       status: card.status,
       is_priority: card.is_priority,
+      queue_speed: card.queue_speed,
     })),
     items: context.quoteItems.map((item) => ({
       card_id: cardIdForQuoteItem(item, context.cards),
@@ -480,7 +482,7 @@ export function buildQuoteChangelog(context: OrderContext): ChangelogPayload {
   }
   const totals = orderTotals(context);
   const orderChanges: string[] = [];
-  if (totals.priorityFee > 0) orderChanges.push("Added: Priority service");
+  if (totals.priorityFee > 0) orderChanges.push("Added: faster queue");
   return {
     cardGroups,
     orderChanges,
@@ -575,7 +577,14 @@ export function buildCardMessage(params: {
   const heading =
     `## #${order.display_id} · Card ${cardIndex + 1}/${cardCount}\n` +
     `**${escapeMarkdown(name)}**${setName ? ` · ${escapeMarkdown(setName)}` : ""}` +
-    (card.is_priority ? "  ⭐ Priority" : "");
+    (String(card.queue_speed ?? "").toLowerCase() === "immediate"
+      ? "  ▶ Immediate"
+      : String(card.queue_speed ?? "").toLowerCase() === "express"
+        ? "  ⚡ Rush"
+        : String(card.queue_speed ?? "").toLowerCase() === "fast" ||
+            card.is_priority
+          ? "  ⭐ Priority"
+          : "");
 
   const tags = damageTagLabels(card.damage_tags);
   const description = String(card.description ?? "").trim();
