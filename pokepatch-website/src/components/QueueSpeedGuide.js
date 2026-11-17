@@ -5,27 +5,22 @@ import {
   QUEUE_SPEED_LABEL,
   QUEUE_SPEED_MIXED_COPY,
   QUEUE_SPEED_PUBLIC_HINT,
-  QUEUE_SPEED_STANDARD,
   QUEUE_SPEEDS_IN_LINE,
   queueSpeedControlClass,
   queueSpeedPriceTag,
 } from "@/lib/queueSpeed";
 
-function SpeedRow({ speed, skipMark = false }) {
+function SpeedRow({ speed }) {
   return (
     <li className="flex items-start gap-3 rounded-lg border border-ink/10 bg-ink/[0.03] px-3 py-2.5">
-      {skipMark ? (
-        <span className="mt-0.5 h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-      ) : (
-        <span
-          className={`mt-0.5 inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${queueSpeedControlClass(
-            speed
-          )}`}
-          aria-hidden="true"
-        >
-          <QueueSpeedMark speed={speed} className="h-2.5 w-2.5" />
-        </span>
-      )}
+      <span
+        className={`mt-0.5 inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border ${queueSpeedControlClass(
+          speed
+        )}`}
+        aria-hidden="true"
+      >
+        <QueueSpeedMark speed={speed} className="h-2.5 w-2.5" />
+      </span>
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-2">
           <span className="text-sm font-bold text-ink">
@@ -64,11 +59,7 @@ export default function QueueSpeedGuide() {
           </p>
           <ul className="mt-3 space-y-2">
             {QUEUE_SPEEDS_IN_LINE.map((speed) => (
-              <SpeedRow
-                key={speed}
-                speed={speed}
-                skipMark={speed === QUEUE_SPEED_STANDARD}
-              />
+              <SpeedRow key={speed} speed={speed} />
             ))}
           </ul>
         </div>

@@ -75,38 +75,31 @@ export function queueSpeedPriceTag(speed) {
   return `$${rate} per card`;
 }
 
-export function queueSpeedNamedPrice(speed) {
-  const name = QUEUE_SPEED_LABEL[speed];
-  const rate = QUEUE_SPEED_FEE[speed];
-  if (!rate) return `${name} (included)`;
-  return `${name} ($${rate} per card)`;
-}
-
 export const QUEUE_SPEED_MIXED_COPY =
   "Queue speed is per card. If cards in the same request use different speeds, they become separate orders.";
 
 export const QUEUE_SPEED_IN_LINE_COPY =
-  "Priority and Rush are the same kind of product: you still wait in line, you just sit further forward. Rush sits ahead of Priority. Standard is included and waits in the regular line.";
+  "Priority is ahead of Standard. Rush is ahead of Priority. Both still wait in line.";
 
 export const QUEUE_SPEED_IMMEDIATE_COPY =
-  "Immediate is not a faster waiting lane. We skip the waiting lanes and start that card next.";
+  "Immediate skips the line. We start that card next.";
+
+export const QUEUE_SPEED_PULL_COPY =
+  "When we start work, we pull 3 Rush orders, then 2 Priority, then 1 Standard, then repeat. Immediate orders skip that lineup. We start those next.";
 
 export function queueSpeedFaqEntries() {
-  const priority = queueSpeedNamedPrice(QUEUE_SPEED_FAST);
-  const rush = queueSpeedNamedPrice(QUEUE_SPEED_EXPRESS);
-  const immediate = queueSpeedNamedPrice(QUEUE_SPEED_IMMEDIATE);
   return [
     {
       question: "Can I get my cards restored faster?",
-      answer: `Yes. You can wait in line or skip it. ${priority} and ${rush} still wait — Rush just sits ahead of Priority. ${immediate} skips the waiting lanes and we start that card next. Standard is included. ${QUEUE_SPEED_MIXED_COPY}`,
+      answer: `${QUEUE_SPEED_IN_LINE_COPY} ${QUEUE_SPEED_IMMEDIATE_COPY}`,
       items: QUEUE_SPEEDS.map((speed) => ({
         label: `${QUEUE_SPEED_LABEL[speed]} — ${queueSpeedPriceTag(speed).toLowerCase()}`,
         text: QUEUE_SPEED_PUBLIC_HINT[speed],
       })),
     },
     {
-      question: "What's the difference between Priority, Rush, and Immediate?",
-      answer: `${QUEUE_SPEED_IN_LINE_COPY} ${QUEUE_SPEED_IMMEDIATE_COPY}`,
+      question: "How do you decide which order to start next?",
+      answer: QUEUE_SPEED_PULL_COPY,
     },
     {
       question: "Can cards in the same order have different queue speeds?",

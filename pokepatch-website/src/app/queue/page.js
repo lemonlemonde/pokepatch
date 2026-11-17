@@ -9,6 +9,7 @@ import {
   QUEUE_SPEED_EXPRESS,
   QUEUE_SPEED_FAST,
   QUEUE_SPEED_IMMEDIATE,
+  QUEUE_SPEED_STANDARD,
   queueSpeedQueueIntro,
 } from "@/lib/queueSpeed";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
@@ -632,6 +633,7 @@ function QueuePageInner() {
               />
               <WaitingLane
                 title="Standard"
+                speed={QUEUE_SPEED_STANDARD}
                 hint="Regular wait."
                 emptyLabel="No Standard orders waiting."
                 orders={standard}
