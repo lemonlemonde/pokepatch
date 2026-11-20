@@ -317,8 +317,9 @@ export function buildCardThumbById(cards = []) {
 /**
  * Build customer-facing changelog grouped by card.
  * Quote changes attach a full `quoteReceipt` (same breakdown as the admin
- * order-page receipt). Remaining changelog is non-quote: status, photos,
- * added/removed cards, leftover notes.
+ * order-page receipt) plus a `Quote total: $old → $new` line when the total
+ * changes. Remaining changelog is non-quote: status, photos, added/removed
+ * cards, leftover notes.
  * @returns {{ cardGroups: CardChangelogGroup[], orderChanges: string[], quoteSummary: string | null, quoteReceipt: object | null, text: string, hasChangelog: boolean }}
  */
 export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
@@ -636,9 +637,18 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     ? quoteReceiptFromPayload(afterPayload)
     : null;
 
-  // Receipt replaces quote diffs so the customer sees the same breakdown as
-  // the admin order page (card, nested prices, total) instead of Added/Updated.
   let quoteSummary = null;
+  if (quoteChanged) {
+    const beforeTotal = quoteTotalFromPayload(beforePayload);
+    const afterTotal = quoteTotalFromPayload(afterPayload);
+    if (beforeTotal !== afterTotal) {
+      quoteSummary = `Quote total: ${formatMoney(beforeTotal)} → ${formatMoney(afterTotal)}`;
+    }
+  }
+
+  // Receipt replaces per-line Added/Updated quote diffs so the customer sees
+  // the same breakdown as the admin order page. Keep the quote-total
+  // before/after so the save dialog still shows the price change.
   if (quoteReceiptHasContent(quoteReceipt)) {
     const receiptCardIds = new Set(
       (quoteReceipt.cards ?? [])
@@ -667,17 +677,14 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
           group.status === "removed" ||
           (group.changes ?? []).length > 0
       );
-  } else if (quoteChanged) {
-    const beforeTotal = quoteTotalFromPayload(beforePayload);
-    const afterTotal = quoteTotalFromPayload(afterPayload);
-    if (beforeTotal !== afterTotal) {
-      quoteSummary = `Quote total: ${formatMoney(beforeTotal)} → ${formatMoney(afterTotal)}`;
-      const alreadyListed = orderChanges.some((line) =>
-        String(line).startsWith("Quote total")
-      );
-      if (!alreadyListed) {
-        orderChanges.unshift(quoteSummary);
-      }
+  }
+
+  if (quoteSummary) {
+    const alreadyListed = orderChanges.some((line) =>
+      String(line).startsWith("Quote total")
+    );
+    if (!alreadyListed) {
+      orderChanges.unshift(quoteSummary);
     }
   }
 
