@@ -2,7 +2,8 @@
  * Admin To do → In progress fairness:
  * Immediate always goes next and does not consume the cadence.
  * Among the rest: Rush × 3, Priority × 2, Standard × 1. Skip empty lanes.
- * Cycle position lives in localStorage so refresh keeps your place.
+ * Cycle position lives on the server (`queue_pull_state`) so every session
+ * sees the same next order.
  */
 
 import {
@@ -13,9 +14,7 @@ import {
   normalizeQueueSpeed,
 } from "@/lib/queueSpeed";
 
-const ADMIN_QUEUE_ROTATION_KEY = "pokepatch.admin.queueRotation";
-
-function normalizeCycleIndex(value) {
+export function normalizeCycleIndex(value) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.floor(n) % QUEUE_PULL_CYCLE.length;
@@ -25,32 +24,13 @@ export function defaultQueueRotation() {
   return { cycleIndex: 0 };
 }
 
-export function readQueueRotation() {
-  if (typeof window === "undefined") return defaultQueueRotation();
-  try {
-    const raw = window.localStorage.getItem(ADMIN_QUEUE_ROTATION_KEY);
-    if (!raw) return defaultQueueRotation();
-    const parsed = JSON.parse(raw);
-    if (parsed?.cycleIndex != null) {
-      return { cycleIndex: normalizeCycleIndex(parsed.cycleIndex) };
-    }
-    // Legacy 2-priority : 1-regular counter — start a fresh cadence.
-    return defaultQueueRotation();
-  } catch {
-    return defaultQueueRotation();
-  }
-}
-
-export function writeQueueRotation(state) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      ADMIN_QUEUE_ROTATION_KEY,
-      JSON.stringify({ cycleIndex: normalizeCycleIndex(state?.cycleIndex) })
-    );
-  } catch {
-    // ignore quota / private mode
-  }
+/** Parse `queue_rotation` from admin-api list / save / set_status payloads. */
+export function queueRotationFromPayload(payload) {
+  if (payload == null) return null;
+  const nested = payload.queue_rotation ?? payload.queueRotation ?? payload;
+  const raw = nested?.cycle_index ?? nested?.cycleIndex;
+  if (raw == null) return null;
+  return { cycleIndex: normalizeCycleIndex(raw) };
 }
 
 function orderSpeed(order) {

@@ -216,7 +216,11 @@ export async function adminListOrders() {
     token: getStoredAdminToken(),
     body: { action: "list" },
   });
-  return (payload.orders ?? []).map(stabilizeOrderSummary);
+  return {
+    orders: (payload.orders ?? []).map(stabilizeOrderSummary),
+    queueRotation: payload.queue_rotation ?? null,
+    nextOrderId: payload.next_order_id ?? null,
+  };
 }
 
 /** Search cards by name/set/description; optionally scope to order statuses. */
@@ -324,6 +328,8 @@ export async function adminSaveOrder(
   return {
     order: stabilizeOrderDetail(payload.full ?? payload.order),
     split: payload.split ?? null,
+    queueRotation: payload.queue_rotation ?? null,
+    nextOrderId: payload.next_order_id ?? null,
   };
 }
 
@@ -340,7 +346,11 @@ export async function adminSetStatus(
     token: getStoredAdminToken(),
     body,
   });
-  return payload.order;
+  return {
+    order: payload.order,
+    queueRotation: payload.queue_rotation ?? null,
+    nextOrderId: payload.next_order_id ?? null,
+  };
 }
 
 /** Chip toggle: update pending_kind only. */

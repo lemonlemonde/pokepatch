@@ -78,8 +78,7 @@ import {
   advanceQueueRotation,
   defaultQueueRotation,
   pickNextTodoOrder,
-  readQueueRotation,
-  writeQueueRotation,
+  queueRotationFromPayload,
 } from "@/lib/adminQueueRotation";
 
 const ADMIN_TABS = [
@@ -1486,8 +1485,9 @@ export default function AdminApp() {
     defaultQueueRotation()
   );
 
-  useEffect(() => {
-    setQueueRotation(readQueueRotation());
+  const applyQueueRotation = useCallback((payload) => {
+    const next = queueRotationFromPayload(payload);
+    if (next) setQueueRotation(next);
   }, []);
 
   const unsavedOrderEdit =
@@ -1559,25 +1559,28 @@ export default function AdminApp() {
     setLoadingOrders(true);
     setListError("");
     try {
-      const rows = await adminListOrders();
+      const { orders: rows, queueRotation: listedRotation } =
+        await adminListOrders();
       // List returns board summary + server quote_total; do not recompute
       // from quote_items/cards (those are detail-only now).
       setOrders(rows.map((order) => orderToKanbanSummary(order)));
+      applyQueueRotation(listedRotation);
     } catch (err) {
       setListError(err.message || "Could not load orders.");
     } finally {
       setLoadingOrders(false);
     }
-  }, []);
+  }, [applyQueueRotation]);
 
   const syncOrderAfterSaveWithSplit = useCallback(
     (refreshed, meta = {}) => {
       syncOrderAfterSave(refreshed);
+      applyQueueRotation(meta);
       if (meta?.split?.split) {
         void refreshOrders();
       }
     },
-    [refreshOrders, syncOrderAfterSave]
+    [applyQueueRotation, refreshOrders, syncOrderAfterSave]
   );
 
   useEffect(() => {
@@ -1871,16 +1874,14 @@ export default function AdminApp() {
       fromStatus === "new" && nextStatus === "in_progress";
     const previousRotation = pulledFromTodo ? queueRotation : null;
     if (pulledFromTodo) {
-      setQueueRotation((current) => {
-        const next = advanceQueueRotation(
+      setQueueRotation((current) =>
+        advanceQueueRotation(
           current,
           normalizeQueueSpeed(moving.queue_speed, {
             isPriority: moving.is_priority,
           })
-        );
-        writeQueueRotation(next);
-        return next;
-      });
+        )
+      );
     }
 
     setOrders((current) => {
@@ -1923,9 +1924,10 @@ export default function AdminApp() {
     });
 
     try {
-      await adminSetStatus(orderId, nextStatus, {
+      const statusResult = await adminSetStatus(orderId, nextStatus, {
         pendingKind: nextStatus === "pending" ? pendingKind : undefined,
       });
+      applyQueueRotation(statusResult);
 
       if (selectedOrderId === orderId) {
         setOrderDetail((current) => {
@@ -1945,7 +1947,6 @@ export default function AdminApp() {
       setOrders(previous);
       if (previousRotation) {
         setQueueRotation(previousRotation);
-        writeQueueRotation(previousRotation);
       }
       setListError(err.message || "Could not update order status.");
       throw err;

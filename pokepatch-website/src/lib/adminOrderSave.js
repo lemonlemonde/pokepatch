@@ -40,6 +40,7 @@ export async function saveAdminOrderDraft(orderId, draft, { notify = false, subj
   let saveResult = await adminSaveOrder(orderId, payload);
   let refreshed = saveResult.order;
   const split = saveResult.split;
+  const queueRotation = saveResult.queueRotation;
 
   for (const imageId of pendingDeletes) {
     try {
@@ -92,5 +93,5 @@ export async function saveAdminOrderDraft(orderId, draft, { notify = false, subj
     }
   }
 
-  return { order: refreshed, notifyError, split };
+  return { order: refreshed, notifyError, split, queueRotation };
 }

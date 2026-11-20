@@ -2401,6 +2401,33 @@ function withAccountName<
   return result;
 }
 
+async function fetchQueuePullState(supabase: ReturnType<typeof getServiceClient>) {
+  const { data, error } = await supabase
+    .from("queue_pull_state")
+    .select("cycle_index, next_order_id")
+    .eq("id", true)
+    .maybeSingle();
+  if (error) throw error;
+  const raw = Number(data?.cycle_index);
+  const cycleIndex =
+    Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
+  return {
+    cycle_index: cycleIndex,
+    next_order_id:
+      data?.next_order_id != null ? String(data.next_order_id) : null,
+  };
+}
+
+function queuePullResponse(state: {
+  cycle_index: number;
+  next_order_id: string | null;
+}) {
+  return {
+    queue_rotation: { cycle_index: state.cycle_index },
+    next_order_id: state.next_order_id,
+  };
+}
+
 Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
@@ -2440,8 +2467,15 @@ Deno.serve(async (req) => {
     const action = String(body.action ?? "");
 
     if (action === "list") {
-      const orders = await fetchOrderListSummary(supabase);
-      return jsonResponse(req, { ok: true, orders });
+      const [orders, queuePull] = await Promise.all([
+        fetchOrderListSummary(supabase),
+        fetchQueuePullState(supabase),
+      ]);
+      return jsonResponse(req, {
+        ok: true,
+        orders,
+        ...queuePullResponse(queuePull),
+      });
     }
 
     if (action === "search") {
@@ -2592,8 +2626,15 @@ Deno.serve(async (req) => {
       });
       if (error) throw error;
 
-      const order = await fetchOrderGraph(supabase, orderId);
-      return jsonResponse(req, { ok: true, order });
+      const [order, queuePull] = await Promise.all([
+        fetchOrderGraph(supabase, orderId),
+        fetchQueuePullState(supabase),
+      ]);
+      return jsonResponse(req, {
+        ok: true,
+        order,
+        ...queuePullResponse(queuePull),
+      });
     }
 
     if (action === "set_pending_kind") {
@@ -2838,7 +2879,10 @@ Deno.serve(async (req) => {
 
 
       await fireOrderStatusNotify(supabase, orderId, statusBefore);
-      const order = await fetchOrderGraph(supabase, orderId);
+      const [order, queuePull] = await Promise.all([
+        fetchOrderGraph(supabase, orderId),
+        fetchQueuePullState(supabase),
+      ]);
       if (!order) {
         return jsonResponse(req, { ok: false, error: "order not found after save" }, 404);
       }
@@ -2847,6 +2891,7 @@ Deno.serve(async (req) => {
         order,
         full: order,
         split: splitResult,
+        ...queuePullResponse(queuePull),
       });
     }
 
