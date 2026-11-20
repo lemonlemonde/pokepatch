@@ -147,12 +147,14 @@ export function OrderEditorProvider({
       setError("");
       setSavePromptOpen(false);
       try {
-        const { order: refreshed, notifyError, split } = await saveAdminOrderDraft(
-          orderId,
-          draft,
-          { notify, subject, body, changelog }
-        );
-        onOrderUpdated(refreshed, { split });
+        const { order: refreshed, notifyError, split, queueRotation } =
+          await saveAdminOrderDraft(orderId, draft, {
+            notify,
+            subject,
+            body,
+            changelog,
+          });
+        onOrderUpdated(refreshed, { split, queueRotation });
         const next = orderToDraft(refreshed);
         setDraft(next);
         setSavedDraft(next);
