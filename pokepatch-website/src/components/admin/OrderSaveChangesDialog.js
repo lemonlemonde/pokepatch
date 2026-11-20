@@ -220,6 +220,13 @@ export default function OrderSaveChangesDialog({
         : "Save order";
 
   const hasDiff = changelogHasContent(draftChangelog);
+  const changelogDiffProps = {
+    cardGroups: draftChangelog.cardGroups,
+    orderChanges: draftChangelog.orderChanges,
+    quoteSummary: draftChangelog.quoteSummary,
+    quoteReceipt: draftChangelog.quoteReceipt,
+    thumbByCardId,
+  };
 
   function handleConfirm() {
     setError("");
@@ -386,11 +393,7 @@ export default function OrderSaveChangesDialog({
               </label>
 
               <ChangelogDiff
-                cardGroups={draftChangelog.cardGroups}
-                orderChanges={draftChangelog.orderChanges}
-                quoteSummary={draftChangelog.quoteSummary}
-                quoteReceipt={draftChangelog.quoteReceipt}
-                thumbByCardId={thumbByCardId}
+                {...changelogDiffProps}
                 editable
                 onChange={(next) => {
                   setDraftChangelog(next);
@@ -413,6 +416,8 @@ export default function OrderSaveChangesDialog({
                 />
               </label>
             </div>
+          ) : hasDiff ? (
+            <ChangelogDiff {...changelogDiffProps} />
           ) : null}
         </div>
 
