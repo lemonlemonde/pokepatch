@@ -32,6 +32,7 @@ export const CONTRACT_AGREEMENT_INTRO =
 
 export const AGREEMENT_PARAS = [
   "Customer agrees to pay PokéPatch the Restoration Fee listed for each card for the restoration services described or agreed upon. Restoration Fees are separate from the Near Mint Raw Market Values.",
+  "The Restoration Fee listed for each card is based on the information available at the time of this Agreement. After PokéPatch takes a closer look at the card(s), prices, including the Restoration Fee, are subject to change. PokéPatch will communicate to Customer any additional charges that should be added or any charges that should be removed.",
   "Customer provides the card(s) to PokéPatch for restoration. Customer retains ownership of the card(s) while they are in PokéPatch's possession.",
   "Before restoration, PokéPatch will photograph each card. These photographs will document the card's condition when received and may be used to determine whether damage occurred while in PokéPatch's possession. PokéPatch will also photograph each card after restoration and before returning it to Customer.",
   "PokéPatch will use reasonable care when handling and restoring the card(s).",
