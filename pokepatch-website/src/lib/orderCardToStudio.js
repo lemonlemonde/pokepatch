@@ -3,6 +3,7 @@
  */
 
 import { adminGetOrder } from "@/lib/adminApi";
+import { photoGroup, sortCardImages } from "@/lib/cardPhotoGroups";
 import { normalizeDamageTags } from "@/lib/damageTags";
 import { fetchTcgCardImageFile } from "@/lib/tcgCardImage";
 
@@ -97,14 +98,6 @@ function imageUrl(image) {
   return image?.signed_url || image?.signed_thumb_url || null;
 }
 
-function sortImages(images) {
-  return [...images].sort((a, b) => {
-    const aId = Number(a?.id) || 0;
-    const bId = Number(b?.id) || 0;
-    return aId - bId;
-  });
-}
-
 /**
  * Fetch an order card and build Studio before/after banks + card meta.
  * @param {{ orderId: string, cardId: string }} params
@@ -129,11 +122,11 @@ export async function buildStudioSeedFromOrderCard({ orderId, cardId }) {
   }
 
   const images = Array.isArray(card.images) ? card.images : [];
-  const beforeImages = sortImages(
-    images.filter((image) => image?.image_type === "before")
+  const beforeImages = sortCardImages(
+    images.filter((image) => photoGroup(image?.image_type) === "before")
   );
-  const afterImages = sortImages(
-    images.filter((image) => image?.image_type === "after")
+  const afterImages = sortCardImages(
+    images.filter((image) => photoGroup(image?.image_type) === "after")
   );
 
   if (beforeImages.length === 0 || afterImages.length === 0) {

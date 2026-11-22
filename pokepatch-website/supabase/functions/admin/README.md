@@ -120,6 +120,7 @@ JSON POST (requires `X-Admin-Token`):
 | `set_status` | `order_id`, `status` |
 | `delete` | `order_id` or `order_ids` (array) |
 | `delete_photo` | `order_id`, `image_id` — removes a card photo from the order |
+| `reorder_photos` | `order_id`, `card_id`, `group` (`before` \| `after`), `ordered_ids` — persist drag-reorder of that side |
 | `save` | `order_id`, `order`, `contacts`, `cards` — cards list is authoritative; omitted cards (and their photos) are deleted |
 | `gallery_list` | — |
 | `gallery_get` | `id` |

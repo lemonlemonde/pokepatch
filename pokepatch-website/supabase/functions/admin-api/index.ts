@@ -93,6 +93,47 @@ const ADMIN_IMAGE_TYPES = new Set([
   "after",
 ]);
 
+const PHOTO_REORDER_GROUPS = new Set(["before", "after"]);
+const PHOTO_GROUP_TYPES: Record<string, string[]> = {
+  before: ["before", "progress_front", "progress_back"],
+  after: ["after", "final_front", "final_back"],
+  customer: ["customer", "admin"],
+};
+
+function photoDisplayGroup(imageType: string): "before" | "after" | "customer" {
+  switch (imageType) {
+    case "before":
+    case "progress_front":
+    case "progress_back":
+      return "before";
+    case "after":
+    case "final_front":
+    case "final_back":
+      return "after";
+    default:
+      return "customer";
+  }
+}
+
+async function nextCardImageSortOrder(
+  supabase: ReturnType<typeof getServiceClient>,
+  cardId: string,
+  imageType: string
+): Promise<number> {
+  const group = photoDisplayGroup(imageType);
+  const types = PHOTO_GROUP_TYPES[group] ?? [imageType];
+  const { data, error } = await supabase
+    .from("card_images")
+    .select("sort_order")
+    .eq("card_id", cardId)
+    .in("image_type", types)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.sort_order ?? -1) + 1;
+}
+
 const GALLERY_SIDES = new Set(["before", "after"]);
 const GALLERY_MEDIA_KINDS = new Set(["image", "video"]);
 
@@ -1264,12 +1305,20 @@ async function fetchOrderGraph(
   );
 
   const cardIds = (cards ?? []).map((c) => c.id as string);
-  let images: { id: number; card_id: string; image_type: string; storage_path: string }[] = [];
+  let images: {
+    id: number;
+    card_id: string;
+    image_type: string;
+    storage_path: string;
+    sort_order: number;
+  }[] = [];
   if (cardIds.length > 0) {
     const { data: imageRows, error: imagesError } = await supabase
       .from("card_images")
-      .select("id, card_id, image_type, storage_path")
-      .in("card_id", cardIds);
+      .select("id, card_id, image_type, storage_path, sort_order")
+      .in("card_id", cardIds)
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true });
     if (imagesError) throw imagesError;
     images = imageRows ?? [];
   }
@@ -1606,10 +1655,16 @@ async function handleOrderUpload(
     }
   }
 
+  const sortOrder = await nextCardImageSortOrder(supabase, cardId, imageType);
   const { data: imageRow, error: insertError } = await supabase
     .from("card_images")
-    .insert({ card_id: cardId, image_type: imageType, storage_path: path })
-    .select("id, card_id, image_type, storage_path")
+    .insert({
+      card_id: cardId,
+      image_type: imageType,
+      storage_path: path,
+      sort_order: sortOrder,
+    })
+    .select("id, card_id, image_type, storage_path, sort_order")
     .single();
   if (insertError) throw insertError;
 
@@ -2741,6 +2796,74 @@ Deno.serve(async (req) => {
       }
 
       return jsonResponse(req, { ok: true, deleted_image_id: imageId });
+    }
+
+    if (action === "reorder_photos") {
+      const orderId = String(body.order_id ?? "");
+      const cardId = String(body.card_id ?? "");
+      const group = String(body.group ?? "");
+      const orderedIds = Array.isArray(body.ordered_ids)
+        ? body.ordered_ids.map((value) => Number(value))
+        : [];
+      if (!orderId || !cardId || !PHOTO_REORDER_GROUPS.has(group)) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "order_id, card_id, and group required" },
+          400
+        );
+      }
+      if (orderedIds.length === 0 || orderedIds.some((id) => !Number.isFinite(id))) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "ordered_ids required" },
+          400
+        );
+      }
+
+      const { data: card, error: cardError } = await supabase
+        .from("cards")
+        .select("id, order_id")
+        .eq("id", cardId)
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (cardError) throw cardError;
+      if (!card) {
+        return jsonResponse(req, { ok: false, error: "card not found" }, 404);
+      }
+
+      const groupTypes = PHOTO_GROUP_TYPES[group] ?? [];
+      const { data: groupRows, error: groupError } = await supabase
+        .from("card_images")
+        .select("id")
+        .eq("card_id", cardId)
+        .in("image_type", groupTypes);
+      if (groupError) throw groupError;
+
+      const existingIds = new Set(
+        (groupRows ?? []).map((row) => Number(row.id))
+      );
+      if (
+        orderedIds.length !== existingIds.size ||
+        new Set(orderedIds).size !== orderedIds.length ||
+        orderedIds.some((id) => !existingIds.has(id))
+      ) {
+        return jsonResponse(
+          req,
+          { ok: false, error: "ordered_ids must list every photo in that group" },
+          400
+        );
+      }
+
+      for (let index = 0; index < orderedIds.length; index += 1) {
+        const { error } = await supabase
+          .from("card_images")
+          .update({ sort_order: index })
+          .eq("id", orderedIds[index])
+          .eq("card_id", cardId);
+        if (error) throw error;
+      }
+
+      return jsonResponse(req, { ok: true });
     }
 
     if (action === "save") {

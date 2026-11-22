@@ -59,7 +59,11 @@ import RestorationDownloadButton from "@/components/RestorationDownloadButton";
 import CardPhotoPreviewModal from "@/components/admin/orderEditor/CardPhotoPreviewModal";
 import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
-import { adminDeletePhoto, adminGetOrder } from "@/lib/adminApi";
+import {
+  adminDeletePhoto,
+  adminGetOrder,
+  adminReorderCardPhotos,
+} from "@/lib/adminApi";
 
 const PHOTO_ACTION_ICON_PROPS = {
   viewBox: "0 0 24 24",
@@ -160,6 +164,7 @@ export default function CardDetailSection({
     orderId,
     setError,
     removeSavedPhotoLocally,
+    reorderSavedPhotosLocally,
     reseedFromOrder,
   } = useOrderEditor();
 
@@ -326,6 +331,27 @@ export default function CardDetailSection({
         reseedFromOrder(refreshed);
       } catch {
         // Keep optimistic removal; refetch failed.
+      }
+    }
+  }
+
+  async function reorderPhotos(groupKey, orderedIds) {
+    if (saving || !orderId || !groupKey) return;
+    const numericIds = (orderedIds ?? [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (numericIds.length < 2) return;
+
+    reorderSavedPhotosLocally(cardId, numericIds);
+    try {
+      await adminReorderCardPhotos(orderId, cardId, groupKey, numericIds);
+    } catch (err) {
+      setError(err.message || "Could not reorder photos.");
+      try {
+        const refreshed = await adminGetOrder(orderId);
+        reseedFromOrder(refreshed);
+      } catch {
+        // Keep optimistic order; refetch failed.
       }
     }
   }
@@ -855,6 +881,7 @@ export default function CardDetailSection({
         title={`${cardName}${cardSet ? ` · ${cardSet}` : ""}`}
         groups={previewGroups}
         onRemove={saving ? undefined : removePhoto}
+        onReorder={saving ? undefined : reorderPhotos}
         removableGroupKeys={["before", "after"]}
       />
     </section>

@@ -17,9 +17,23 @@ export function photoGroup(type) {
   }
 }
 
+function compareCardImages(a, b) {
+  const aOrder = Number(a?.sort_order);
+  const bOrder = Number(b?.sort_order);
+  const aHasOrder = Number.isFinite(aOrder);
+  const bHasOrder = Number.isFinite(bOrder);
+  if (aHasOrder && bHasOrder && aOrder !== bOrder) return aOrder - bOrder;
+  if (aHasOrder !== bHasOrder) return aHasOrder ? -1 : 1;
+  return (Number(a?.id) || 0) - (Number(b?.id) || 0);
+}
+
+export function sortCardImages(images) {
+  return [...(images ?? [])].sort(compareCardImages);
+}
+
 export function groupCardImages(images) {
   const groups = { customer: [], before: [], after: [] };
-  for (const image of images ?? []) {
+  for (const image of sortCardImages(images)) {
     groups[photoGroup(image.image_type)].push(image);
   }
   return groups;
