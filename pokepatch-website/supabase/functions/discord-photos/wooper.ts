@@ -2,9 +2,11 @@
  * "wooper" — upload before/after restoration photos onto an order card.
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
- * (order / card / side). Each upload replaces that side's existing photos.
- * Side is optional: blank → `before` when the card has no before photos,
- * otherwise `after`; if both sides are filled the upload is rejected.
+ * (order / card / side / optional append). Default is replace that side's
+ * photos. Check **Append** to add the message's images after the ones already
+ * on that side. Side is optional: blank → `before` when the card has no
+ * before photos, otherwise `after`; if both sides are filled the upload is
+ * rejected unless you type `before` or `after`.
  *
  * DB triggers flip card/order status on first before → in_progress and first
  * after → completed (order → ready when all active cards are done). The
@@ -16,10 +18,12 @@ import { getServiceClient } from "../_shared/adminSession.ts";
 import {
   CallbackType,
   EPHEMERAL,
+  checkboxGroup,
   collectModalFields,
   editOriginal,
   ephemeralReply,
   fieldValue,
+  fieldValues,
   json,
   labeled,
   textInput,
@@ -48,7 +52,7 @@ const IMMUTABLE_CACHE_CONTROL = "604800";
 
 export const WOOPER_MODAL_PREFIX = "wooper:";
 
-/** Uploading to a side replaces everything in that group, legacy types included. */
+/** Replace/append on a side includes these legacy types in that group. */
 const SIDE_IMAGE_TYPES: Record<string, string[]> = {
   before: ["before", "progress_front", "progress_back"],
   after: ["after", "final_front", "final_back"],
@@ -98,19 +102,41 @@ function storagePathsFor(storagePath: string): string[] {
   return [storagePath, `${storagePath}.thumb.webp`];
 }
 
+type SidePhotoRow = { id: unknown; storage_path: unknown };
+
+async function existingSidePhotos(
+  supabase: SupabaseClient,
+  cardId: string,
+  side: string
+): Promise<SidePhotoRow[]> {
+  const { data, error } = await supabase
+    .from("card_images")
+    .select("id, storage_path")
+    .eq("card_id", cardId)
+    .in("image_type", SIDE_IMAGE_TYPES[side]);
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Next `before-N-` / `after-N-` index that won't collide with existing paths. */
+function nextPhotoIndex(paths: string[], side: string): number {
+  const re = new RegExp(`(?:^|/)${side}-(\\d+)-`);
+  let max = paths.length;
+  for (const path of paths) {
+    const match = path.match(re);
+    if (match) max = Math.max(max, Number(match[1]));
+  }
+  return max + 1;
+}
+
 /** Delete every existing photo on this side of the card. Returns how many were removed. */
 async function clearSide(
   supabase: SupabaseClient,
   cardId: string,
   side: string
 ): Promise<number> {
-  const { data: existing, error: selectError } = await supabase
-    .from("card_images")
-    .select("id, storage_path")
-    .eq("card_id", cardId)
-    .in("image_type", SIDE_IMAGE_TYPES[side]);
-  if (selectError) throw selectError;
-  if (!existing || existing.length === 0) return 0;
+  const existing = await existingSidePhotos(supabase, cardId, side);
+  if (existing.length === 0) return 0;
 
   const { error: deleteError } = await supabase
     .from("card_images")
@@ -137,7 +163,7 @@ async function clearSide(
 /**
  * Blank side → pick one from what the card already has:
  *   no before photos → `before`; before filled, after empty → `after`;
- *   both filled → null (caller rejects so nothing is silently replaced).
+ *   both filled → null (caller rejects so nothing is silently replaced/appended).
  */
 async function defaultSideForCard(
   supabase: SupabaseClient,
@@ -212,6 +238,20 @@ function wooperModal(pendingId: string, imageCount: number): Json {
           }),
           "Blank = before, or after once before is filled"
         ),
+        labeled(
+          "Append to existing photos",
+          checkboxGroup({
+            customId: "append",
+            options: [
+              {
+                value: "yes",
+                label: "Append",
+                description: "Keep current photos; add these after them",
+              },
+            ],
+          }),
+          "Unchecked replaces that side (before or after)"
+        ),
       ],
     },
   };
@@ -274,6 +314,8 @@ async function uploadAttachments(params: {
   cardIndex: number;
   /** `before` / `after`, or "" to pick from the card's existing photos. */
   side: string;
+  /** Keep existing photos on that side and add these after them. */
+  append: boolean;
   files: DiscordAttachment[];
 }): Promise<void> {
   const {
@@ -282,6 +324,7 @@ async function uploadAttachments(params: {
     orderDisplayId,
     cardIndex,
     side: requestedSide,
+    append,
     files,
   } = params;
 
@@ -418,7 +461,9 @@ async function uploadAttachments(params: {
           token,
           [
             `Nothing uploaded — ${orderLabel} · ${cardLabel} (card ${cardIndex}) already has **${picked.beforeCount}** before and **${picked.afterCount}** after photo(s).`,
-            "Re-run wooper and type `before` or `after` to replace that side.",
+            append
+              ? "Re-run wooper and type `before` or `after` so photos can be appended to that side."
+              : "Re-run wooper and type `before` or `after` to replace that side, or check **Append** and pick a side to add more.",
           ].join("\n")
         );
         return;
@@ -427,13 +472,32 @@ async function uploadAttachments(params: {
       sideWasDefaulted = true;
     }
 
-    // Old photos are cleared lazily, once the first new one has downloaded,
-    // so a dead CDN link can't leave the side empty.
+    // Replace clears lazily, once the first new photo has downloaded, so a
+    // dead CDN link can't leave the side empty. Append leaves existing rows.
     let replaced: number | null = null;
+    let existingPhotoCount = 0;
+    let remainingSlots = MAX_PHOTOS_PER_SIDE;
     let nextIndex = 1;
+    if (append) {
+      const existing = await existingSidePhotos(supabase, cardId, side);
+      existingPhotoCount = existing.length;
+      remainingSlots = Math.max(0, MAX_PHOTOS_PER_SIDE - existingPhotoCount);
+      nextIndex = nextPhotoIndex(
+        existing.map((row) => String(row.storage_path)),
+        side
+      );
+      if (remainingSlots === 0) {
+        await editOriginal(
+          applicationId,
+          token,
+          `${orderLabel} · ${cardLabel} already has **${existingPhotoCount}** ${side} photo(s) (max ${MAX_PHOTOS_PER_SIDE}). Nothing appended.`
+        );
+        return;
+      }
+    }
     let uploaded = 0;
     const errors: string[] = [];
-    const toUpload = files.slice(0, MAX_PHOTOS_PER_SIDE);
+    const toUpload = files.slice(0, remainingSlots);
     if (files.length > toUpload.length) {
       errors.push(
         `max ${MAX_PHOTOS_PER_SIDE} ${side} photos; skipped ${files.length - toUpload.length}`
@@ -467,7 +531,7 @@ async function uploadAttachments(params: {
           continue;
         }
 
-        if (replaced === null) {
+        if (!append && replaced === null) {
           replaced = await clearSide(supabase, cardId, side);
         }
 
@@ -481,8 +545,9 @@ async function uploadAttachments(params: {
         const { error: uploadError } = await supabase.storage
           .from(BUCKET)
           .upload(path, bytes, {
-            // Side was just cleared; overwrite in case an old object lingered.
-            upsert: true,
+            // Replace just cleared the side; overwrite lingering objects.
+            // Append must not clobber an existing photo at the same path.
+            upsert: !append,
             contentType,
             cacheControl: IMMUTABLE_CACHE_CONTROL,
           });
@@ -568,6 +633,11 @@ async function uploadAttachments(params: {
     if (sideWasDefaulted) {
       lines.push(`Side left blank → defaulted to **${side}**.`);
     }
+    if (append && uploaded > 0) {
+      lines.push(
+        `Appended to **${existingPhotoCount}** existing ${side} photo(s) (now **${existingPhotoCount + uploaded}**).`
+      );
+    }
     if (replaced) {
       lines.push(`Replaced ${replaced} previous ${side} photo(s).`);
     }
@@ -589,7 +659,7 @@ export async function handleWooperCommand(interaction: Interaction): Promise<Res
 
   if (commandType !== 3) {
     return ephemeralReply(
-      "Post your photos in chat, then **right-click the message → Apps → wooper** and enter order / card / side."
+      "Post your photos in chat, then **right-click the message → Apps → wooper** and enter order / card / side (check **Append** to add instead of replace)."
     );
   }
 
@@ -633,6 +703,7 @@ async function processWooperModal(interaction: Interaction): Promise<void> {
     const orderDisplayId = Number(fieldValue(fields, "order"));
     const cardIndex = Number(fieldValue(fields, "card"));
     const side = fieldValue(fields, "side").toLowerCase();
+    const append = fieldValues(fields, "append").includes("yes");
 
     const files = await loadPendingAttachments(pendingId);
     await clearPending(pendingId);
@@ -643,6 +714,7 @@ async function processWooperModal(interaction: Interaction): Promise<void> {
       orderDisplayId,
       cardIndex,
       side,
+      append,
       files,
     });
   } catch (err) {
