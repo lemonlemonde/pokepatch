@@ -16,11 +16,11 @@ Only Discord user IDs in `DISCORD_ADMIN_USER_IDS` may use wooper.
 
 1. Post your photos in a Discord channel (up to 10 attachments on one message).
 2. **Right-click that message** → **Apps** → **wooper**.
-3. Pick **Before** or **After** from the list, then fill in **order number** and **card number** (1 = first card in the order). Check **Append** to add the photos after the ones already on that side instead of replacing them.
+3. Tap **Before** or **After**, then fill in **order number** and **card number** (1 = first card in the order). Check **Append** to add the photos after the ones already on that side instead of replacing them.
 
 **Own cards:** use order number **`-1`**. That is the permanent owner portfolio (not a customer order). Card slots are created automatically through the card number you enter (`My card 1`, `My card 2`, …). Rename them later under admin → **My cards** tab.
 
-**Side** is a required single-select: pick **Before** or **After** (one, not both). You cannot type it and you cannot pick both.
+**Side** is required: **Before** and **After** are both on the form — tap one. You cannot pick both.
 
 Up to **20 photos per side** per card. Files over 15MB are rejected. **Default is replace that side** (DB rows + storage). Check **Append** to keep existing photos and add the new ones after them (same 20-per-side cap). `after` is untouched when uploading `before` and vice versa.
 

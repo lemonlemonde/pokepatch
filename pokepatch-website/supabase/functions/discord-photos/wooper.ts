@@ -2,7 +2,7 @@
  * "wooper" — upload before/after restoration photos onto an order card.
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
- * (before/after select, order / card / optional append). Default is replace
+ * (before/after, order / card / optional append). Default is replace
  * that side's photos. Check **Append** to add the message's images after the
  * ones already on that side.
  *
@@ -24,7 +24,7 @@ import {
   fieldValues,
   json,
   labeled,
-  stringSelect,
+  radioGroup,
   textInput,
   type Interaction,
   type Json,
@@ -179,18 +179,15 @@ function wooperModal(pendingId: string, imageCount: number): Json {
       components: [
         labeled(
           "Side",
-          stringSelect({
+          radioGroup({
             customId: "side",
             required: true,
-            placeholder: "Before or after",
-            minValues: 1,
-            maxValues: 1,
             options: [
-              { label: "Before", value: "before" },
-              { label: "After", value: "after" },
+              { value: "before", label: "Before" },
+              { value: "after", label: "After" },
             ],
           }),
-          "Pick one — not both"
+          "Tap one"
         ),
         labeled(
           "Order number",
@@ -652,7 +649,7 @@ async function processWooperModal(interaction: Interaction): Promise<void> {
     const orderDisplayId = Number(fieldValue(fields, "order"));
     const cardIndex = Number(fieldValue(fields, "card"));
     const side = (
-      fieldValues(fields, "side")[0] ?? fieldValue(fields, "side")
+      fieldValue(fields, "side") || fieldValues(fields, "side")[0] || ""
     ).toLowerCase();
     const append = fieldValues(fields, "append").includes("yes");
 

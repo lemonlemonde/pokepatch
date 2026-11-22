@@ -39,6 +39,7 @@ export const ComponentType = {
   SEPARATOR: 14,
   CONTAINER: 17,
   LABEL: 18,
+  RADIO_GROUP: 21,
   CHECKBOX_GROUP: 22,
 } as const;
 
@@ -592,8 +593,6 @@ export function stringSelect(params: {
   }[];
   minValues?: number;
   maxValues?: number;
-  /** Modal-only. Defaults omitted so message selects stay unchanged. */
-  required?: boolean;
 }): Json {
   const {
     customId,
@@ -601,14 +600,12 @@ export function stringSelect(params: {
     options,
     minValues = 1,
     maxValues = 1,
-    required,
   } = params;
   return {
     type: ComponentType.STRING_SELECT,
     custom_id: customId,
     min_values: minValues,
     max_values: maxValues,
-    ...(required != null ? { required } : {}),
     ...(placeholder ? { placeholder: placeholder.slice(0, 150) } : {}),
     options: options.slice(0, 25).map((option) => ({
       label: option.label.slice(0, 100),
@@ -672,6 +669,25 @@ export function textInput(params: {
     ...(placeholder ? { placeholder: placeholder.slice(0, 100) } : {}),
     ...(value ? { value: value.slice(0, maxLength ?? 4000) } : {}),
     ...(maxLength ? { max_length: maxLength } : {}),
+  };
+}
+
+export function radioGroup(params: {
+  customId: string;
+  options: { value: string; label: string; description?: string; default?: boolean }[];
+  required?: boolean;
+}): Json {
+  const { customId, options, required = true } = params;
+  return {
+    type: ComponentType.RADIO_GROUP,
+    custom_id: customId,
+    required,
+    options: options.slice(0, 10).map((option) => ({
+      value: option.value,
+      label: option.label.slice(0, 100),
+      ...(option.description ? { description: option.description.slice(0, 100) } : {}),
+      ...(option.default ? { default: true } : {}),
+    })),
   };
 }
 
