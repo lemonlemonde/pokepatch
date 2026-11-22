@@ -101,7 +101,11 @@ function storagePathsFor(storagePath: string): string[] {
   return [storagePath, `${storagePath}.thumb.webp`];
 }
 
-type SidePhotoRow = { id: unknown; storage_path: unknown };
+type SidePhotoRow = {
+  id: unknown;
+  storage_path: unknown;
+  sort_order?: unknown;
+};
 
 async function existingSidePhotos(
   supabase: SupabaseClient,
@@ -110,7 +114,7 @@ async function existingSidePhotos(
 ): Promise<SidePhotoRow[]> {
   const { data, error } = await supabase
     .from("card_images")
-    .select("id, storage_path")
+    .select("id, storage_path, sort_order")
     .eq("card_id", cardId)
     .in("image_type", SIDE_IMAGE_TYPES[side]);
   if (error) throw error;
@@ -427,6 +431,7 @@ async function uploadAttachments(params: {
     let existingPhotoCount = 0;
     let remainingSlots = MAX_PHOTOS_PER_SIDE;
     let nextIndex = 1;
+    let nextSortOrder = 0;
     if (append) {
       const existing = await existingSidePhotos(supabase, cardId, side);
       existingPhotoCount = existing.length;
@@ -435,6 +440,11 @@ async function uploadAttachments(params: {
         existing.map((row) => String(row.storage_path)),
         side
       );
+      nextSortOrder =
+        existing.reduce(
+          (max, row) => Math.max(max, Number(row.sort_order) || 0),
+          -1
+        ) + 1;
       if (remainingSlots === 0) {
         await editOriginal(
           applicationId,
@@ -506,6 +516,7 @@ async function uploadAttachments(params: {
           card_id: card.id,
           image_type: side,
           storage_path: path,
+          sort_order: nextSortOrder,
         });
         if (insertError) {
           await supabase.storage.from(BUCKET).remove([path]).catch(() => {});
@@ -514,6 +525,7 @@ async function uploadAttachments(params: {
 
         uploaded += 1;
         nextIndex += 1;
+        nextSortOrder += 1;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         errors.push(`${filename}: ${message}`);

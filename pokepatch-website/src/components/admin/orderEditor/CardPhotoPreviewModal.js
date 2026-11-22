@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   overlayFadeClassName,
@@ -34,6 +34,16 @@ const TOOLBAR_BUTTON_CLASS =
 const REMOVE_BUTTON_CLASS =
   "inline-flex h-8 items-center rounded-lg border border-error/35 bg-error/10 px-3 text-xs font-semibold text-error transition hover:bg-error/20 disabled:cursor-not-allowed disabled:opacity-40";
 
+function moveId(ids, fromId, toId) {
+  const from = ids.findIndex((id) => String(id) === String(fromId));
+  const to = ids.findIndex((id) => String(id) === String(toId));
+  if (from < 0 || to < 0 || from === to) return ids;
+  const next = [...ids];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 /**
  * Admin-only photo reference viewer for one order card.
  * Opens with every photo laid out by group; clicking a photo shows the
@@ -44,6 +54,8 @@ const REMOVE_BUTTON_CLASS =
  *
  * Pass `onRemove` + `removableGroupKeys` to hard-delete before/after photos
  * (Remove asks for confirmation first).
+ *
+ * Pass `onReorder` to drag photos within a group (before/after independently).
  */
 export default function CardPhotoPreviewModal({
   open,
@@ -51,15 +63,38 @@ export default function CardPhotoPreviewModal({
   title,
   groups = [],
   onRemove,
+  onReorder,
   removableGroupKeys = ["before", "after"],
+  reorderableGroupKeys = ["before", "after"],
 }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dropTargetId, setDropTargetId] = useState(null);
+  const [dragOpen, setDragOpen] = useState(open);
+  const dragIdRef = useRef(null);
+  const dragGroupRef = useRef(null);
+  const ignoreClickRef = useRef(false);
   const { mounted, visible } = useOverlayPresence(open);
+
+  if (open !== dragOpen) {
+    setDragOpen(open);
+    if (draggingId != null) setDraggingId(null);
+    if (dropTargetId != null) setDropTargetId(null);
+  }
 
   const removableKeys = useMemo(
     () => new Set(removableGroupKeys ?? []),
     [removableGroupKeys]
   );
+  const reorderableKeys = useMemo(
+    () => new Set(reorderableGroupKeys ?? []),
+    [reorderableGroupKeys]
+  );
+  const canReorderGroups =
+    typeof onReorder === "function" &&
+    groups.some(
+      (group) => reorderableKeys.has(group.key) && group.items.length > 1
+    );
 
   const flatItems = useMemo(
     () =>
@@ -75,14 +110,27 @@ export default function CardPhotoPreviewModal({
   );
 
   const total = flatItems.length;
+  if (expandedIndex != null && total === 0) {
+    setExpandedIndex(null);
+  } else if (expandedIndex != null && expandedIndex >= total) {
+    setExpandedIndex(total - 1);
+  }
   const expandedItem =
     expandedIndex != null ? flatItems[expandedIndex] ?? null : null;
+
+  const clearDrag = useCallback(() => {
+    dragIdRef.current = null;
+    dragGroupRef.current = null;
+    setDraggingId(null);
+    setDropTargetId(null);
+  }, []);
 
   // Fresh grid every time the modal reopens.
   const requestClose = useCallback(() => {
     setExpandedIndex(null);
+    clearDrag();
     onClose();
-  }, [onClose]);
+  }, [onClose, clearDrag]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -115,18 +163,6 @@ export default function CardPhotoPreviewModal({
     };
   }, [open, expandedIndex, total, requestClose]);
 
-  // Keep expanded index valid when the parent removes items from the draft.
-  useEffect(() => {
-    if (expandedIndex == null) return;
-    if (total === 0) {
-      setExpandedIndex(null);
-      return;
-    }
-    if (expandedIndex >= total) {
-      setExpandedIndex(total - 1);
-    }
-  }, [expandedIndex, total]);
-
   if (!mounted) return null;
   if (typeof document === "undefined") return null;
 
@@ -134,10 +170,59 @@ export default function CardPhotoPreviewModal({
   const hasNext = expandedIndex != null && expandedIndex < total - 1;
 
   function openItem(itemId) {
+    if (ignoreClickRef.current) {
+      ignoreClickRef.current = false;
+      return;
+    }
     const index = flatItems.findIndex(
       (item) => String(item.id) === String(itemId)
     );
     if (index >= 0) setExpandedIndex(index);
+  }
+
+  function handleDragStart(event, groupKey, itemId) {
+    dragIdRef.current = String(itemId);
+    dragGroupRef.current = groupKey;
+    ignoreClickRef.current = true;
+    setDraggingId(String(itemId));
+    setDropTargetId(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(itemId));
+  }
+
+  function handleDragOver(event, groupKey, itemId) {
+    if (dragGroupRef.current !== groupKey) {
+      if (dropTargetId != null) setDropTargetId(null);
+      return;
+    }
+    if (!dragIdRef.current) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const targetId = String(itemId);
+    if (targetId === dragIdRef.current) {
+      if (dropTargetId != null) setDropTargetId(null);
+      return;
+    }
+    if (dropTargetId !== targetId) setDropTargetId(targetId);
+  }
+
+  function handleDrop(event, groupKey, itemId, itemIds) {
+    event.preventDefault();
+    event.stopPropagation();
+    const dragId = dragIdRef.current;
+    const sameGroup = dragGroupRef.current === groupKey;
+    clearDrag();
+    if (!sameGroup || !dragId || typeof onReorder !== "function") return;
+    const next = moveId(itemIds.map(String), dragId, itemId);
+    if (next.every((id, index) => id === String(itemIds[index]))) return;
+    onReorder(groupKey, next);
+  }
+
+  function handleDragEnd() {
+    clearDrag();
+    window.setTimeout(() => {
+      ignoreClickRef.current = false;
+    }, 0);
   }
 
   function handleRemove(itemId) {
@@ -180,7 +265,9 @@ export default function CardPhotoPreviewModal({
         <p className="mt-0.5 truncate font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45">
           {expandedItem
             ? `${expandedItem.groupTitle} · ${expandedIndex + 1} of ${total}`
-            : `${total} photo${total === 1 ? "" : "s"}`}
+            : `${total} photo${total === 1 ? "" : "s"}${
+                canReorderGroups ? " · drag to reorder" : ""
+              }`}
         </p>
       </div>
       {expandedItem?.canRemove ? (
@@ -216,6 +303,11 @@ export default function CardPhotoPreviewModal({
         if (items.length === 0) return null;
         const groupRemovable =
           typeof onRemove === "function" && removableKeys.has(group.key);
+        const groupReorderable =
+          typeof onReorder === "function" &&
+          reorderableKeys.has(group.key) &&
+          items.length > 1;
+        const itemIds = items.map((item) => item.id);
         return (
           <section key={group.key} className="flex flex-col items-center">
             <h3 className="mb-2.5 flex items-baseline gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-ink/45">
@@ -223,50 +315,97 @@ export default function CardPhotoPreviewModal({
               <span className="font-mono text-ink/35">{items.length}</span>
             </h3>
             <ul className="flex flex-wrap justify-center gap-3">
-              {items.map((item) => (
-                <li
-                  key={item.id}
-                  className="w-40 overflow-hidden rounded-xl bg-night/40 ring-1 ring-ink/10"
-                >
-                  <button
-                    type="button"
-                    onClick={() => openItem(item.id)}
-                    disabled={!item.src}
-                    className="block w-full cursor-zoom-in text-left disabled:cursor-default"
-                    aria-label={`Expand ${item.alt || "photo"}`}
+              {items.map((item) => {
+                const itemId = String(item.id);
+                const isDragging = draggingId === itemId;
+                const isDropTarget = dropTargetId === itemId && !isDragging;
+                return (
+                  <li
+                    key={item.id}
+                    onDragOver={
+                      groupReorderable
+                        ? (event) => handleDragOver(event, group.key, item.id)
+                        : undefined
+                    }
+                    onDrop={
+                      groupReorderable
+                        ? (event) =>
+                            handleDrop(event, group.key, item.id, itemIds)
+                        : undefined
+                    }
+                    className={`w-40 overflow-hidden rounded-xl bg-night/40 transition ${
+                      isDropTarget
+                        ? "ring-2 ring-ink/55"
+                        : "ring-1 ring-ink/10"
+                    } ${isDragging ? "opacity-40" : ""}`}
                   >
-                    <span className="flex aspect-[3/4] w-full items-center justify-center bg-night/50 p-1">
-                      {item.src ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={item.src}
-                          alt={item.alt}
-                          decoding="async"
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      ) : (
-                        <span className="text-xs text-ink/40">Unavailable</span>
-                      )}
-                    </span>
-                    {item.label ? (
-                      <span className="block truncate px-2 py-1.5 text-[11px] text-ink/70">
-                        {item.label}
+                    <div
+                      role="button"
+                      tabIndex={item.src ? 0 : -1}
+                      draggable={groupReorderable}
+                      onDragStart={
+                        groupReorderable
+                          ? (event) =>
+                              handleDragStart(event, group.key, item.id)
+                          : undefined
+                      }
+                      onDragEnd={groupReorderable ? handleDragEnd : undefined}
+                      onClick={() => item.src && openItem(item.id)}
+                      onKeyDown={(event) => {
+                        if (!item.src) return;
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openItem(item.id);
+                        }
+                      }}
+                      aria-label={`Expand ${item.alt || "photo"}`}
+                      aria-grabbed={
+                        groupReorderable ? isDragging : undefined
+                      }
+                      className={`block w-full select-none text-left ${
+                        !item.src
+                          ? "cursor-default"
+                          : groupReorderable
+                            ? "cursor-grab active:cursor-grabbing"
+                            : "cursor-zoom-in"
+                      }`}
+                    >
+                      <span className="flex aspect-[3/4] w-full items-center justify-center bg-night/50 p-1">
+                        {item.src ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={item.src}
+                            alt={item.alt}
+                            draggable={false}
+                            decoding="async"
+                            className="pointer-events-none max-h-full max-w-full object-contain"
+                          />
+                        ) : (
+                          <span className="text-xs text-ink/40">
+                            Unavailable
+                          </span>
+                        )}
                       </span>
-                    ) : null}
-                  </button>
-                  {groupRemovable ? (
-                    <div className="border-t border-ink/10 px-2 py-1.5">
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(item.id)}
-                        className="w-full rounded-md px-2 py-1 text-[11px] font-semibold text-error transition hover:bg-error/10"
-                      >
-                        Remove
-                      </button>
+                      {item.label ? (
+                        <span className="block truncate px-2 py-1.5 text-[11px] text-ink/70">
+                          {item.label}
+                        </span>
+                      ) : null}
                     </div>
-                  ) : null}
-                </li>
-              ))}
+                    {groupRemovable ? (
+                      <div className="border-t border-ink/10 px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(item.id)}
+                          className="w-full rounded-md px-2 py-1 text-[11px] font-semibold text-error transition hover:bg-error/10"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         );

@@ -68,6 +68,7 @@ type CardImageRow = {
   id: number;
   storage_path: string;
   image_type: string;
+  sort_order?: number;
 };
 
 type CardRow = {
@@ -230,9 +231,10 @@ async function loadSideImages(
 ): Promise<CardImageRow[]> {
   const { data, error } = await supabase
     .from("card_images")
-    .select("id, storage_path, image_type")
+    .select("id, storage_path, image_type, sort_order")
     .eq("card_id", cardId)
     .in("image_type", SIDE_IMAGE_TYPES[side])
+    .order("sort_order", { ascending: true })
     .order("id", { ascending: true });
   if (error) throw error;
   return (data ?? []) as CardImageRow[];

@@ -412,6 +412,24 @@ export async function adminDeletePhoto(orderId, imageId) {
   return payload.deleted_image_id;
 }
 
+export async function adminReorderCardPhotos(
+  orderId,
+  cardId,
+  group,
+  orderedIds
+) {
+  await adminRequest(apiUrl(), {
+    token: getStoredAdminToken(),
+    body: {
+      action: "reorder_photos",
+      order_id: orderId,
+      card_id: cardId,
+      group,
+      ordered_ids: orderedIds,
+    },
+  });
+}
+
 export async function adminListGallery() {
   const payload = await adminRequest(apiUrl(), {
     token: getStoredAdminToken(),

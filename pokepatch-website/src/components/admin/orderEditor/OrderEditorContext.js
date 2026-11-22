@@ -94,6 +94,31 @@ export function OrderEditorProvider({
     setError("");
   }, [savedDraft]);
 
+  /** Apply a new display order on draft + baseline so immediate reorders stay non-dirty. */
+  const reorderSavedPhotosLocally = useCallback((cardId, orderedIds) => {
+    const cardKey = String(cardId);
+    const rank = new Map(
+      (orderedIds ?? []).map((id, index) => [String(id), index])
+    );
+    if (rank.size === 0) return;
+    const apply = (current) => ({
+      ...current,
+      cards: (current.cards ?? []).map((card) => {
+        if (String(card.id) !== cardKey) return card;
+        return {
+          ...card,
+          images: (card.images ?? []).map((image) => {
+            const key = String(image.id ?? image.storage_path);
+            if (!rank.has(key)) return image;
+            return { ...image, sort_order: rank.get(key) };
+          }),
+        };
+      }),
+    });
+    setDraft(apply);
+    setSavedDraft(apply);
+  }, []);
+
   /** Drop a saved photo from draft + baseline so immediate deletes stay non-dirty. */
   const removeSavedPhotoLocally = useCallback((cardId, imageId) => {
     const idKey = String(imageId);
@@ -201,6 +226,7 @@ export function OrderEditorProvider({
     setError,
     discardChanges,
     removeSavedPhotoLocally,
+    reorderSavedPhotosLocally,
     reseedFromOrder,
     requestSave,
     performSave,
