@@ -592,6 +592,8 @@ export function stringSelect(params: {
   }[];
   minValues?: number;
   maxValues?: number;
+  /** Modal-only. Defaults omitted so message selects stay unchanged. */
+  required?: boolean;
 }): Json {
   const {
     customId,
@@ -599,12 +601,14 @@ export function stringSelect(params: {
     options,
     minValues = 1,
     maxValues = 1,
+    required,
   } = params;
   return {
     type: ComponentType.STRING_SELECT,
     custom_id: customId,
     min_values: minValues,
     max_values: maxValues,
+    ...(required != null ? { required } : {}),
     ...(placeholder ? { placeholder: placeholder.slice(0, 150) } : {}),
     options: options.slice(0, 25).map((option) => ({
       label: option.label.slice(0, 100),

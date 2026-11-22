@@ -15,10 +15,8 @@ import {
 } from "../_shared/discord.ts";
 import {
   WOOPER_MODAL_PREFIX,
-  WOOPER_SIDE_PREFIX,
   handleWooperCommand,
   handleWooperModal,
-  handleWooperSideButton,
 } from "./wooper.ts";
 
 declare const EdgeRuntime: {
@@ -42,13 +40,6 @@ Deno.serve(async (req) => {
       return await handleWooperCommand(interaction);
     }
     return ephemeralReply(`Unknown command \`${commandName}\`.`);
-  }
-
-  if (type === InteractionType.MESSAGE_COMPONENT) {
-    if (customId.startsWith(WOOPER_SIDE_PREFIX)) {
-      return await handleWooperSideButton(interaction);
-    }
-    return ephemeralReply("Unknown button.");
   }
 
   if (type === InteractionType.MODAL_SUBMIT) {

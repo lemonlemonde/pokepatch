@@ -1,10 +1,10 @@
 /**
  * "wooper" — upload before/after restoration photos onto an order card.
  *
- * Flow: post images in chat → right-click message → Apps → wooper → pick
- * **Before** or **After** → modal (order / card / optional append). Default is
- * replace that side's photos. Check **Append** to add the message's images
- * after the ones already on that side.
+ * Flow: post images in chat → right-click message → Apps → wooper → modal
+ * (before/after select, order / card / optional append). Default is replace
+ * that side's photos. Check **Append** to add the message's images after the
+ * ones already on that side.
  *
  * DB triggers flip card/order status on first before → in_progress and first
  * after → completed (order → ready when all active cards are done). The
@@ -14,11 +14,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getServiceClient } from "../_shared/adminSession.ts";
 import {
-  ButtonStyle,
   CallbackType,
   EPHEMERAL,
-  actionRow,
-  button,
   checkboxGroup,
   collectModalFields,
   editOriginal,
@@ -27,6 +24,7 @@ import {
   fieldValues,
   json,
   labeled,
+  stringSelect,
   textInput,
   type Interaction,
   type Json,
@@ -52,7 +50,6 @@ const MAX_OWNER_CARD_INDEX = 100;
 const IMMUTABLE_CACHE_CONTROL = "604800";
 
 export const WOOPER_MODAL_PREFIX = "wooper:";
-export const WOOPER_SIDE_PREFIX = "wooper-side:";
 
 /** Replace/append on a side includes these legacy types in that group. */
 const SIDE_IMAGE_TYPES: Record<string, string[]> = {
@@ -173,39 +170,28 @@ function imageAttachmentsFromMessage(
   });
 }
 
-function parseSideButton(customId: string): {
-  side: string;
-  imageCount: number;
-  pendingId: string;
-} | null {
-  if (!customId.startsWith(WOOPER_SIDE_PREFIX)) return null;
-  const [side, countRaw, pendingId] = customId
-    .slice(WOOPER_SIDE_PREFIX.length)
-    .split(":");
-  const imageCount = Number(countRaw);
-  if (!(side in SIDE_IMAGE_TYPES) || !pendingId || !Number.isFinite(imageCount)) {
-    return null;
-  }
-  return { side, imageCount, pendingId };
-}
-
-function parseModalCustomId(customId: string): {
-  pendingId: string;
-  side: string;
-} | null {
-  if (!customId.startsWith(WOOPER_MODAL_PREFIX)) return null;
-  const [pendingId, side] = customId.slice(WOOPER_MODAL_PREFIX.length).split(":");
-  if (!pendingId || !(side in SIDE_IMAGE_TYPES)) return null;
-  return { pendingId, side };
-}
-
-function wooperModal(pendingId: string, side: string, imageCount: number): Json {
+function wooperModal(pendingId: string, imageCount: number): Json {
   return {
     type: CallbackType.MODAL,
     data: {
-      custom_id: `${WOOPER_MODAL_PREFIX}${pendingId}:${side}`,
-      title: `Upload ${imageCount} ${side} photo(s)`,
+      custom_id: `${WOOPER_MODAL_PREFIX}${pendingId}`,
+      title: `Upload ${imageCount} photo(s)`,
       components: [
+        labeled(
+          "Side",
+          stringSelect({
+            customId: "side",
+            required: true,
+            placeholder: "Before or after",
+            minValues: 1,
+            maxValues: 1,
+            options: [
+              { label: "Before", value: "before" },
+              { label: "After", value: "after" },
+            ],
+          }),
+          "Pick one — not both"
+        ),
         labeled(
           "Order number",
           textInput({
@@ -622,7 +608,7 @@ export async function handleWooperCommand(interaction: Interaction): Promise<Res
 
   if (commandType !== 3) {
     return ephemeralReply(
-      "Post your photos in chat, then **right-click the message → Apps → wooper**, pick **Before** or **After**, and enter order / card (check **Append** to add instead of replace)."
+      "Post your photos in chat, then **right-click the message → Apps → wooper** and pick before or after plus order / card (check **Append** to add instead of replace)."
     );
   }
 
@@ -640,41 +626,11 @@ export async function handleWooperCommand(interaction: Interaction): Promise<Res
 
   try {
     const pendingId = await savePendingAttachments(files);
-    return json({
-      type: CallbackType.CHANNEL_MESSAGE,
-      data: {
-        content: `Upload **${files.length}** photo(s) — pick a side.`,
-        flags: EPHEMERAL,
-        components: [
-          actionRow([
-            button({
-              customId: `${WOOPER_SIDE_PREFIX}before:${files.length}:${pendingId}`,
-              label: "Before",
-              style: ButtonStyle.PRIMARY,
-            }),
-            button({
-              customId: `${WOOPER_SIDE_PREFIX}after:${files.length}:${pendingId}`,
-              label: "After",
-              style: ButtonStyle.SUCCESS,
-            }),
-          ]),
-        ],
-      },
-    });
+    return json(wooperModal(pendingId, files.length));
   } catch (err) {
     console.error("wooper pending save failed", err);
     return ephemeralReply("Couldn't start upload. Try again.");
   }
-}
-
-/** Button click → open the order/card modal for that side. */
-export async function handleWooperSideButton(
-  interaction: Interaction
-): Promise<Response> {
-  const data = (interaction.data ?? {}) as Json;
-  const parsed = parseSideButton(String(data.custom_id ?? ""));
-  if (!parsed) return ephemeralReply("Unknown button.");
-  return json(wooperModal(parsed.pendingId, parsed.side, parsed.imageCount));
 }
 
 async function processWooperModal(interaction: Interaction): Promise<void> {
@@ -682,18 +638,22 @@ async function processWooperModal(interaction: Interaction): Promise<void> {
   const token = String(interaction.token ?? "");
   const data = (interaction.data ?? {}) as Json;
   const customId = String(data.custom_id ?? "");
+  const pendingId = customId.startsWith(WOOPER_MODAL_PREFIX)
+    ? customId.slice(WOOPER_MODAL_PREFIX.length)
+    : "";
 
   try {
-    const parsed = parseModalCustomId(customId);
-    if (!parsed) {
+    if (!pendingId) {
       await editOriginal(applicationId, token, "Invalid upload session.");
       return;
     }
-    const { pendingId, side } = parsed;
 
     const fields = collectModalFields(data.components);
     const orderDisplayId = Number(fieldValue(fields, "order"));
     const cardIndex = Number(fieldValue(fields, "card"));
+    const side = (
+      fieldValues(fields, "side")[0] ?? fieldValue(fields, "side")
+    ).toLowerCase();
     const append = fieldValues(fields, "append").includes("yes");
 
     const files = await loadPendingAttachments(pendingId);
