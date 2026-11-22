@@ -39,6 +39,7 @@ export const ComponentType = {
   SEPARATOR: 14,
   CONTAINER: 17,
   LABEL: 18,
+  RADIO_GROUP: 21,
   CHECKBOX_GROUP: 22,
 } as const;
 
@@ -668,6 +669,25 @@ export function textInput(params: {
     ...(placeholder ? { placeholder: placeholder.slice(0, 100) } : {}),
     ...(value ? { value: value.slice(0, maxLength ?? 4000) } : {}),
     ...(maxLength ? { max_length: maxLength } : {}),
+  };
+}
+
+export function radioGroup(params: {
+  customId: string;
+  options: { value: string; label: string; description?: string; default?: boolean }[];
+  required?: boolean;
+}): Json {
+  const { customId, options, required = true } = params;
+  return {
+    type: ComponentType.RADIO_GROUP,
+    custom_id: customId,
+    required,
+    options: options.slice(0, 10).map((option) => ({
+      value: option.value,
+      label: option.label.slice(0, 100),
+      ...(option.description ? { description: option.description.slice(0, 100) } : {}),
+      ...(option.default ? { default: true } : {}),
+    })),
   };
 }
 

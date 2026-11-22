@@ -2,11 +2,9 @@
  * "wooper" — upload before/after restoration photos onto an order card.
  *
  * Flow: post images in chat → right-click message → Apps → wooper → modal
- * (order / card / side / optional append). Default is replace that side's
- * photos. Check **Append** to add the message's images after the ones already
- * on that side. Side is optional: blank → `before` when the card has no
- * before photos, otherwise `after`; if both sides are filled the upload is
- * rejected unless you type `before` or `after`.
+ * (before/after, order / card / optional append). Default is replace
+ * that side's photos. Check **Append** to add the message's images after the
+ * ones already on that side.
  *
  * DB triggers flip card/order status on first before → in_progress and first
  * after → completed (order → ready when all active cards are done). The
@@ -26,6 +24,7 @@ import {
   fieldValues,
   json,
   labeled,
+  radioGroup,
   textInput,
   type Interaction,
   type Json,
@@ -160,37 +159,6 @@ async function clearSide(
   return existing.length;
 }
 
-/**
- * Blank side → pick one from what the card already has:
- *   no before photos → `before`; before filled, after empty → `after`;
- *   both filled → null (caller rejects so nothing is silently replaced/appended).
- */
-async function defaultSideForCard(
-  supabase: SupabaseClient,
-  cardId: string
-): Promise<{ side: string | null; beforeCount: number; afterCount: number }> {
-  const { data, error } = await supabase
-    .from("card_images")
-    .select("image_type")
-    .eq("card_id", cardId)
-    .in("image_type", [...SIDE_IMAGE_TYPES.before, ...SIDE_IMAGE_TYPES.after]);
-  if (error) throw error;
-
-  let beforeCount = 0;
-  let afterCount = 0;
-  for (const row of data ?? []) {
-    if (SIDE_IMAGE_TYPES.before.includes(String(row.image_type))) {
-      beforeCount += 1;
-    } else {
-      afterCount += 1;
-    }
-  }
-
-  if (beforeCount === 0) return { side: "before", beforeCount, afterCount };
-  if (afterCount === 0) return { side: "after", beforeCount, afterCount };
-  return { side: null, beforeCount, afterCount };
-}
-
 function imageAttachmentsFromMessage(
   message: Json | undefined
 ): DiscordAttachment[] {
@@ -210,6 +178,18 @@ function wooperModal(pendingId: string, imageCount: number): Json {
       title: `Upload ${imageCount} photo(s)`,
       components: [
         labeled(
+          "Side",
+          radioGroup({
+            customId: "side",
+            required: true,
+            options: [
+              { value: "before", label: "Before" },
+              { value: "after", label: "After" },
+            ],
+          }),
+          "Tap one"
+        ),
+        labeled(
           "Order number",
           textInput({
             customId: "order",
@@ -227,16 +207,6 @@ function wooperModal(pendingId: string, imageCount: number): Json {
             maxLength: 4,
           }),
           "1 = first card in the order"
-        ),
-        labeled(
-          "Side (optional)",
-          textInput({
-            customId: "side",
-            required: false,
-            placeholder: "before or after",
-            maxLength: 6,
-          }),
-          "Blank = before, or after once before is filled"
         ),
         labeled(
           "Append to existing photos",
@@ -312,7 +282,7 @@ async function uploadAttachments(params: {
   token: string;
   orderDisplayId: number;
   cardIndex: number;
-  /** `before` / `after`, or "" to pick from the card's existing photos. */
+  /** `before` or `after`. */
   side: string;
   /** Keep existing photos on that side and add these after them. */
   append: boolean;
@@ -323,7 +293,7 @@ async function uploadAttachments(params: {
     token,
     orderDisplayId,
     cardIndex,
-    side: requestedSide,
+    side,
     append,
     files,
   } = params;
@@ -345,11 +315,11 @@ async function uploadAttachments(params: {
       );
       return;
     }
-    if (requestedSide && !(requestedSide in SIDE_IMAGE_TYPES)) {
+    if (!(side in SIDE_IMAGE_TYPES)) {
       await editOriginal(
         applicationId,
         token,
-        "Side must be `before`, `after`, or left blank."
+        "Pick **Before** or **After**."
       );
       return;
     }
@@ -450,27 +420,6 @@ async function uploadAttachments(params: {
     const cardLabel = (card.card_name || `Card ${cardIndex}`).trim();
     const cardId = String(card.id);
     const fromCardStatus = normalizeCardStatus(card.status);
-
-    let side = requestedSide;
-    let sideWasDefaulted = false;
-    if (!side) {
-      const picked = await defaultSideForCard(supabase, cardId);
-      if (!picked.side) {
-        await editOriginal(
-          applicationId,
-          token,
-          [
-            `Nothing uploaded — ${orderLabel} · ${cardLabel} (card ${cardIndex}) already has **${picked.beforeCount}** before and **${picked.afterCount}** after photo(s).`,
-            append
-              ? "Re-run wooper and type `before` or `after` so photos can be appended to that side."
-              : "Re-run wooper and type `before` or `after` to replace that side, or check **Append** and pick a side to add more.",
-          ].join("\n")
-        );
-        return;
-      }
-      side = picked.side;
-      sideWasDefaulted = true;
-    }
 
     // Replace clears lazily, once the first new photo has downloaded, so a
     // dead CDN link can't leave the side empty. Append leaves existing rows.
@@ -630,9 +579,6 @@ async function uploadAttachments(params: {
       }
     }
 
-    if (sideWasDefaulted) {
-      lines.push(`Side left blank → defaulted to **${side}**.`);
-    }
     if (append && uploaded > 0) {
       lines.push(
         `Appended to **${existingPhotoCount}** existing ${side} photo(s) (now **${existingPhotoCount + uploaded}**).`
@@ -659,7 +605,7 @@ export async function handleWooperCommand(interaction: Interaction): Promise<Res
 
   if (commandType !== 3) {
     return ephemeralReply(
-      "Post your photos in chat, then **right-click the message → Apps → wooper** and enter order / card / side (check **Append** to add instead of replace)."
+      "Post your photos in chat, then **right-click the message → Apps → wooper** and pick before or after plus order / card (check **Append** to add instead of replace)."
     );
   }
 
@@ -702,7 +648,9 @@ async function processWooperModal(interaction: Interaction): Promise<void> {
     const fields = collectModalFields(data.components);
     const orderDisplayId = Number(fieldValue(fields, "order"));
     const cardIndex = Number(fieldValue(fields, "card"));
-    const side = fieldValue(fields, "side").toLowerCase();
+    const side = (
+      fieldValue(fields, "side") || fieldValues(fields, "side")[0] || ""
+    ).toLowerCase();
     const append = fieldValues(fields, "append").includes("yes");
 
     const files = await loadPendingAttachments(pendingId);
