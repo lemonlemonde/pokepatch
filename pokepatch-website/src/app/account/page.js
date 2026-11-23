@@ -300,6 +300,9 @@ export default function AccountPage() {
 
             <div className="space-y-3">
               <p className="text-sm font-bold text-ink">Contact methods</p>
+              <p className="text-sm text-ink/70">
+                You&apos;ll choose how we reach you on each quote.
+              </p>
               {CONTACT_TYPES.map((type) => (
                 <div key={type.value}>
                   <label

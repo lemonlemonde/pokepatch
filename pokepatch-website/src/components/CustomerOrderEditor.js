@@ -11,7 +11,13 @@ import Button from "@/components/Button";
 import WhiteningDisclaimerDialog from "@/components/WhiteningDisclaimerDialog";
 import WhiteningFaqAcknowledgment from "@/components/WhiteningFaqAcknowledgment";
 import { useAuth } from "@/contexts/AuthContext";
-import { CONTACT_TYPES } from "@/lib/contacts";
+import {
+  CONTACT_FIELD_HINTS,
+  CONTACT_TYPES,
+  OTHER_CONTACTS_COPY,
+  isOfferedContactType,
+  preferredContactReachSentence,
+} from "@/lib/contacts";
 import {
   CARD_PHOTOS_BUCKET,
   sanitizeFilename,
@@ -191,7 +197,9 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           return {
             ...current,
             contactValues: nextContacts,
-            preferredContactId: savedPreferred || current.preferredContactId,
+            preferredContactId: isOfferedContactType(savedPreferred)
+              ? savedPreferred
+              : current.preferredContactId,
           };
         });
 
@@ -241,10 +249,18 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
 
   const completeCards = draft.cards.filter(isCardComplete);
   const preferredOptions = [
-    { id: "email", label: "Email" },
+    {
+      id: "email",
+      label: order?.customer_email
+        ? `Email (${order.customer_email})`
+        : "Email",
+    },
     ...CONTACT_TYPES.filter(
       (type) => (draft.contactValues[type.value] ?? "").trim() !== ""
-    ).map((type) => ({ id: type.value, label: type.label })),
+    ).map((type) => ({
+      id: type.value,
+      label: `${type.label} (${draft.contactValues[type.value].trim()})`,
+    })),
   ];
   const preferredOptionIds = new Set(preferredOptions.map((o) => o.id));
   const effectivePreferredId = preferredOptionIds.has(draft.preferredContactId)
@@ -606,8 +622,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             Other forms of contact <span className="text-error">*</span>
           </p>
           <p className="text-sm text-ink/70">
-            Provide at least one so we can reach you (phone, Discord, or
-            Instagram). Saved account contacts can&apos;t be edited here.
+            {OTHER_CONTACTS_COPY} Saved account contacts can&apos;t be edited
+            here.
           </p>
           {fieldErrors?.contacts ? (
             <p className="text-sm text-error" role="alert">
@@ -667,6 +683,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                     to manage it going forward.
                   </p>
                 ) : null}
+                {!locked ? (
+                  <p className="mt-1 text-xs text-ink/60">
+                    {CONTACT_FIELD_HINTS[type.value]}
+                  </p>
+                ) : null}
               </div>
             );
           })}
@@ -677,11 +698,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             htmlFor="edit_preferred_contact"
             className="block text-sm font-bold text-ink"
           >
-            Preferred contact method
+            How we&apos;ll contact you <span className="text-error">*</span>
           </label>
-          <p className="text-sm text-ink/70">
-            How would you prefer we reach you about your order?
-          </p>
           <select
             id="edit_preferred_contact"
             value={effectivePreferredId}
@@ -700,6 +718,13 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
               </option>
             ))}
           </select>
+          <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
+            {preferredContactReachSentence({
+              preferredId: effectivePreferredId,
+              email: order?.customer_email,
+              contactValues: draft.contactValues,
+            })}
+          </p>
         </div>
       </section>
 

@@ -9,7 +9,6 @@ import {
 const CANCEL_SUBJECT = "Your quote request was canceled";
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
-const CONTACT_DISCORD = "pokepatch.cards";
 
 type CanceledOrder = {
   id: string;
@@ -30,8 +29,7 @@ function buildCancelBody(): string {
     `pokepatch.cards anytime.\n\n` +
     `Questions? Reach us at:\n` +
     `- Email: ${CONTACT_EMAIL}\n` +
-    `- Instagram: ${CONTACT_INSTAGRAM}\n` +
-    `- Discord: ${CONTACT_DISCORD}`
+    `- Instagram: ${CONTACT_INSTAGRAM}`
   );
 }
 

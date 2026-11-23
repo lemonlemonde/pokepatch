@@ -21,12 +21,36 @@ import {
   RemoveButton,
   editorFieldClass,
 } from "@/components/admin/orderEditor/editorUi";
+import {
+  contactTypeLabel,
+  contactTypeOptionsFor,
+  isPreferredContact,
+} from "@/lib/contacts";
 
-const CONTACT_TYPES = [
-  { value: "phone", label: "Phone" },
-  { value: "discord", label: "Discord" },
-  { value: "instagram", label: "Instagram" },
-];
+function StarGlyph({ className = "h-3 w-3" }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+    </svg>
+  );
+}
+
+function PreferredMark() {
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-mint/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-mint"
+      title="Customer asked to be contacted here"
+    >
+      <StarGlyph />
+      Preferred
+    </span>
+  );
+}
 
 function OpenGlyph({ className = "h-3.5 w-3.5" }) {
   return (
@@ -113,6 +137,10 @@ function QuoteMessageBlock() {
 export function CustomerPanel() {
   const { draft, updateDraft, saving } = useOrderEditor();
   const contacts = draft.contacts ?? [];
+  const preferredType = draft.preferred_contact_type || "email";
+  const preferredValue =
+    (draft.preferred_contact_value ?? "").trim() ||
+    (preferredType === "email" ? (draft.customer_email ?? "").trim() : "");
   const name = [draft.first_name, draft.last_name]
     .filter(Boolean)
     .join(" ")
@@ -158,8 +186,9 @@ export function CustomerPanel() {
     >
       <p className="text-sm font-semibold text-ink">{name || "—"}</p>
       {draft.customer_email ? (
-        <p className="mt-0.5 truncate text-xs text-ink/55">
-          {draft.customer_email}
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-ink/55">
+          <span className="min-w-0 truncate">{draft.customer_email}</span>
+          {isPreferredContact(preferredType, "email") ? <PreferredMark /> : null}
         </p>
       ) : null}
       {draft.heard_about_source ? (
@@ -175,44 +204,62 @@ export function CustomerPanel() {
             Add
           </GhostButton>
         </div>
+        <p className="mb-2 text-xs text-ink/55">
+          Reach out via {contactTypeLabel(preferredType)}
+          {preferredValue ? ` · ${preferredValue}` : ""}.
+        </p>
         {contacts.length === 0 ? (
           <p className="text-xs text-ink/40">None on file.</p>
         ) : (
           <div className="space-y-2">
-            {contacts.map((contact, index) => (
-              <div
-                key={contact.id ?? `new-${index}`}
-                className="flex items-center gap-1.5"
-              >
-                <select
-                  className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
-                  value={contact.contact_type}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateContact(index, { contact_type: event.target.value })
-                  }
+            {contacts.map((contact, index) => {
+              const preferred = isPreferredContact(
+                preferredType,
+                contact.contact_type
+              );
+              return (
+                <div
+                  key={contact.id ?? `new-${index}`}
+                  className="flex items-center gap-1.5"
                 >
-                  {CONTACT_TYPES.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-                <ContactValueField
-                  contactType={contact.contact_type}
-                  value={contact.value}
-                  disabled={saving}
-                  onChange={(event) =>
-                    updateContact(index, { value: event.target.value })
-                  }
-                />
-                <RemoveButton
-                  label="Remove contact"
-                  disabled={saving}
-                  onClick={() => removeContact(index)}
-                />
-              </div>
-            ))}
+                  <span
+                    className="grid w-4 shrink-0 place-items-center"
+                    title={preferred ? "Preferred contact method" : undefined}
+                  >
+                    {preferred ? (
+                      <StarGlyph className="h-3.5 w-3.5 text-mint" />
+                    ) : null}
+                  </span>
+                  <select
+                    className={`${editorFieldClass({ fullWidth: false })} w-[6.25rem] shrink-0 px-2`}
+                    value={contact.contact_type}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateContact(index, { contact_type: event.target.value })
+                    }
+                  >
+                    {contactTypeOptionsFor(contact.contact_type).map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                  <ContactValueField
+                    contactType={contact.contact_type}
+                    value={contact.value}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateContact(index, { value: event.target.value })
+                    }
+                  />
+                  <RemoveButton
+                    label="Remove contact"
+                    disabled={saving}
+                    onClick={() => removeContact(index)}
+                  />
+                </div>
+              );
+            })}
           </div>
         )}
         <QuoteMessageBlock />

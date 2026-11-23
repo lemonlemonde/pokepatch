@@ -26,7 +26,6 @@ import {
 
 const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
-const CONTACT_DISCORD = "pokepatch.cards";
 const MY_ORDERS_TRACK_URL =
   "https://pokepatch.cards/login?redirect=/my-orders";
 
@@ -142,6 +141,10 @@ async function handleOrdersInsert(record: Record<string, unknown>) {
     status: String(record.status ?? "pending"),
     pending_kind: (record.pending_kind as string | null) ?? null,
     quote_bulk_counts: null,
+    preferred_contact_type:
+      (record.preferred_contact_type as string | null) ?? "email",
+    preferred_contact_value:
+      (record.preferred_contact_value as string | null) ?? null,
   };
   await notifyDiscordOrder({
     supabase,
@@ -242,8 +245,7 @@ function buildQuoteConfirmationBody(customerName: string): string {
     `${MY_ORDERS_TRACK_URL}\n\n` +
     `In the meantime, contact us at:\n` +
     `- Email: ${CONTACT_EMAIL}\n` +
-    `- Instagram: ${CONTACT_INSTAGRAM}\n` +
-    `- Discord: ${CONTACT_DISCORD}`
+    `- Instagram: ${CONTACT_INSTAGRAM}`
   );
 }
 
