@@ -86,7 +86,7 @@ export function describeQuoteValidationErrors(errors, cards) {
   }
   if (errors.contacts) {
     lines.push(
-      "Enter at least one other contact method (phone, Discord, or Instagram)."
+      "Enter at least one other contact method (phone or Instagram)."
     );
   }
   if (errors.noCards) {
@@ -113,7 +113,7 @@ export function inlineFieldErrorMessage(key, detail) {
     case "deliveryMethod":
       return "Choose local drop-off or shipping.";
     case "contacts":
-      return "Enter at least one: phone, Discord, or Instagram.";
+      return "Enter at least one: phone or Instagram.";
     case "cardName":
       return "Enter a card name.";
     case "damageTags":
@@ -159,7 +159,7 @@ export function friendlySubmitError(err, phase = "submit") {
     return "Each card needs a name.";
   }
   if (/additional contact|contact value|contact_type/i.test(lower)) {
-    return "Enter at least one other contact method (phone, Discord, or Instagram).";
+    return "Enter at least one other contact method (phone or Instagram).";
   }
   if (/delivery_method/i.test(lower)) {
     return "Choose a delivery method (local drop-off or shipping).";

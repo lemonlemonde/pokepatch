@@ -899,9 +899,9 @@ async function fetchOrderListSummary(supabase: ReturnType<typeof getServiceClien
 }
 
 const ORDER_SELECT_WITH_QUOTE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed, preferred_contact_type, preferred_contact_value, quote_bulk_counts, quote_override_label, quote_override_amount, after_completion_amounts, restoration_costs";
 const ORDER_SELECT_BASE =
-  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed";
+  "id, display_id, created_at, first_name, last_name, customer_name, customer_email, user_id, delivery_method, general_notes, heard_about_source, photos_drive_url, status, pending_kind, completed_at, status_changed_at, todo_entered_at, queue_priority, is_priority, queue_speed, preferred_contact_type, preferred_contact_value";
 
 const ORDER_STATUS_IDS = new Set([
   "pending",

@@ -92,6 +92,8 @@ export type OrderRow = {
   status: string | null;
   pending_kind: string | null;
   quote_bulk_counts: unknown;
+  preferred_contact_type?: string | null;
+  preferred_contact_value?: string | null;
 };
 
 export type CardRow = {
@@ -294,7 +296,7 @@ export async function loadOrder(
   const { data, error } = await supabase
     .from("orders")
     .select(
-      "id, display_id, customer_name, customer_email, user_id, delivery_method, status, pending_kind, quote_bulk_counts"
+      "id, display_id, customer_name, customer_email, user_id, delivery_method, status, pending_kind, quote_bulk_counts, preferred_contact_type, preferred_contact_value"
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -689,21 +691,30 @@ export function buildCardMessage(params: {
   };
 }
 
-function contactLine(contact: ContactRow): string {
+function preferredMark(type: string, preferredType: string): string {
+  return type === preferredType ? " ★ preferred" : "";
+}
+
+function contactLine(contact: ContactRow, preferredType: string): string {
   const type = String(contact.contact_type ?? "");
   const label = CONTACT_TYPE_LABELS[type] ?? "Contact";
   const value = String(contact.value ?? "").trim();
   if (!value) return "";
+  const mark = preferredMark(type, preferredType);
   if (type === "instagram") {
     const url = instagramProfileUrl(value);
-    return url ? `• ${label}: [${escapeMarkdown(value)}](${url})` : `• ${label}: ${escapeMarkdown(value)}`;
+    return url
+      ? `• ${label}: [${escapeMarkdown(value)}](${url})${mark}`
+      : `• ${label}: ${escapeMarkdown(value)}${mark}`;
   }
   if (type === "discord") {
     const id = normalizeDiscordUserId(value);
     // Mention renders a clickable profile; allowed_mentions keeps it silent.
-    return id ? `• ${label}: <@${id}> (${escapeMarkdown(value)})` : `• ${label}: ${escapeMarkdown(value)}`;
+    return id
+      ? `• ${label}: <@${id}> (${escapeMarkdown(value)})${mark}`
+      : `• ${label}: ${escapeMarkdown(value)}${mark}`;
   }
-  return `• ${label}: ${escapeMarkdown(value)}`;
+  return `• ${label}: ${escapeMarkdown(value)}${mark}`;
 }
 
 function discordTimestamp(iso: string): string {
@@ -727,10 +738,21 @@ export function buildWrapupMessage(params: {
     `**Customer:** ${customer ? escapeMarkdown(customer) : "—"}`,
   ];
 
-  const contactLines = contacts.map(contactLine).filter(Boolean);
-  if (email) contactLines.push(`• Email: ${escapeMarkdown(email)}`);
+  const preferredType = String(order.preferred_contact_type ?? "email").trim() || "email";
+  const preferredValue = String(order.preferred_contact_value ?? "").trim();
+  const preferredLabel = CONTACT_TYPE_LABELS[preferredType] ?? "Contact";
+  const contactLines = contacts.map((contact) => contactLine(contact, preferredType)).filter(Boolean);
+  if (email) {
+    contactLines.push(
+      `• Email: ${escapeMarkdown(email)}${preferredMark("email", preferredType)}`
+    );
+  }
+  const preferredLine = preferredValue
+    ? `**Preferred:** ${preferredLabel} · ${escapeMarkdown(preferredValue)}`
+    : `**Preferred:** ${preferredLabel}`;
   const contactsBlock = [
     "**Contacts**",
+    preferredLine,
     ...(contactLines.length > 0 ? contactLines : ["_none on file_"]),
   ];
 

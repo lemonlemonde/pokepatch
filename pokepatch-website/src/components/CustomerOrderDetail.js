@@ -33,17 +33,10 @@ import {
   normalizePendingKind,
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
+import { contactTypeLabel, isPreferredContact } from "@/lib/contacts";
 
 const LABEL_CLS =
   "text-[11px] font-semibold uppercase tracking-[0.08em] text-ink/60";
-
-function contactLabel(type) {
-  if (type === "phone") return "Phone";
-  if (type === "discord") return "Discord";
-  if (type === "instagram") return "Instagram";
-  if (type === "email") return "Email";
-  return "Contact";
-}
 
 function deliveryLabel(method) {
   return method === "local_dropoff"
@@ -492,24 +485,39 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
               <p className="text-xs text-ink/55">{delivery.sub}</p>
             </div>
             <div className="rounded-xl border border-ink/10 bg-night/25 p-3">
-              <p className={LABEL_CLS}>Preferred contact</p>
+              <p className={LABEL_CLS}>How we&apos;ll contact you</p>
               <p className="mt-1 text-sm font-semibold text-ink">
                 {order.preferred_contact_type
-                  ? `${contactLabel(order.preferred_contact_type)} · ${
+                  ? `${contactTypeLabel(order.preferred_contact_type)} · ${
                       order.preferred_contact_value
                     }`
                   : "—"}
               </p>
+              <p className="mt-1 text-xs text-ink/55">
+                This is the method we&apos;ll use to reach out about your order.
+              </p>
               {(order.contacts ?? []).length > 0 ? (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {order.contacts.map((contact) => (
-                    <span
-                      key={contact.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-night/40 px-2 py-0.5 text-xs text-ink/70"
-                    >
-                      {contactLabel(contact.contact_type)} · {contact.value}
-                    </span>
-                  ))}
+                  {order.contacts.map((contact) => {
+                    const preferred = isPreferredContact(
+                      order.preferred_contact_type,
+                      contact.contact_type
+                    );
+                    return (
+                      <span
+                        key={contact.id}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
+                          preferred
+                            ? "bg-mint/20 font-semibold text-ink"
+                            : "bg-night/40 text-ink/70"
+                        }`}
+                      >
+                        {preferred ? "★ " : ""}
+                        {contactTypeLabel(contact.contact_type)} ·{" "}
+                        {contact.value}
+                      </span>
+                    );
+                  })}
                 </div>
               ) : null}
             </div>

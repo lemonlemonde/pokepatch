@@ -11,7 +11,14 @@ import WhiteningFaqAcknowledgment from "@/components/WhiteningFaqAcknowledgment"
 import { useAuth } from "@/contexts/AuthContext";
 import { isCustomerAuthEnabled } from "@/lib/customerAuth";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import { CONTACT_TYPES } from "@/lib/contacts";
+import {
+  CONTACT_FIELD_HINTS,
+  CONTACT_TYPES,
+  OTHER_CONTACTS_COPY,
+  PREFERRED_CONTACT_COPY,
+  isOfferedContactType,
+  preferredContactReachLabel,
+} from "@/lib/contacts";
 import { sanitizeFilename } from "@/lib/customerOrderMedia";
 import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
@@ -341,7 +348,9 @@ export default function QuoteForm() {
         // Preferred contact method saved on the account (written back by
         // create_order when a previous order first supplied it).
         const savedPreferred = (data.preferred_contact_type ?? "").trim();
-        if (savedPreferred) setPreferredContactId(savedPreferred);
+        if (isOfferedContactType(savedPreferred)) {
+          setPreferredContactId(savedPreferred);
+        }
       });
   }, [user]);
 
@@ -1064,10 +1073,7 @@ export default function QuoteForm() {
           <p className="text-sm font-bold text-ink">
             Other forms of contact <span className="text-error">*</span>
           </p>
-          <p className="text-sm text-ink/70">
-            Provide at least one so we can reach you (phone, Discord, or
-            Instagram).
-          </p>
+          <p className="text-sm text-ink/70">{OTHER_CONTACTS_COPY}</p>
           {fieldErrors?.contacts && (
             <p className="text-sm text-error" role="alert">
               {inlineFieldErrorMessage("contacts")}
@@ -1103,10 +1109,14 @@ export default function QuoteForm() {
                       : undefined
                   }
                 />
-                {locked && (
+                {locked ? (
                   <AccountFieldNote>
                     Saved contact methods come from your account.
                   </AccountFieldNote>
+                ) : (
+                  <p className="mt-1 text-xs text-ink/60">
+                    {CONTACT_FIELD_HINTS[type.value]}
+                  </p>
                 )}
               </div>
             );
@@ -1118,11 +1128,9 @@ export default function QuoteForm() {
             htmlFor="preferred_contact"
             className="block text-sm font-bold text-ink"
           >
-            Preferred contact method
+            How we&apos;ll contact you <span className="text-error">*</span>
           </label>
-          <p className="text-sm text-ink/70">
-            How would you prefer we reach you about your quote?
-          </p>
+          <p className="text-sm text-ink/70">{PREFERRED_CONTACT_COPY}</p>
           <select
             id="preferred_contact"
             value={effectivePreferredId}
@@ -1138,6 +1146,15 @@ export default function QuoteForm() {
               </option>
             ))}
           </select>
+          <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
+            We&apos;ll contact you through{" "}
+            {preferredContactReachLabel({
+              preferredId: effectivePreferredId,
+              email,
+              contactValues,
+            })}
+            .
+          </p>
         </div>
       </section>
 

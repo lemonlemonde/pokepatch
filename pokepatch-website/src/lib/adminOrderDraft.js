@@ -327,6 +327,8 @@ export function orderToDraft(order) {
     pending_kind: isPendingOrderStatus(order.status)
       ? normalizePendingKind(order.pending_kind)
       : null,
+    preferred_contact_type: order.preferred_contact_type ?? "email",
+    preferred_contact_value: order.preferred_contact_value ?? "",
     contacts: (order.contacts ?? []).map((contact) => ({
       id: contact.id,
       contact_type: contact.contact_type,
