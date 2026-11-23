@@ -494,7 +494,7 @@ export default function CustomerOrderDetail({ order, onOrderChange }) {
                   : "—"}
               </p>
               <p className="mt-1 text-xs text-ink/55">
-                This is the method we&apos;ll use to reach out about your order.
+                We&apos;ll reach out this way.
               </p>
               {(order.contacts ?? []).length > 0 ? (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">

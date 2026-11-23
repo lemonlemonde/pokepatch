@@ -15,9 +15,8 @@ import {
   CONTACT_FIELD_HINTS,
   CONTACT_TYPES,
   OTHER_CONTACTS_COPY,
-  PREFERRED_CONTACT_COPY,
   isOfferedContactType,
-  preferredContactReachLabel,
+  preferredContactReachSentence,
 } from "@/lib/contacts";
 import { sanitizeFilename } from "@/lib/customerOrderMedia";
 import { compressImageForUpload, makeThumbForUpload } from "@/lib/imageCompression";
@@ -1130,7 +1129,6 @@ export default function QuoteForm() {
           >
             How we&apos;ll contact you <span className="text-error">*</span>
           </label>
-          <p className="text-sm text-ink/70">{PREFERRED_CONTACT_COPY}</p>
           <select
             id="preferred_contact"
             value={effectivePreferredId}
@@ -1147,13 +1145,11 @@ export default function QuoteForm() {
             ))}
           </select>
           <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
-            We&apos;ll contact you through{" "}
-            {preferredContactReachLabel({
+            {preferredContactReachSentence({
               preferredId: effectivePreferredId,
               email,
               contactValues,
             })}
-            .
           </p>
         </div>
       </section>

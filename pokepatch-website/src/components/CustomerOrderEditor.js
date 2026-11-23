@@ -15,9 +15,8 @@ import {
   CONTACT_FIELD_HINTS,
   CONTACT_TYPES,
   OTHER_CONTACTS_COPY,
-  PREFERRED_CONTACT_COPY,
   isOfferedContactType,
-  preferredContactReachLabel,
+  preferredContactReachSentence,
 } from "@/lib/contacts";
 import {
   CARD_PHOTOS_BUCKET,
@@ -701,7 +700,6 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           >
             How we&apos;ll contact you <span className="text-error">*</span>
           </label>
-          <p className="text-sm text-ink/70">{PREFERRED_CONTACT_COPY}</p>
           <select
             id="edit_preferred_contact"
             value={effectivePreferredId}
@@ -721,13 +719,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             ))}
           </select>
           <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
-            We&apos;ll contact you through{" "}
-            {preferredContactReachLabel({
+            {preferredContactReachSentence({
               preferredId: effectivePreferredId,
               email: order?.customer_email,
               contactValues: draft.contactValues,
             })}
-            .
           </p>
         </div>
       </section>
