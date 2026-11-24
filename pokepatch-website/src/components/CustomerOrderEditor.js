@@ -429,7 +429,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
       }
 
       const preferredType = effectivePreferredId;
-      const preferredValue = draft.contactValues[preferredType].trim();
+      const preferredValue = (draft.contactValues[preferredType] ?? "").trim();
 
       const payload = {
         delivery_method: draft.deliveryMethod,

@@ -723,7 +723,7 @@ export default function QuoteForm() {
       phase = "insert";
 
       const preferredType = effectivePreferredId;
-      const preferredValue = contactValues[preferredType].trim();
+      const preferredValue = (contactValues[preferredType] ?? "").trim();
 
       const heardAboutOption = HEARD_ABOUT_OPTIONS.find(
         (option) => option.value === heardAbout
