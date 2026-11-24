@@ -21,11 +21,7 @@ import {
   RemoveButton,
   editorFieldClass,
 } from "@/components/admin/orderEditor/editorUi";
-import {
-  contactTypeLabel,
-  contactTypeOptionsFor,
-  isPreferredContact,
-} from "@/lib/contacts";
+import { contactTypeOptionsFor, isPreferredContact } from "@/lib/contacts";
 
 function StarGlyph({ className = "h-3 w-3" }) {
   return (
@@ -138,9 +134,6 @@ export function CustomerPanel() {
   const { draft, updateDraft, saving } = useOrderEditor();
   const contacts = draft.contacts ?? [];
   const preferredType = draft.preferred_contact_type || "email";
-  const preferredValue =
-    (draft.preferred_contact_value ?? "").trim() ||
-    (preferredType === "email" ? (draft.customer_email ?? "").trim() : "");
   const name = [draft.first_name, draft.last_name]
     .filter(Boolean)
     .join(" ")
@@ -204,10 +197,6 @@ export function CustomerPanel() {
             Add
           </GhostButton>
         </div>
-        <p className="mb-2 text-xs text-ink/55">
-          Reach out via {contactTypeLabel(preferredType)}
-          {preferredValue ? ` · ${preferredValue}` : ""}.
-        </p>
         {contacts.length === 0 ? (
           <p className="text-xs text-ink/40">None on file.</p>
         ) : (

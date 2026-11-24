@@ -24,7 +24,26 @@ export function contactTypeLabel(type) {
 }
 
 export function isOfferedContactType(type) {
-  return type === "email" || CONTACT_TYPES.some((entry) => entry.value === type);
+  return CONTACT_TYPES.some((entry) => entry.value === type);
+}
+
+export function filledContactTypes(contactValues) {
+  return CONTACT_TYPES.filter(
+    (type) => (contactValues?.[type.value] ?? "").trim() !== ""
+  );
+}
+
+export function preferredContactOptions(contactValues) {
+  return filledContactTypes(contactValues).map((type) => ({
+    id: type.value,
+    label: `${type.label} (${contactValues[type.value].trim()})`,
+  }));
+}
+
+export function effectivePreferredContactId(preferredId, contactValues) {
+  const options = preferredContactOptions(contactValues);
+  if (options.some((option) => option.id === preferredId)) return preferredId;
+  return options[0]?.id ?? "";
 }
 
 /** Dropdown options for admin: Discord only when the row is already Discord. */
@@ -39,16 +58,18 @@ export function isPreferredContact(preferredType, contactType) {
 
 export function preferredContactReachSentence({
   preferredId,
-  email,
   contactValues,
   preferredValue,
 }) {
-  const type = preferredId || "email";
+  const type = isOfferedContactType(preferredId)
+    ? preferredId
+    : filledContactTypes(contactValues)[0]?.value;
+  if (!type) return "Add a phone or Instagram so we know how to reach you.";
   const label = contactTypeLabel(type);
   const value = (
-    type === "email"
-      ? (email ?? preferredValue ?? "")
-      : (contactValues?.[type] ?? preferredValue ?? "")
+    contactValues?.[type] ??
+    preferredValue ??
+    ""
   ).trim();
   return value
     ? `We'll reach you by ${label} at ${value}.`

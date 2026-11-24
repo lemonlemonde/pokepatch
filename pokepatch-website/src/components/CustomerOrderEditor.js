@@ -15,7 +15,9 @@ import {
   CONTACT_FIELD_HINTS,
   CONTACT_TYPES,
   OTHER_CONTACTS_COPY,
+  effectivePreferredContactId,
   isOfferedContactType,
+  preferredContactOptions,
   preferredContactReachSentence,
 } from "@/lib/contacts";
 import {
@@ -71,12 +73,10 @@ function draftFromOrder(order) {
     }
   }
 
-  const preferred =
-    order?.preferred_contact_type &&
-    order.preferred_contact_type !== "email" &&
-    CONTACT_TYPES.some((type) => type.value === order.preferred_contact_type)
-      ? order.preferred_contact_type
-      : "email";
+  const preferred = effectivePreferredContactId(
+    order?.preferred_contact_type,
+    contactValues
+  );
 
   const cards = (order?.cards ?? []).map((card) => ({
     id: card.id,
@@ -248,24 +248,11 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
   }, [existingPathsKey]);
 
   const completeCards = draft.cards.filter(isCardComplete);
-  const preferredOptions = [
-    {
-      id: "email",
-      label: order?.customer_email
-        ? `Email (${order.customer_email})`
-        : "Email",
-    },
-    ...CONTACT_TYPES.filter(
-      (type) => (draft.contactValues[type.value] ?? "").trim() !== ""
-    ).map((type) => ({
-      id: type.value,
-      label: `${type.label} (${draft.contactValues[type.value].trim()})`,
-    })),
-  ];
-  const preferredOptionIds = new Set(preferredOptions.map((o) => o.id));
-  const effectivePreferredId = preferredOptionIds.has(draft.preferredContactId)
-    ? draft.preferredContactId
-    : "email";
+  const preferredOptions = preferredContactOptions(draft.contactValues);
+  const effectivePreferredId = effectivePreferredContactId(
+    draft.preferredContactId,
+    draft.contactValues
+  );
 
   function updateContactValue(type, value) {
     if (lockedTypes[type]) return;
@@ -441,12 +428,8 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         if (!keptPaths.has(path)) removedPaths.push(path);
       }
 
-      let preferredType = "email";
-      let preferredValue = order.customer_email ?? "";
-      if (effectivePreferredId !== "email") {
-        preferredType = effectivePreferredId;
-        preferredValue = draft.contactValues[preferredType].trim();
-      }
+      const preferredType = effectivePreferredId;
+      const preferredValue = draft.contactValues[preferredType].trim();
 
       const payload = {
         delivery_method: draft.deliveryMethod,
@@ -703,7 +686,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           <select
             id="edit_preferred_contact"
             value={effectivePreferredId}
-            disabled={busy}
+            disabled={busy || preferredOptions.length === 0}
             onChange={(event) =>
               setDraft((current) => ({
                 ...current,
@@ -712,16 +695,19 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             }
             className={fieldClassName()}
           >
-            {preferredOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
+            {preferredOptions.length === 0 ? (
+              <option value="">Add a phone or Instagram first</option>
+            ) : (
+              preferredOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))
+            )}
           </select>
           <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
             {preferredContactReachSentence({
               preferredId: effectivePreferredId,
-              email: order?.customer_email,
               contactValues: draft.contactValues,
             })}
           </p>

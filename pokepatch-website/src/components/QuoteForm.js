@@ -15,7 +15,10 @@ import {
   CONTACT_FIELD_HINTS,
   CONTACT_TYPES,
   OTHER_CONTACTS_COPY,
+  effectivePreferredContactId,
+  filledContactTypes,
   isOfferedContactType,
+  preferredContactOptions,
   preferredContactReachSentence,
 } from "@/lib/contacts";
 import { sanitizeFilename } from "@/lib/customerOrderMedia";
@@ -237,7 +240,7 @@ export default function QuoteForm() {
   const [contactValues, setContactValues] = useState(emptyContactValues);
   const [lockedTypes, setLockedTypes] = useState({});
   const [lockedName, setLockedName] = useState({ firstName: false, lastName: false });
-  const [preferredContactId, setPreferredContactId] = useState("email");
+  const [preferredContactId, setPreferredContactId] = useState("");
   const [heardAbout, setHeardAbout] = useState("");
   const [heardAboutOther, setHeardAboutOther] = useState("");
   const [cards, setCards] = useState([initialCard()]);
@@ -527,21 +530,12 @@ export default function QuoteForm() {
 
   const completeCards = cards.filter(isCardComplete);
 
-  const filledContactTypes = CONTACT_TYPES.filter(
-    (type) => (contactValues[type.value] ?? "").trim() !== ""
+  const filledTypes = filledContactTypes(contactValues);
+  const preferredOptions = preferredContactOptions(contactValues);
+  const effectivePreferredId = effectivePreferredContactId(
+    preferredContactId,
+    contactValues
   );
-
-  const preferredOptions = [
-    { id: "email", label: email.trim() ? `Email (${email.trim()})` : "Email" },
-    ...filledContactTypes.map((type) => ({
-      id: type.value,
-      label: `${type.label} (${contactValues[type.value].trim()})`,
-    })),
-  ];
-  const preferredOptionIds = new Set(preferredOptions.map((o) => o.id));
-  const effectivePreferredId = preferredOptionIds.has(preferredContactId)
-    ? preferredContactId
-    : "email";
 
   // True once the visitor has been told this email belongs to an account and
   // chose to continue as a guest anyway. They have to change it or log in.
@@ -657,7 +651,7 @@ export default function QuoteForm() {
     capture("quote_form_submit_attempted", {
       card_count: completeCards.length,
       delivery_method: deliveryMethod,
-      contact_method_count: filledContactTypes.length,
+      contact_method_count: filledTypes.length,
     });
 
     const willSplit = hasMixedCardPriority(completeCards);
@@ -728,12 +722,8 @@ export default function QuoteForm() {
       setStatus("submitting");
       phase = "insert";
 
-      let preferredType = "email";
-      let preferredValue = email.trim().toLowerCase();
-      if (effectivePreferredId !== "email") {
-        preferredType = effectivePreferredId;
-        preferredValue = contactValues[effectivePreferredId].trim();
-      }
+      const preferredType = effectivePreferredId;
+      const preferredValue = contactValues[preferredType].trim();
 
       const heardAboutOption = HEARD_ABOUT_OPTIONS.find(
         (option) => option.value === heardAbout
@@ -752,7 +742,7 @@ export default function QuoteForm() {
         heard_about_source: heardAboutSource,
         preferred_contact_type: preferredType,
         preferred_contact_value: preferredValue,
-        contacts: filledContactTypes.map((type) => ({
+        contacts: filledTypes.map((type) => ({
           contact_type: type.value,
           value: contactValues[type.value].trim(),
         })),
@@ -786,7 +776,7 @@ export default function QuoteForm() {
               email: email.trim().toLowerCase(),
               first_name: firstName.trim(),
               last_name: lastName.trim(),
-              contacts: filledContactTypes.map((type) => ({
+              contacts: filledTypes.map((type) => ({
                 contact_type: type.value,
                 value: contactValues[type.value].trim(),
               })),
@@ -800,7 +790,7 @@ export default function QuoteForm() {
       capture("quote_form_submitted", {
         card_count: completeCards.length,
         delivery_method: deliveryMethod,
-        contact_method_count: filledContactTypes.length,
+        contact_method_count: filledTypes.length,
         fast_card_count: completeCards.filter(
           (card) => cardQueueSpeed(card) === "fast"
         ).length,
@@ -827,7 +817,7 @@ export default function QuoteForm() {
       setDeliveryMethod("");
       setContactValues(emptyContactValues());
       setLockedTypes({});
-      setPreferredContactId("email");
+      setPreferredContactId("");
       setCards([emptyCard()]);
       setWhiteningFaqAcked(false);
       setFieldErrors(null);
@@ -1132,22 +1122,26 @@ export default function QuoteForm() {
           <select
             id="preferred_contact"
             value={effectivePreferredId}
+            disabled={preferredOptions.length === 0}
             onChange={(e) => {
               onFormInteraction();
               setPreferredContactId(e.target.value);
             }}
             className={fieldClassName()}
           >
-            {preferredOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
+            {preferredOptions.length === 0 ? (
+              <option value="">Add a phone or Instagram first</option>
+            ) : (
+              preferredOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))
+            )}
           </select>
           <p className="rounded-xl border border-mint/35 bg-mint/10 px-3.5 py-2.5 text-sm font-semibold text-ink">
             {preferredContactReachSentence({
               preferredId: effectivePreferredId,
-              email,
               contactValues,
             })}
           </p>
