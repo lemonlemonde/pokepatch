@@ -10,7 +10,6 @@ Postgres trigger `orders_status_notify_customer` (`AFTER UPDATE OF status, pendi
 
 Typical sources:
 
-- First before photo → order `in_progress`
 - Last after photo / all cards completed → order `ready`
 - Admin editor save (including auto-advance from card statuses)
 - Discord quoting flipping pending quote → pending drop-off

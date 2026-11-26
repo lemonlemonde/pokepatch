@@ -26,7 +26,7 @@ Up to **20 photos per side** per card. Files over 15MB are rejected. **Default i
 
 **Status + customer email** (customer orders only — not my-cards `#-1`):
 
-- First **before** photo on a card → card becomes **in progress** (order advances to in progress when it was still earlier in the pipeline).
+- **Before** photos are upload-only (card and order status stay as they are).
 - First **after** photo on a card → card becomes **completed**; when every active card is completed the order becomes **ready**.
 - Customer is emailed only if the **order** status changed (`notify-order-status` + wooper backup). Mid-job per-card flips do not email.
 - Replacing photos on a card that is already in that status does **not** re-notify.
@@ -68,4 +68,4 @@ curl -s -X PUT \
 
 ## Schema
 
-wooper needs `card_images_before_after` (`before` / `after` image types) plus the before→in_progress / after→completed triggers (`cards_in_progress_when_before_photo`, `cards_complete_when_after_photo`). Before→in_progress only runs when the card has no after photos yet — replacing before (or after) on a card that already has both sides is a photo edit only (no status flip, no customer notify).
+wooper needs `card_images_before_after` (`before` / `after` image types) plus the after→completed trigger (`cards_complete_when_after_photo`). Before photos are upload-only (no card/order status change).

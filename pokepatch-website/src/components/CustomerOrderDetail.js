@@ -137,8 +137,7 @@ function RestorationSection({
             </p>
           ) : (
             <p className="mt-1 text-sm text-ink/55">
-              Before photos are added when we start on this card; after photos
-              once restoration is done.
+              Before and after photos appear here as we restore this card.
             </p>
           )}
         </div>
