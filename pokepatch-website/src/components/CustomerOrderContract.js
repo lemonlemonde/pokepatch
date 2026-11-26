@@ -12,6 +12,7 @@ import {
   ORDER_CONTRACTS_BUCKET,
   POKEPATCH_REPRESENTATIVE_NAME,
   RESULTS_AND_ALTERATION_PARAS,
+  UNPAID_COMPLETED_CARDS_PARAS,
   buildOrderContractPdf,
   contractTotalRestorationFee,
   formatContractDate,
@@ -125,6 +126,11 @@ function AgreementBody({ payload }) {
           ))}
         </ul>
         <Paragraphs items={AGREEMENT_TAIL} prefix="agreement-tail" />
+      </section>
+
+      <section className="space-y-2.5">
+        <h3 className={SECTION_TITLE_CLS}>Unpaid completed cards</h3>
+        <Paragraphs items={UNPAID_COMPLETED_CARDS_PARAS} prefix="unpaid" />
       </section>
 
       <section className="space-y-2.5">
