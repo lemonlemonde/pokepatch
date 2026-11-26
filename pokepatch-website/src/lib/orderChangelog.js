@@ -10,6 +10,7 @@ import {
   quoteItemsSubtotal,
   quoteReceiptHasContent,
   receiptQueueFeeRows,
+  receiptPsaReadyFeeRows,
   unpackQuoteAdjustments,
   unpackQuoteCardHv,
   cardsWithQuoteHv,
@@ -25,6 +26,7 @@ import {
   QUEUE_SPEED_LABEL,
   normalizeQueueSpeed,
 } from "@/lib/queueSpeed";
+import { cardIsPsaReady, psaReadyHolderLabel } from "@/lib/psaReady";
 
 function cardLabel(card, index = 0) {
   const name = String(card?.card_name ?? "").trim();
@@ -261,6 +263,7 @@ function quoteTotalFromPayload(payload) {
             status: fromPayload.status,
             is_priority: Boolean(fromPayload.is_priority),
             queue_speed: fromPayload.queue_speed,
+            is_psa_ready: cardIsPsaReady(fromPayload),
           }
         : { id };
     }),
@@ -484,6 +487,19 @@ export function buildOrderChangelog({ beforePayload, afterPayload } = {}) {
     } else {
       group.changes.push(`Note: ${beforeNote} → ${afterNote}`);
     }
+  }
+
+  // Per-card PSA ready / holder changes.
+  for (const cardId of new Set([...beforeCards.keys(), ...afterCards.keys()])) {
+    const before = beforeCards.get(cardId)?.row;
+    const after = afterCards.get(cardId)?.row;
+    if (!before || !after) continue;
+    const beforeReady = cardIsPsaReady(before);
+    const afterReady = cardIsPsaReady(after);
+    if (beforeReady === afterReady) continue;
+    ensureCardGroup(cardId).changes.push(
+      `Holder: ${psaReadyHolderLabel(beforeReady)} → ${psaReadyHolderLabel(afterReady)}`
+    );
   }
 
   const beforeItems = indexById(beforePayload?.quote_items);
@@ -824,6 +840,9 @@ function formatQuoteReceiptPlainText(receipt) {
     );
   }
   for (const row of receiptQueueFeeRows(receipt)) {
+    lines.push(`+ ${row.description}  ${formatMoney(row.amount)}`);
+  }
+  for (const row of receiptPsaReadyFeeRows(receipt)) {
     lines.push(`+ ${row.description}  ${formatMoney(row.amount)}`);
   }
   lines.push(`= Total  ${formatMoney(receipt.total)}`);

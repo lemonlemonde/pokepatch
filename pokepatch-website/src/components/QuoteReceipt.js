@@ -6,6 +6,7 @@ import {
   formatMoney,
   quoteReceiptHasContent,
   receiptQueueFeeRows,
+  receiptPsaReadyFeeRows,
 } from "@/lib/servicePricing";
 import { ExpandChevron, ExpandPanel } from "@/components/ExpandReveal";
 
@@ -56,6 +57,7 @@ export default function QuoteReceipt({
   const cardRows = receipt.cards ?? [];
   const adjustmentRows = receipt.adjustments ?? [];
   const queueFeeRows = receiptQueueFeeRows(receipt);
+  const psaReadyFeeRows = receiptPsaReadyFeeRows(receipt);
   const total = receipt.total;
 
   const body = (
@@ -126,6 +128,21 @@ export default function QuoteReceipt({
       {queueFeeRows.map((row) => (
         <div
           key={row.speed || row.description}
+          className="flex items-start justify-between gap-3 text-ink/80"
+        >
+          <span className="min-w-0">
+            <span className="text-ink/45">+ </span>
+            {row.description}
+          </span>
+          <span className="shrink-0 tabular-nums">
+            {formatMoney(row.amount)}
+          </span>
+        </div>
+      ))}
+
+      {psaReadyFeeRows.map((row) => (
+        <div
+          key={row.description}
           className="flex items-start justify-between gap-3 text-ink/80"
         >
           <span className="min-w-0">

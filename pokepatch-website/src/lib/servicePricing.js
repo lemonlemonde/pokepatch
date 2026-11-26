@@ -5,7 +5,7 @@
  * Homepage marketing cards, admin quote defaults, HV auto-fill, and receipt math
  * read from these constants — update prices here only, then mirror keys /
  * titles / list prices / HV tiers in supabase/functions/_shared/servicePricing.ts
- * (Discord quote flow).
+ * (Discord quote flow). PSA ready sleeve fee lives in src/lib/psaReady.js.
  */
 
 import {
@@ -22,6 +22,15 @@ import {
   queueSpeedFee,
   uniqueQueueSpeeds,
 } from "@/lib/queueSpeed";
+import {
+  PSA_READY_FEE,
+  PSA_READY_LABEL,
+  cardIsPsaReady,
+  isPsaReadyAdjustmentRow,
+  marketingPsaReadyPanel,
+  psaReadyFeeFromCards,
+  psaReadyFeeRows,
+} from "@/lib/psaReady";
 
 export const SERVICE_KEYS = {
   SURFACE: "surface_restoration",
@@ -428,9 +437,9 @@ function slabMarketingPanel() {
   };
 }
 
-/** Homepage extras — purchasable restoration options only. Queue lives in its own section. */
+/** Homepage extras — purchasable add-ons. Queue lives in its own section. */
 export function marketingExtras() {
-  return [slabMarketingPanel()].filter(Boolean);
+  return [slabMarketingPanel(), marketingPsaReadyPanel()].filter(Boolean);
 }
 
 /** Homepage high-value fee module — same visual weight as extras. */
@@ -964,9 +973,12 @@ export function computeQuoteTotal({
   const billableItems = billableQuoteItems(items, cards);
   const subtotal = quoteItemsSubtotal(billableItems);
   const cardHv = quoteCardsHvTotal(billableCards);
-  const nonQueueAdjustments = (adjustments ?? []).filter(
-    (row) => !isQueueSpeedAdjustmentRow(row)
-  );
+  const hasCardList = Array.isArray(cards);
+  const nonQueueAdjustments = (adjustments ?? []).filter((row) => {
+    if (isQueueSpeedAdjustmentRow(row)) return false;
+    if (hasCardList && isPsaReadyAdjustmentRow(row)) return false;
+    return true;
+  });
   const adjustmentTotal = quoteAdjustmentsTotal(
     nonQueueAdjustments,
     billableItems
@@ -978,8 +990,10 @@ export function computeQuoteTotal({
     queueSpeed,
     cardCount,
   }).reduce((sum, row) => sum + row.fee, 0);
+  const psaFee = hasCardList ? psaReadyFeeFromCards(cards) : 0;
   return (
-    Math.round((subtotal + cardHv + adjustmentTotal + queueFee) * 100) / 100
+    Math.round((subtotal + cardHv + adjustmentTotal + queueFee + psaFee) * 100) /
+    100
   );
 }
 
@@ -1115,6 +1129,7 @@ export function hasQuoteData({
   if (resolveQueueSpeedFees({ cards, adjustments, isPriority, queueSpeed }).length > 0) {
     return true;
   }
+  if (psaReadyFeeRows({ cards, adjustments }).length > 0) return true;
   return false;
 }
 
@@ -1163,13 +1178,15 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
         cardByKey.get(normalizeCardKey(item?.card_name, item?.set_name)) ??
         null;
       const highValueSurcharge = quoteCardHvAmount(card);
+      const psaReadyFee = cardIsPsaReady(card) ? PSA_READY_FEE : 0;
       group = {
         key,
         label: quoteItemCardLabel(item),
         items: [],
         servicesSubtotal: 0,
         highValueSurcharge,
-        subtotal: highValueSurcharge,
+        psaReadyFee,
+        subtotal: Math.round((highValueSurcharge + psaReadyFee) * 100) / 100,
         card,
       };
       indexByKey.set(key, group);
@@ -1180,11 +1197,15 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
       Math.round((group.servicesSubtotal + quoteItemLineTotal(item)) * 100) /
       100;
     group.subtotal =
-      Math.round((group.servicesSubtotal + group.highValueSurcharge) * 100) /
-      100;
+      Math.round(
+        (group.servicesSubtotal +
+          group.highValueSurcharge +
+          (group.psaReadyFee || 0)) *
+          100
+      ) / 100;
   }
 
-  // Cards with HV but no quote services still need a receipt row.
+  // Cards with HV or PSA ready but no quote services still need a receipt row.
   for (const card of billableCards) {
     const key =
       card?.id != null
@@ -1199,14 +1220,16 @@ export function groupQuoteItemsByCard(items = [], cards = []) {
       continue;
     }
     const highValueSurcharge = quoteCardHvAmount(card);
-    if (highValueSurcharge <= 0) continue;
+    const psaReadyFee = cardIsPsaReady(card) ? PSA_READY_FEE : 0;
+    if (highValueSurcharge <= 0 && psaReadyFee <= 0) continue;
     groups.push({
       key,
       label: quoteItemCardLabel(card),
       items: [],
       servicesSubtotal: 0,
       highValueSurcharge,
-      subtotal: highValueSurcharge,
+      psaReadyFee,
+      subtotal: Math.round((highValueSurcharge + psaReadyFee) * 100) / 100,
       card,
     });
   }
@@ -1222,12 +1245,20 @@ export function quoteReceiptHasContent(receipt) {
   if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) {
     return true;
   }
+  if ((receipt.psaReadyFees ?? []).some((row) => Number(row?.amount) > 0)) {
+    return true;
+  }
   return false;
 }
 
 /** Paid queue-speed rows on a receipt snapshot. */
 export function receiptQueueFeeRows(receipt) {
   return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
+}
+
+/** PSA ready rows on a receipt snapshot. */
+export function receiptPsaReadyFeeRows(receipt) {
+  return (receipt?.psaReadyFees ?? []).filter((row) => Number(row?.amount) > 0);
 }
 
 /**
@@ -1245,9 +1276,12 @@ export function buildQuoteReceiptPayload({
 } = {}) {
   const groups = groupQuoteItemsByCard(items, cards);
   const billableItems = billableQuoteItems(items, cards);
-  const nonPriorityAdjustments = (adjustments ?? []).filter(
-    (row) => !isPriorityAdjustmentRow(row)
-  );
+  const hasCardList = Array.isArray(cards);
+  const nonPriorityAdjustments = (adjustments ?? []).filter((row) => {
+    if (isPriorityAdjustmentRow(row)) return false;
+    if (hasCardList && isPsaReadyAdjustmentRow(row)) return false;
+    return true;
+  });
   const adjustmentLines = quoteAdjustmentLines(
     nonPriorityAdjustments,
     billableItems
@@ -1292,6 +1326,14 @@ export function buildQuoteReceiptPayload({
                 {
                   label: "High-value fee",
                   amount: group.highValueSurcharge,
+                },
+              ]
+            : []),
+          ...(group.psaReadyFee > 0
+            ? [
+                {
+                  label: PSA_READY_LABEL,
+                  amount: group.psaReadyFee,
                 },
               ]
             : []),

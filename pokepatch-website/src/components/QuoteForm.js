@@ -30,6 +30,8 @@ import { fieldClassName, optionClassName } from "@/lib/formStyles";
 import { DAMAGE_TAGS, normalizeDamageTags } from "@/lib/gallery";
 import PrioritySplitDialog from "@/components/PrioritySplitDialog";
 import QueueSpeedPicker from "@/components/QueueSpeedPicker";
+import PsaReadyPicker from "@/components/PsaReadyPicker";
+import { SHIPPING_COST_COPY } from "@/lib/psaReady";
 import {
   CARD_WHITENING_WARNING,
   hasMixedCardPriority,
@@ -67,6 +69,7 @@ function emptyCard() {
     description: "",
     files: [],
     queueSpeed: QUEUE_SPEED_STANDARD,
+    isPsaReady: false,
   };
 }
 
@@ -81,6 +84,7 @@ function initialCard() {
     description: "",
     files: [],
     queueSpeed: QUEUE_SPEED_STANDARD,
+    isPsaReady: false,
   };
 }
 
@@ -707,6 +711,7 @@ export default function QuoteForm() {
           damage_tags: normalizeDamageTags(card.damageTags),
           queue_speed: speed,
           is_priority: isPaidQueueSpeed(speed),
+          is_psa_ready: Boolean(card.isPsaReady),
           images,
         });
       }
@@ -1052,7 +1057,7 @@ export default function QuoteForm() {
             <span>
               <span className="block text-sm text-ink">📦 Shipping</span>
               <span className="mt-0.5 block text-xs text-ink/60">
-                Shipping is $12. Cards return in the packaging you send them in.
+                {SHIPPING_COST_COPY}
               </span>
             </span>
           </label>
@@ -1152,10 +1157,10 @@ export default function QuoteForm() {
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
           <p className="mt-1 text-sm text-ink/70">
-            Add up to {MAX_CARDS} cards. Queue speed is chosen per card. For
-            more than {MAX_CARDS} cards, submit as 1 card entry with a photo of
-            the entire bulk lot and a combined description, submit a separate
-            order, or reach out.
+            Add up to {MAX_CARDS} cards. Queue speed and sleeve are chosen per
+            card. For more than {MAX_CARDS} cards, submit as 1 card entry with a
+            photo of the entire bulk lot and a combined description, submit a
+            separate order, or reach out.
           </p>
         </div>
 
@@ -1198,6 +1203,16 @@ export default function QuoteForm() {
                 onChange={(queueSpeed) => {
                   onFormInteraction();
                   updateCard(card.id, { queueSpeed });
+                }}
+              />
+
+              <PsaReadyPicker
+                name={`quote-holder-${card.id}`}
+                cardNumber={index + 1}
+                value={card.isPsaReady}
+                onChange={(isPsaReady) => {
+                  onFormInteraction();
+                  updateCard(card.id, { isPsaReady });
                 }}
               />
 

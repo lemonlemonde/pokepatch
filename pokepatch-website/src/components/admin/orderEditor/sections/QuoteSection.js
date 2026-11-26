@@ -11,6 +11,7 @@ import {
   isPriorityAdjustmentRow,
   priorityBillableCards,
 } from "@/lib/servicePricing";
+import { cardIsPsaReady, isPsaReadyAdjustmentRow } from "@/lib/psaReady";
 import { moneyFieldToPayload, quoteItemIsReady } from "@/lib/adminOrderDraft";
 import { useOrderEditor } from "@/components/admin/orderEditor/OrderEditorContext";
 import { paidQueueChromeClass } from "@/lib/queueSpeed";
@@ -41,6 +42,7 @@ export function buildQuotePreview(draft) {
       status: card.status,
       is_priority: Boolean(card.is_priority),
       queue_speed: card.queue_speed,
+      is_psa_ready: Boolean(card.is_psa_ready),
     })),
     draft.quote_card_hv ?? {}
   );
@@ -103,7 +105,7 @@ export default function QuoteSection() {
   const { draft, updateDraft, saving } = useOrderEditor();
   const adjustments = draft.quote_adjustments ?? [];
   const editableAdjustments = adjustments.filter(
-    (row) => !isPriorityAdjustmentRow(row)
+    (row) => !isPriorityAdjustmentRow(row) && !isPsaReadyAdjustmentRow(row)
   );
   const afterCompletionRows = draft.after_completion_amounts ?? [];
   const restorationCosts = draft.restoration_costs ?? [];
@@ -115,7 +117,8 @@ export default function QuoteSection() {
     preview.items.length > 0 ||
     preview.cards.some((card) => card.hv_amount) ||
     adjustments.length > 0 ||
-    showPriority;
+    showPriority ||
+    (draft.cards ?? []).some((card) => cardIsPsaReady(card));
   const afterCompletionTotal = adminLedgerTotal(afterCompletionRows);
   const costsTotal = adminLedgerTotal(restorationCosts);
 
@@ -123,11 +126,15 @@ export default function QuoteSection() {
   function mapEditableAdjustments(mapper) {
     updateDraft((current) => {
       const all = current.quote_adjustments ?? [];
-      const editable = all.filter((row) => !isPriorityAdjustmentRow(row));
-      const priorityRows = all.filter(isPriorityAdjustmentRow);
+      const editable = all.filter(
+        (row) => !isPriorityAdjustmentRow(row) && !isPsaReadyAdjustmentRow(row)
+      );
+      const preserved = all.filter(
+        (row) => isPriorityAdjustmentRow(row) || isPsaReadyAdjustmentRow(row)
+      );
       return {
         ...current,
-        quote_adjustments: [...mapper(editable), ...priorityRows],
+        quote_adjustments: [...mapper(editable), ...preserved],
       };
     });
   }

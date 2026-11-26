@@ -22,6 +22,7 @@ import {
   unpackQuoteAdjustments,
 } from "@/lib/servicePricing";
 import { cardQueueSpeed, isPaidQueueSpeed } from "@/lib/queueSpeed";
+import { cardIsPsaReady } from "@/lib/psaReady";
 import { normalizeDamageTags } from "@/lib/gallery";
 
 export const MAX_ADMIN_PHOTOS_PER_CARD = 20;
@@ -45,6 +46,7 @@ export function emptyAdminCard() {
     status: DEFAULT_CARD_STATUS,
     is_priority: false,
     queue_speed: "standard",
+    is_psa_ready: false,
     tcg_card_id: "",
     catalog_image_url: "",
     catalog_card_name: "",
@@ -284,6 +286,7 @@ export function orderToDraft(order) {
       status: normalizeCardStatus(card.status),
       queue_speed: speed,
       is_priority: isPaidQueueSpeed(speed),
+      is_psa_ready: cardIsPsaReady(card),
       tcg_card_id: card.tcg_card_id ?? "",
       catalog_image_url: card.catalog_image_url ?? "",
       catalog_card_name: card.catalog_card_name ?? "",
@@ -385,6 +388,7 @@ export function draftPayload(draft) {
       status: normalizeCardStatus(card.status),
       queue_speed: cardQueueSpeed(card),
       is_priority: isPaidQueueSpeed(cardQueueSpeed(card)),
+      is_psa_ready: cardIsPsaReady(card),
     })),
     quote_items: (draft.quote_items ?? [])
       .filter((item) => quoteItemHasService(item))

@@ -20,6 +20,7 @@ import {
 } from "@/lib/servicePricing";
 import { DAMAGE_TAGS, labeledDamageTags, normalizeDamageTags } from "@/lib/gallery";
 import { QueueSpeedMark } from "@/components/QueueSpeedBadge";
+import { PsaReadyMark } from "@/components/PsaReadyBadge";
 import {
   QUEUE_SPEED_LABEL,
   QUEUE_SPEED_STANDARD,
@@ -27,6 +28,12 @@ import {
   cycleQueueSpeed,
   queueSpeedControlClass,
 } from "@/lib/queueSpeed";
+import {
+  HOLDER_STANDARD_LABEL,
+  PSA_READY_LABEL,
+  cardIsPsaReady,
+  psaReadyControlClass,
+} from "@/lib/psaReady";
 import {
   CARD_STATUSES,
   cardStatusBadgeClass,
@@ -611,6 +618,31 @@ export default function CardDetailSection({
             <QueueSpeedMark speed={cardQueueSpeed(card)} className="h-3 w-3" />
           </button>
         ) : null}
+        {showCommerce ? (
+          <button
+            type="button"
+            disabled={saving}
+            aria-label={
+              cardIsPsaReady(card)
+                ? `${PSA_READY_LABEL} on. Click for a ${HOLDER_STANDARD_LABEL.toLowerCase()}.`
+                : `${HOLDER_STANDARD_LABEL}. Click for ${PSA_READY_LABEL}, plus $2.`
+            }
+            onClick={() =>
+              updateCard({ is_psa_ready: !cardIsPsaReady(card) })
+            }
+            className={`group relative inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition disabled:opacity-50 ${psaReadyControlClass(
+              cardIsPsaReady(card)
+            )}`}
+          >
+            <PsaReadyMark className="h-3 w-3" />
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-md bg-ink px-2 py-1 font-mono text-[10px] font-semibold normal-case tracking-normal text-cream opacity-0 shadow-sm transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100"
+            >
+              {cardIsPsaReady(card) ? PSA_READY_LABEL : HOLDER_STANDARD_LABEL}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       <ExpandPanel
@@ -640,6 +672,12 @@ export default function CardDetailSection({
 
           {showCommerce ? (
             <>
+              <p className="flex items-center gap-2 text-xs text-ink/60">
+                <PsaReadyMark className="h-3.5 w-3.5 shrink-0" />
+                {cardIsPsaReady(card)
+                  ? `${PSA_READY_LABEL} — Ultra Pro semi-rigid holder (+$2).`
+                  : `${HOLDER_STANDARD_LABEL} (included). Toggle the holder icon for ${PSA_READY_LABEL}.`}
+              </p>
               <div>
                 <EditorLabel>Damage</EditorLabel>
                 <div
