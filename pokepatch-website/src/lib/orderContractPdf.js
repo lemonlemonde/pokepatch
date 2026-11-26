@@ -37,13 +37,13 @@ export const AGREEMENT_PARAS = [
   "Customer provides the card(s) to PokéPatch for restoration. Customer retains ownership of the card(s) while they are in PokéPatch's possession, except as stated below for unpaid completed cards.",
   "Before restoration, PokéPatch will photograph each card. These photographs will document the card's condition when received and may be used to determine whether damage occurred while in PokéPatch's possession. PokéPatch will also photograph each card after restoration and before returning it to Customer.",
   "PokéPatch will use reasonable care when handling and restoring the card(s).",
-  "If a card is lost, stolen, misplaced, destroyed, or otherwise cannot be returned to Customer, PokéPatch will pay Customer the Near Mint Raw Market Value listed for that card.",
+  "If a card is lost, stolen, misplaced, destroyed, or otherwise cannot be returned to Customer, PokéPatch will pay Customer the Near Mint Raw Market Value as stated in this contract.",
   "If PokéPatch damages a card so that its condition is materially worse than shown in the photographs taken before restoration, Customer may choose either:",
 ];
 
 export const AGREEMENT_DAMAGE_CHOICES = [
   "1. Receive the damaged card back, with no payment from PokéPatch;",
-  "2. Receive the Near Mint Raw Market Value, in which case PokéPatch will retain the damaged card.",
+  "2. Receive the Near Mint Raw Market Value as stated in this contract, in which case PokéPatch will retain the damaged card.",
 ];
 
 export const DAMAGES = [
