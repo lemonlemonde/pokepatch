@@ -34,7 +34,7 @@ export const CONTRACT_AGREEMENT_INTRO =
 export const AGREEMENT_PARAS = [
   "Customer agrees to pay PokéPatch the Restoration Fee listed for each card for the restoration services described or agreed upon. Restoration Fees are separate from the Near Mint Raw Market Values.",
   "The Restoration Fee listed for each card is based on the information available at the time of this Agreement. After PokéPatch takes a closer look at the card(s), prices, including the Restoration Fee, are subject to change. PokéPatch will communicate to Customer any additional charges that should be added or any charges that should be removed.",
-  "Customer provides the card(s) to PokéPatch for restoration. Customer retains ownership of the card(s) while they are in PokéPatch's possession.",
+  "Customer provides the card(s) to PokéPatch for restoration. Customer retains ownership of the card(s) while they are in PokéPatch's possession, except as stated below for unpaid completed cards.",
   "Before restoration, PokéPatch will photograph each card. These photographs will document the card's condition when received and may be used to determine whether damage occurred while in PokéPatch's possession. PokéPatch will also photograph each card after restoration and before returning it to Customer.",
   "PokéPatch will use reasonable care when handling and restoring the card(s).",
   "If a card is lost, stolen, misplaced, destroyed, or otherwise cannot be returned to Customer, PokéPatch will pay Customer the Near Mint Raw Market Value listed for that card.",
@@ -59,6 +59,11 @@ export const DAMAGES = [
 export const AGREEMENT_TAIL = [
   "The Near Mint Raw Market Value is the mutually agreed market value of each card in raw Near Mint condition at the time this Agreement is signed. The parties may use recent eBay sold listings or another mutually agreed source to determine this amount. Once agreed upon and entered above, the Near Mint Raw Market Value will control regardless of future changes in market value.",
   "Once a card has been handed directly back to Customer, PokéPatch's responsibility and coverage for that card under this Agreement ends. After a card has been returned to Customer, it is no longer covered or insured by PokéPatch.",
+];
+
+export const UNPAID_COMPLETED_CARDS_PARAS = [
+  "If the Restoration Fee for a card is not paid in full within 30 days after PokéPatch completes restoration of that card, Customer gives up all rights to that unpaid card.",
+  "PokéPatch then owns the card and may sell it, keep it, or otherwise deal with it as PokéPatch chooses, without further notice or payment to Customer.",
 ];
 
 export const RESULTS_AND_ALTERATION_PARAS = [
@@ -768,6 +773,11 @@ export async function buildOrderContractPdf(payload, options = {}) {
     drawWrappedParagraph(ctx, item, { bullet: true, indent: 10 });
   }
   for (const para of AGREEMENT_TAIL) {
+    drawWrappedParagraph(ctx, para);
+  }
+
+  drawSectionTitle(ctx, "UNPAID COMPLETED CARDS");
+  for (const para of UNPAID_COMPLETED_CARDS_PARAS) {
     drawWrappedParagraph(ctx, para);
   }
 
