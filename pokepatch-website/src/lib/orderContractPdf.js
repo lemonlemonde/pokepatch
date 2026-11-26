@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { billableQuoteCards } from "@/lib/servicePricing";
 import { QUEUE_SPEED_FEE, cardQueueSpeed } from "@/lib/queueSpeed";
+import { PSA_READY_FEE, cardIsPsaReady } from "@/lib/psaReady";
 
 export const ORDER_CONTRACTS_BUCKET = "order-contracts";
 export const POKEPATCH_REPRESENTATIVE_NAME = "Ray Li";
@@ -201,6 +202,7 @@ export function contractRestorationFeeForCard(card, draft) {
   if (hv != null && hv > 0) fee += hv;
   const speedFee = QUEUE_SPEED_FEE[cardQueueSpeed(card)] ?? 0;
   if (speedFee > 0) fee += speedFee;
+  if (cardIsPsaReady(card)) fee += PSA_READY_FEE;
   return fee;
 }
 

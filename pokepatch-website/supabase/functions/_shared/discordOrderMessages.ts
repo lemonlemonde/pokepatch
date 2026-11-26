@@ -34,10 +34,13 @@ import {
   adjustmentSignedAmount,
   formatMoney,
   isPriorityAdjustmentRow,
+  isPsaReadyAdjustmentRow,
   normalizeQuoteBulkCounts,
   normalizeServiceDisplayTitle,
   orderQuoteTotal,
   queueSpeedFeesFromCards,
+  cardIsPsaReady,
+  PSA_READY_FEE_PER_CARD,
   roundMoney,
   storedCardHvAmount,
 } from "./servicePricing.ts";
@@ -108,6 +111,7 @@ export type CardRow = {
   status: string | null;
   is_priority: boolean | null;
   queue_speed?: string | null;
+  is_psa_ready?: boolean | null;
   sort_order: number | null;
 };
 
@@ -265,7 +269,7 @@ export async function loadOrderCards(
   const { data, error } = await supabase
     .from("cards")
     .select(
-      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, sort_order"
+      "id, order_id, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, is_psa_ready, sort_order"
     )
     .eq("order_id", orderId)
     .order("sort_order", { ascending: true })
@@ -408,6 +412,7 @@ export type CardQuote = {
   index: number;
   items: QuoteItemRow[];
   hvAmount: number;
+  psaReadyFee?: number;
   subtotal: number;
   quoted: boolean;
   canceled: boolean;
@@ -419,13 +424,15 @@ export function cardQuotes(context: OrderContext): CardQuote[] {
     const hvAmount = storedCardHvAmount(context.order.quote_bulk_counts, String(card.id));
     const services = items.reduce((sum, item) => sum + (Number(item.quote_base_amount) || 0), 0);
     const canceled = cardIsCanceled(card);
+    const psaReadyFee = !canceled && cardIsPsaReady(card) ? PSA_READY_FEE_PER_CARD : 0;
     return {
       card,
       index,
       items,
       hvAmount,
-      subtotal: canceled ? 0 : roundMoney(services + hvAmount),
-      quoted: !canceled && (items.length > 0 || hvAmount > 0),
+      psaReadyFee,
+      subtotal: canceled ? 0 : roundMoney(services + hvAmount + psaReadyFee),
+      quoted: !canceled && (items.length > 0 || hvAmount > 0 || psaReadyFee > 0),
       canceled,
     };
   });
@@ -438,6 +445,7 @@ export function orderTotals(context: OrderContext) {
       status: card.status,
       is_priority: card.is_priority,
       queue_speed: card.queue_speed,
+      is_psa_ready: card.is_psa_ready,
     })),
     items: context.quoteItems.map((item) => ({
       card_id: cardIdForQuoteItem(item, context.cards),
@@ -481,6 +489,9 @@ export function buildQuoteReceiptFromContext(
     if (entry.hvAmount > 0) {
       lines.push({ label: "High-value fee", amount: entry.hvAmount });
     }
+    if (entry.psaReadyFee > 0) {
+      lines.push({ label: "PSA ready", amount: entry.psaReadyFee });
+    }
     const note = String(entry.card.admin_note ?? "").trim();
     cards.push({
       cardId: String(entry.card.id),
@@ -493,7 +504,7 @@ export function buildQuoteReceiptFromContext(
 
   const stored = normalizeQuoteBulkCounts(context.order.quote_bulk_counts);
   const adjustments = stored.adjustments
-    .filter((row) => !isPriorityAdjustmentRow(row))
+    .filter((row) => !isPriorityAdjustmentRow(row) && !isPsaReadyAdjustmentRow(row))
     .map((row) => {
       const amount = adjustmentSignedAmount(row, totals.servicesSubtotal);
       const percentRaw = row.amount_percent;
@@ -511,14 +522,14 @@ export function buildQuoteReceiptFromContext(
     })
     .filter((row) => row.amount !== 0);
 
-  const queueFees = queueSpeedFeesFromCards(
-    context.cards.map((card) => ({
-      id: String(card.id),
-      status: card.status,
-      is_priority: card.is_priority,
-      queue_speed: card.queue_speed,
-    }))
-  );
+  const mappedCards = context.cards.map((card) => ({
+    id: String(card.id),
+    status: card.status,
+    is_priority: card.is_priority,
+    queue_speed: card.queue_speed,
+    is_psa_ready: card.is_psa_ready,
+  }));
+  const queueFees = queueSpeedFeesFromCards(mappedCards);
 
   if (cards.length === 0 && adjustments.length === 0 && queueFees.length === 0) {
     return null;
@@ -633,7 +644,8 @@ export function buildCardMessage(params: {
         : String(card.queue_speed ?? "").toLowerCase() === "fast" ||
             card.is_priority
           ? "  ⭐ Priority"
-          : "");
+          : "") +
+    (cardIsPsaReady(card) ? "  PSA ready" : "");
 
   const tags = damageTagLabels(card.damage_tags);
   const description = String(card.description ?? "").trim();
@@ -772,6 +784,7 @@ export function buildWrapupMessage(params: {
   });
   const extras: string[] = [];
   if (totals.priorityFee > 0) extras.push(`priority +${formatMoney(totals.priorityFee)}`);
+  if (totals.psaReadyFee > 0) extras.push(`PSA ready +${formatMoney(totals.psaReadyFee)}`);
   if (totals.adjustmentsTotal !== 0) {
     extras.push(
       `adjustments ${totals.adjustmentsTotal > 0 ? "+" : "−"}${formatMoney(Math.abs(totals.adjustmentsTotal))}`

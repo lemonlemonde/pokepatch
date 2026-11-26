@@ -16,6 +16,8 @@ import {
 } from "@/lib/customerOrderMedia";
 import { groupCardImages } from "@/lib/cardPhotoGroups";
 import { labeledDamageTags } from "@/lib/gallery";
+import PsaReadyBadge from "@/components/PsaReadyBadge";
+import { cardIsPsaReady } from "@/lib/psaReady";
 import {
   billableQuoteCards,
   hasPriorityAdjustment,
@@ -202,12 +204,17 @@ function ReadOnlyCards({
                   <p className="text-xs text-ink/55">{card.set_name}</p>
                 ) : null}
               </div>
-              <span
-                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cardStatusBadgeClass(
-                  card.status
-                )}`}
-              >
-                {customerCardStatusLabel(card.status)}
+              <span className="flex flex-wrap items-center justify-end gap-1.5">
+                {cardIsPsaReady(card) ? (
+                  <PsaReadyBadge card={card} />
+                ) : null}
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cardStatusBadgeClass(
+                    card.status
+                  )}`}
+                >
+                  {customerCardStatusLabel(card.status)}
+                </span>
               </span>
             </div>
 

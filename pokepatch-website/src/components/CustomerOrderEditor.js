@@ -42,8 +42,10 @@ import {
   isPaidQueueSpeed,
   uniqueQueueSpeeds,
 } from "@/lib/queueSpeed";
+import { cardIsPsaReady, SHIPPING_COST_COPY } from "@/lib/psaReady";
 import PrioritySplitDialog from "@/components/PrioritySplitDialog";
 import QueueSpeedPicker from "@/components/QueueSpeedPicker";
+import PsaReadyPicker from "@/components/PsaReadyPicker";
 import { supabase } from "@/lib/supabaseClient";
 import { uploadImageWithThumb } from "@/lib/uploadWithThumb";
 import {
@@ -85,6 +87,7 @@ function draftFromOrder(order) {
     damageTags: normalizeDamageTags(card.damage_tags),
     description: card.description ?? "",
     queueSpeed: cardQueueSpeed(card),
+    isPsaReady: cardIsPsaReady(card),
     existingImages: (card.images ?? [])
       .filter((image) => (image.image_type ?? "customer") === "customer")
       .map((image) => ({
@@ -124,6 +127,7 @@ function newEmptyCard() {
     damageTags: [],
     description: "",
     queueSpeed: QUEUE_SPEED_STANDARD,
+    isPsaReady: false,
     existingImages: [],
     newFiles: [],
   };
@@ -407,6 +411,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
           damage_tags: normalizeDamageTags(card.damageTags),
           queue_speed: cardQueueSpeed(card),
           is_priority: isPaidQueueSpeed(cardQueueSpeed(card)),
+          is_psa_ready: Boolean(card.isPsaReady),
           images,
         });
       }
@@ -594,7 +599,7 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
             <span>
               <span className="block text-sm text-ink">Shipping</span>
               <span className="mt-0.5 block text-xs text-ink/60">
-                Shipping is $12. Cards return in the packaging you send them in.
+                {SHIPPING_COST_COPY}
               </span>
             </span>
           </label>
@@ -718,10 +723,10 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
         <div>
           <h2 className="text-xl font-bold text-ink">Cards</h2>
           <p className="mt-1 text-sm text-ink/70">
-            Add up to {MAX_CARDS} cards. Queue speed is chosen per card. For
-            more than {MAX_CARDS} cards, submit as 1 card entry with a photo of
-            the entire bulk lot and a combined description, submit a separate
-            order, or reach out.
+            Add up to {MAX_CARDS} cards. Queue speed and sleeve are chosen per
+            card. For more than {MAX_CARDS} cards, submit as 1 card entry with a
+            photo of the entire bulk lot and a combined description, submit a
+            separate order, or reach out.
           </p>
         </div>
 
@@ -772,6 +777,14 @@ export default function CustomerOrderEditor({ order, onSaved, onCanceled }) {
                 value={cardQueueSpeed(card)}
                 disabled={busy}
                 onChange={(queueSpeed) => updateCard(card.id, { queueSpeed })}
+              />
+
+              <PsaReadyPicker
+                name={`edit-holder-${card.id}`}
+                cardNumber={index + 1}
+                value={card.isPsaReady}
+                disabled={busy}
+                onChange={(isPsaReady) => updateCard(card.id, { isPsaReady })}
               />
 
               <div>

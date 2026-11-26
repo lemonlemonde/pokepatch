@@ -21,6 +21,7 @@ import {
   servicePriceDisplay,
 } from "@/lib/servicePricing";
 import { queueSpeedFaqEntries } from "@/lib/queueSpeed";
+import { psaReadyFaqEntry } from "@/lib/psaReady";
 
 const steps = [
   {
@@ -77,6 +78,7 @@ const faqs = [
       "The restoration work itself can take anywhere from a few hours to a month or more, depending on the damage, number of cards, and restoration type. That doesn't include time waiting in the queue before we start.",
   },
   ...queueSpeedFaqEntries(),
+  psaReadyFaqEntry(),
   {
     id: WHITENING_FAQ_ID,
     question: WHITENING_FAQ_QUESTION,
@@ -87,7 +89,7 @@ const faqs = [
   {
     question: "Is shipping covered?",
     answer:
-      "Shipping is $12. Cards will be carefully re-packaged and sent back in the same packaging they were sent in.",
+      "Shipping is $12. Cards are carefully re-packaged: a hard top loader is included, or a PSA-ready Ultra Pro semi-rigid holder if you chose that $2 upgrade.",
   },
   {
     question: "Do you offer before-and-after photos?",

@@ -618,6 +618,7 @@ function listOrderEarnedTotal(
     status?: string | null;
     is_priority?: boolean | null;
     queue_speed?: string | null;
+    is_psa_ready?: boolean | null;
   }[],
   items: { card_id?: string | null; quote_base_amount: number | string }[]
 ): number {
@@ -637,6 +638,7 @@ type ListCardRow = {
   status: string | null;
   is_priority?: boolean | null;
   queue_speed?: string | null;
+  is_psa_ready?: boolean | null;
 };
 
 function queueSpeedRank(row: {
@@ -664,14 +666,14 @@ async function fetchListCards(
     return await mapInChunks<ListCardRow>(orderIds, (chunk) =>
       supabase
         .from("cards")
-        .select("id, order_id, status, is_priority, queue_speed")
+        .select("id, order_id, status, is_priority, queue_speed, is_psa_ready")
         .in("order_id", chunk)
     );
   } catch (err) {
     const message = `${(err as { message?: string })?.message ?? ""} ${
       (err as { details?: string })?.details ?? ""
     } ${(err as { code?: string })?.code ?? ""}`;
-    if (!/is_priority|queue_speed|42703/i.test(message)) throw err;
+    if (!/is_priority|queue_speed|is_psa_ready|42703/i.test(message)) throw err;
     const rows = await mapInChunks<ListCardRow>(orderIds, (chunk) =>
       supabase.from("cards").select("id, order_id, status").in("order_id", chunk)
     );
@@ -679,6 +681,7 @@ async function fetchListCards(
       ...row,
       is_priority: false,
       queue_speed: "standard",
+      is_psa_ready: false,
     }));
   }
 }
@@ -1246,14 +1249,14 @@ async function fetchOrderGraph(
       const withCatalog = await supabase
         .from("cards")
         .select(
-          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name"
+          "id, order_id, sort_order, card_name, set_name, description, damage_tags, admin_note, market_value_raw_nm, status, is_priority, queue_speed, is_psa_ready, tcg_card_id, catalog_image_url, catalog_card_name, catalog_set_name"
         )
         .in("order_id", orderIds)
         .order("sort_order", { ascending: true })
         .order("id", { ascending: true });
       if (
         !withCatalog.error ||
-        !/tcg_card_id|catalog_image_url|catalog_card_name|catalog_set_name|is_priority|queue_speed|42703/i.test(
+        !/tcg_card_id|catalog_image_url|catalog_card_name|catalog_set_name|is_priority|queue_speed|is_psa_ready|42703/i.test(
           `${withCatalog.error.message ?? ""} ${withCatalog.error.details ?? ""} ${withCatalog.error.code ?? ""}`
         )
       ) {
@@ -1273,6 +1276,7 @@ async function fetchOrderGraph(
           ...card,
           is_priority: false,
           queue_speed: "standard",
+          is_psa_ready: false,
           tcg_card_id: null,
           catalog_image_url: null,
           catalog_card_name: null,

@@ -29,10 +29,17 @@ export type QuoteReceiptQueueFee = {
   amount?: number;
 };
 
+export type QuoteReceiptPsaReadyFee = {
+  description?: string;
+  amount?: number;
+  count?: number;
+};
+
 export type QuoteReceiptPayload = {
   cards?: QuoteReceiptCard[];
   adjustments?: QuoteReceiptAdjustment[];
   queueFees?: QuoteReceiptQueueFee[];
+  psaReadyFees?: QuoteReceiptPsaReadyFee[];
   total?: number;
 };
 
@@ -162,6 +169,7 @@ export function quoteReceiptHasContent(
   if ((receipt.cards?.length ?? 0) > 0) return true;
   if ((receipt.adjustments?.length ?? 0) > 0) return true;
   if ((receipt.queueFees ?? []).some((row) => Number(row?.amount) > 0)) return true;
+  if ((receipt.psaReadyFees ?? []).some((row) => Number(row?.amount) > 0)) return true;
   return false;
 }
 
@@ -169,6 +177,12 @@ function receiptQueueFeeRows(
   receipt?: QuoteReceiptPayload | null
 ): QuoteReceiptQueueFee[] {
   return (receipt?.queueFees ?? []).filter((row) => Number(row?.amount) > 0);
+}
+
+function receiptPsaReadyFeeRows(
+  receipt?: QuoteReceiptPayload | null
+): QuoteReceiptPsaReadyFee[] {
+  return (receipt?.psaReadyFees ?? []).filter((row) => Number(row?.amount) > 0);
 }
 
 export function hasChangelogContent(changelog?: ChangelogPayload | null): boolean {
@@ -228,6 +242,14 @@ export function formatQuoteReceiptPlainText(
       )
     );
   }
+  for (const row of receiptPsaReadyFeeRows(receipt)) {
+    lines.push(
+      padReceiptLine(
+        `+ ${String(row.description ?? "PSA ready")}`,
+        row.amount
+      )
+    );
+  }
   lines.push(padReceiptLine("= Total", receipt?.total));
   return lines.join("\n");
 }
@@ -237,6 +259,7 @@ function formatQuoteReceiptHtml(receipt?: QuoteReceiptPayload | null): string {
   const cards = receipt?.cards ?? [];
   const adjustments = receipt?.adjustments ?? [];
   const queueFees = receiptQueueFeeRows(receipt);
+  const psaReadyFees = receiptPsaReadyFeeRows(receipt);
 
   const cardBlocks = cards.map((card, index) => {
     const prefix =
@@ -293,6 +316,15 @@ function formatQuoteReceiptHtml(receipt?: QuoteReceiptPayload | null): string {
       `<tr>` +
         `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#C9B8C8;">` +
         `<span style="color:#8A7A89;">+ </span>${escapeHtml(String(row.description ?? "Queue fee"))}</td>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(row.amount))}</td>` +
+      `</tr>`
+    );
+  }
+  for (const row of psaReadyFees) {
+    extraRows.push(
+      `<tr>` +
+        `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#C9B8C8;">` +
+        `<span style="color:#8A7A89;">+ </span>${escapeHtml(String(row.description ?? "PSA ready"))}</td>` +
         `<td style="padding:6px 2px;font-size:13px;line-height:1.45;color:#F3E9F2;text-align:right;white-space:nowrap;">${escapeHtml(formatMoney(row.amount))}</td>` +
       `</tr>`
     );

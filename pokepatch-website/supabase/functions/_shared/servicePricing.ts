@@ -112,6 +112,9 @@ export function roundMoney(amount: number): number {
 export const PRIORITY_FEE_PER_CARD = 15;
 export const EXPRESS_FEE_PER_CARD = 30;
 export const IMMEDIATE_FEE_PER_CARD = 100;
+/** Ultra Pro semi-rigid holder upgrade. Mirror src/lib/psaReady.js. */
+export const PSA_READY_FEE_PER_CARD = 2;
+const PSA_READY_ADJUSTMENT_LABELS = new Set(["psa ready", "psa-ready"]);
 const QUEUE_SPEED_FEE: Record<string, number> = {
   fast: PRIORITY_FEE_PER_CARD,
   express: EXPRESS_FEE_PER_CARD,
@@ -278,6 +281,7 @@ type TotalCard = {
   status?: string | null;
   is_priority?: boolean | null;
   queue_speed?: string | null;
+  is_psa_ready?: boolean | null;
 };
 type TotalItem = {
   card_id?: string | null;
@@ -291,6 +295,18 @@ function isCanceledStatus(status: unknown): boolean {
 
 export function isPriorityAdjustmentRow(row: Record<string, unknown>): boolean {
   return QUEUE_SPEED_LABELS.has(String(row.description ?? "").trim().toLowerCase());
+}
+
+export function isPsaReadyAdjustmentRow(row: Record<string, unknown>): boolean {
+  return PSA_READY_ADJUSTMENT_LABELS.has(
+    String(row.description ?? "").trim().toLowerCase()
+  );
+}
+
+export function cardIsPsaReady(card: TotalCard | Record<string, unknown> | null | undefined): boolean {
+  if (!card) return false;
+  const value = (card as { is_psa_ready?: unknown }).is_psa_ready;
+  return value === true || value === "true" || value === 1 || value === "1";
 }
 
 function cardQueueSpeed(card: TotalCard): string {
@@ -349,6 +365,7 @@ export function orderQuoteTotal(params: {
   hvTotal: number;
   adjustmentsTotal: number;
   priorityFee: number;
+  psaReadyFee: number;
   total: number;
 } {
   const { cards, items, quoteBulkCounts } = params;
@@ -369,7 +386,7 @@ export function orderQuoteTotal(params: {
   );
   const adjustmentsTotal = roundMoney(
     stored.adjustments
-      .filter((row) => !isPriorityAdjustmentRow(row))
+      .filter((row) => !isPriorityAdjustmentRow(row) && !isPsaReadyAdjustmentRow(row))
       .reduce((sum, row) => sum + adjustmentSignedAmount(row, servicesSubtotal), 0)
   );
   const priorityFee = roundMoney(
@@ -378,12 +395,21 @@ export function orderQuoteTotal(params: {
       return sum + (QUEUE_SPEED_FEE[speed] ?? 0);
     }, 0)
   );
+  const psaReadyFee = roundMoney(
+    billable.reduce(
+      (sum, card) => sum + (cardIsPsaReady(card) ? PSA_READY_FEE_PER_CARD : 0),
+      0
+    )
+  );
 
   return {
     servicesSubtotal,
     hvTotal,
     adjustmentsTotal,
     priorityFee,
-    total: roundMoney(servicesSubtotal + hvTotal + adjustmentsTotal + priorityFee),
+    psaReadyFee,
+    total: roundMoney(
+      servicesSubtotal + hvTotal + adjustmentsTotal + priorityFee + psaReadyFee
+    ),
   };
 }
