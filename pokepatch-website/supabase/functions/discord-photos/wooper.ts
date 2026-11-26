@@ -6,9 +6,10 @@
  * that side's photos. Check **Append** to add the message's images after the
  * ones already on that side.
  *
- * DB triggers flip card/order status on first before → in_progress and first
- * after → completed (order → ready when all active cards are done). The
- * customer is emailed only when the *order* status changes (not per-card flips).
+ * DB trigger flips card/order status on first after → completed (order →
+ * ready when all active cards are done). Before photos are upload-only.
+ * The customer is emailed only when the *order* status changes (not
+ * per-card flips).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -538,11 +539,10 @@ async function uploadAttachments(params: {
         : `No photos uploaded for ${orderLabel} · ${cardLabel}.`,
     ];
 
-    // DB triggers flip card/order status on before → in_progress (only when
-    // the card has no after photos yet) and after → completed (order → ready
-    // when every active card is done). Replacing photos on a card that already
-    // has afters is an edit only. Customer email only when the *order* status
-    // changes — not for mid-job per-card flips.
+    // DB trigger flips card/order status on after → completed (order → ready
+    // when every active card is done). Before photos are upload-only.
+    // Customer email only when the *order* status changes — not for mid-job
+    // per-card flips.
     if (uploaded > 0) {
       const [{ data: cardAfter }, { data: orderAfter }] = await Promise.all([
         supabase.from("cards").select("status").eq("id", cardId).maybeSingle(),
