@@ -251,12 +251,14 @@ export default function AccountPage() {
               />
               <p className="mt-1 text-xs text-ink/60">
                 This is your login email and can&apos;t be changed here. Need a
-                different address? Email{" "}
+                different address? DM us on Instagram{" "}
                 <a
-                  href="mailto:pokepatch.cards@gmail.com"
+                  href="https://www.instagram.com/pokepatch.cards/"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="font-semibold text-ink hover:underline"
                 >
-                  pokepatch.cards@gmail.com
+                  @pokepatch.cards
                 </a>
                 .
               </p>

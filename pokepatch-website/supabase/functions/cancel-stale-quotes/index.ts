@@ -7,7 +7,6 @@ import {
 } from "../_shared/resend.ts";
 
 const CANCEL_SUBJECT = "Your quote request was canceled";
-const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
 
 type CanceledOrder = {
@@ -27,9 +26,7 @@ function buildCancelBody(): string {
     `remained in our pending queue for over 14 days without moving forward.\n\n` +
     `If you'd still like a quote, you're welcome to submit a new request at ` +
     `pokepatch.cards anytime.\n\n` +
-    `Questions? Reach us at:\n` +
-    `- Email: ${CONTACT_EMAIL}\n` +
-    `- Instagram: ${CONTACT_INSTAGRAM}`
+    `Questions? DM us on Instagram: ${CONTACT_INSTAGRAM}`
   );
 }
 

@@ -24,7 +24,6 @@ import {
   type OrderRow,
 } from "../_shared/discordOrderMessages.ts";
 
-const CONTACT_EMAIL = "pokepatch.cards@gmail.com";
 const CONTACT_INSTAGRAM = "@pokepatch.cards";
 const MY_ORDERS_TRACK_URL =
   "https://pokepatch.cards/login?redirect=/my-orders";
@@ -243,9 +242,7 @@ function buildQuoteConfirmationBody(customerName: string): string {
     `Track your order online — create a free account or log in with this email ` +
     `to see updates and photos:\n` +
     `${MY_ORDERS_TRACK_URL}\n\n` +
-    `In the meantime, contact us at:\n` +
-    `- Email: ${CONTACT_EMAIL}\n` +
-    `- Instagram: ${CONTACT_INSTAGRAM}`
+    `In the meantime, DM us on Instagram: ${CONTACT_INSTAGRAM}`
   );
 }
 

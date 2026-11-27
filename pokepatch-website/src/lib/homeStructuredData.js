@@ -33,7 +33,6 @@ export function localBusinessJsonLd() {
     url: SITE_URL,
     description: SITE_DESCRIPTION,
     image: `${SITE_URL}/opengraph-image.png`,
-    email: "pokepatch.cards@gmail.com",
     areaServed: [
       {
         "@type": "City",
