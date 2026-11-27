@@ -17,6 +17,9 @@ const supabaseHost = supabaseHostname();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+	experimental: {
+		agentUpgrade: "security",
+	},
 	// GitHub Pages project site: lemonlemonde.github.io/pokepatch
 	trailingSlash: true,
 	images: {
