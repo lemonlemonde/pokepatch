@@ -100,17 +100,26 @@ export function formatExactMoneyAmount(value) {
   return n.toFixed(2);
 }
 
-/** Sum of per-card restoration fees. Null when no parseable fees. */
-export function contractTotalRestorationFee(cards) {
+function contractTotalMoney(cards, field) {
   let cents = 0;
   let hasAny = false;
   for (const row of cards ?? []) {
-    const n = parseExactMoney(row?.restoration_fee);
+    const n = parseExactMoney(row?.[field]);
     if (n == null) continue;
     cents += Math.round(n * 100);
     hasAny = true;
   }
   return hasAny ? cents / 100 : null;
+}
+
+/** Sum of per-card restoration fees. Null when no parseable fees. */
+export function contractTotalRestorationFee(cards) {
+  return contractTotalMoney(cards, "restoration_fee");
+}
+
+/** Sum of per-card Near Mint Raw market values. Null when no parseable values. */
+export function contractTotalMarketValue(cards) {
+  return contractTotalMoney(cards, "market_value_raw_nm");
 }
 
 /**

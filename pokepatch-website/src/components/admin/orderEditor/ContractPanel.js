@@ -13,6 +13,7 @@ import {
 import {
   buildContractPrefillFromDraft,
   buildOrderContractPdf,
+  contractTotalMarketValue,
   contractTotalRestorationFee,
   defaultContractNotifyBody,
   formatContractDate,
@@ -164,6 +165,7 @@ export default function ContractPanel({ orderId, displayId }) {
 
   const cards = preview.cards ?? [];
   const totalRestorationFee = contractTotalRestorationFee(cards);
+  const totalMarketValue = contractTotalMarketValue(cards);
   const signedAtLabel = formatSignedAt(contract?.signed_at);
   const hasSignedPdf = Boolean(signedUrl);
   const signedStatusLabel = hasSignedPdf
@@ -229,6 +231,12 @@ export default function ContractPanel({ orderId, displayId }) {
                     </span>
                   </div>
                 ) : null}
+                <div className="flex justify-between gap-2 border-t border-ink/15 bg-night/40 px-2 py-1.5 text-[11px] font-semibold text-ink">
+                  <span>Total market price and value</span>
+                  <span className="tabular-nums">
+                    {moneyLabel(totalMarketValue)}
+                  </span>
+                </div>
               </div>
             )}
           </div>
