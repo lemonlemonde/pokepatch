@@ -1,7 +1,16 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { billableQuoteCards } from "@/lib/servicePricing";
+import {
+  billableQuoteCards,
+  billableQuoteItems,
+  isPriorityAdjustmentRow,
+  quoteAdjustmentLines,
+} from "@/lib/servicePricing";
 import { QUEUE_SPEED_FEE, cardQueueSpeed } from "@/lib/queueSpeed";
-import { PSA_READY_FEE, cardIsPsaReady } from "@/lib/psaReady";
+import {
+  PSA_READY_FEE,
+  cardIsPsaReady,
+  isPsaReadyAdjustmentRow,
+} from "@/lib/psaReady";
 
 export const ORDER_CONTRACTS_BUCKET = "order-contracts";
 export const POKEPATCH_REPRESENTATIVE_NAME = "Ray Li";
@@ -91,13 +100,26 @@ export function parseExactMoney(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Format a money amount for display/PDF with exactly two decimal places.
- */
-export function formatExactMoneyAmount(value) {
+/** Dollar string for display/PDF. Negatives render as -$1.25, not $-1.25. */
+export function formatContractMoney(value) {
   const n = parseExactMoney(value);
   if (n == null) return "";
-  return n.toFixed(2);
+  const sign = n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
+function formatAdjustmentPercent(percent) {
+  const n = Number(percent);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
+/** Customer-facing adjustment label, with percent when the row used one. */
+export function formatContractAdjustmentLabel(row) {
+  const description =
+    String(row?.description ?? "").trim() || "Adjustment";
+  const percentLabel = formatAdjustmentPercent(row?.amount_percent);
+  return percentLabel ? `${description} (${percentLabel}%)` : description;
 }
 
 function contractTotalMoney(cards, field) {
@@ -120,6 +142,34 @@ export function contractTotalRestorationFee(cards) {
 /** Sum of per-card Near Mint Raw market values. Null when no parseable values. */
 export function contractTotalMarketValue(cards) {
   return contractTotalMoney(cards, "market_value_raw_nm");
+}
+
+/**
+ * Amount the customer pays: restoration fees + order-level adjustments.
+ * Queue-speed and PSA-ready fees already live on each card's restoration fee,
+ * so those auto-synced adjustment rows are excluded when the payload is built.
+ */
+export function contractCustomerTotal(cards, adjustments) {
+  const fee = contractTotalRestorationFee(cards);
+  const adj = contractTotalMoney(adjustments, "amount");
+  if (fee == null && adj == null) return null;
+  return Math.round(((fee ?? 0) + (adj ?? 0)) * 100) / 100;
+}
+
+/** Manual quote adjustments from the live order (excludes queue/PSA auto rows). */
+export function contractAdjustmentLinesFromDraft(draft) {
+  const items = billableQuoteItems(
+    draft?.quote_items ?? [],
+    draft?.cards ?? []
+  );
+  const rows = (draft?.quote_adjustments ?? []).filter(
+    (row) => !isPriorityAdjustmentRow(row) && !isPsaReadyAdjustmentRow(row)
+  );
+  return quoteAdjustmentLines(rows, items).map((line) => ({
+    description: line.description,
+    amount: line.amount,
+    amount_percent: line.amountPercent ?? null,
+  }));
 }
 
 /**
@@ -245,6 +295,7 @@ export function buildContractPrefillFromDraft(draft) {
     representative_name: POKEPATCH_REPRESENTATIVE_NAME,
     agreement_date: formatContractDate(),
     cards: rows,
+    adjustments: contractAdjustmentLinesFromDraft(draft),
   };
 }
 
@@ -261,6 +312,9 @@ function normalizeMoneyForCompare(value) {
  */
 export function contractOrderSnapshot(payload) {
   const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+  const adjustments = Array.isArray(payload?.adjustments)
+    ? payload.adjustments
+    : [];
   return {
     representative_name: String(payload?.representative_name ?? "").trim(),
     cards: cards
@@ -272,6 +326,11 @@ export function contractOrderSnapshot(payload) {
         market_value_raw_nm: normalizeMoneyForCompare(row?.market_value_raw_nm),
       }))
       .sort((a, b) => a.id.localeCompare(b.id)),
+    adjustments: adjustments.map((row) => ({
+      description: String(row?.description ?? "").trim(),
+      amount: normalizeMoneyForCompare(row?.amount),
+      amount_percent: normalizeMoneyForCompare(row?.amount_percent),
+    })),
   };
 }
 
@@ -407,7 +466,7 @@ function drawWrappedParagraph(ctx, text, { indent = 0, bullet = false } = {}) {
   ctx.y -= 5;
 }
 
-function drawTable(ctx, cards) {
+function drawTable(ctx, cards, adjustments = []) {
   // Widths must sum to CONTENT_WIDTH.
   const cols = [
     { label: "Card Name", width: 170, align: "left" },
@@ -488,17 +547,12 @@ function drawTable(ctx, cards) {
           },
         ];
 
+  const adjRows = Array.isArray(adjustments) ? adjustments : [];
   const totalFee = contractTotalRestorationFee(cards);
+  const customerTotal = contractCustomerTotal(cards, adjRows);
 
   rows.forEach((row, rowIndex) => {
-    // Keep the total row on the same page as the last card row.
-    const isLastRow = rowIndex === rows.length - 1;
-    ensureSpace(
-      ctx,
-      isLastRow && totalFee != null
-        ? TABLE_ROW_HEIGHT * 2 + 8
-        : TABLE_ROW_HEIGHT + 4
-    );
+    ensureSpace(ctx, TABLE_ROW_HEIGHT + 4);
     if (rowIndex % 2 === 1) {
       ctx.page.drawRectangle({
         x: MARGIN_X,
@@ -515,7 +569,7 @@ function drawTable(ctx, cards) {
       truncateToWidth(
         row.restoration_fee === "" || row.restoration_fee == null
           ? ""
-          : `$${formatExactMoneyAmount(row.restoration_fee)}`,
+          : formatContractMoney(row.restoration_fee),
         ctx.font,
         FONT_SIZE,
         cols[2].width - 12
@@ -523,7 +577,7 @@ function drawTable(ctx, cards) {
       truncateToWidth(
         row.market_value_raw_nm === "" || row.market_value_raw_nm == null
           ? ""
-          : `$${formatExactMoneyAmount(row.market_value_raw_nm)}`,
+          : formatContractMoney(row.market_value_raw_nm),
         ctx.font,
         FONT_SIZE,
         cols[3].width - 12
@@ -553,14 +607,27 @@ function drawTable(ctx, cards) {
   });
 
   if (totalFee != null) {
-    drawTableTotalRow(ctx, cols, totalFee);
+    drawTableTotalRow(ctx, cols, "Total Restoration Fee", totalFee);
+  }
+  if (adjRows.length > 0) {
+    for (const adj of adjRows) {
+      drawAdjustmentRow(ctx, cols, adj);
+    }
+    if (customerTotal != null) {
+      drawTableTotalRow(ctx, cols, "Total", customerTotal);
+    }
   }
 
   ctx.y -= 8;
 }
 
-/** Shaded footer row inside the card table: label beside the fee column, total in it. */
-function drawTableTotalRow(ctx, cols, totalFee) {
+function feeColumnEnd(cols) {
+  return MARGIN_X + cols[0].width + cols[1].width + cols[2].width;
+}
+
+/** Shaded footer row inside the card table: label beside the fee column, amount in it. */
+function drawTableTotalRow(ctx, cols, label, amount) {
+  ensureSpace(ctx, TABLE_ROW_HEIGHT + 8);
   ctx.page.drawRectangle({
     x: MARGIN_X,
     y: ctx.y - 4,
@@ -569,10 +636,9 @@ function drawTableTotalRow(ctx, cols, totalFee) {
     color: HEADER_BAND,
   });
 
-  const label = "Total Restoration Fee";
-  const value = `$${formatExactMoneyAmount(totalFee)}`;
+  const value = formatContractMoney(amount);
   const feeColStart = MARGIN_X + cols[0].width + cols[1].width;
-  const feeColEnd = feeColStart + cols[2].width;
+  const feeColEnd = feeColumnEnd(cols);
 
   ctx.page.drawText(label, {
     x: feeColStart - 6 - ctx.bold.widthOfTextAtSize(label, FONT_SIZE),
@@ -591,6 +657,38 @@ function drawTableTotalRow(ctx, cols, totalFee) {
 
   ctx.y -= 4;
   drawRule(ctx);
+  ctx.y -= TABLE_ROW_HEIGHT - 4;
+}
+
+function drawAdjustmentRow(ctx, cols, row) {
+  ensureSpace(ctx, TABLE_ROW_HEIGHT + 4);
+  const labelWidth = cols[0].width + cols[1].width - 12;
+  const label = truncateToWidth(
+    formatContractAdjustmentLabel(row),
+    ctx.font,
+    FONT_SIZE,
+    labelWidth
+  );
+  const value = formatContractMoney(row?.amount);
+  const feeColEnd = feeColumnEnd(cols);
+
+  ctx.page.drawText(label, {
+    x: MARGIN_X + 6,
+    y: ctx.y,
+    size: FONT_SIZE,
+    font: ctx.font,
+    color: INK,
+  });
+  ctx.page.drawText(value, {
+    x: feeColEnd - 6 - ctx.font.widthOfTextAtSize(value, FONT_SIZE),
+    y: ctx.y,
+    size: FONT_SIZE,
+    font: ctx.font,
+    color: INK,
+  });
+
+  ctx.y -= 4;
+  drawRule(ctx, { soft: true });
   ctx.y -= TABLE_ROW_HEIGHT - 4;
 }
 
@@ -768,7 +866,11 @@ export async function buildOrderContractPdf(payload, options = {}) {
   drawHeader(ctx);
 
   drawSectionTitle(ctx, "RESTORATION ORDER");
-  drawTable(ctx, Array.isArray(payload?.cards) ? payload.cards : []);
+  drawTable(
+    ctx,
+    Array.isArray(payload?.cards) ? payload.cards : [],
+    Array.isArray(payload?.adjustments) ? payload.adjustments : []
+  );
 
   drawSectionTitle(ctx, "AGREEMENT");
   for (const para of AGREEMENT_PARAS) {

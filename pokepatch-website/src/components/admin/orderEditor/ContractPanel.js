@@ -13,18 +13,19 @@ import {
 import {
   buildContractPrefillFromDraft,
   buildOrderContractPdf,
+  contractCustomerTotal,
   contractTotalMarketValue,
   contractTotalRestorationFee,
   defaultContractNotifyBody,
+  formatContractAdjustmentLabel,
   formatContractDate,
-  formatExactMoneyAmount,
+  formatContractMoney,
   isContractPayloadUpToDate,
   DEFAULT_CONTRACT_NOTIFY_SUBJECT,
 } from "@/lib/orderContractPdf";
 
 function moneyLabel(value) {
-  const formatted = formatExactMoneyAmount(value);
-  return formatted ? `$${formatted}` : "—";
+  return formatContractMoney(value) || "—";
 }
 
 function formatSignedAt(value) {
@@ -164,7 +165,9 @@ export default function ContractPanel({ orderId, displayId }) {
   }
 
   const cards = preview.cards ?? [];
+  const adjustments = preview.adjustments ?? [];
   const totalRestorationFee = contractTotalRestorationFee(cards);
+  const customerTotal = contractCustomerTotal(cards, adjustments);
   const totalMarketValue = contractTotalMarketValue(cards);
   const signedAtLabel = formatSignedAt(contract?.signed_at);
   const hasSignedPdf = Boolean(signedUrl);
@@ -228,6 +231,23 @@ export default function ContractPanel({ orderId, displayId }) {
                     <span>Total restoration fee</span>
                     <span className="tabular-nums">
                       {moneyLabel(totalRestorationFee)}
+                    </span>
+                  </div>
+                ) : null}
+                {adjustments.map((row, index) => (
+                  <div
+                    key={`adj-${index}-${row?.description ?? ""}`}
+                    className="flex justify-between gap-2 border-t border-ink/10 px-2 py-1.5 text-[11px] text-ink/80"
+                  >
+                    <span>{formatContractAdjustmentLabel(row)}</span>
+                    <span className="tabular-nums">{moneyLabel(row?.amount)}</span>
+                  </div>
+                ))}
+                {adjustments.length > 0 && customerTotal != null ? (
+                  <div className="flex justify-between gap-2 border-t border-ink/15 bg-night/40 px-2 py-1.5 text-[11px] font-semibold text-ink">
+                    <span>Total</span>
+                    <span className="tabular-nums">
+                      {moneyLabel(customerTotal)}
                     </span>
                   </div>
                 ) : null}

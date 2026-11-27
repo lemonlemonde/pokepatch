@@ -1418,6 +1418,39 @@ function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
       market_value_raw_nm: nm,
     };
   });
+  const adjustmentsIn = Array.isArray(input.adjustments)
+    ? input.adjustments
+    : [];
+  const adjustments = adjustmentsIn.slice(0, 100).flatMap((row) => {
+    const r =
+      row && typeof row === "object" && !Array.isArray(row)
+        ? (row as Record<string, unknown>)
+        : {};
+    const amountRaw = r.amount;
+    const amount =
+      amountRaw === "" || amountRaw == null
+        ? null
+        : Number.isFinite(Number(amountRaw))
+          ? Number(amountRaw)
+          : null;
+    if (amount == null || amount === 0) return [];
+    const percentRaw = r.amount_percent;
+    const amount_percent =
+      percentRaw === "" || percentRaw == null
+        ? null
+        : Number.isFinite(Number(percentRaw))
+          ? Number(percentRaw)
+          : null;
+    const description = String(r.description ?? "").trim().slice(0, 200);
+    return [
+      {
+        description: description || "Adjustment",
+        amount,
+        amount_percent:
+          amount_percent != null && amount_percent > 0 ? amount_percent : null,
+      },
+    ];
+  });
   return {
     customer_name: String(input.customer_name ?? "").trim().slice(0, 200),
     representative_name: String(input.representative_name ?? "")
@@ -1425,6 +1458,7 @@ function sanitizeContractPayload(raw: unknown): Record<string, unknown> {
       .slice(0, 200),
     agreement_date: String(input.agreement_date ?? "").trim().slice(0, 80),
     cards,
+    adjustments,
   };
 }
 
