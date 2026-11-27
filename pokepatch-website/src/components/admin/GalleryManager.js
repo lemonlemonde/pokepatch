@@ -421,12 +421,14 @@ function ThumbnailUpload({
 
 function cardFromItem(item) {
   if (!item?.tcg_card_id) return null;
+  const id = item.tcg_card_id;
   return {
-    id: item.tcg_card_id,
+    id,
     name: item.title || item.tcg_lookup_title || "",
     set_name: item.set_name || item.tcg_lookup_set_name || "",
-    number: "",
-    image_small: tcgCardImageUrl({ id: item.tcg_card_id }),
+    number: item.card_number || "",
+    image_small: item.urls?.thumbnail || tcgCardImageUrl({ id }),
+    print_region: id.startsWith("jp-") ? "jp" : "en",
   };
 }
 

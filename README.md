@@ -357,8 +357,9 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 
 **`tcg_cards`** (card catalog mirror)
 
-- Local copy of [PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (same ids as `api.pokemontcg.io`, ~20k rows, a few MB). Admin card search and "Use card" read from here; nothing calls the public API at request time.
-- Refreshed by `scripts/sync-tcg-catalog.mjs` — CI runs it weekly, after every successful Deploy, and via **Actions → Sync TCG catalog → Run workflow**. Locally: `npm run sync-tcg-catalog` (needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local.prod`; point `SUPABASE_URL` at `http://127.0.0.1:54321` for the local stack).
+- Local copy of English printings from [PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (same ids as `api.pokemontcg.io`) plus Japanese printings from [TCGdex](https://tcgdex.dev) (`jp-{set}-{number}` ids, images from `assets.tcgdex.net`). Admin card search and "Use card" read from here; nothing calls those APIs at request time.
+- One search returns both regions. Japanese Pokémon names are stored in English (and the original Japanese) so typing `Pikachu` or `ピカチュウ` hits both catalogs. Results marked **JP** are Japanese printings.
+- Refreshed by `scripts/sync-tcg-catalog.mjs` — CI runs it weekly, after every successful Deploy, and via **Actions → Sync TCG catalog → Run workflow**. Locally: `npm run sync-tcg-catalog` (needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local.prod`; point `SUPABASE_URL` at `http://127.0.0.1:54321` for the local stack). Optional: `TCG_JP_SET_IDS=SV2a,S12a` to ingest a subset, `TCG_SKIP_JP=1` / `TCG_SKIP_EN=1`.
 - New sets appear once the upstream dataset adds them; if search misses a just-released set, run the workflow manually.
 
 ### RPCs
@@ -368,7 +369,7 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 | `create_order(p_payload jsonb)` | `anon` | Public form; writes working + original in one transaction |
 | `update_order(...)` | `service_role` only | Admin edits to working tables. Order status/pending_kind changes email the customer (`notify-order-status`); Discord stays INSERT-only |
 | `update_order_kanban(...)` | `service_role` only | Same write as `update_order`, without the status email (kanban Move only) |
-| `search_tcg_cards(p_name, p_set, p_number, p_page, p_page_size)` | `service_role` only | Ranked catalog search (substring, then `pg_trgm` similarity; newest set first) |
+| `search_tcg_cards(p_name, p_set, p_number, p_page, p_page_size)` | `service_role` only | Ranked catalog search over English + Japanese printings (substring, then `pg_trgm` similarity; newest set first) |
 
 RLS: no direct anon SELECT/INSERT/UPDATE on order tables. Public and admin writes go through RPCs or edge functions (`SECURITY DEFINER` / service role).
 

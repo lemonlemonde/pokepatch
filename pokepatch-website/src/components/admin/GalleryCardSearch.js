@@ -67,8 +67,21 @@ function friendlySearchError(err, append) {
     : "Card lookup failed. Try again.";
 }
 
+function isJapaneseCard(card) {
+  return card?.print_region === "jp" || String(card?.id ?? "").startsWith("jp-");
+}
+
+function JpBadge() {
+  return (
+    <span className="absolute left-1 top-1 rounded bg-ink/80 px-1 py-px font-mono text-[9px] uppercase tracking-[0.14em] text-night">
+      JP
+    </span>
+  );
+}
+
 function CardResultButton({ card, selected, onSelect }) {
   const isSelected = selected && card.id === selected.id;
+  const imageUrl = tcgCardImageUrl(card);
   return (
     <button
       type="button"
@@ -79,15 +92,18 @@ function CardResultButton({ card, selected, onSelect }) {
           : "border-ink/10 bg-ink/[0.03] hover:border-ink/25 hover:bg-ink/[0.05]"
       }`}
     >
-      <div className={`${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={tcgCardImageUrl(card)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
-        />
+      <div className={`relative ${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
+          />
+        ) : null}
+        {isJapaneseCard(card) ? <JpBadge /> : null}
       </div>
       <div className="space-y-0.5 p-2">
         <p className="line-clamp-2 text-xs font-semibold leading-tight text-ink">
@@ -102,7 +118,7 @@ function CardResultButton({ card, selected, onSelect }) {
 }
 
 /**
- * Search the full Pokémon TCG API catalog and pick one card for gallery thumbnails.
+ * Search the mirrored English + Japanese TCG catalog and pick one card.
  *
  * Optional Studio-style mode:
  * - `hideFields` — parent owns card/set inputs; pass `cardName`/`setName` (+ change handlers)
@@ -306,6 +322,7 @@ export default function GalleryCardSearch({
   const showStatus =
     showResults &&
     Boolean(error || (loading && results.length === 0) || results.length > 0);
+  const selectedImageUrl = selectedCard ? tcgCardImageUrl(selectedCard) : "";
 
   function handleClear() {
     abortRef.current?.abort();
@@ -342,19 +359,30 @@ export default function GalleryCardSearch({
       }
     >
       {!hideFields ? (
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-          Find card
-        </p>
+        <div className="space-y-1">
+          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+            Find card
+          </p>
+          <p className="text-[11px] text-ink/45">
+            Searches English and Japanese printings together. Japanese cards are
+            marked JP.
+          </p>
+        </div>
       ) : null}
 
       {selectedCard?.id && !hideFields && (
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-ink/15 bg-ink/[0.03] p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={tcgCardImageUrl(selectedCard)}
-            alt=""
-            className={`w-12 shrink-0 rounded ${CARD_THUMB_ASPECT_CLASS} ${CARD_THUMB_IMAGE_CLASS} bg-night/20`}
-          />
+          <div className={`relative w-12 shrink-0 overflow-hidden rounded ${CARD_THUMB_ASPECT_CLASS} bg-night/20`}>
+            {selectedImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={selectedImageUrl}
+                alt=""
+                className={`h-full w-full ${CARD_THUMB_IMAGE_CLASS}`}
+              />
+            ) : null}
+            {isJapaneseCard(selectedCard) ? <JpBadge /> : null}
+          </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink">{selectedCard.name}</p>
             <p className="text-xs text-ink/55">
