@@ -90,18 +90,35 @@ export async function fetchPokemonTcgCard(
   return data ? mapRow(data as TcgCardRow) : null;
 }
 
+export function normalizePrintRegion(value: unknown): "en" | "jp" | "" {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (raw === "en" || raw === "jp") return raw;
+  return "";
+}
+
 /** Paginated, ranked search over the mirrored catalog. */
 export async function searchPokemonTcgCatalog(
   supabase: SupabaseClient,
   cardName: string,
   setName: string,
-  { page = 1, pageSize = CATALOG_MAX_PAGE_SIZE, number = "" } = {}
+  {
+    page = 1,
+    pageSize = CATALOG_MAX_PAGE_SIZE,
+    number = "",
+    printRegion = "",
+  }: {
+    page?: number;
+    pageSize?: number;
+    number?: string;
+    printRegion?: string;
+  } = {}
 ): Promise<CatalogSearchResult> {
   const safePage = Math.max(1, page);
   const safeSize = Math.min(Math.max(pageSize, 1), CATALOG_MAX_PAGE_SIZE);
   const name = normalizeSearchText(cardName);
   const set = normalizeSearchText(setName);
   const num = normalizeSearchText(number);
+  const region = normalizePrintRegion(printRegion);
 
   if (!name && !set && !num) {
     return {
@@ -119,6 +136,7 @@ export async function searchPokemonTcgCatalog(
     p_number: num,
     p_page: safePage,
     p_page_size: safeSize,
+    p_print_region: region,
   });
   if (error) throw error;
 
@@ -130,7 +148,12 @@ export async function searchPokemonTcgCatalog(
     totalCount,
     page: safePage,
     pageSize: safeSize,
-    queryUsed: [name && `name:${name}`, set && `set:${set}`, num && `number:${num}`]
+    queryUsed: [
+      name && `name:${name}`,
+      set && `set:${set}`,
+      num && `number:${num}`,
+      region && `region:${region}`,
+    ]
       .filter(Boolean)
       .join(" "),
   };

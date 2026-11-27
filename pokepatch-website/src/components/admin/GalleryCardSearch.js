@@ -16,6 +16,30 @@ const MIN_NAME_ONLY_LENGTH = 3;
 const CLIENT_SEARCH_TIMEOUT_MS = 40_000;
 /** Debounce for auto-search so typing doesn't fire a request per keystroke. */
 const AUTO_SEARCH_DEBOUNCE_MS = 400;
+const PRINT_REGION_STORAGE_KEY = "pokepatch.tcgPrintRegion";
+const PRINT_REGIONS = [
+  { id: "en", label: "English" },
+  { id: "jp", label: "Japanese" },
+];
+
+function readStoredPrintRegion() {
+  if (typeof window === "undefined") return "en";
+  try {
+    const raw = window.localStorage.getItem(PRINT_REGION_STORAGE_KEY);
+    if (raw === "jp" || raw === "en") return raw;
+  } catch {
+    // private mode / blocked storage
+  }
+  return "en";
+}
+
+function storePrintRegion(value) {
+  try {
+    window.localStorage.setItem(PRINT_REGION_STORAGE_KEY, value);
+  } catch {
+    // ignore
+  }
+}
 
 function fieldClassName() {
   return "w-full rounded-lg border border-ink/15 bg-cream px-4 py-2 text-ink outline-none focus:border-ink/40";
@@ -79,6 +103,34 @@ function JpBadge() {
   );
 }
 
+function PrintRegionToggle({ value, onChange, disabled = false }) {
+  return (
+    <div
+      className="inline-flex shrink-0 rounded-lg border border-ink/15 bg-ink/[0.03] p-0.5"
+      role="group"
+      aria-label="Card language"
+    >
+      {PRINT_REGIONS.map((region) => {
+        const active = value === region.id;
+        return (
+          <button
+            key={region.id}
+            type="button"
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => onChange(region.id)}
+            className={`rounded-md px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] transition disabled:opacity-50 ${
+              active ? "bg-ink text-night" : "text-ink/55 hover:text-ink"
+            }`}
+          >
+            {region.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function CardResultButton({ card, selected, onSelect }) {
   const isSelected = selected && card.id === selected.id;
   const imageUrl = tcgCardImageUrl(card);
@@ -118,7 +170,7 @@ function CardResultButton({ card, selected, onSelect }) {
 }
 
 /**
- * Search the mirrored English + Japanese TCG catalog and pick one card.
+ * Search the mirrored TCG catalog (English or Japanese) and pick one card.
  *
  * Optional Studio-style mode:
  * - `hideFields` — parent owns card/set inputs; pass `cardName`/`setName` (+ change handlers)
@@ -160,7 +212,13 @@ export default function GalleryCardSearch({
     else setInternalSetName(next);
   }
 
-  const [lastQuery, setLastQuery] = useState({ cardName: "", setName: "" });
+  const [printRegion, setPrintRegion] = useState("en");
+  const [regionReady, setRegionReady] = useState(false);
+  const [lastQuery, setLastQuery] = useState({
+    cardName: "",
+    setName: "",
+    printRegion: "en",
+  });
   const [results, setResults] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -170,7 +228,12 @@ export default function GalleryCardSearch({
   const abortRef = useRef(null);
   const requestIdRef = useRef(0);
 
-  const runSearch = useCallback(async (nameQuery, setQuery, pageNum, append) => {
+  useEffect(() => {
+    setPrintRegion(readStoredPrintRegion());
+    setRegionReady(true);
+  }, []);
+
+  const runSearch = useCallback(async (nameQuery, setQuery, pageNum, append, region) => {
     if (!canSearch(nameQuery, setQuery)) {
       setResults([]);
       setTotalCount(0);
@@ -207,6 +270,7 @@ export default function GalleryCardSearch({
           setName: setQuery,
           page: pageNum,
           pageSize: PAGE_SIZE,
+          printRegion: region,
         },
         { signal: controller.signal }
       );
@@ -251,8 +315,27 @@ export default function GalleryCardSearch({
   function submitSearch() {
     const nameQuery = normalizeSearchInput(cardName);
     const setQuery = normalizeSearchInput(setName);
-    setLastQuery({ cardName: nameQuery, setName: setQuery });
-    runSearch(nameQuery, setQuery, 1, false);
+    setLastQuery({ cardName: nameQuery, setName: setQuery, printRegion });
+    runSearch(nameQuery, setQuery, 1, false, printRegion);
+  }
+
+  function handlePrintRegionChange(next) {
+    if (next !== "en" && next !== "jp") return;
+    if (next === printRegion) return;
+    setPrintRegion(next);
+    storePrintRegion(next);
+    const nameQuery = normalizeSearchInput(cardName);
+    const setQuery = normalizeSearchInput(setName);
+    if (canSearch(nameQuery, setQuery)) {
+      setLastQuery({ cardName: nameQuery, setName: setQuery, printRegion: next });
+      runSearch(nameQuery, setQuery, 1, false, next);
+      return;
+    }
+    setResults([]);
+    setTotalCount(0);
+    setPage(1);
+    setError("");
+    setLastQuery({ cardName: "", setName: "", printRegion: next });
   }
 
   function handleSearchKeyDown(event) {
@@ -268,6 +351,7 @@ export default function GalleryCardSearch({
   // Auto-search when the query becomes valid (Studio: type card + set, results appear).
   useEffect(() => {
     if (!autoSearch) return undefined;
+    if (!regionReady) return undefined;
     if (disabled) return undefined;
     if (collapseOnSelect && selectedCard?.id) return undefined;
 
@@ -283,7 +367,7 @@ export default function GalleryCardSearch({
           setResults([]);
           setTotalCount(0);
           setError("");
-          setLastQuery({ cardName: "", setName: "" });
+          setLastQuery({ cardName: "", setName: "", printRegion });
         }, 0);
         return () => clearTimeout(clearId);
       }
@@ -293,14 +377,15 @@ export default function GalleryCardSearch({
     if (
       nameQuery === lastQuery.cardName &&
       setQuery === lastQuery.setName &&
+      printRegion === lastQuery.printRegion &&
       (results.length > 0 || error === "No cards found." || loading)
     ) {
       return undefined;
     }
 
     const timeoutId = setTimeout(() => {
-      setLastQuery({ cardName: nameQuery, setName: setQuery });
-      runSearch(nameQuery, setQuery, 1, false);
+      setLastQuery({ cardName: nameQuery, setName: setQuery, printRegion });
+      runSearch(nameQuery, setQuery, 1, false, printRegion);
     }, AUTO_SEARCH_DEBOUNCE_MS);
 
     return () => clearTimeout(timeoutId);
@@ -313,12 +398,20 @@ export default function GalleryCardSearch({
     selectedCard?.id,
     cardName,
     setName,
+    printRegion,
+    regionReady,
     disabled,
     runSearch,
   ]);
 
   const hasMore = results.length < totalCount;
-  const showResults = !(collapseOnSelect && selectedCard?.id);
+  // collapseOnSelect hides an idle results grid after a pick; a new search
+  // (including switching English/Japanese) should show matches again.
+  const showResults =
+    !(collapseOnSelect && selectedCard?.id) ||
+    results.length > 0 ||
+    loading ||
+    Boolean(error);
   const showStatus =
     showResults &&
     Boolean(error || (loading && results.length === 0) || results.length > 0);
@@ -329,7 +422,7 @@ export default function GalleryCardSearch({
     setResults([]);
     setTotalCount(0);
     setError("");
-    setLastQuery({ cardName: "", setName: "" });
+    setLastQuery({ cardName: "", setName: "", printRegion });
     onClear?.();
   }
 
@@ -345,10 +438,10 @@ export default function GalleryCardSearch({
     onSelect?.(card);
   }
 
-  // Studio owns the inputs; render nothing until there is catalog feedback.
-  if (hideFields && !showStatus) {
-    return null;
-  }
+  const regionHint =
+    printRegion === "jp"
+      ? "Japanese printings. Names in English or Japanese; sets by ID (SV2a) or Japanese name."
+      : "English printings only.";
 
   return (
     <div
@@ -358,17 +451,19 @@ export default function GalleryCardSearch({
           : "rounded-lg border border-ink/10 bg-ink/[0.02] p-4"
       }
     >
-      {!hideFields ? (
-        <div className="space-y-1">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-            Find card
+            {hideFields ? "Catalog language" : "Find card"}
           </p>
-          <p className="text-[11px] text-ink/45">
-            Searches English and Japanese printings together. Japanese cards are
-            marked JP.
-          </p>
+          <p className="text-[11px] text-ink/45">{regionHint}</p>
         </div>
-      ) : null}
+        <PrintRegionToggle
+          value={printRegion}
+          onChange={handlePrintRegionChange}
+          disabled={disabled}
+        />
+      </div>
 
       {selectedCard?.id && !hideFields && (
         <div className="mt-4 flex items-center gap-3 rounded-lg border border-ink/15 bg-ink/[0.03] p-3">
@@ -438,7 +533,11 @@ export default function GalleryCardSearch({
               onChange={(event) => updateCardName(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               className={fieldClassName()}
-              placeholder="e.g. Pikachu ex, Sylveon-GX"
+              placeholder={
+                printRegion === "jp"
+                  ? "e.g. Pikachu, ピカチュウ"
+                  : "e.g. Pikachu ex, Sylveon-GX"
+              }
               autoComplete="off"
             />
           </label>
@@ -453,7 +552,11 @@ export default function GalleryCardSearch({
               onChange={(event) => updateSetName(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               className={fieldClassName()}
-              placeholder="e.g. Ascended Heroes, Guardians Rising"
+              placeholder={
+                printRegion === "jp"
+                  ? "e.g. SV2a, 151"
+                  : "e.g. Ascended Heroes, Guardians Rising"
+              }
               autoComplete="off"
             />
           </label>
@@ -490,7 +593,13 @@ export default function GalleryCardSearch({
               type="button"
               disabled={disabled}
               onClick={() =>
-                runSearch(lastQuery.cardName, lastQuery.setName, 1, false)
+                runSearch(
+                  lastQuery.cardName,
+                  lastQuery.setName,
+                  1,
+                  false,
+                  lastQuery.printRegion
+                )
               }
               className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink/55 transition hover:text-ink disabled:opacity-50"
             >
@@ -528,7 +637,13 @@ export default function GalleryCardSearch({
               type="button"
               disabled={disabled || loadingMore || loading}
               onClick={() =>
-                runSearch(lastQuery.cardName, lastQuery.setName, page + 1, true)
+                runSearch(
+                  lastQuery.cardName,
+                  lastQuery.setName,
+                  page + 1,
+                  true,
+                  lastQuery.printRegion
+                )
               }
               className="mt-3 rounded-lg border border-ink/15 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink/70 transition hover:border-ink/35 hover:text-ink disabled:opacity-50"
             >

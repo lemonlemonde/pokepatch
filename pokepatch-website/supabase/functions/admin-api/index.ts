@@ -13,6 +13,7 @@ import {
 import {
   CATALOG_MAX_PAGE_SIZE,
   fetchPokemonTcgCard,
+  normalizePrintRegion,
   normalizeSearchText,
   searchPokemonTcgCatalog,
   tcgCardImageSmallUrl,
@@ -3473,12 +3474,14 @@ Deno.serve(async (req) => {
       const cardNumber = normalizeSearchText(
         typeof body.number === "string" ? body.number : ""
       );
+      const printRegion = normalizePrintRegion(body.print_region);
 
       try {
         const result = await searchPokemonTcgCatalog(supabase, cardName, setName, {
           page,
           pageSize,
           number: cardNumber,
+          printRegion,
         });
         return jsonResponse(req, {
           ok: true,
