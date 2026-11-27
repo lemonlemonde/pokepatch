@@ -14,9 +14,11 @@ import {
   RESULTS_AND_ALTERATION_PARAS,
   UNPAID_COMPLETED_CARDS_PARAS,
   buildOrderContractPdf,
+  contractCustomerTotal,
   contractTotalRestorationFee,
+  formatContractAdjustmentLabel,
   formatContractDate,
-  formatExactMoneyAmount,
+  formatContractMoney,
   signedContractPath,
 } from "@/lib/orderContractPdf";
 import { supabase } from "@/lib/supabaseClient";
@@ -28,16 +30,15 @@ const SECTION_TITLE_CLS =
   "border-b border-night/15 pb-1 text-[11px] font-bold uppercase tracking-wide text-night/80";
 
 function moneyLabel(value) {
-  if (value === "" || value == null) return "—";
-  const formatted = formatExactMoneyAmount(value);
-  return formatted ? `$${formatted}` : "—";
+  return formatContractMoney(value) || "—";
 }
 
-function CardRows({ cards }) {
-  if (cards.length === 0) {
+function CardRows({ cards, adjustments = [] }) {
+  if (cards.length === 0 && adjustments.length === 0) {
     return <p className={`mt-2 ${PARA_CLS} text-night/55`}>No cards listed.</p>;
   }
   const totalFee = contractTotalRestorationFee(cards);
+  const customerTotal = contractCustomerTotal(cards, adjustments);
   return (
     <div className="mt-2 overflow-hidden rounded-md border border-night/10">
       <ul className="divide-y divide-night/10">
@@ -75,6 +76,27 @@ function CardRows({ cards }) {
           </p>
         </div>
       ) : null}
+      {adjustments.map((row, index) => (
+        <div
+          key={`adj-${index}-${row?.description ?? ""}`}
+          className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-t border-night/10 px-3 py-2 text-[13px]"
+        >
+          <p className="text-night">
+            {formatContractAdjustmentLabel(row)}
+          </p>
+          <p className="text-right tabular-nums text-night">
+            {moneyLabel(row?.amount)}
+          </p>
+        </div>
+      ))}
+      {adjustments.length > 0 && customerTotal != null ? (
+        <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 border-t border-night/15 bg-night/5 px-3 py-2 text-[13px]">
+          <p className="font-semibold text-night">Total</p>
+          <p className="text-right tabular-nums font-semibold text-night">
+            {moneyLabel(customerTotal)}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -89,6 +111,9 @@ function Paragraphs({ items, prefix }) {
 
 function AgreementBody({ payload }) {
   const cards = Array.isArray(payload?.cards) ? payload.cards : [];
+  const adjustments = Array.isArray(payload?.adjustments)
+    ? payload.adjustments
+    : [];
   const repName =
     String(payload?.representative_name ?? "").trim() ||
     POKEPATCH_REPRESENTATIVE_NAME;
@@ -108,7 +133,7 @@ function AgreementBody({ payload }) {
 
       <section>
         <h3 className={SECTION_TITLE_CLS}>Restoration order</h3>
-        <CardRows cards={cards} />
+        <CardRows cards={cards} adjustments={adjustments} />
       </section>
 
       <section className="space-y-2.5">
