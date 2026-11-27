@@ -595,7 +595,7 @@ export async function adminClearGalleryThumbnail(itemId) {
 }
 
 export async function adminSearchGalleryTcg(
-  { cardName = "", setName = "", page = 1, pageSize = 100 } = {},
+  { cardName = "", setName = "", page = 1, pageSize = 100, printRegion = "" } = {},
   { signal } = {}
 ) {
   const payload = await adminRequest(
@@ -608,6 +608,7 @@ export async function adminSearchGalleryTcg(
         set_name: setName,
         page,
         page_size: pageSize,
+        print_region: printRegion,
       },
     },
     { signal }
