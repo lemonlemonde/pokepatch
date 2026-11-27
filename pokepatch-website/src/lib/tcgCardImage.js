@@ -1,9 +1,8 @@
 /**
- * Official card renders from the Scrydex CDN, keyed by TCG card id.
- *
- * The CDN answers with `access-control-allow-origin: *`, so these can be
- * fetched straight into a File and drawn onto the Studio export canvas without
- * a proxy and without tainting it.
+ * Official card renders. English ids resolve on the Scrydex CDN; Japanese
+ * printings (jp-*) use the image URLs stored on the catalog row (TCGdex).
+ * Both CDNs send `access-control-allow-origin: *`, so Studio can fetch into
+ * a File and draw onto the export canvas without a proxy.
  */
 
 /** Thumbnail-sized render (~50KB) — search results, list UI. */
@@ -12,9 +11,17 @@ export const TCG_IMAGE_SMALL = "small";
 export const TCG_IMAGE_LARGE = "large";
 
 export function tcgCardImageUrl(card, size = TCG_IMAGE_SMALL) {
-  if (card?.image_small && size === TCG_IMAGE_SMALL) return card.image_small;
-  if (!card?.id) return "";
-  return `https://images.scrydex.com/pokemon/${card.id}/${size}`;
+  const large = String(card?.image_large ?? "").trim();
+  const small = String(card?.image_small ?? "").trim();
+  if (size === TCG_IMAGE_LARGE) {
+    if (large) return large;
+    if (small) return small;
+  } else if (small) {
+    return small;
+  }
+  const id = String(card?.id ?? "").trim();
+  if (!id || id.startsWith("jp-")) return "";
+  return `https://images.scrydex.com/pokemon/${id}/${size}`;
 }
 
 function extensionForType(mimeType) {

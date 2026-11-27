@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
- * Card catalog lookups read from public.tcg_cards — a local mirror of the
- * Pokémon TCG dataset kept fresh by scripts/sync-tcg-catalog.mjs. Nothing here
- * calls api.pokemontcg.io at request time.
+ * Card catalog lookups read from public.tcg_cards — a local mirror of English
+ * (pokemon-tcg-data) and Japanese (TCGdex) printings, kept fresh by
+ * scripts/sync-tcg-catalog.mjs. Nothing here calls those APIs at request time.
  */
 
 /** Matches the search function's clamp; admin UI pages at 100. */
@@ -24,6 +24,7 @@ export type TcgCardCandidate = {
   number: string;
   image_small: string;
   image_large: string;
+  print_region: "en" | "jp";
 };
 
 type TcgCardRow = {
@@ -33,6 +34,7 @@ type TcgCardRow = {
   set_name: string | null;
   image_small: string | null;
   image_large: string | null;
+  print_region?: string | null;
 };
 
 /** Fold user input for case-insensitive search. */
@@ -46,7 +48,14 @@ export function tcgCardImageSmallUrl(
 ): string {
   const fromApi = images?.small?.trim();
   if (fromApi) return fromApi;
-  return `https://images.scrydex.com/pokemon/${cardId.trim()}/small`;
+  const id = cardId.trim();
+  if (!id || id.startsWith("jp-")) return "";
+  return `https://images.scrydex.com/pokemon/${id}/small`;
+}
+
+function printRegionOf(row: TcgCardRow, id: string): "en" | "jp" {
+  if (row.print_region === "jp" || id.startsWith("jp-")) return "jp";
+  return "en";
 }
 
 function mapRow(row: TcgCardRow): TcgCardCandidate {
@@ -61,6 +70,7 @@ function mapRow(row: TcgCardRow): TcgCardCandidate {
     number: row.number?.trim() ?? "",
     image_small: imageSmall,
     image_large: row.image_large?.trim() || imageSmall,
+    print_region: printRegionOf(row, id),
   };
 }
 
@@ -73,7 +83,7 @@ export async function fetchPokemonTcgCard(
 
   const { data, error } = await supabase
     .from("tcg_cards")
-    .select("id, name, number, set_name, image_small, image_large")
+    .select("id, name, number, set_name, image_small, image_large, print_region")
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
