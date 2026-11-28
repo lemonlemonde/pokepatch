@@ -1,6 +1,6 @@
 /**
  * Official card renders. English ids resolve on the Scrydex CDN; Japanese
- * printings (jp-*) use the image URLs stored on the catalog row (TCGdex).
+ * printings (jp-*) use the image URLs stored on the catalog row (TCGplayer).
  * Both CDNs send `access-control-allow-origin: *`, so Studio can fetch into
  * a File and draw onto the export canvas without a proxy.
  */

@@ -1,6 +1,6 @@
 /**
- * Map Japanese TCG card names ↔ English so catalog search works in either
- * language. Species names come from PokeAPI's pokemon_species_names CSV
+ * Map English TCG card names → Japanese so catalog search also matches
+ * Japanese input. Species names come from PokeAPI's pokemon_species_names CSV
  * (language 1 = Japanese, 9 = English). Affixes are TCG-specific.
  */
 
@@ -11,23 +11,19 @@ const SPECIES_NAMES_CSV_URL =
 const LANG_JA = "1";
 const LANG_EN = "9";
 
-const ENERGY_JA_TO_EN = {
-  草: "Grass",
-  炎: "Fire",
-  水: "Water",
-  雷: "Lightning",
-  超: "Psychic",
-  闘: "Fighting",
-  悪: "Darkness",
-  鋼: "Metal",
-  妖: "Fairy",
-  竜: "Dragon",
-  無色: "Colorless",
+const ENERGY_EN_TO_JA = {
+  grass: "草",
+  fire: "炎",
+  water: "水",
+  lightning: "雷",
+  psychic: "超",
+  fighting: "闘",
+  darkness: "悪",
+  metal: "鋼",
+  fairy: "妖",
+  dragon: "竜",
+  colorless: "無色",
 };
-
-const ENERGY_EN_TO_JA = Object.fromEntries(
-  Object.entries(ENERGY_JA_TO_EN).map(([ja, en]) => [en.toLowerCase(), ja])
-);
 
 /** Longer tokens first so VSTAR wins over V, Hisuian over Hi, etc. */
 const PREFIXES = [
@@ -55,17 +51,13 @@ const SUFFIXES = [
   ["V", "V"],
 ];
 
-const FORME_JA_TO_EN = {
-  みどりのめん: "Teal Mask",
-  いどのめん: "Wellspring Mask",
-  かまどのめん: "Hearthflame Mask",
-  いしずえのめん: "Cornerstone Mask",
-  アカツキ: "Bloodmoon",
+const FORME_EN_TO_JA = {
+  "teal mask": "みどりのめん",
+  "wellspring mask": "いどのめん",
+  "hearthflame mask": "かまどのめん",
+  "cornerstone mask": "いしずえのめん",
+  bloodmoon: "アカツキ",
 };
-
-const FORME_EN_TO_JA = Object.fromEntries(
-  Object.entries(FORME_JA_TO_EN).map(([ja, en]) => [en.toLowerCase(), ja])
-);
 const PREFIX_EN_TO_JA = Object.fromEntries(
   PREFIXES.map(([ja, en]) => [en, ja])
 );
@@ -95,18 +87,14 @@ export async function loadSpeciesNameMaps(fetchImpl = fetch) {
     byId.set(id, row);
   }
 
-  const jaToEn = new Map();
   const enToJa = new Map();
   for (const { ja, en } of byId.values()) {
     if (!ja || !en) continue;
-    jaToEn.set(ja, en);
-    jaToEn.set(compact(ja), en);
     enToJa.set(en.toLowerCase(), ja);
   }
 
-  const jaNamesByLength = [...jaToEn.keys()].sort((a, b) => b.length - a.length);
   const enNamesByLength = [...enToJa.keys()].sort((a, b) => b.length - a.length);
-  return { jaToEn, enToJa, jaNamesByLength, enNamesByLength };
+  return { enToJa, enNamesByLength };
 }
 
 function stripKnownSuffixes(raw) {
@@ -127,24 +115,6 @@ function stripKnownSuffixes(raw) {
   return { rest, suffixes: taken };
 }
 
-function stripKnownPrefixes(raw) {
-  const taken = [];
-  let rest = raw.replace(/^[\s　]+|[\s　]+$/g, "");
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [ja, en] of PREFIXES) {
-      if (rest.startsWith(ja)) {
-        taken.push(en);
-        rest = rest.slice(ja.length).replace(/^[\s　]+/, "");
-        changed = true;
-        break;
-      }
-    }
-  }
-  return { rest, prefixes: taken };
-}
-
 function longestSpeciesMatch(text, namesByLength, lookup) {
   const compactText = compact(text);
   for (const key of namesByLength) {
@@ -156,66 +126,11 @@ function longestSpeciesMatch(text, namesByLength, lookup) {
   return null;
 }
 
-function translateEnergyFromJa(jaName) {
-  const match = /^基本(.+)エネルギー$/.exec(compact(jaName));
-  if (!match) return null;
-  const type = ENERGY_JA_TO_EN[match[1]];
-  return type ? `Basic ${type} Energy` : "Basic Energy";
-}
-
 function translateEnergyFromEn(enName) {
   const match = /^basic\s+(.+?)\s+energy$/i.exec(enName.trim());
   if (!match) return null;
   const type = ENERGY_EN_TO_JA[match[1].toLowerCase()];
   return type ? `基本${type}エネルギー` : null;
-}
-
-function leftoverToEnglish(raw) {
-  const trimmed = raw.replace(/[\s　]+/g, " ").trim();
-  if (!trimmed) return [];
-  const mapped = FORME_JA_TO_EN[compact(trimmed)] || FORME_JA_TO_EN[trimmed];
-  if (mapped) return [mapped];
-  return [trimmed];
-}
-
-/**
- * Japanese TCG name → English display name. Unknown trainers stay Japanese
- * so they remain searchable via name_ja.
- */
-export function japaneseCardNameToEnglish(jaName, maps) {
-  const original = String(jaName ?? "").trim();
-  if (!original) return "";
-
-  const energy = translateEnergyFromJa(original);
-  if (energy) return energy;
-
-  const { rest: withoutSuffix, suffixes } = stripKnownSuffixes(original);
-  const { rest: core, prefixes } = stripKnownPrefixes(withoutSuffix);
-
-  const exact = maps.jaToEn.get(core) || maps.jaToEn.get(compact(core));
-  if (exact) {
-    return [...prefixes, exact, ...suffixes].join(" ");
-  }
-
-  const possessive = core.split("の");
-  const possessiveTail = possessive.length > 1 ? possessive[possessive.length - 1] : "";
-  const possessiveMatch =
-    possessiveTail &&
-    (maps.jaToEn.get(possessiveTail) || maps.jaToEn.get(compact(possessiveTail)));
-  if (possessiveMatch) {
-    return [...prefixes, possessiveMatch, ...suffixes].join(" ");
-  }
-
-  const hit = longestSpeciesMatch(core, maps.jaNamesByLength, maps.jaToEn);
-  if (hit?.value) {
-    const remainder = compact(core).replace(compact(hit.key), "");
-    const forme = leftoverToEnglish(remainder);
-    return [...prefixes, hit.value, ...forme, ...suffixes]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  return original;
 }
 
 function stripEnglishPrefixes(raw) {
@@ -240,7 +155,7 @@ function stripEnglishPrefixes(raw) {
 }
 
 /**
- * English TCG name → Japanese, used so a Japanese query also hits English rows.
+ * English TCG name → Japanese, so a Japanese query matches rows named in English.
  */
 export function englishCardNameToJapanese(enName, maps) {
   const original = String(enName ?? "").trim();
