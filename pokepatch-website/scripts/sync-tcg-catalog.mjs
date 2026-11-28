@@ -3,27 +3,28 @@
  * Mirror the Pokémon TCG card catalog into public.tcg_cards.
  *
  * English source: https://github.com/PokemonTCG/pokemon-tcg-data (same ids as
- * api.pokemontcg.io). Japanese source: https://api.tcgdex.net/v2/ja (Japanese
- * printings; ids prefixed jp- so they never collide with English rows).
+ * api.pokemontcg.io). Japanese source: https://tcgcsv.com, a daily mirror of
+ * TCGplayer's "Pokemon Japan" catalog (ids are jp-{TCGplayer product id}, so
+ * they never collide with English rows).
  *
  * Downloads each source, flattens to the slim columns admin search needs, and
  * upserts in batches. Idempotent — safe to re-run any time; a failed run
- * leaves the previous catalog in place.
+ * leaves the previous catalog in place. A complete Japanese run also removes
+ * Japanese rows the source no longer lists.
  *
  * Usage:
  *   node --env-file=.env.local.prod scripts/sync-tcg-catalog.mjs
  *   SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_SERVICE_ROLE_KEY=... node scripts/sync-tcg-catalog.mjs
  *
  * Env: SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL), SUPABASE_SERVICE_ROLE_KEY.
- * Optional: TCG_DATA_ZIP_URL, TCG_JP_SET_IDS (comma-separated TCGdex set ids),
- * TCG_SKIP_JP=1, TCG_SKIP_EN=1.
+ * Optional: TCG_DATA_ZIP_URL, TCG_JP_SET_IDS (comma-separated Japanese set
+ * codes such as SV2a, or tcgcsv group ids), TCG_SKIP_JP=1, TCG_SKIP_EN=1.
  */
 
 import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
 import {
   englishCardNameToJapanese,
-  japaneseCardNameToEnglish,
   loadSpeciesNameMaps,
 } from "./lib/tcgJapaneseNames.mjs";
 
@@ -32,8 +33,11 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const zipUrl =
   process.env.TCG_DATA_ZIP_URL ||
   "https://codeload.github.com/PokemonTCG/pokemon-tcg-data/zip/refs/heads/master";
-const TCGDEX_JA_SETS_URL = "https://api.tcgdex.net/v2/ja/sets";
+/** tcgcsv category 85 is TCGplayer's "Pokemon Japan". */
+const TCGCSV_JP_URL = "https://tcgcsv.com/tcgplayer/85";
 const JP_ID_PREFIX = "jp-";
+/** A set also lists sealed product (boxes, decks); only cards carry these. */
+const SINGLE_CARD_FIELDS = ["Number", "Rarity", "CardType"];
 const SET_FETCH_CONCURRENCY = 4;
 
 const BATCH_SIZE = 500;
@@ -182,27 +186,53 @@ function parseSetIdFilter() {
   return new Set(
     raw
       .split(",")
-      .map((id) => id.trim())
+      .map((id) => id.trim().toLowerCase())
       .filter(Boolean)
   );
 }
 
-function tcgdexImageUrls(image) {
-  const base = String(image ?? "").trim().replace(/\/+$/, "");
-  if (!base) return { small: "", large: "" };
-  return {
-    small: `${base}/low.webp`,
-    large: `${base}/high.webp`,
-  };
+/** tcgcsv nests a product's number, rarity, etc. as [{ name, value }]. */
+function extendedDataOf(product) {
+  return Object.fromEntries(
+    (product.extendedData ?? []).map((entry) => [
+      entry.name,
+      String(entry.value ?? "").trim(),
+    ])
+  );
+}
+
+/** TCGplayer gives some promo sets no code; the group id keeps set_id unique. */
+function japaneseSetId(group) {
+  return String(group.abbreviation ?? "").trim() || `tcgp-${group.groupId}`;
+}
+
+/** Listings repeat the printed number to tell printings apart ("Mew ex - 205/165"). */
+function japaneseCardName(product, printedNumber) {
+  const listed = String(product.name ?? "").trim();
+  return printedNumber
+    ? listed.replace(` - ${printedNumber}`, "").trim()
+    : listed;
+}
+
+function tcgplayerImageUrls(imageUrl) {
+  const small = String(imageUrl ?? "").trim();
+  return { small, large: small.replace(/_200w\.jpg$/, "_in_1000x1000.jpg") };
 }
 
 async function readJapaneseCatalog(maps) {
   const filter = parseSetIdFilter();
-  let setList = await fetchJson(TCGDEX_JA_SETS_URL, { timeout: 60_000 });
-  if (!Array.isArray(setList)) throw new Error("TCGdex ja/sets did not return an array");
+  const listing = await fetchJson(`${TCGCSV_JP_URL}/groups`, { timeout: 60_000 });
+  let groups = listing?.results;
+  if (!Array.isArray(groups) || groups.length === 0) {
+    throw new Error("tcgcsv returned no Japanese sets");
+  }
   if (filter) {
-    setList = setList.filter((set) => filter.has(String(set.id)));
-    console.log(`  TCG_JP_SET_IDS filter: ${setList.length} set(s)`);
+    groups = groups.filter(
+      (group) =>
+        filter.has(japaneseSetId(group).toLowerCase()) ||
+        filter.has(String(group.groupId))
+    );
+    console.log(`  TCG_JP_SET_IDS filter: ${groups.length} set(s)`);
   }
 
   const syncedAt = new Date().toISOString();
@@ -210,43 +240,41 @@ async function readJapaneseCatalog(maps) {
   let skippedNoImage = 0;
   let skippedSets = 0;
 
-  await mapPool(setList, SET_FETCH_CONCURRENCY, async (brief) => {
-    const setId = String(brief.id ?? "").trim();
-    if (!setId) return;
-    let detail;
+  await mapPool(groups, SET_FETCH_CONCURRENCY, async (group) => {
+    const setId = japaneseSetId(group);
+    let products;
     try {
-      detail = await fetchJson(`${TCGDEX_JA_SETS_URL}/${encodeURIComponent(setId)}`);
+      const detail = await fetchJson(`${TCGCSV_JP_URL}/${group.groupId}/products`);
+      products = detail?.results;
+      if (!Array.isArray(products)) throw new Error("no product list");
     } catch (err) {
       skippedSets += 1;
       console.warn(`skip JP set ${setId}: ${err.message}`);
       return;
     }
-    const setNameJa = String(detail.name ?? brief.name ?? setId).trim();
-    const setName = `${setId} · ${setNameJa}`;
-    const setSeries = detail.serie?.name ? String(detail.serie.name).trim() : null;
-    const releaseDate = toIsoDate(detail.releaseDate);
-    const cards = Array.isArray(detail.cards) ? detail.cards : [];
-    for (const card of cards) {
-      const tcgdexId = String(card.id ?? "").trim();
-      if (!tcgdexId) continue;
-      const images = tcgdexImageUrls(card.image);
-      if (!images.small) {
+    const setName = String(group.name ?? setId).trim();
+    const releaseDate = toIsoDate(group.publishedOn);
+    for (const product of products) {
+      const details = extendedDataOf(product);
+      if (!SINGLE_CARD_FIELDS.some((field) => field in details)) continue;
+      // imageUrl is always filled in; imageCount says whether it resolves.
+      if (!product.imageCount) {
         skippedNoImage += 1;
         continue;
       }
-      const nameJa = String(card.name ?? tcgdexId).trim();
-      const name = maps
-        ? japaneseCardNameToEnglish(nameJa, maps) || nameJa
-        : nameJa;
+      const printedNumber = details.Number ?? "";
+      const name = japaneseCardName(product, printedNumber);
+      const images = tcgplayerImageUrls(product.imageUrl);
       rows.push({
-        id: `${JP_ID_PREFIX}${tcgdexId}`,
+        id: `${JP_ID_PREFIX}${product.productId}`,
         name,
-        name_ja: nameJa,
-        number: String(card.localId ?? "").trim(),
+        // Translate without the trailing variant label ("(Master Ball Pattern)").
+        name_ja: englishCardNameToJapanese(name.replace(/\s*\([^)]*\)$/, ""), maps),
+        number: printedNumber.split("/")[0].trim(),
         set_id: setId,
         set_name: setName,
-        set_name_ja: setNameJa,
-        set_series: setSeries,
+        set_name_ja: "",
+        set_series: null,
         print_region: "jp",
         release_date: releaseDate,
         image_small: images.small,
@@ -258,10 +286,24 @@ async function readJapaneseCatalog(maps) {
 
   return {
     rows,
-    setCount: setList.length - skippedSets,
+    setCount: groups.length - skippedSets,
     skippedNoImage,
     skippedSets,
+    syncedAt,
+    // Only a full read may prune: a filtered or partial one would drop good rows.
+    complete: !filter && skippedSets === 0 && rows.length > 0,
   };
+}
+
+/** Delete Japanese rows the latest full read did not write. */
+async function pruneJapaneseRowsBefore(syncedAt) {
+  const { count, error } = await supabase
+    .from("tcg_cards")
+    .delete({ count: "exact" })
+    .eq("print_region", "jp")
+    .lt("synced_at", syncedAt);
+  if (error) throw new Error(`prune failed: ${error.message}`);
+  return count ?? 0;
 }
 
 async function upsertAll(rows) {
@@ -297,9 +339,10 @@ console.log("loading Pokémon species name map");
 const maps = await loadSpeciesNameMaps((resource) =>
   fetchWithTimeout(resource, { timeout: 60_000 })
 );
-console.log(`  ${maps.jaToEn.size} Japanese ↔ English species names`);
+console.log(`  ${maps.enToJa.size} English → Japanese species names`);
 
 const allRows = [];
+let japanese = null;
 
 if (!skipEn) {
   console.log(`downloading English catalog ${zipUrl}`);
@@ -313,8 +356,8 @@ if (!skipEn) {
 }
 
 if (!skipJp) {
-  console.log(`fetching Japanese catalog ${TCGDEX_JA_SETS_URL}`);
-  const japanese = await readJapaneseCatalog(maps);
+  console.log(`fetching Japanese catalog ${TCGCSV_JP_URL}`);
+  japanese = await readJapaneseCatalog(maps);
   console.log(
     `parsed ${japanese.rows.length} Japanese cards across ${japanese.setCount} sets (newest ${newestRelease(japanese.rows) || "?"}; skipped ${japanese.skippedNoImage} without art, ${japanese.skippedSets} missing sets)`
   );
@@ -328,6 +371,11 @@ if (allRows.length === 0) {
 
 console.log(`upserting ${allRows.length} rows into tcg_cards`);
 const written = await upsertAll(allRows);
+
+if (japanese?.complete) {
+  const pruned = await pruneJapaneseRowsBefore(japanese.syncedAt);
+  console.log(`removed ${pruned} Japanese rows the source no longer lists`);
+}
 
 const { count, error: countError } = await supabase
   .from("tcg_cards")

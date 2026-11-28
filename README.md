@@ -357,9 +357,9 @@ Each submission creates **working** rows (admin can edit) and matching **origina
 
 **`tcg_cards`** (card catalog mirror)
 
-- Local copy of English printings from [PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (same ids as `api.pokemontcg.io`) plus Japanese printings from [TCGdex](https://tcgdex.dev) (`jp-{set}-{number}` ids, images from `assets.tcgdex.net`). Admin card search and "Use card" read from here; nothing calls those APIs at request time.
-- Admin card search has an English / Japanese toggle and filters to that `print_region`. Pokémon names are stored in English and Japanese, so typing `Pikachu` or `ピカチュウ` works in either catalog. Japanese sets match by set id (`SV2a`) or Japanese name.
-- Refreshed by `scripts/sync-tcg-catalog.mjs` — CI runs it weekly, after every successful Deploy, and via **Actions → Sync TCG catalog → Run workflow**. Locally: `npm run sync-tcg-catalog` (needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local.prod`; point `SUPABASE_URL` at `http://127.0.0.1:54321` for the local stack). Optional: `TCG_JP_SET_IDS=SV2a,S12a` to ingest a subset, `TCG_SKIP_JP=1` / `TCG_SKIP_EN=1`.
+- Local copy of English printings from [PokemonTCG/pokemon-tcg-data](https://github.com/PokemonTCG/pokemon-tcg-data) (same ids as `api.pokemontcg.io`) plus Japanese printings from [tcgcsv](https://tcgcsv.com), a daily mirror of TCGplayer's "Pokemon Japan" catalog (`jp-{TCGplayer product id}` ids, images from `tcgplayer-cdn.tcgplayer.com`; listings without art are skipped). Admin card search and "Use card" read from here; nothing calls those APIs at request time.
+- Admin card search has an English / Japanese toggle and filters to that `print_region`. Pokémon names are stored in English and Japanese, so typing `Pikachu` or `ピカチュウ` works in either catalog. Japanese sets match by set code (`SV2a`) or English set name (`Pokemon Card 151`).
+- Refreshed by `scripts/sync-tcg-catalog.mjs` — CI runs it weekly, after every successful Deploy, and via **Actions → Sync TCG catalog → Run workflow**. Locally: `npm run sync-tcg-catalog` (needs `SUPABASE_SERVICE_ROLE_KEY` in `.env.local.prod`; point `SUPABASE_URL` at `http://127.0.0.1:54321` for the local stack). Optional: `TCG_JP_SET_IDS=SV2a,S12a` to ingest a subset, `TCG_SKIP_JP=1` / `TCG_SKIP_EN=1`. A full Japanese run also deletes Japanese rows the source no longer lists.
 - New sets appear once the upstream dataset adds them; if search misses a just-released set, run the workflow manually.
 
 ### RPCs

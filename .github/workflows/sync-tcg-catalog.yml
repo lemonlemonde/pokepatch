@@ -1,7 +1,7 @@
 name: Sync TCG catalog
 
-# Mirrors PokemonTCG/pokemon-tcg-data (English) and TCGdex ja (Japanese)
-# into public.tcg_cards (admin card search).
+# Mirrors PokemonTCG/pokemon-tcg-data (English) and tcgcsv's TCGplayer
+# "Pokemon Japan" catalog (Japanese) into public.tcg_cards (admin card search).
 # Runs weekly, after every successful Deploy (so a fresh schema is populated),
 # and on demand. Idempotent upsert — a failed run leaves the old catalog intact.
 

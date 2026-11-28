@@ -2,7 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 /**
  * Card catalog lookups read from public.tcg_cards — a local mirror of English
- * (pokemon-tcg-data) and Japanese (TCGdex) printings, kept fresh by
+ * (pokemon-tcg-data) and Japanese (TCGplayer, via tcgcsv) printings, kept fresh by
  * scripts/sync-tcg-catalog.mjs. Nothing here calls those APIs at request time.
  */
 
