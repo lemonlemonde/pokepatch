@@ -44,8 +44,11 @@ jobs:
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD" --yes
 
       # CLI v3: db push targets the local stack unless --remote is passed.
+      # --include-all: a migration created on a branch before, but merged after,
+      # one that is already live sorts ahead of the remote's newest version.
+      # Without the flag db push refuses, and every later deploy fails with it.
       - name: Push migrations
-        run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+        run: supabase db push --remote --include-all --password "$SUPABASE_DB_PASSWORD" --yes
 
   functions:
     name: Edge functions

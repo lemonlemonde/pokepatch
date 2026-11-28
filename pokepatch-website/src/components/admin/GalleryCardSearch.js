@@ -438,11 +438,6 @@ export default function GalleryCardSearch({
     onSelect?.(card);
   }
 
-  const regionHint =
-    printRegion === "jp"
-      ? "Japanese printings. Names in English or Japanese; sets by ID (SV2a) or Japanese name."
-      : "English printings only.";
-
   return (
     <div
       className={
@@ -451,13 +446,10 @@ export default function GalleryCardSearch({
           : "rounded-lg border border-ink/10 bg-ink/[0.02] p-4"
       }
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
-            {hideFields ? "Catalog language" : "Find card"}
-          </p>
-          <p className="text-[11px] text-ink/45">{regionHint}</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45">
+          {hideFields ? "Catalog language" : "Find card"}
+        </p>
         <PrintRegionToggle
           value={printRegion}
           onChange={handlePrintRegionChange}
