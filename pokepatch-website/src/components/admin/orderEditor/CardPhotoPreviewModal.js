@@ -6,6 +6,7 @@ import {
   overlayFadeClassName,
   useOverlayPresence,
 } from "@/components/ExpandReveal";
+import HeicImg from "@/components/HeicImg";
 
 function ArrowIcon({ direction }) {
   return (
@@ -372,8 +373,7 @@ export default function CardPhotoPreviewModal({
                     >
                       <span className="flex aspect-[3/4] w-full items-center justify-center bg-night/50 p-1">
                         {item.src ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <HeicImg
                             src={item.src}
                             alt={item.alt}
                             draggable={false}
@@ -420,8 +420,7 @@ export default function CardPhotoPreviewModal({
         definite size and the image always fits on screen.
       */}
       <div className="flex h-full w-full items-center justify-center p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <HeicImg
           key={expandedItem.fullSrc || expandedItem.src}
           src={expandedItem.fullSrc || expandedItem.src}
           alt={expandedItem.alt}

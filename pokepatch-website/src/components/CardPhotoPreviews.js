@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import MediaLightbox from "@/components/MediaLightbox";
+import HeicImg, { useFilePreviewUrls } from "@/components/HeicImg";
 import { ExpandPanel } from "@/components/ExpandReveal";
 import { thumbPath } from "@/lib/imageCompression";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
@@ -10,8 +11,7 @@ function CardPhotoTile({ src, alt, label, href, onRemove, removeAriaLabel }) {
   const image = (
     <div className="flex aspect-[3/4] w-full items-center justify-center bg-ink/[0.04] p-1">
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <HeicImg
           src={src}
           alt={alt}
           loading="lazy"
@@ -152,30 +152,22 @@ function AdminThumb({
   onRemove,
   removeAriaLabel,
 }) {
-  const [displaySrc, setDisplaySrc] = useState(src);
-  const [triedFallback, setTriedFallback] = useState(false);
-
-  useEffect(() => {
-    setDisplaySrc(src);
-    setTriedFallback(false);
-  }, [src]);
+  const [failedSrc, setFailedSrc] = useState(null);
+  const displaySrc =
+    failedSrc === src && fallbackSrc && fallbackSrc !== src ? fallbackSrc : src;
 
   const image = displaySrc ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <HeicImg
       src={displaySrc}
       alt={alt}
       loading="lazy"
       decoding="async"
       className="h-full w-full object-cover"
       onError={() => {
-        if (triedFallback) return;
-        setTriedFallback(true);
+        if (failedSrc === src) return;
+        setFailedSrc(src);
         if (storagePath) {
           forgetSignedUrl("card-photos", thumbPath(storagePath));
-        }
-        if (fallbackSrc && fallbackSrc !== displaySrc) {
-          setDisplaySrc(fallbackSrc);
         }
       }}
     />
@@ -264,20 +256,10 @@ export function AdminOrderCardPhotoGroups({
   className = "",
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [pendingPreviews, setPendingPreviews] = useState([]);
   const [lightbox, setLightbox] = useState(null);
   const [visibleCount, setVisibleCount] = useState(Number.POSITIVE_INFINITY);
   const collapsedRef = useRef(null);
-
-  useEffect(() => {
-    const urls = (pendingFiles ?? []).map((item) =>
-      URL.createObjectURL(item.file)
-    );
-    setPendingPreviews(urls);
-    return () => {
-      for (const url of urls) URL.revokeObjectURL(url);
-    };
-  }, [pendingFiles]);
+  const pendingPreviews = useFilePreviewUrls(pendingFiles);
 
   const pendingItems = (pendingFiles ?? []).map((item, index) => ({
     id: item.id,
@@ -445,15 +427,7 @@ export function AdminOrderCardPhotoGroups({
 }
 
 export function StagedCardPhotoPreviews({ files, onRemove, caption }) {
-  const [previews, setPreviews] = useState([]);
-
-  useEffect(() => {
-    const urls = files.map((item) => URL.createObjectURL(item.file));
-    setPreviews(urls);
-    return () => {
-      for (const url of urls) URL.revokeObjectURL(url);
-    };
-  }, [files]);
+  const previews = useFilePreviewUrls(files);
 
   const items = files.map((item, index) => ({
     id: item.id,

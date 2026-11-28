@@ -8,6 +8,7 @@ import CustomerOrderMessages from "@/components/CustomerOrderMessages";
 import QueueSpeedBadge from "@/components/QueueSpeedBadge";
 import { paidQueueChromeClass } from "@/lib/queueSpeed";
 import MediaLightbox from "@/components/MediaLightbox";
+import HeicImg from "@/components/HeicImg";
 import QuoteReceipt from "@/components/QuoteReceipt";
 import RestorationDownloadButton from "@/components/RestorationDownloadButton";
 import {
@@ -85,8 +86,7 @@ function Photo({ url, alt, onOpen, onThumbError }) {
           className="block h-full w-full cursor-zoom-in disabled:cursor-default"
           aria-label={`Enlarge ${alt}`}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <HeicImg
             key={url || "empty"}
             src={src}
             alt={alt}

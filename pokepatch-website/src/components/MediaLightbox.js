@@ -6,6 +6,7 @@ import {
   overlayFadeClassName,
   useOverlayEnterExit,
 } from "@/components/ExpandReveal";
+import HeicImg from "@/components/HeicImg";
 
 const FOCUSABLE_SELECTOR = "button, [href], video[controls], [tabindex]:not([tabindex='-1'])";
 
@@ -245,8 +246,7 @@ export default function MediaLightbox({
         >
           {children ??
             (media.type === "image" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <HeicImg
                 key={media.src}
                 src={media.src}
                 alt={media.alt || media.label || ""}

@@ -5,7 +5,13 @@
  *
  * Encoding prefers WebP, but falls back to JPEG when the browser cannot encode
  * WebP (Safari still cannot via canvas.toBlob — it silently yields PNG).
+ *
+ * HEIC/HEIF (typical iPhone photos) are decoded via heic-to and re-encoded so
+ * Chrome/Firefox admin can display them. Empty MIME is common on iOS pickers
+ * and must not passthrough the original HEIC bytes.
  */
+
+import { isHeicLikeFile, sniffIsHeic } from "@/lib/heicDetect";
 
 export const UPLOAD_MAX_DIMENSION = 1200;
 export const UPLOAD_QUALITY = 0.75;
@@ -34,13 +40,6 @@ export function posterPath(videoPath) {
 
 function baseNameFromFile(file) {
   return file?.name?.replace(/\.[^.]+$/, "") || "image";
-}
-
-function isHeicLike(file) {
-  if (!file) return false;
-  const type = (file.type || "").toLowerCase();
-  if (type === "image/heic" || type === "image/heif") return true;
-  return /\.hei[cf]$/i.test(file.name || "");
 }
 
 const IMAGE_LOAD_TIMEOUT_MS = 30_000;
@@ -77,12 +76,26 @@ function loadImageElement(url) {
   return withTimeout(load, IMAGE_LOAD_TIMEOUT_MS, "Timed out loading image.");
 }
 
-/**
- * Decode a Blob/File to something canvas.drawImage can use.
- * Prefers ImageBitmap; falls back to an HTMLImageElement when createImageBitmap
- * fails (seen with some HEIC/Safari paths and odd MIME labels).
- */
-async function drawableFromBlob(blob) {
+function bitmapDrawable(bitmap) {
+  return {
+    drawable: bitmap,
+    width: bitmap.width,
+    height: bitmap.height,
+    release: () => bitmap.close?.(),
+  };
+}
+
+async function heicDrawable(blob) {
+  const { heicToBitmap } = await import("@/lib/heic");
+  const bitmap = await withTimeout(
+    heicToBitmap(blob),
+    IMAGE_LOAD_TIMEOUT_MS,
+    "Timed out decoding image.",
+  );
+  return bitmapDrawable(bitmap);
+}
+
+async function nativeDrawableFromBlob(blob) {
   try {
     const bitmap = await withTimeout(
       createImageBitmap(blob, {
@@ -91,12 +104,7 @@ async function drawableFromBlob(blob) {
       IMAGE_LOAD_TIMEOUT_MS,
       "Timed out decoding image.",
     );
-    return {
-      drawable: bitmap,
-      width: bitmap.width,
-      height: bitmap.height,
-      release: () => bitmap.close?.(),
-    };
+    return bitmapDrawable(bitmap);
   } catch {
     // continue
   }
@@ -107,12 +115,7 @@ async function drawableFromBlob(blob) {
       IMAGE_LOAD_TIMEOUT_MS,
       "Timed out decoding image.",
     );
-    return {
-      drawable: bitmap,
-      width: bitmap.width,
-      height: bitmap.height,
-      release: () => bitmap.close?.(),
-    };
+    return bitmapDrawable(bitmap);
   } catch {
     // continue
   }
@@ -129,6 +132,38 @@ async function drawableFromBlob(blob) {
   } catch (err) {
     URL.revokeObjectURL(url);
     throw err;
+  }
+}
+
+/**
+ * Decode a Blob/File to something canvas.drawImage can use.
+ * Prefers ImageBitmap; falls back to an HTMLImageElement when createImageBitmap
+ * fails (seen with some HEIC/Safari paths and odd MIME labels). Known HEIC is
+ * decoded with heic-to first so Chrome/Firefox don't hang on native decode.
+ */
+async function drawableFromBlob(blob) {
+  const knownHeic = isHeicLikeFile(blob);
+  if (knownHeic) {
+    try {
+      return await heicDrawable(blob);
+    } catch {
+      // Safari can still decode HEIC natively.
+    }
+  }
+
+  try {
+    return await nativeDrawableFromBlob(blob);
+  } catch (nativeErr) {
+    if (!knownHeic) {
+      try {
+        if (await sniffIsHeic(blob)) {
+          return await heicDrawable(blob);
+        }
+      } catch {
+        // keep native error
+      }
+    }
+    throw nativeErr;
   }
 }
 
@@ -256,14 +291,18 @@ async function resizeSourceToUploadFile(
 }
 
 function isPassthroughImage(file) {
-  if (!file?.type) return true;
-  if (!file.type.startsWith("image/")) return true;
-  if (file.type === "image/gif") return true;
-  return false;
+  if (!file) return true;
+  const type = (file.type || "").toLowerCase();
+  if (type === "image/gif") return true;
+  if (type.startsWith("video/")) return true;
+  // Empty MIME and octet-stream are common on iOS HEIC picks — still compress.
+  if (!type || type === "application/octet-stream") return false;
+  if (type.startsWith("image/")) return false;
+  return true;
 }
 
 function compressFailureMessage(source) {
-  return isHeicLike(source)
+  return isHeicLikeFile(source)
     ? "Couldn't process this HEIC image — export it as JPEG or PNG first."
     : "Couldn't process this image — try JPEG or PNG.";
 }
@@ -329,7 +368,11 @@ export async function makeThumbForUpload(
   if (!file || typeof window === "undefined") {
     return { file: null, error: null };
   }
-  if (!file.type || !file.type.startsWith("image/") || file.type === "image/gif") {
+  const type = (file.type || "").toLowerCase();
+  if (type === "image/gif" || type.startsWith("video/")) {
+    return { file: null, error: null };
+  }
+  if (type && !type.startsWith("image/") && type !== "application/octet-stream") {
     return { file: null, error: null };
   }
 

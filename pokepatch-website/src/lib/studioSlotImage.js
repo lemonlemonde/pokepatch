@@ -1,4 +1,5 @@
 import { drawShapesOnCanvas } from "@/lib/shapeAnnotations";
+import { isHeicLikeSrc, needsHeicDecode } from "@/lib/heicDetect";
 
 const MIN_NORM = 0.05;
 export const DEFAULT_CROP = { x: 0, y: 0, w: 1, h: 1 };
@@ -172,6 +173,15 @@ function loadImageElement(imageUrl, { timeoutMs = IMAGE_LOAD_TIMEOUT_MS } = {}) 
 async function loadDrawableFromBlob(blob) {
   if (!blob) throw new Error("Missing image file.");
 
+  try {
+    if (await needsHeicDecode(blob)) {
+      const { webImageBlob } = await import("@/lib/heic");
+      blob = await webImageBlob(blob);
+    }
+  } catch {
+    // Native decode below may still work (Safari HEIC).
+  }
+
   if (typeof createImageBitmap === "function") {
     for (const options of [{ imageOrientation: "from-image" }, undefined]) {
       try {
@@ -222,6 +232,11 @@ async function loadStudioDrawable(item, imageUrl) {
 
   if (imageUrl) {
     try {
+      if (isHeicLikeSrc(imageUrl)) {
+        const res = await fetch(imageUrl);
+        if (!res.ok) throw new Error("Failed to load image");
+        return await loadDrawableFromBlob(await res.blob());
+      }
       const image = await loadImageElement(imageUrl);
       return {
         drawable: image,
