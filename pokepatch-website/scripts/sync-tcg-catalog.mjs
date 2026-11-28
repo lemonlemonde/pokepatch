@@ -219,21 +219,52 @@ function tcgplayerImageUrls(imageUrl) {
   return { small, large: small.replace(/_200w\.jpg$/, "_in_1000x1000.jpg") };
 }
 
-async function readJapaneseCatalog(maps) {
-  const filter = parseSetIdFilter();
+/** Japanese sets from tcgcsv, narrowed to TCG_JP_SET_IDS when that is set. */
+async function listJapaneseSets(filter) {
   const listing = await fetchJson(`${TCGCSV_JP_URL}/groups`, { timeout: 60_000 });
-  let groups = listing?.results;
+  const groups = listing?.results;
   if (!Array.isArray(groups) || groups.length === 0) {
     throw new Error("tcgcsv returned no Japanese sets");
   }
-  if (filter) {
-    groups = groups.filter(
-      (group) =>
-        filter.has(japaneseSetId(group).toLowerCase()) ||
-        filter.has(String(group.groupId))
-    );
-    console.log(`  TCG_JP_SET_IDS filter: ${groups.length} set(s)`);
-  }
+  if (!filter) return groups;
+  return groups.filter(
+    (group) =>
+      filter.has(japaneseSetId(group).toLowerCase()) ||
+      filter.has(String(group.groupId))
+  );
+}
+
+async function fetchSetProducts(groupId) {
+  const detail = await fetchJson(`${TCGCSV_JP_URL}/${groupId}/products`);
+  if (!Array.isArray(detail?.results)) throw new Error("no product list");
+  return detail.results;
+}
+
+function japaneseCardRow(product, printedNumber, set, maps, syncedAt) {
+  const name = japaneseCardName(product, printedNumber);
+  const images = tcgplayerImageUrls(product.imageUrl);
+  return {
+    id: `${JP_ID_PREFIX}${product.productId}`,
+    name,
+    // Translate without the trailing variant label ("(Master Ball Pattern)").
+    name_ja: englishCardNameToJapanese(name.replace(/\s*\([^)]*\)$/, ""), maps),
+    number: printedNumber.split("/")[0].trim(),
+    set_id: set.id,
+    set_name: set.name,
+    set_name_ja: "",
+    set_series: null,
+    print_region: "jp",
+    release_date: set.releaseDate,
+    image_small: images.small,
+    image_large: images.large,
+    synced_at: syncedAt,
+  };
+}
+
+async function readJapaneseCatalog(maps) {
+  const filter = parseSetIdFilter();
+  const groups = await listJapaneseSets(filter);
+  if (filter) console.log(`  TCG_JP_SET_IDS filter: ${groups.length} set(s)`);
 
   const syncedAt = new Date().toISOString();
   const rows = [];
@@ -241,19 +272,19 @@ async function readJapaneseCatalog(maps) {
   let skippedSets = 0;
 
   await mapPool(groups, SET_FETCH_CONCURRENCY, async (group) => {
-    const setId = japaneseSetId(group);
+    const set = {
+      id: japaneseSetId(group),
+      name: String(group.name ?? "").trim(),
+      releaseDate: toIsoDate(group.publishedOn),
+    };
     let products;
     try {
-      const detail = await fetchJson(`${TCGCSV_JP_URL}/${group.groupId}/products`);
-      products = detail?.results;
-      if (!Array.isArray(products)) throw new Error("no product list");
+      products = await fetchSetProducts(group.groupId);
     } catch (err) {
       skippedSets += 1;
-      console.warn(`skip JP set ${setId}: ${err.message}`);
+      console.warn(`skip JP set ${set.id}: ${err.message}`);
       return;
     }
-    const setName = String(group.name ?? setId).trim();
-    const releaseDate = toIsoDate(group.publishedOn);
     for (const product of products) {
       const details = extendedDataOf(product);
       if (!SINGLE_CARD_FIELDS.some((field) => field in details)) continue;
@@ -262,25 +293,9 @@ async function readJapaneseCatalog(maps) {
         skippedNoImage += 1;
         continue;
       }
-      const printedNumber = details.Number ?? "";
-      const name = japaneseCardName(product, printedNumber);
-      const images = tcgplayerImageUrls(product.imageUrl);
-      rows.push({
-        id: `${JP_ID_PREFIX}${product.productId}`,
-        name,
-        // Translate without the trailing variant label ("(Master Ball Pattern)").
-        name_ja: englishCardNameToJapanese(name.replace(/\s*\([^)]*\)$/, ""), maps),
-        number: printedNumber.split("/")[0].trim(),
-        set_id: setId,
-        set_name: setName,
-        set_name_ja: "",
-        set_series: null,
-        print_region: "jp",
-        release_date: releaseDate,
-        image_small: images.small,
-        image_large: images.large,
-        synced_at: syncedAt,
-      });
+      rows.push(
+        japaneseCardRow(product, details.Number ?? "", set, maps, syncedAt)
+      );
     }
   });
 
