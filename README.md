@@ -53,7 +53,7 @@ Repo: `lemonlemonde/pokepatch` → **https://pokepatch.cards** (GitHub Pages via
 
 **Normal path:** merge (or push) to `main`. [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) ships in order:
 
-1. Schema — `supabase db push`
+1. Schema — `supabase db push --include-all` (the flag lets a migration that was created before, but merged after, an already-live one still apply instead of failing the deploy)
 2. Edge functions — `supabase functions deploy` (all functions; JWT flags from `supabase/config.toml`)
 3. Frontend — Next.js static export → `gh-pages` branch
 
