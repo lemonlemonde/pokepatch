@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import HeicImg from "@/components/HeicImg";
 import { forgetSignedUrl } from "@/lib/signedUrlCache";
 import { thumbPath } from "@/lib/imageCompression";
 
@@ -75,22 +76,15 @@ export function AccountStatusBadge({ hasAccount, pill = false }) {
 }
 
 export function KanbanThumbImg({ url, storagePath, className }) {
-  const [src, setSrc] = useState(url);
-  const [failed, setFailed] = useState(false);
+  const [failedUrl, setFailedUrl] = useState(null);
 
-  useEffect(() => {
-    setSrc(url);
-    setFailed(false);
-  }, [url]);
-
-  if (!src || failed) {
+  if (!url || failedUrl === url) {
     return <div className={`bg-night/50 ${className ?? ""}`} />;
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
+    <HeicImg
+      src={url}
       alt=""
       loading="lazy"
       decoding="async"
@@ -100,7 +94,7 @@ export function KanbanThumbImg({ url, storagePath, className }) {
         if (storagePath) {
           forgetSignedUrl("card-photos", thumbPath(storagePath));
         }
-        setFailed(true);
+        setFailedUrl(url);
       }}
     />
   );

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
+    "heic-to": "^1.6.7",
     "jszip": "^3.10.1",
     "next": "16.4.6",
     "pdf-lib": "^1.17.1",

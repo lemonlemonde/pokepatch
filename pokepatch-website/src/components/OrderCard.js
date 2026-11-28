@@ -12,6 +12,7 @@ import {
   orderStatusBadgeClass,
 } from "@/lib/orderStatus";
 import QueueSpeedBadge from "@/components/QueueSpeedBadge";
+import HeicImg from "@/components/HeicImg";
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -169,8 +170,7 @@ export default function OrderCard({ order }) {
         aria-hidden="true"
       >
         {displayPreviewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <HeicImg
             src={displayPreviewUrl}
             alt=""
             className="h-full w-full object-cover"
